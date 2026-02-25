@@ -18,9 +18,7 @@ import (
 
 func TestIntegration_PostgresStore(t *testing.T) {
 	url := os.Getenv("DATABASE_URL")
-	if url == "" {
-		t.Skip("DATABASE_URL not set; skipping integration test")
-	}
+	require.NotEmpty(t, url, "DATABASE_URL must be set for integration test")
 	ctx := context.Background()
 	require.NoError(t, store.RunUp(url))
 	t.Cleanup(func() {

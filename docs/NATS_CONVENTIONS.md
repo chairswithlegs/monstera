@@ -34,6 +34,8 @@ Durable work queue for outbound ActivityPub delivery.
 | Storage | File |
 | Consumer | `federation-worker` (pull, durable) |
 
+**Scaling:** WorkQueue allows only one consumer *name* per stream (NATS rule). Multiple replicas all use that same consumer: each process calls `Consumer("FEDERATION", "federation-worker")` and `Fetch()`. NATS gives each message to exactly one in-flight `Fetch`, so replicas share the queue and throughput scales with the number of worker processes. Each delivery is still processed exactly once.
+
 **Subject pattern:** `federation.deliver.{activityType}`
 
 The activity type suffix (e.g., `create`, `delete`, `follow`, `undo`) is informational — the consumer subscribes to the wildcard `federation.deliver.>` and dispatches based on the message payload. The suffix enables subject-level filtering in NATS tooling and monitoring.

@@ -1,0 +1,25 @@
+---
+description: Integration tests must run fully when make test-integration is invoked; no conditional skips.
+globs: **/*_integration_test.go
+alwaysApply: false
+---
+
+# Integration Tests — No Conditional Skips
+
+When `make test-integration` is run, **all** integration tests must execute. Do not add conditional skips that would cause tests to be skipped in that run.
+
+## Do not
+
+- Use `t.Skip()` or `t.Skipf()` when a dependency (e.g. DB, NATS, MinIO) is unavailable or env vars are unset.
+- Use `t.Skip()` based on environment detection so that CI or local `make test-integration` skips tests.
+
+## Do
+
+- Assume dependencies are up (e.g. via `docker-compose up` or CI services). The Makefile and docs define the required environment for `test-integration`.
+- If a test cannot run without a real dependency, either:
+  - **Fail the test** (e.g. `require.NoError(t, err)` or `t.Fatal`) so the run is clearly broken when deps are missing, or
+  - Document the requirement and keep the test non-skip; do not hide skips behind conditionals.
+
+## Rationale
+
+Conditional skips make it easy for integration suites to silently run fewer tests. The intent of `make test-integration` is to run the full integration suite; skips undermine that and hide configuration or environment issues.

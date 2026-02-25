@@ -1,0 +1,12 @@
+{{.InstanceName}} — Account Notice
+
+Hello {{.Username}},
+
+The moderation team at {{.InstanceName}} has taken the following action on your account:
+
+Action: {{.Action}}
+Reason: {{.Reason}}
+
+If you believe this action was taken in error, you may submit an appeal:
+
+{{.AppealURL}}
