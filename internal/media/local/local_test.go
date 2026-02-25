@@ -26,7 +26,7 @@ func TestStore_PutGetRoundTrip(t *testing.T) {
 
 	rc, err := store.Get(ctx, key)
 	require.NoError(t, err)
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	got, err := io.ReadAll(rc)
 	require.NoError(t, err)
 	assert.Equal(t, content, got)

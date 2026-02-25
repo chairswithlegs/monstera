@@ -21,11 +21,11 @@ func GetJSON[T any](ctx context.Context, s Store, key string, dest *T) (bool, er
 		if errors.Is(err, ErrCacheMiss) {
 			return false, nil
 		}
-		return false, err
+		return false, fmt.Errorf("cache: get %q: %w", key, err)
 	}
 	if err := json.Unmarshal(b, dest); err != nil {
 		_ = s.Delete(ctx, key)
-		return false, nil
+		return false, fmt.Errorf("cache: unmarshal %q: %w", key, err)
 	}
 	return true, nil
 }
@@ -36,7 +36,10 @@ func SetJSON[T any](ctx context.Context, s Store, key string, val T, ttl time.Du
 	if err != nil {
 		return fmt.Errorf("cache: marshal %q: %w", key, err)
 	}
-	return s.Set(ctx, key, b, ttl)
+	if err := s.Set(ctx, key, b, ttl); err != nil {
+		return fmt.Errorf("cache: set %q: %w", key, err)
+	}
+	return nil
 }
 
 // GetOrSet implements the cache-aside pattern with singleflight thundering-herd
@@ -58,7 +61,7 @@ func GetOrSet[T any](ctx context.Context, s Store, key string, ttl time.Duration
 	})
 	if err != nil {
 		var zero T
-		return zero, err
+		return zero, fmt.Errorf("cache: get-or-set %q: %w", key, err)
 	}
 	return v.(T), nil
 }

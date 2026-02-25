@@ -39,11 +39,11 @@ func (s *Sender) Send(_ context.Context, msg email.Message) error {
 		from = s.from
 	}
 	s.logger.Info("email sent (noop)",
-		"from", from,
-		"to", msg.To,
-		"subject", msg.Subject,
-		"html_length", len(msg.HTML),
-		"text_body", msg.Text,
+		slog.String("from", from),
+		slog.String("to", msg.To),
+		slog.String("subject", msg.Subject),
+		slog.Int("html_length", len(msg.HTML)),
+		slog.String("text_body", msg.Text),
 	)
 	return nil
 }

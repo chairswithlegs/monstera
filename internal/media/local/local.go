@@ -8,7 +8,7 @@ package local
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -36,7 +36,7 @@ func init() {
 // New creates a local Store rooted at basePath.
 // basePath must be an absolute path; the directory is created if it does not exist.
 func New(basePath, baseURL string) (*Store, error) {
-	if err := os.MkdirAll(basePath, 0755); err != nil {
+	if err := os.MkdirAll(basePath, 0750); err != nil {
 		return nil, fmt.Errorf("media/local: create base directory %q: %w", basePath, err)
 	}
 	return &Store{
@@ -50,7 +50,7 @@ func New(basePath, baseURL string) (*Store, error) {
 // renamed to the final path.
 func (s *Store) Put(_ context.Context, key string, r io.Reader, _ string) error {
 	dst := filepath.Join(s.basePath, filepath.FromSlash(key))
-	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dst), 0750); err != nil {
 		return fmt.Errorf("media/local: mkdir for %q: %w", key, err)
 	}
 
@@ -63,8 +63,8 @@ func (s *Store) Put(_ context.Context, key string, r io.Reader, _ string) error 
 	ok := false
 	defer func() {
 		if !ok {
-			tmp.Close()
-			os.Remove(tmpName)
+			_ = tmp.Close()
+			_ = os.Remove(tmpName)
 		}
 	}()
 
@@ -119,7 +119,7 @@ func (s *Store) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	etag := fmt.Sprintf(`"%x"`, md5.Sum([]byte(key)))
+	etag := fmt.Sprintf(`"%x"`, sha256.Sum256([]byte(key)))
 
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
@@ -135,7 +135,7 @@ func (s *Store) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	ext := filepath.Ext(key)
 	if ct := mime.TypeByExtension(ext); ct != "" {
@@ -144,5 +144,5 @@ func (s *Store) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Set("ETag", etag)
 
-	io.Copy(w, rc)
+	_, _ = io.Copy(w, rc)
 }

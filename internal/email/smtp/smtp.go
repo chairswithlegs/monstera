@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	gosmtp "net/smtp"
+	"strconv"
 
 	emaillib "github.com/jordan-wright/email"
 
@@ -70,14 +71,14 @@ func (s *Sender) Send(ctx context.Context, msg email.Message) error {
 	e.Text = []byte(msg.Text)
 	e.HTML = []byte(msg.HTML)
 
-	addr := net.JoinHostPort(s.cfg.Host, fmt.Sprintf("%d", s.cfg.Port))
+	addr := net.JoinHostPort(s.cfg.Host, strconv.Itoa(s.cfg.Port))
 
 	var auth gosmtp.Auth
 	if s.cfg.Username != "" {
 		auth = gosmtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)
 	}
 
-	tlsCfg := &tls.Config{ServerName: s.cfg.Host}
+	tlsCfg := &tls.Config{ServerName: s.cfg.Host, MinVersion: tls.VersionTLS12}
 
 	var sendErr error
 	switch s.cfg.Port {
@@ -89,7 +90,7 @@ func (s *Sender) Send(ctx context.Context, msg email.Message) error {
 		sendErr = e.SendWithStartTLS(addr, auth, tlsCfg)
 	}
 	if sendErr != nil {
-		return &email.ErrSendFailed{Provider: "smtp", Err: sendErr}
+		return &email.SendFailedError{Provider: "smtp", Err: sendErr}
 	}
 	return nil
 }

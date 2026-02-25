@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -38,7 +39,7 @@ func init() {
 func runMigrateUp(cmd *cobra.Command, _ []string) error {
 	url := os.Getenv("DATABASE_URL")
 	if url == "" {
-		return fmt.Errorf("DATABASE_URL is required")
+		return errors.New("DATABASE_URL is required")
 	}
 	if err := store.RunUp(url); err != nil {
 		return fmt.Errorf("migrate up: %w", err)
@@ -49,7 +50,7 @@ func runMigrateUp(cmd *cobra.Command, _ []string) error {
 func runMigrateDown(cmd *cobra.Command, _ []string) error {
 	url := os.Getenv("DATABASE_URL")
 	if url == "" {
-		return fmt.Errorf("DATABASE_URL is required")
+		return errors.New("DATABASE_URL is required")
 	}
 	if err := store.RunDown(url); err != nil {
 		return fmt.Errorf("migrate down: %w", err)
@@ -60,7 +61,7 @@ func runMigrateDown(cmd *cobra.Command, _ []string) error {
 func runMigrateDownAll(cmd *cobra.Command, _ []string) error {
 	url := os.Getenv("DATABASE_URL")
 	if url == "" {
-		return fmt.Errorf("DATABASE_URL is required")
+		return errors.New("DATABASE_URL is required")
 	}
 	if err := store.RunDownAll(url); err != nil {
 		return fmt.Errorf("migrate down-all: %w", err)

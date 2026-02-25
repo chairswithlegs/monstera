@@ -80,5 +80,8 @@ func (s *RedisStore) Ping(ctx context.Context) error {
 
 // Close gracefully shuts down the connection pool.
 func (s *RedisStore) Close() error {
-	return s.client.Close()
+	if err := s.client.Close(); err != nil {
+		return fmt.Errorf("cache/redis: close: %w", err)
+	}
+	return nil
 }

@@ -26,13 +26,13 @@ func TestNew_Memory(t *testing.T) {
 
 func TestNew_UnknownDriver(t *testing.T) {
 	_, err := New(Config{Driver: "invalid"})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown driver")
 }
 
 func TestNew_RedisRequiresURL(t *testing.T) {
 	_, err := New(Config{Driver: "redis"})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "CACHE_REDIS_URL")
 }
 

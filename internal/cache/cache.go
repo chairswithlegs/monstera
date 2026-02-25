@@ -51,7 +51,7 @@ func New(cfg Config) (Store, error) {
 		return NewMemory(cfg.Logger)
 	case "redis":
 		if cfg.RedisURL == "" {
-			return nil, fmt.Errorf("cache: CACHE_REDIS_URL is required when CACHE_DRIVER=redis")
+			return nil, errors.New("cache: CACHE_REDIS_URL is required when CACHE_DRIVER=redis")
 		}
 		return NewRedis(cfg.RedisURL)
 	default:

@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 
 	_ "github.com/lib/pq"
@@ -26,7 +27,7 @@ func RunUp(databaseURL string) error {
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
@@ -37,9 +38,9 @@ func RunUp(databaseURL string) error {
 	if err != nil {
 		return fmt.Errorf("migrate instance: %w", err)
 	}
-	defer m.Close()
+	defer func() { _, _ = m.Close() }()
 
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("migrate up: %w", err)
 	}
 	return nil
@@ -56,7 +57,7 @@ func RunDown(databaseURL string) error {
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
@@ -67,9 +68,9 @@ func RunDown(databaseURL string) error {
 	if err != nil {
 		return fmt.Errorf("migrate instance: %w", err)
 	}
-	defer m.Close()
+	defer func() { _, _ = m.Close() }()
 
-	if err := m.Steps(-1); err != nil && err != migrate.ErrNoChange && err != migrate.ErrNilVersion {
+	if err := m.Steps(-1); err != nil && !errors.Is(err, migrate.ErrNoChange) && !errors.Is(err, migrate.ErrNilVersion) {
 		return fmt.Errorf("migrate down: %w", err)
 	}
 	return nil
@@ -86,7 +87,7 @@ func RunDownAll(databaseURL string) error {
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
@@ -97,9 +98,9 @@ func RunDownAll(databaseURL string) error {
 	if err != nil {
 		return fmt.Errorf("migrate instance: %w", err)
 	}
-	defer m.Close()
+	defer func() { _, _ = m.Close() }()
 
-	if err := m.Down(); err != nil && err != migrate.ErrNoChange && err != migrate.ErrNilVersion {
+	if err := m.Down(); err != nil && !errors.Is(err, migrate.ErrNoChange) && !errors.Is(err, migrate.ErrNilVersion) {
 		return fmt.Errorf("migrate down all: %w", err)
 	}
 	return nil

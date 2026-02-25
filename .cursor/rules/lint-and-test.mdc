@@ -1,0 +1,33 @@
+---
+description: Run linter and unit tests after making code changes
+alwaysApply: true
+---
+
+# Lint and Test After Code Changes
+
+After editing code, run the linter and unit tests before considering the change done.
+
+## Commands
+
+1. **Linter** (from repo root):
+   ```bash
+   golangci-lint run
+   ```
+   Fix any reported issues (errcheck, wrapcheck, goimports, etc.) before moving on.
+
+2. **Unit tests**:
+   ```bash
+   make test
+   ```
+   Or `go test ./...` if `make test` cannot be used. Ensure all tests pass.
+
+## When to run
+
+- After implementing a feature or fix.
+- After refactoring or touching multiple files.
+- Before committing or marking a task complete.
+
+## If something fails
+
+- **Linter**: Address each finding; do not leave suppressions or TODOs without a clear reason.
+- **Tests**: Fix failing tests or update expectations; do not skip or disable tests to make the build green.

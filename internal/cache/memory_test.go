@@ -15,7 +15,7 @@ func TestMemoryStore_GetSetDelete(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = s.Get(ctx, "missing")
-	assert.ErrorIs(t, err, ErrCacheMiss)
+	require.ErrorIs(t, err, ErrCacheMiss)
 
 	err = s.Set(ctx, "k", []byte("v"), 0)
 	require.NoError(t, err)
@@ -31,7 +31,7 @@ func TestMemoryStore_GetSetDelete(t *testing.T) {
 	err = s.Delete(ctx, "k")
 	require.NoError(t, err)
 	_, err = s.Get(ctx, "k")
-	assert.ErrorIs(t, err, ErrCacheMiss)
+	require.ErrorIs(t, err, ErrCacheMiss)
 	exists, err = s.Exists(ctx, "k")
 	require.NoError(t, err)
 	assert.False(t, exists)
@@ -51,7 +51,7 @@ func TestMemoryStore_TTL(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	_, err = s.Get(ctx, "ttl-key")
-	assert.ErrorIs(t, err, ErrCacheMiss)
+	require.ErrorIs(t, err, ErrCacheMiss)
 }
 
 func TestMemoryStore_Ping(t *testing.T) {

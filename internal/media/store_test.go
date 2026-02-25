@@ -62,4 +62,3 @@ func TestNew_LocalMissingPath(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "MEDIA_LOCAL_PATH")
 }
-

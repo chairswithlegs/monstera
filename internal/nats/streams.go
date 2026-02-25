@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	streamFederation   = "FEDERATION"
-	streamFederationDLQ = "FEDERATION_DLQ"
-	subjectDeliver     = "federation.deliver.>"
-	subjectDLQ         = "federation.dlq.>"
+	streamFederation         = "FEDERATION"
+	streamFederationDLQ      = "FEDERATION_DLQ"
+	subjectDeliver           = "federation.deliver.>"
+	subjectDLQ               = "federation.dlq.>"
 	consumerFederationWorker = "federation-worker"
 )
 

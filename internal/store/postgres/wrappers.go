@@ -258,4 +258,3 @@ func (s *PostgresStore) UpdateStatus(ctx context.Context, arg db.UpdateStatusPar
 	st, err := s.q.UpdateStatus(ctx, arg)
 	return st, mapErr(err)
 }
-

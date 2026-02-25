@@ -61,9 +61,12 @@ func (p *Producer) EnqueueDelivery(ctx context.Context, activityType string, msg
 func (p *Producer) EnqueueDLQ(ctx context.Context, activityType string, msg DeliveryMessage) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
-		return err
+		return fmt.Errorf("federation: marshal DLQ message: %w", err)
 	}
 	subject := subjectPrefixDLQ + strings.ToLower(activityType)
 	_, err = p.js.Publish(ctx, subject, data)
-	return err
+	if err != nil {
+		return fmt.Errorf("federation: publish DLQ to %s: %w", subject, err)
+	}
+	return nil
 }

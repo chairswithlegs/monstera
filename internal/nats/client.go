@@ -2,6 +2,7 @@ package nats
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -33,13 +34,13 @@ func New(cfg *config.Config, logger *slog.Logger) (*Client, error) {
 		nats.ReconnectWait(2 * time.Second),
 		nats.ReconnectBufSize(16 * 1024 * 1024),
 		nats.DisconnectErrHandler(func(nc *nats.Conn, err error) {
-			logger.Warn("nats: disconnected", "error", err)
+			logger.Warn("nats: disconnected", slog.Any("error", err))
 		}),
 		nats.ReconnectHandler(func(nc *nats.Conn) {
-			logger.Info("nats: reconnected", "url", nc.ConnectedUrl())
+			logger.Info("nats: reconnected", slog.String("url", nc.ConnectedUrl()))
 		}),
 		nats.ErrorHandler(func(nc *nats.Conn, sub *nats.Subscription, err error) {
-			logger.Error("nats: error", "error", err, "subject", sub.Subject)
+			logger.Error("nats: error", slog.Any("error", err), slog.String("subject", sub.Subject))
 		}),
 	}
 	if cfg.NATSCredsFile != "" {
@@ -48,13 +49,13 @@ func New(cfg *config.Config, logger *slog.Logger) (*Client, error) {
 
 	nc, err := nats.Connect(cfg.NATSUrl, opts...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("nats: connect: %w", err)
 	}
 
 	js, err := jetstream.New(nc)
 	if err != nil {
 		nc.Close()
-		return nil, err
+		return nil, fmt.Errorf("nats: jetstream: %w", err)
 	}
 
 	return &Client{Conn: nc, JS: js}, nil
@@ -62,10 +63,13 @@ func New(cfg *config.Config, logger *slog.Logger) (*Client, error) {
 
 // Ping checks connection health. Returns an error if the connection is not healthy.
 func (c *Client) Ping() error {
-	return c.Conn.FlushTimeout(2 * time.Second)
+	if err := c.Conn.FlushTimeout(2 * time.Second); err != nil {
+		return fmt.Errorf("nats: ping: %w", err)
+	}
+	return nil
 }
 
 // Close drains the connection: flushes pending publishes and waits for active subscriptions to finish.
 func (c *Client) Close() {
-	c.Conn.Drain()
+	_ = c.Conn.Drain()
 }

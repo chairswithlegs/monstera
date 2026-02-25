@@ -71,7 +71,7 @@ func (svc *StatusService) Create(ctx context.Context, in CreateStatusInput) (*do
 		var err error
 		st, err = tx.CreateStatus(ctx, storeIn)
 		if err != nil {
-			return err
+			return fmt.Errorf("CreateStatus: %w", err)
 		}
 		return tx.IncrementStatusesCount(ctx, in.AccountID)
 	})
@@ -98,7 +98,7 @@ func (svc *StatusService) Delete(ctx context.Context, id string) error {
 	}
 	err = svc.store.WithTx(ctx, func(tx store.Store) error {
 		if err := tx.DeleteStatus(ctx, id); err != nil {
-			return err
+			return fmt.Errorf("DeleteStatus: %w", err)
 		}
 		return tx.DecrementStatusesCount(ctx, st.AccountID)
 	})

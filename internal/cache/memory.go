@@ -45,7 +45,7 @@ func (s *MemoryStore) Set(_ context.Context, key string, value []byte, ttl time.
 	if cost == 0 {
 		cost = 1
 	}
-	ok := false
+	var ok bool
 	if ttl > 0 {
 		ok = s.c.SetWithTTL(key, value, cost, ttl)
 	} else {

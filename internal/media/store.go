@@ -75,10 +75,10 @@ func New(cfg Config) (MediaStore, error) {
 		return nil, fmt.Errorf("media: unknown driver %q (valid: local, s3)", cfg.Driver)
 	}
 	if driver == "local" && cfg.LocalPath == "" {
-		return nil, fmt.Errorf("media: MEDIA_LOCAL_PATH is required when MEDIA_DRIVER=local")
+		return nil, errors.New("media: MEDIA_LOCAL_PATH is required when MEDIA_DRIVER=local")
 	}
 	if driver == "s3" && (cfg.S3Bucket == "" || cfg.S3Region == "") {
-		return nil, fmt.Errorf("media: MEDIA_S3_BUCKET and MEDIA_S3_REGION are required when MEDIA_DRIVER=s3")
+		return nil, errors.New("media: MEDIA_S3_BUCKET and MEDIA_S3_REGION are required when MEDIA_DRIVER=s3")
 	}
 	return fn(cfg)
 }

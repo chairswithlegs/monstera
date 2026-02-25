@@ -37,7 +37,7 @@ func (s *PostgresStore) WithTx(ctx context.Context, fn func(store.Store) error) 
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	txStore := &PostgresStore{
 		q:    db.New(tx),
@@ -46,7 +46,10 @@ func (s *PostgresStore) WithTx(ctx context.Context, fn func(store.Store) error) 
 	if err := fn(txStore); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+	return nil
 }
 
 // mapErr translates pgx and PostgreSQL errors to domain errors.

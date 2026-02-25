@@ -2,6 +2,7 @@ package email
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 )
@@ -22,18 +23,18 @@ type Sender interface {
 	Send(ctx context.Context, msg Message) error
 }
 
-// ErrSendFailed wraps a provider-specific error with the driver name.
+// SendFailedError wraps a provider-specific error with the driver name.
 // Callers use errors.As to extract the underlying provider error when needed.
-type ErrSendFailed struct {
+type SendFailedError struct {
 	Provider string
 	Err      error
 }
 
-func (e *ErrSendFailed) Error() string {
+func (e *SendFailedError) Error() string {
 	return fmt.Sprintf("email/%s: send failed: %v", e.Provider, e.Err)
 }
 
-func (e *ErrSendFailed) Unwrap() error {
+func (e *SendFailedError) Unwrap() error {
 	return e.Err
 }
 
@@ -71,7 +72,7 @@ func New(cfg Config) (Sender, error) {
 		return nil, fmt.Errorf("email: unknown driver %q (valid: noop, smtp)", cfg.Driver)
 	}
 	if driver == "smtp" && cfg.SMTPHost == "" {
-		return nil, fmt.Errorf("email: EMAIL_SMTP_HOST is required when EMAIL_DRIVER=smtp")
+		return nil, errors.New("email: EMAIL_SMTP_HOST is required when EMAIL_DRIVER=smtp")
 	}
 	return fn(cfg)
 }
