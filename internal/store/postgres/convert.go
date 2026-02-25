@@ -161,3 +161,47 @@ func ToDomainOAuthAuthorizationCode(c db.OauthAuthorizationCode) domain.OAuthAut
 		CreatedAt:           pgTime(c.CreatedAt),
 	}
 }
+
+// ToDomainNotification converts a sqlc db.Notification to a domain.Notification.
+func ToDomainNotification(n db.Notification) domain.Notification {
+	return domain.Notification{
+		ID:        n.ID,
+		AccountID: n.AccountID,
+		FromID:    n.FromID,
+		Type:      n.Type,
+		StatusID:  n.StatusID,
+		Read:      n.Read,
+		CreatedAt: pgTime(n.CreatedAt),
+	}
+}
+
+// ToDomainHashtag converts a sqlc db.Hashtag to a domain.Hashtag.
+func ToDomainHashtag(h db.Hashtag) domain.Hashtag {
+	return domain.Hashtag{
+		ID:        h.ID,
+		Name:      h.Name,
+		CreatedAt: pgTime(h.CreatedAt),
+		UpdatedAt: pgTime(h.UpdatedAt),
+	}
+}
+
+// ToDomainMediaAttachment converts a sqlc db.MediaAttachment to a domain.MediaAttachment.
+func ToDomainMediaAttachment(m db.MediaAttachment) domain.MediaAttachment {
+	d := domain.MediaAttachment{
+		ID:          m.ID,
+		AccountID:   m.AccountID,
+		StatusID:    m.StatusID,
+		Type:        m.Type,
+		StorageKey:  m.StorageKey,
+		URL:         m.Url,
+		PreviewURL:  m.PreviewUrl,
+		RemoteURL:   m.RemoteUrl,
+		Description: m.Description,
+		Blurhash:    m.Blurhash,
+		CreatedAt:   pgTime(m.CreatedAt),
+	}
+	if len(m.Meta) > 0 {
+		d.Meta = json.RawMessage(m.Meta)
+	}
+	return d
+}

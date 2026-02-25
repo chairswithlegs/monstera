@@ -40,4 +40,12 @@ type Store interface {
 
 	GetUserByEmail(ctx context.Context, email string) (*domain.User, error)
 	GetUserByAccountID(ctx context.Context, accountID string) (*domain.User, error)
+
+	CreateStatusMention(ctx context.Context, statusID, accountID string) error
+	GetStatusMentions(ctx context.Context, statusID string) ([]*domain.Account, error)
+	GetOrCreateHashtag(ctx context.Context, name string) (*domain.Hashtag, error)
+	AttachHashtagsToStatus(ctx context.Context, statusID string, hashtagIDs []string) error
+	GetStatusHashtags(ctx context.Context, statusID string) ([]domain.Hashtag, error)
+	CreateNotification(ctx context.Context, in CreateNotificationInput) (*domain.Notification, error)
+	GetStatusAttachments(ctx context.Context, statusID string) ([]domain.MediaAttachment, error)
 }

@@ -154,3 +154,17 @@ func (svc *AccountService) GetByUsername(ctx context.Context, username string, a
 	}
 	return acc, nil
 }
+
+// GetAccountWithUser returns the account and its linked user by account ID.
+// Returns ErrNotFound if the account or user does not exist.
+func (svc *AccountService) GetAccountWithUser(ctx context.Context, accountID string) (*domain.Account, *domain.User, error) {
+	acc, err := svc.store.GetAccountByID(ctx, accountID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("GetAccountWithUser: %w", err)
+	}
+	user, err := svc.store.GetUserByAccountID(ctx, accountID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("GetAccountWithUser: %w", err)
+	}
+	return acc, user, nil
+}

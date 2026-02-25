@@ -81,3 +81,12 @@ type CreateAccessTokenInput struct {
 	Scopes        string
 	ExpiresAt     *time.Time
 }
+
+// CreateNotificationInput is the input for creating a notification.
+type CreateNotificationInput struct {
+	ID        string
+	AccountID string
+	FromID    string
+	Type      string
+	StatusID  *string
+}

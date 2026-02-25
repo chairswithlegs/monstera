@@ -142,3 +142,52 @@ func TestAccountService_Register(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, acc.ID, got.ID)
 }
+
+func TestAccountService_GetAccountWithUser(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := newFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+
+	registered, err := svc.Register(ctx, RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	acc, user, err := svc.GetAccountWithUser(ctx, registered.ID)
+	require.NoError(t, err)
+	require.NotNil(t, acc)
+	require.NotNil(t, user)
+	assert.Equal(t, registered.ID, acc.ID)
+	assert.Equal(t, "alice", acc.Username)
+	assert.Equal(t, registered.ID, user.AccountID)
+	assert.Equal(t, "alice@example.com", user.Email)
+}
+
+func TestAccountService_GetAccountWithUser_account_not_found(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := newFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+
+	_, _, err := svc.GetAccountWithUser(ctx, "01nonexistent")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+}
+
+func TestAccountService_GetAccountWithUser_user_not_found(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := newFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+
+	acc, err := svc.Create(ctx, CreateAccountInput{Username: "orphan"})
+	require.NoError(t, err)
+
+	_, _, err = svc.GetAccountWithUser(ctx, acc.ID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+}

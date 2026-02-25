@@ -14,7 +14,7 @@ func TestTimelineService_Home(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	timelineSvc := NewTimelineService(fake)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
@@ -59,7 +59,7 @@ func TestTimelineService_Home_respects_limit(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	timelineSvc := NewTimelineService(fake)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
@@ -84,7 +84,7 @@ func TestTimelineService_PublicLocal(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	timelineSvc := NewTimelineService(fake)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
@@ -112,4 +112,54 @@ func TestTimelineService_PublicLocal_default_limit(t *testing.T) {
 	pub, err := timelineSvc.PublicLocal(ctx, false, nil, 0)
 	require.NoError(t, err)
 	assert.Empty(t, pub)
+}
+
+func TestTimelineService_HomeEnriched_empty(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := newFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	timelineSvc := NewTimelineService(fake)
+
+	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+
+	enriched, err := timelineSvc.HomeEnriched(ctx, acc.ID, nil, 10)
+	require.NoError(t, err)
+	assert.Empty(t, enriched)
+}
+
+func TestTimelineService_HomeEnriched_one_status(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := newFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	timelineSvc := NewTimelineService(fake)
+
+	acc, err := accountSvc.Register(ctx, RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+	})
+	require.NoError(t, err)
+
+	text := "Hello world"
+	_, err = statusSvc.Create(ctx, CreateStatusInput{
+		AccountID:  acc.ID,
+		Text:       &text,
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+
+	enriched, err := timelineSvc.HomeEnriched(ctx, acc.ID, nil, 10)
+	require.NoError(t, err)
+	require.Len(t, enriched, 1)
+	assert.Equal(t, "Hello world", *enriched[0].Status.Text)
+	assert.Equal(t, acc.ID, enriched[0].Status.AccountID)
+	require.NotNil(t, enriched[0].Author)
+	assert.Equal(t, "alice", enriched[0].Author.Username)
+	assert.Empty(t, enriched[0].Mentions)
+	assert.Empty(t, enriched[0].Tags)
+	assert.Empty(t, enriched[0].Media)
 }

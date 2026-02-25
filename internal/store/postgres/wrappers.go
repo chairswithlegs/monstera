@@ -74,11 +74,6 @@ func (s *PostgresStore) GetNotification(ctx context.Context, arg db.GetNotificat
 	return n, mapErr(err)
 }
 
-func (s *PostgresStore) GetOrCreateHashtag(ctx context.Context, arg db.GetOrCreateHashtagParams) (db.Hashtag, error) {
-	h, err := s.q.GetOrCreateHashtag(ctx, arg)
-	return h, mapErr(err)
-}
-
 func (s *PostgresStore) GetReblogByAccountAndTarget(ctx context.Context, arg db.GetReblogByAccountAndTargetParams) (db.Status, error) {
 	st, err := s.q.GetReblogByAccountAndTarget(ctx, arg)
 	return st, mapErr(err)
@@ -167,11 +162,6 @@ func (s *PostgresStore) CreateMediaAttachment(ctx context.Context, arg db.Create
 func (s *PostgresStore) CreateMute(ctx context.Context, arg db.CreateMuteParams) (db.Mute, error) {
 	m, err := s.q.CreateMute(ctx, arg)
 	return m, mapErr(err)
-}
-
-func (s *PostgresStore) CreateNotification(ctx context.Context, arg db.CreateNotificationParams) (db.Notification, error) {
-	n, err := s.q.CreateNotification(ctx, arg)
-	return n, mapErr(err)
 }
 
 func (s *PostgresStore) CreateReport(ctx context.Context, arg db.CreateReportParams) (db.Report, error) {

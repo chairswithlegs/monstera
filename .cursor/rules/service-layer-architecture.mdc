@@ -1,0 +1,69 @@
+---
+description: Keep business logic in services; handlers HTTP-only; clear service–store boundary
+alwaysApply: true
+---
+
+# Service Layer Architecture
+
+Layers depend inward: **API → service → store**. No handler or service talks to storage for business operations except through the service layer.
+
+## Project layout (relevant parts)
+
+```
+internal/
+  api/           # HTTP only: parse request, resolve auth, call service, map errors, write response
+    mastodon/    # Mastodon REST handlers (accounts, statuses, timelines, etc.)
+  service/       # Business logic: orchestration, validation, domain rules, calls to store
+  store/         # Persistence: interface + postgres implementation; no business rules
+  domain/        # Types and sentinel errors only (no internal imports)
+```
+
+See also: `docs/ERROR_HANDLING.md` (layer diagram, sentinel errors).
+
+---
+
+## Handlers: HTTP layer only
+
+Handlers in `internal/api` (e.g. `internal/api/mastodon/*.go`) must:
+
+- **Parse** request (body, query, auth from context).
+- **Call** one or more **service** methods — no direct `store` calls for business flows.
+- **Map** service errors to HTTP via `api.HandleError` (or explicit 4xx for auth/validation).
+- **Write** response (e.g. `api.WriteJSON`).
+
+```go
+// ✅ GOOD: handler calls service, maps result to HTTP
+account, user, err := h.accounts.GetAccountWithUser(r.Context(), account.ID)
+if err != nil {
+    api.HandleError(w, r, h.logger, err)
+    return
+}
+api.WriteJSON(w, http.StatusOK, presenter.ToAccountWithSource(account, user, h.domain))
+```
+
+```go
+// ❌ BAD: handler calling store and doing business logic
+user, err := h.store.GetUserByAccountID(r.Context(), account.ID)
+// ... then more store calls, validation, or orchestration in the handler
+```
+
+---
+
+## Service layer: business logic and store orchestration
+
+Business logic and multi-step workflows live in `internal/service`. Services:
+
+- **Orchestrate** store (and cache/media/etc.) in transactions or sequences.
+- **Validate** input (visibility, character limits, permissions).
+- **Return** domain types and domain sentinel errors (`domain.ErrNotFound`, `domain.ErrValidation`, etc.); no HTTP types or status codes.
+
+Handlers must not duplicate this: if a flow needs validation + store + side effects, expose a single service method that does it and returns a result (or error).
+
+---
+
+## Service–store boundary
+
+- **Store** (`internal/store`): implements `store.Store`; runs queries, maps DB errors to domain errors (e.g. `pgx.ErrNoRows` → `domain.ErrNotFound`). No business rules.
+- **Service** (`internal/service`): calls `store.Store` (and other infra); contains all business rules and transaction boundaries. Never imports `internal/api` or `net/http`.
+
+Keep the store interface focused on CRUD and query operations; complex workflows and branching belong in the service layer.

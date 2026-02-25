@@ -5,8 +5,6 @@ alwaysApply: true
 
 # Error Handling Strategy
 
-Full details: `docs/ERROR_HANDLING.md`.
-
 ## Principles
 
 - **Sentinels in the owning package.** Domain errors (`ErrNotFound`, `ErrConflict`, `ErrForbidden`, etc.) live in `internal/domain/errors.go`. Infra packages (cache, media, email) define their own sentinels.

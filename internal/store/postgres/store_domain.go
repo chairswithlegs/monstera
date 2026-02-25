@@ -7,6 +7,7 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
 	db "github.com/chairswithlegs/monstera-fed/internal/store/postgres/generated"
+	"github.com/chairswithlegs/monstera-fed/internal/uid"
 )
 
 const noCursorSentinel = "ZZZZZZZZZZZZZZZZZZZZZZZZZZ"
@@ -299,4 +300,82 @@ func (s *PostgresStore) GetUserByAccountID(ctx context.Context, accountID string
 	}
 	d := ToDomainUser(u)
 	return &d, nil
+}
+
+func (s *PostgresStore) CreateStatusMention(ctx context.Context, statusID, accountID string) error {
+	return mapErr(s.q.CreateStatusMention(ctx, db.CreateStatusMentionParams{
+		StatusID:  statusID,
+		AccountID: accountID,
+	}))
+}
+
+func (s *PostgresStore) GetStatusMentions(ctx context.Context, statusID string) ([]*domain.Account, error) {
+	rows, err := s.q.GetStatusMentions(ctx, statusID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]*domain.Account, 0, len(rows))
+	for i := range rows {
+		acc := ToDomainAccount(rows[i])
+		out = append(out, &acc)
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetOrCreateHashtag(ctx context.Context, name string) (*domain.Hashtag, error) {
+	h, err := s.q.GetOrCreateHashtag(ctx, db.GetOrCreateHashtagParams{
+		ID:    uid.New(),
+		Lower: name,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainHashtag(h)
+	return &d, nil
+}
+
+func (s *PostgresStore) AttachHashtagsToStatus(ctx context.Context, statusID string, hashtagIDs []string) error {
+	return mapErr(s.q.AttachHashtagsToStatus(ctx, db.AttachHashtagsToStatusParams{
+		StatusID: statusID,
+		Column2:  hashtagIDs,
+	}))
+}
+
+func (s *PostgresStore) GetStatusHashtags(ctx context.Context, statusID string) ([]domain.Hashtag, error) {
+	rows, err := s.q.GetStatusHashtags(ctx, statusID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.Hashtag, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainHashtag(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) CreateNotification(ctx context.Context, in store.CreateNotificationInput) (*domain.Notification, error) {
+	n, err := s.q.CreateNotification(ctx, db.CreateNotificationParams{
+		ID:        in.ID,
+		AccountID: in.AccountID,
+		FromID:    in.FromID,
+		Type:      in.Type,
+		StatusID:  in.StatusID,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainNotification(n)
+	return &d, nil
+}
+
+func (s *PostgresStore) GetStatusAttachments(ctx context.Context, statusID string) ([]domain.MediaAttachment, error) {
+	rows, err := s.q.ListStatusAttachments(ctx, &statusID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.MediaAttachment, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainMediaAttachment(r))
+	}
+	return out, nil
 }

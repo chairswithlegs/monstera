@@ -13,6 +13,16 @@ const (
 	maxTimelineLimit     = 40
 )
 
+// EnrichedStatus is a status with its author, mentions, tags, and media loaded.
+// Used by timeline endpoints to return Mastodon API response shape without handler store access.
+type EnrichedStatus struct {
+	Status   *domain.Status
+	Author   *domain.Account
+	Mentions []*domain.Account
+	Tags     []domain.Hashtag
+	Media    []domain.MediaAttachment
+}
+
 // TimelineService handles timeline queries (home, public).
 type TimelineService struct {
 	store store.Store
@@ -38,6 +48,50 @@ func (svc *TimelineService) Home(ctx context.Context, accountID string, maxID *s
 		return nil, fmt.Errorf("GetHomeTimeline: %w", err)
 	}
 	return rows, nil
+}
+
+// HomeEnriched returns the home timeline with author, mentions, tags, and media loaded for each status.
+// maxID is optional (cursor); limit is clamped to [1, maxTimelineLimit], default defaultTimelineLimit.
+func (svc *TimelineService) HomeEnriched(ctx context.Context, accountID string, maxID *string, limit int) ([]EnrichedStatus, error) {
+	l := limit
+	if l <= 0 {
+		l = defaultTimelineLimit
+	}
+	if l > maxTimelineLimit {
+		l = maxTimelineLimit
+	}
+	statuses, err := svc.store.GetHomeTimeline(ctx, accountID, maxID, l)
+	if err != nil {
+		return nil, fmt.Errorf("GetHomeTimeline: %w", err)
+	}
+	out := make([]EnrichedStatus, 0, len(statuses))
+	for i := range statuses {
+		s := &statuses[i]
+		author, err := svc.store.GetAccountByID(ctx, s.AccountID)
+		if err != nil {
+			return nil, fmt.Errorf("GetAccountByID(%s): %w", s.AccountID, err)
+		}
+		mentions, err := svc.store.GetStatusMentions(ctx, s.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetStatusMentions(%s): %w", s.ID, err)
+		}
+		tags, err := svc.store.GetStatusHashtags(ctx, s.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetStatusHashtags(%s): %w", s.ID, err)
+		}
+		media, err := svc.store.GetStatusAttachments(ctx, s.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetStatusAttachments(%s): %w", s.ID, err)
+		}
+		out = append(out, EnrichedStatus{
+			Status:   s,
+			Author:   author,
+			Mentions: mentions,
+			Tags:     tags,
+			Media:    media,
+		})
+	}
+	return out, nil
 }
 
 // PublicLocal returns the public timeline. localOnly true restricts to local statuses.

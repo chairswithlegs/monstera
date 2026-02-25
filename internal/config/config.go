@@ -178,6 +178,12 @@ func (c *Config) IsDevelopment() bool {
 	return c.AppEnv == "development"
 }
 
+// SecretKeyBytes returns the raw secret key bytes from SECRET_KEY_BASE (hex or raw string).
+// Callers must ensure Config has been validated (Load() or Validate() succeeded).
+func (c *Config) SecretKeyBytes() ([]byte, error) {
+	return decodeSecretKeyBase(c.SecretKeyBase)
+}
+
 func (c *Config) DeriveKey(purpose string, length int) []byte {
 	keyBytes, _ := decodeSecretKeyBase(c.SecretKeyBase)
 	if len(keyBytes) < minSecretKeyBytes {

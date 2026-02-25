@@ -174,6 +174,34 @@ func (f *fakeOAuthStore) GetHomeTimeline(ctx context.Context, accountID string, 
 func (f *fakeOAuthStore) GetPublicTimeline(ctx context.Context, localOnly bool, maxID *string, limit int) ([]domain.Status, error) {
 	return nil, nil
 }
+func (f *fakeOAuthStore) CreateStatusMention(ctx context.Context, statusID, accountID string) error {
+	return nil
+}
+func (f *fakeOAuthStore) GetStatusMentions(ctx context.Context, statusID string) ([]*domain.Account, error) {
+	return nil, nil
+}
+func (f *fakeOAuthStore) GetOrCreateHashtag(ctx context.Context, name string) (*domain.Hashtag, error) {
+	return &domain.Hashtag{ID: "tag-" + name, Name: name}, nil
+}
+func (f *fakeOAuthStore) AttachHashtagsToStatus(ctx context.Context, statusID string, hashtagIDs []string) error {
+	return nil
+}
+func (f *fakeOAuthStore) GetStatusHashtags(ctx context.Context, statusID string) ([]domain.Hashtag, error) {
+	return nil, nil
+}
+func (f *fakeOAuthStore) CreateNotification(ctx context.Context, in store.CreateNotificationInput) (*domain.Notification, error) {
+	return &domain.Notification{
+		ID:        in.ID,
+		AccountID: in.AccountID,
+		FromID:    in.FromID,
+		Type:      in.Type,
+		StatusID:  in.StatusID,
+		CreatedAt: time.Now(),
+	}, nil
+}
+func (f *fakeOAuthStore) GetStatusAttachments(ctx context.Context, statusID string) ([]domain.MediaAttachment, error) {
+	return nil, nil
+}
 
 var _ store.Store = (*fakeOAuthStore)(nil)
 

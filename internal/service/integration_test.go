@@ -31,7 +31,7 @@ func TestIntegration_RegisterUser_CreateStatus_HomeTimeline(t *testing.T) {
 	s := postgres.New(pool)
 	instanceBaseURL := "https://test.example.com"
 	accountSvc := NewAccountService(s, instanceBaseURL)
-	statusSvc := NewStatusService(s, instanceBaseURL)
+	statusSvc := NewStatusService(s, instanceBaseURL, "test.example.com", 500)
 	timelineSvc := NewTimelineService(s)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{

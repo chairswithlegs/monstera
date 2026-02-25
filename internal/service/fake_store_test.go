@@ -310,3 +310,32 @@ func (f *fakeStore) GetUserByAccountID(ctx context.Context, accountID string) (*
 	}
 	return u, nil
 }
+
+func (f *fakeStore) CreateStatusMention(ctx context.Context, statusID, accountID string) error {
+	return nil
+}
+func (f *fakeStore) GetStatusMentions(ctx context.Context, statusID string) ([]*domain.Account, error) {
+	return nil, nil
+}
+func (f *fakeStore) GetOrCreateHashtag(ctx context.Context, name string) (*domain.Hashtag, error) {
+	return &domain.Hashtag{ID: "tag-" + name, Name: name}, nil
+}
+func (f *fakeStore) AttachHashtagsToStatus(ctx context.Context, statusID string, hashtagIDs []string) error {
+	return nil
+}
+func (f *fakeStore) GetStatusHashtags(ctx context.Context, statusID string) ([]domain.Hashtag, error) {
+	return nil, nil
+}
+func (f *fakeStore) CreateNotification(ctx context.Context, in store.CreateNotificationInput) (*domain.Notification, error) {
+	return &domain.Notification{
+		ID:        in.ID,
+		AccountID: in.AccountID,
+		FromID:    in.FromID,
+		Type:      in.Type,
+		StatusID:  in.StatusID,
+		CreatedAt: time.Now(),
+	}, nil
+}
+func (f *fakeStore) GetStatusAttachments(ctx context.Context, statusID string) ([]domain.MediaAttachment, error) {
+	return nil, nil
+}
