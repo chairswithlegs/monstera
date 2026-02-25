@@ -42,7 +42,7 @@ Every file to create, with a one-line responsibility statement.
 | `health.go` | `HealthChecker` struct, `Liveness` and `Readiness` handlers |
 | `middleware/auth.go` | `RequireAuth`, `OptionalAuth`, `RequireAdmin` middleware and context helpers |
 
-### `cmd/monstera/`
+### `cmd/monstera-fed/`
 
 | File | Responsibility |
 |------|----------------|
@@ -73,7 +73,7 @@ type Config struct {
     AppEnv         string // "development" | "production"
     AppPort        int    // default: 8080
     InstanceDomain string // required
-    InstanceName   string // default: "Monstera"
+    InstanceName   string // default: "Monstera-fed"
     LogLevel       string // "debug"|"info"|"warn"|"error", default: "info"
 
     // Database
@@ -101,7 +101,7 @@ type Config struct {
     // Email
     EmailDriver       string // "noop"|"smtp", default: "noop"
     EmailFrom         string // required
-    EmailFromName     string // default: "Monstera"
+    EmailFromName     string // default: "Monstera-fed"
     EmailSMTPHost     string // required when EmailDriver == "smtp"
     EmailSMTPPort     int    // default: 587
     EmailSMTPUsername string
@@ -230,8 +230,8 @@ type Metrics struct {
 // Panics if registration fails (programming error, not a runtime error).
 func NewMetrics(reg prometheus.Registerer) *Metrics
 
-// MetricsMiddleware returns a chi middleware that records monstera_http_requests_total
-// and monstera_http_request_duration_seconds.
+// MetricsMiddleware returns a chi middleware that records monstera-fed_http_requests_total
+// and monstera-fed_http_request_duration_seconds.
 //
 // Path cardinality: chi.RouteContext(r.Context()).RoutePattern() is used to obtain the
 // route template (e.g. "/api/v1/accounts/{id}") rather than the raw URL path, preventing
@@ -367,7 +367,7 @@ func NewRouter(deps RouterDeps) http.Handler
 
 ---
 
-### `cmd/monstera/main.go`
+### `cmd/monstera-fed/main.go`
 
 ```go
 package main
@@ -380,7 +380,7 @@ func main() {
 }
 ```
 
-### `cmd/monstera/serve.go`
+### `cmd/monstera-fed/serve.go`
 
 ```go
 // serveCmd is the cobra command for starting the HTTP server.
@@ -388,14 +388,14 @@ func main() {
 // a server struct with a Run() method.
 var serveCmd = &cobra.Command{
     Use:   "serve",
-    Short: "Start the Monstera HTTP server",
+    Short: "Start the Monstera-fed HTTP server",
     RunE:  runServe,
 }
 
 func runServe(cmd *cobra.Command, args []string) error
 ```
 
-### `cmd/monstera/migrate.go`
+### `cmd/monstera-fed/migrate.go`
 
 ```go
 var migrateCmd = &cobra.Command{
@@ -421,8 +421,8 @@ var migrateDownCmd = &cobra.Command{
 ## 3. Dependency Graph
 
 ```
-cmd/monstera/main.go
-└── cmd/monstera/serve.go
+cmd/monstera-fed/main.go
+└── cmd/monstera-fed/serve.go
     ├── internal/config          (no internal imports)
     ├── internal/observability   → internal/config
     ├── internal/store/postgres  → internal/config
@@ -441,7 +441,7 @@ cmd/monstera/main.go
                                    internal/domain, internal/service,
                                    internal/store/postgres, internal/cache
 
-cmd/monstera/migrate.go
+cmd/monstera-fed/migrate.go
     ├── internal/config
     └── internal/store/postgres (migrations only)
 ```
@@ -452,7 +452,7 @@ cmd/monstera/migrate.go
 
 ## 4. Startup Sequence
 
-`runServe` in `cmd/monstera/serve.go` executes these steps in order:
+`runServe` in `cmd/monstera-fed/serve.go` executes these steps in order:
 
 1. **Load config** — `config.Load()`. Log all errors and `os.Exit(1)` if any.
 2. **Init logger** — `observability.NewLogger(cfg.AppEnv, cfg.LogLevel)`. All subsequent steps log through this logger.
@@ -595,10 +595,10 @@ The client only ever sees `{"error":"Internal server error"}`. The full stack tr
 .PHONY: build
 
 build:
-	CGO_ENABLED=0 go build -o bin/monstera ./cmd/monstera
+	CGO_ENABLED=0 go build -o bin/monstera-fed ./cmd/monstera-fed
 
 docker-build:
-	docker build -t monstera:latest .
+	docker build -t monstera-fed:latest .
 ```
 
 **Dockerfile:**
@@ -609,11 +609,11 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o monstera ./cmd/monstera
+RUN CGO_ENABLED=0 go build -o monstera-fed ./cmd/monstera-fed
 
 FROM gcr.io/distroless/static:nonroot
-COPY --from=builder /app/monstera /monstera
-ENTRYPOINT ["/monstera"]
+COPY --from=builder /app/monstera-fed /monstera-fed
+ENTRYPOINT ["/monstera-fed"]
 ```
 
 The admin portal uses Go `html/template` + HTMX + Pico.css, with all assets embedded via `go:embed` — no Node.js build step is needed.
@@ -630,7 +630,7 @@ These require product input before final implementation decisions can be made:
 | ~~2~~ | ~~**OAuth token TTL**~~ — resolved: **non-expiring tokens** in Phase 1, matching Mastodon's behavior. Clients cache tokens indefinitely and don't support refresh flows. Revocation on password change or explicit logout covers the security case. | N/A |
 | ~~3~~ | ~~**Invite generation by regular users**~~ — resolved: **admin/moderator only** in Phase 1. User-generated invites (with admin-configurable caps) deferred to Phase 2. | N/A |
 | ~~4~~ | ~~**Migration on `serve` startup**~~ — resolved: **abort on failure**. Prevents partially-migrated pods from serving traffic. Kubernetes deployments should run migrations as an init container or Job before the Deployment rolls out. | N/A |
-| ~~5~~ | ~~**`SECRET_KEY_BASE` uses**~~ — resolved: **HKDF-derived sub-keys** from a single `SECRET_KEY_BASE`, with a unique purpose string per use (`"monstera-csrf"`, `"monstera-email-token"`, `"monstera-actor-private-key"`, `"monstera-invite-token"`). Prevents cross-context key compromise. | N/A |
+| ~~5~~ | ~~**`SECRET_KEY_BASE` uses**~~ — resolved: **HKDF-derived sub-keys** from a single `SECRET_KEY_BASE`, with a unique purpose string per use (`"monstera-fed-csrf"`, `"monstera-fed-email-token"`, `"monstera-fed-actor-private-key"`, `"monstera-fed-invite-token"`). Prevents cross-context key compromise. | N/A |
 
 ---
 

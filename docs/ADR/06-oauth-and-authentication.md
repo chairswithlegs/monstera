@@ -286,10 +286,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/yourorg/monstera/internal/cache"
-	"github.com/yourorg/monstera/internal/store"
-	db "github.com/yourorg/monstera/internal/store/postgres/generated"
-	"github.com/yourorg/monstera/internal/uid"
+	"github.com/yourorg/monstera-fed/internal/cache"
+	"github.com/yourorg/monstera-fed/internal/store"
+	db "github.com/yourorg/monstera-fed/internal/store/postgres/generated"
+	"github.com/yourorg/monstera-fed/internal/uid"
 )
 
 // AuthorizeRequest represents the validated parameters from GET /oauth/authorize
@@ -703,10 +703,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yourorg/monstera/internal/api"
-	"github.com/yourorg/monstera/internal/api/middleware"
-	oauthpkg "github.com/yourorg/monstera/internal/oauth"
-	"github.com/yourorg/monstera/internal/store"
+	"github.com/yourorg/monstera-fed/internal/api"
+	"github.com/yourorg/monstera-fed/internal/api/middleware"
+	oauthpkg "github.com/yourorg/monstera-fed/internal/oauth"
+	"github.com/yourorg/monstera-fed/internal/store"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -1228,11 +1228,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/yourorg/monstera/internal/api"
-	"github.com/yourorg/monstera/internal/domain"
-	oauthpkg "github.com/yourorg/monstera/internal/oauth"
-	"github.com/yourorg/monstera/internal/observability"
-	"github.com/yourorg/monstera/internal/store"
+	"github.com/yourorg/monstera-fed/internal/api"
+	"github.com/yourorg/monstera-fed/internal/domain"
+	oauthpkg "github.com/yourorg/monstera-fed/internal/oauth"
+	"github.com/yourorg/monstera-fed/internal/observability"
+	"github.com/yourorg/monstera-fed/internal/store"
 )
 
 // contextKey is an unexported type for context keys owned by this package.
@@ -1441,7 +1441,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yourorg/monstera/internal/cache"
+	"github.com/yourorg/monstera-fed/internal/cache"
 )
 
 // KeyFetcher fetches the public key for a given key ID from the remote AP
@@ -1826,7 +1826,7 @@ r.Route("/api/v1", func(r chi.Router) {
 
 ## 11. Startup Wiring
 
-The OAuth subsystem is initialised in `cmd/monstera/serve.go` between steps 10 and 12 (see ADR 01, §4):
+The OAuth subsystem is initialised in `cmd/monstera-fed/serve.go` between steps 10 and 12 (see ADR 01, §4):
 
 ```go
 // After step 10 (services built), before step 12 (router built):

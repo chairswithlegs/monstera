@@ -37,7 +37,7 @@ Session IDs are 32 bytes from `crypto/rand`, hex-encoded to a 64-character strin
 
 ### Session Storage
 
-Sessions are stored in the cache abstraction (same `cache.Store` used throughout Monstera):
+Sessions are stored in the cache abstraction (same `cache.Store` used throughout Monstera-fed):
 
 - **Cache key:** `admin_session:{sessionID}`
 - **Value:** JSON `{"user_id": "...", "account_id": "...", "role": "admin|moderator"}`
@@ -49,7 +49,7 @@ The sliding TTL means active admins stay logged in; inactive sessions expire aft
 
 | Property | Value |
 |----------|-------|
-| Name | `monstera_admin_session` |
+| Name | `monstera-fed_admin_session` |
 | Value | The 64-character hex session ID |
 | Path | `/admin` |
 | HttpOnly | `true` |
@@ -83,7 +83,7 @@ type LoginHandler struct {
 //   5. Check user.ConfirmedAt is not NULL. Reject unconfirmed accounts.
 //   6. Generate 32-byte random session ID, hex-encode.
 //   7. Store session in cache: admin_session:{sessionID} → {user_id, account_id, role}.
-//   8. Set monstera_admin_session cookie.
+//   8. Set monstera-fed_admin_session cookie.
 //   9. Redirect to /admin/ (HTTP 303 See Other).
 //
 // On any failure: re-render login page with a generic error message.
@@ -117,7 +117,7 @@ type AdminSession struct {
 // AdminAuth returns middleware that validates the admin session cookie.
 //
 // Flow:
-//   1. Read monstera_admin_session cookie value.
+//   1. Read monstera-fed_admin_session cookie value.
 //   2. Look up admin_session:{sessionID} in cache.
 //   3. On cache miss or invalid JSON: redirect to /admin/login.
 //   4. On cache hit: refresh TTL (sliding window), inject AdminSession into context.
@@ -218,11 +218,11 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o monstera ./cmd/monstera
+RUN CGO_ENABLED=0 go build -o monstera-fed ./cmd/monstera-fed
 
 FROM gcr.io/distroless/static:nonroot
-COPY --from=builder /app/monstera /monstera
-ENTRYPOINT ["/monstera"]
+COPY --from=builder /app/monstera-fed /monstera-fed
+ENTRYPOINT ["/monstera-fed"]
 ```
 
 **Revised Makefile:**
@@ -231,10 +231,10 @@ ENTRYPOINT ["/monstera"]
 .PHONY: build
 
 build:
-	CGO_ENABLED=0 go build -o bin/monstera ./cmd/monstera
+	CGO_ENABLED=0 go build -o bin/monstera-fed ./cmd/monstera-fed
 
 docker-build:
-	docker build -t monstera:latest .
+	docker build -t monstera-fed:latest .
 ```
 
 ### File Structure
@@ -519,7 +519,7 @@ CREATE TABLE known_instances (
 CREATE INDEX idx_known_instances_last_seen ON known_instances (last_seen_at DESC);
 ```
 
-**Population strategy:** The `known_instances` table is upserted whenever Monstera interacts with a remote domain:
+**Population strategy:** The `known_instances` table is upserted whenever Monstera-fed interacts with a remote domain:
 
 1. **Inbox processing** — when an activity arrives, extract the domain from the actor's AP ID and upsert with `last_seen_at = NOW()`.
 2. **Remote actor resolution** — when fetching an unknown remote actor, upsert the domain.
@@ -1591,7 +1591,7 @@ func (s *InstanceService) SetMany(ctx context.Context, settings map[string]strin
 //
 // Combines cached instance settings with computed values:
 //   - title, description, contact from settings
-//   - version: hardcoded Monstera version string
+//   - version: hardcoded Monstera-fed version string
 //   - registrations: { enabled, approval_required } derived from registration_mode
 //   - stats: { user_count, status_count, domain_count } from count queries
 //   - rules: parsed from the rules_text setting

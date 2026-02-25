@@ -55,7 +55,7 @@ import (
 //	}
 var ErrCacheMiss = errors.New("cache miss")
 
-// Store is the cache abstraction used throughout Monstera.
+// Store is the cache abstraction used throughout Monstera-fed.
 // Implementations must be safe for concurrent use by multiple goroutines.
 // All keys and values are opaque byte slices; structured data is marshalled
 // by the helpers in helpers.go.
@@ -114,7 +114,7 @@ func New(cfg Config) (Store, error) {
 }
 ```
 
-> **Note on imports:** The `New` factory references the sub-packages `memory` and `redis` via their full import paths (`github.com/yourorg/monstera/internal/cache/memory` etc.). The snippet above omits those import paths for readability; they must be present in the actual file.
+> **Note on imports:** The `New` factory references the sub-packages `memory` and `redis` via their full import paths (`github.com/yourorg/monstera-fed/internal/cache/memory` etc.). The snippet above omits those import paths for readability; they must be present in the actual file.
 
 ---
 
@@ -136,7 +136,7 @@ import (
 
 	"github.com/dgraph-io/ristretto/v2"
 
-	"github.com/yourorg/monstera/internal/cache"
+	"github.com/yourorg/monstera-fed/internal/cache"
 )
 
 // Store is the in-memory cache implementation.
@@ -263,7 +263,7 @@ import (
 
 	goredis "github.com/redis/go-redis/v9"
 
-	"github.com/yourorg/monstera/internal/cache"
+	"github.com/yourorg/monstera-fed/internal/cache"
 )
 
 // Store is the Redis cache implementation.
@@ -588,7 +588,7 @@ All keys use lowercase words separated by `:`, following the pattern:
 | Instance settings | 5 minutes | Frequent reads, infrequent writes; admin sees changes within 5 minutes without a restart |
 
 **Why 60 seconds for the home timeline, not event-driven invalidation:**  
-Event-driven invalidation (deleting the timeline cache entry whenever any followed account posts) requires the status service to know which accounts are following the poster and delete each of their cached timelines. That is fan-out-on-write logic. Since Monstera uses fan-out-on-read, the simplest consistent choice is a short fixed TTL — the timeline is at most 60 seconds stale, which matches the expected client polling interval for Mastodon streaming clients that reconnect on SSE disconnect. When the SSE stream is active, clients receive real-time pushes and do not rely on the cached timeline anyway.
+Event-driven invalidation (deleting the timeline cache entry whenever any followed account posts) requires the status service to know which accounts are following the poster and delete each of their cached timelines. That is fan-out-on-write logic. Since Monstera-fed uses fan-out-on-read, the simplest consistent choice is a short fixed TTL — the timeline is at most 60 seconds stale, which matches the expected client polling interval for Mastodon streaming clients that reconnect on SSE disconnect. When the SSE stream is active, clients receive real-time pushes and do not rely on the cached timeline anyway.
 
 ---
 

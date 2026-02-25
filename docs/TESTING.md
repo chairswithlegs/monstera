@@ -1,4 +1,4 @@
-# Monstera — Testing & Linting Guide
+# Monstera-fed — Testing & Linting Guide
 
 > Conventions, tooling, and configuration for testing and static analysis.
 
@@ -152,7 +152,7 @@ func newTestStatus(t *testing.T, svc *service.StatusService, authorID string) *d
 
 ## Mocking Strategy
 
-Monstera's pluggable interfaces (`store.Store`, `cache.Store`, `media.Store`, `email.Sender`) are designed to be mockable. Prefer hand-written fakes for simple interfaces, and testify's `mock` package for complex interactions where you need to assert call order or arguments.
+Monstera-fed's pluggable interfaces (`store.Store`, `cache.Store`, `media.Store`, `email.Sender`) are designed to be mockable. Prefer hand-written fakes for simple interfaces, and testify's `mock` package for complex interactions where you need to assert call order or arguments.
 
 ### Hand-written fake (preferred for simple interfaces)
 
@@ -276,13 +276,13 @@ linters:
     - wrapcheck
   disable:
     - exhaustruct       # too noisy — not all struct fields need explicit init
-    - ireturn            # conflicts with Monstera's interface-based abstractions
+    - ireturn            # conflicts with Monstera-fed's interface-based abstractions
     - varnamelen         # short names like ctx, tx, db are idiomatic Go
     - wsl                # whitespace style is enforced by gofumpt instead
 
   settings:
     errname:
-      # Matches Monstera's error naming pattern (ErrSendFailed, ErrNotFound, etc.)
+      # Matches Monstera-fed's error naming pattern (ErrSendFailed, ErrNotFound, etc.)
       rules:
         - glob: "Err*"
     exhaustive:
@@ -327,7 +327,7 @@ run:
 | Linter | Why |
 |--------|-----|
 | `testifylint` | Enforces correct testify usage — catches `assert.NoError` where `require.NoError` is needed, flags `assert.Equal(t, nil, err)` anti-patterns |
-| `sqlclosecheck` | Catches unclosed `pgx` rows — critical given Monstera's heavy DB usage |
+| `sqlclosecheck` | Catches unclosed `pgx` rows — critical given Monstera-fed's heavy DB usage |
 | `sloglint` | Enforces structured `slog` attributes, preventing unstructured string interpolation in log calls |
 | `errorlint` | Catches `err == ErrFoo` instead of `errors.Is`, and `err.(*Foo)` instead of `errors.As` |
 | `gosec` | Security scanner — catches hardcoded credentials, weak crypto, SQL injection patterns |
@@ -386,8 +386,8 @@ jobs:
           postgres:
             image: postgres:16-alpine
             env:
-              POSTGRES_DB: monstera_test
-              POSTGRES_USER: monstera
+              POSTGRES_DB: monstera-fed_test
+              POSTGRES_USER: monstera-fed
               POSTGRES_PASSWORD: test
           nats:
             image: nats:2-alpine

@@ -55,7 +55,7 @@ import (
 
 	"github.com/jaevor/go-nanoid"
 
-	"github.com/yourorg/monstera/internal/config"
+	"github.com/yourorg/monstera-fed/internal/config"
 )
 
 // ErrNotFound is returned by Get when the requested storage key does not exist.
@@ -218,7 +218,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/yourorg/monstera/internal/media"
+	"github.com/yourorg/monstera-fed/internal/media"
 )
 
 // Store is the local filesystem MediaStore implementation.
@@ -385,7 +385,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 
-	"github.com/yourorg/monstera/internal/media"
+	"github.com/yourorg/monstera-fed/internal/media"
 )
 
 // Config holds S3-specific configuration.
@@ -550,9 +550,9 @@ import (
 
 	"github.com/buckket/go-blurhash"
 
-	"github.com/yourorg/monstera/internal/media"
-	"github.com/yourorg/monstera/internal/store"
-	"github.com/yourorg/monstera/internal/uid"
+	"github.com/yourorg/monstera-fed/internal/media"
+	"github.com/yourorg/monstera-fed/internal/store"
+	"github.com/yourorg/monstera-fed/internal/uid"
 )
 
 // MediaAttachmentMeta is stored as JSONB in media_attachments.meta.
@@ -857,9 +857,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/yourorg/monstera/internal/api"
-	"github.com/yourorg/monstera/internal/middleware"
-	"github.com/yourorg/monstera/internal/service"
+	"github.com/yourorg/monstera-fed/internal/api"
+	"github.com/yourorg/monstera-fed/internal/middleware"
+	"github.com/yourorg/monstera-fed/internal/service"
 )
 
 // MediaHandler holds dependencies for the media endpoints.

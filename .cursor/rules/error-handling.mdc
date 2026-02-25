@@ -1,0 +1,37 @@
+---
+description: Error handling strategy — sentinel errors, wrapping, HTTP mapping
+alwaysApply: true
+---
+
+# Error Handling Strategy
+
+Full details: `docs/ERROR_HANDLING.md`.
+
+## Principles
+
+- **Sentinels in the owning package.** Domain errors (`ErrNotFound`, `ErrConflict`, `ErrForbidden`, etc.) live in `internal/domain/errors.go`. Infra packages (cache, media, email) define their own sentinels.
+- **Wrap with context using `%w`.** Each layer adds context: `fmt.Errorf("GetAccountByID(%s): %w", id, err)`. Never wrap with `%v` (breaks `errors.Is`).
+- **No HTTP below handlers.** Store, service, cache, media, and email never import `net/http` or use status codes. They return domain/infra errors only.
+- **Map to HTTP once.** Handlers use `api.HandleError(w, r, logger, err)`. Match via `errors.Is(err, domain.ErrNotFound)` etc. No inline `if/else` status mapping.
+
+## Handler pattern
+
+```go
+account, err := h.accountSvc.GetByID(r.Context(), id)
+if err != nil {
+    api.HandleError(w, r, h.logger, err)
+    return
+}
+writeJSON(w, http.StatusOK, presenter.Account(account))
+```
+
+## Store / service
+
+- **Store:** Translate `pgx.ErrNoRows` → `domain.ErrNotFound`. For unique violations use `errors.As` + `pgErr.Code == "23505"` → `domain.ErrConflict`. Wrap other errors with query/ID context.
+- **Service:** Return domain sentinels for expected cases; wrap with business context (e.g. `"account %s: %w"`, id, err). Do **not** log before returning — handlers log in `HandleError`’s default branch.
+
+## Do not
+
+- Return API/HTTP-aware types from service or store.
+- Use `%v` when wrapping (use `%w`).
+- Log in service/store and then return the same error (double logging).

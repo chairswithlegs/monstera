@@ -694,7 +694,7 @@ DROP TABLE IF EXISTS server_filters CASCADE;
 -- (INSERT … ON CONFLICT is idempotent; no transaction needed.)
 
 INSERT INTO instance_settings (key, value) VALUES
-    ('instance_name',        'Monstera'),
+    ('instance_name',        'Monstera-fed'),
     ('instance_description', 'A Mastodon-compatible ActivityPub server'),
     ('registration_mode',    'approval'),
     ('contact_email',        ''),
@@ -1422,7 +1422,7 @@ package store
 import (
     "context"
 
-    "github.com/yourorg/monstera/internal/store/postgres/generated"
+    "github.com/yourorg/monstera-fed/internal/store/postgres/generated"
 )
 
 // Alias the generated package for brevity. Services import store, not db directly.
@@ -1661,9 +1661,9 @@ import (
 
     "github.com/jackc/pgx/v5/pgxpool"
 
-    "github.com/yourorg/monstera/internal/config"
-    "github.com/yourorg/monstera/internal/store"
-    "github.com/yourorg/monstera/internal/store/postgres/generated"
+    "github.com/yourorg/monstera-fed/internal/config"
+    "github.com/yourorg/monstera-fed/internal/store"
+    "github.com/yourorg/monstera-fed/internal/store/postgres/generated"
 )
 
 // NewPool opens and validates a pgx connection pool from the application Config.
@@ -1783,8 +1783,8 @@ err = store.WithTx(ctx, func(tx store.Store) error {
 
 | # | Question | Impact |
 |---|----------|--------|
-| 1 | ~~**Home timeline fan-out strategy**~~ | **Resolved: fan-out-on-read.** `GetHomeTimeline` uses the `UNION ALL` cursor query as designed. A materialised `timeline_items` table is deferred to Phase 3 and triggered only if `monstera_db_query_duration_seconds` for timeline queries regularly exceeds ~100ms in production. |
-| ~~2~~ | ~~**`private_key` encryption**~~ — resolved: **AES-256-GCM** with a key derived via HKDF from `SECRET_KEY_BASE` using purpose string `"monstera-actor-private-key"`. Stored as base64-encoded `nonce \|\| ciphertext` in the `private_key` column. See ADR 01 Q5 for the HKDF sub-key design. | N/A |
+| 1 | ~~**Home timeline fan-out strategy**~~ | **Resolved: fan-out-on-read.** `GetHomeTimeline` uses the `UNION ALL` cursor query as designed. A materialised `timeline_items` table is deferred to Phase 3 and triggered only if `monstera-fed_db_query_duration_seconds` for timeline queries regularly exceeds ~100ms in production. |
+| ~~2~~ | ~~**`private_key` encryption**~~ — resolved: **AES-256-GCM** with a key derived via HKDF from `SECRET_KEY_BASE` using purpose string `"monstera-fed-actor-private-key"`. Stored as base64-encoded `nonce \|\| ciphertext` in the `private_key` column. See ADR 01 Q5 for the HKDF sub-key design. | N/A |
 | ~~3~~ | ~~**Accounts soft-delete vs hard-delete**~~ — resolved: **soft-delete with deferred purge**. Add `suspension_origin TEXT` and `deletion_requested_at TIMESTAMPTZ` columns to `accounts`. On deletion: set `suspended = TRUE` and `deletion_requested_at = NOW()`, federate `Delete{Person}` to all followers via the federation worker, then hard-delete account and associated data after 30 days. Admin force-delete follows the same flow but may use a shorter purge window. | N/A |
 | 4 | **`status_hashtags` for remote statuses**: Should hashtags be extracted and indexed for remote (federated) statuses as well as local ones? Indexing remote statuses enables the federated hashtag timeline but adds write overhead on every federation ingest. | Medium — affects hashtag timeline quality vs ingest performance |
 | 5 | **`oauth_access_token` index on `token`**: The `token` column has a `UNIQUE` constraint which implicitly creates a btree index. For the hot-path token lookup, a partial index excluding revoked tokens would be faster: `CREATE INDEX … WHERE revoked_at IS NULL`. Should we add this? | Low — additive; can be a follow-up migration |

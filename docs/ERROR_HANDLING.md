@@ -1,4 +1,4 @@
-# Monstera — Error Handling Conventions
+# Monstera-fed — Error Handling Conventions
 
 > How errors are defined, wrapped, and mapped to HTTP responses across layers.
 
@@ -172,7 +172,7 @@ import (
     "log/slog"
     "net/http"
 
-    "github.com/yourorg/monstera/internal/domain"
+    "github.com/yourorg/monstera-fed/internal/domain"
 )
 
 // ErrorResponse is the standard Mastodon-compatible error body.

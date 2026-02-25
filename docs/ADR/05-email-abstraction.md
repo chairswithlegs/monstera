@@ -74,7 +74,7 @@ type Message struct {
 	From    string // optional: overrides Config.From when non-empty
 }
 
-// Sender is the email delivery abstraction used throughout Monstera.
+// Sender is the email delivery abstraction used throughout Monstera-fed.
 // Implementations must be safe for concurrent use by multiple goroutines.
 type Sender interface {
 	// Send delivers a single email message. Returns ErrSendFailed wrapping the
@@ -104,7 +104,7 @@ func (e *ErrSendFailed) Unwrap() error {
 type Config struct {
 	Driver       string // "noop"|"smtp"
 	From         string // default sender address (e.g. "noreply@example.com")
-	FromName     string // default sender display name (e.g. "Monstera")
+	FromName     string // default sender display name (e.g. "Monstera-fed")
 	SMTPHost     string // required when Driver == "smtp"
 	SMTPPort     int    // default: 587
 	SMTPUsername string
@@ -151,7 +151,7 @@ func New(cfg Config) (Sender, error) {
 }
 ```
 
-> **Note on imports:** The `New` factory references sub-packages `noop` and `smtp` via their full import paths (`github.com/yourorg/monstera/internal/email/noop` etc.). Import paths are omitted above for readability.
+> **Note on imports:** The `New` factory references sub-packages `noop` and `smtp` via their full import paths (`github.com/yourorg/monstera-fed/internal/email/noop` etc.). Import paths are omitted above for readability.
 
 ---
 
@@ -166,7 +166,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/yourorg/monstera/internal/email"
+	"github.com/yourorg/monstera-fed/internal/email"
 )
 
 // Sender is the no-op email implementation.
@@ -227,7 +227,7 @@ import (
 
 	emaillib "github.com/jordan-wright/email"
 
-	"github.com/yourorg/monstera/internal/email"
+	"github.com/yourorg/monstera-fed/internal/email"
 )
 
 // Config holds SMTP-specific configuration.
@@ -326,7 +326,7 @@ Constructing a proper multipart MIME message with both `text/plain` and `text/ht
 - STARTTLS negotiation
 - Zero additional transitive dependencies
 
-`gopkg.in/gomail.v2` was considered but is unmaintained (last commit 2016) and carries a heavier API surface. `jordan-wright/email` is actively maintained and sufficient for Monstera's transactional use case.
+`gopkg.in/gomail.v2` was considered but is unmaintained (last commit 2016) and carries a heavier API surface. `jordan-wright/email` is actively maintained and sufficient for Monstera-fed's transactional use case.
 
 ---
 
@@ -879,10 +879,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/yourorg/monstera/internal/email"
-	"github.com/yourorg/monstera/internal/store"
-	db "github.com/yourorg/monstera/internal/store/postgres/generated"
-	"github.com/yourorg/monstera/internal/uid"
+	"github.com/yourorg/monstera-fed/internal/email"
+	"github.com/yourorg/monstera-fed/internal/store"
+	db "github.com/yourorg/monstera-fed/internal/store/postgres/generated"
+	"github.com/yourorg/monstera-fed/internal/uid"
 )
 
 // Token TTLs.
@@ -1112,7 +1112,7 @@ The transaction ensures that consuming the token and confirming the user happen 
 
 ## 9. Startup Wiring
 
-The email subsystem is initialised in `cmd/monstera/serve.go` at step 9 (see ADR 01, §4):
+The email subsystem is initialised in `cmd/monstera-fed/serve.go` at step 9 (see ADR 01, §4):
 
 ```go
 // Step 9: Build email sender + templates
@@ -1167,7 +1167,7 @@ go get github.com/jordan-wright/email
 
 | # | Question | Impact |
 |---|----------|--------|
-| 1 | **`List-Unsubscribe` header:** RFC 8058 recommends a `List-Unsubscribe-Post` header for transactional email to satisfy Gmail/Yahoo deliverability requirements (enforced since Feb 2024). Monstera's emails are account-lifecycle (not marketing), so the requirement is ambiguous. Should all outbound emails include this header? | Low — additive; can be added to Message as an optional header map |
+| 1 | **`List-Unsubscribe` header:** RFC 8058 recommends a `List-Unsubscribe-Post` header for transactional email to satisfy Gmail/Yahoo deliverability requirements (enforced since Feb 2024). Monstera-fed's emails are account-lifecycle (not marketing), so the requirement is ambiguous. Should all outbound emails include this header? | Low — additive; can be added to Message as an optional header map |
 | 2 | **Confirmation token reissuance:** If a user requests a new confirmation email before the first token expires, should the old token be invalidated? The current design allows multiple active tokens for the same user and purpose. Invalidating old tokens is stricter but may frustrate users who clicked the first email late. Mastodon allows multiple active tokens. | Low — current design matches Mastodon behaviour; tighter policy is a one-line WHERE clause change |
 | 3 | **Email token reaper schedule:** The `DeleteExpiredEmailTokens` query needs a trigger. Options: (a) call it at startup, (b) run it on a `time.Ticker` goroutine (e.g. every 6 hours), (c) defer to an external cron. Option (b) is simplest for self-hosters. | Low — additive; does not affect the interface or schema |
 | 4 | **SMTP connection validation at startup:** The current SMTP `New` does not verify connectivity (unlike the Redis cache driver which pings on init). Should `New` dial the SMTP server and issue a `NOOP` command to fail fast? Trade-off: the SMTP server may be temporarily unavailable at startup but recover by the time the first email is sent. | Low — can be added behind a `SMTPVerifyOnInit` config flag |

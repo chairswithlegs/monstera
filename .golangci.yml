@@ -1,0 +1,68 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errname
+    - errorlint
+    - exhaustive
+    - goconst
+    - gocritic
+    - gosec
+    - mirror
+    - misspell
+    - nilerr
+    - noctx
+    - perfsprint
+    - prealloc
+    - reassign
+    - revive
+    - sloglint
+    - sqlclosecheck
+    - testifylint
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - usetesting
+    - wastedassign
+    - wrapcheck
+
+  settings:
+    errname:
+      rules:
+        - glob: "Err*"
+    exhaustive:
+      default-signifies-exhaustive: true
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+    revive:
+      rules:
+        - name: unexported-return
+          disabled: true
+    sloglint:
+      attr-only: true
+    testifylint:
+      enable-all: true
+
+  exclusions:
+    generated: strict
+    presets:
+      - common-false-positives
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - wrapcheck
+      - path: internal/store/postgres/generated/
+        linters:
+          - ALL
+
+formatters:
+  enable:
+    - goimports
+
+run:
+  timeout: 2m
+  go: "1.26"

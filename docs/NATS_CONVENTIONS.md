@@ -1,4 +1,4 @@
-# Monstera — NATS Subject & Stream Conventions
+# Monstera-fed — NATS Subject & Stream Conventions
 
 > Naming patterns for NATS JetStream streams and core pub/sub subjects.
 > For full implementation details see ADR 07 (federation) and ADR 09 (SSE streaming).
@@ -7,7 +7,7 @@
 
 ## Subject Hierarchy
 
-All Monstera subjects use a dot-separated hierarchy. The first token identifies the subsystem.
+All Monstera-fed subjects use a dot-separated hierarchy. The first token identifies the subsystem.
 
 ```
 {subsystem}.{resource}.{qualifier}

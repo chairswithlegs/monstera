@@ -1,11 +1,11 @@
 ---
-description: Monstera project conventions — Go, error handling, architecture
+description: Monstera-fed project conventions — Go, error handling, architecture
 alwaysApply: true
 ---
 
-# Monstera Project Conventions
+# Monstera-fed Project Conventions
 
-Monstera is a self-hosted ActivityPub / Mastodon-compatible server written in Go 1.26.
+Monstera-fed is a self-hosted ActivityPub / Mastodon-compatible server written in Go 1.26.
 
 ## Key docs
 

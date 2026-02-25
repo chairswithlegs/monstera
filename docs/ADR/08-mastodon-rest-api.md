@@ -705,7 +705,7 @@ SELECT * FROM hashtags WHERE name LIKE lower($1) || '%' ORDER BY name ASC LIMIT 
 ### `GET /api/v2/instance`
 
 - **Auth:** None.
-- **Logic:** Read all values from `instance_settings` (cached 5 min). Assemble the `Instance` response. `version` follows the format `"0.1.0 (compatible; Monstera)"` — Mastodon clients parse the version string to detect capabilities.
+- **Logic:** Read all values from `instance_settings` (cached 5 min). Assemble the `Instance` response. `version` follows the format `"0.1.0 (compatible; Monstera-fed)"` — Mastodon clients parse the version string to detect capabilities.
 - **Configuration sub-object** includes:
   - `statuses.max_characters`: from `max_status_chars` setting.
   - `statuses.max_media_attachments`: 4.

@@ -13,7 +13,7 @@
 | `@context` value | **Array literal** — `["https://www.w3.org/ns/activitystreams", "https://w3id.org/security/v1", mastodonExtensions]` |
 | Mastodon extensions in context | Phase 1: `sensitive`, `manuallyApprovesFollowers`, `Hashtag`, `toot:Emoji`. Deferred: `movedTo` (Phase 2 account migration), `featured`, `featuredTags` |
 | `to`/`cc` addressing | `[]string` with constant `PublicAddress = "https://www.w3.org/ns/activitystreams#Public"` |
-| Content negotiation on `GET /users/:username` | **AP JSON for all requests** — Monstera has no HTML profile (users bring their own client). `Content-Type: application/activity+json` always. |
+| Content negotiation on `GET /users/:username` | **AP JSON for all requests** — Monstera-fed has no HTML profile (users bring their own client). `Content-Type: application/activity+json` always. |
 | Inbox processing mode | **Synchronous** on the HTTP handler goroutine for Phase 1. Async goroutine pool is a Phase 2 enhancement. |
 | Remote media on `Create{Note}` | **Store `remote_url` only** — no fetch in Phase 1. Lazy-fetch on first access is Phase 2. |
 | Idempotency | `INSERT … ON CONFLICT (ap_id) DO NOTHING` — duplicate activities silently ignored |
@@ -433,7 +433,7 @@ func NewBlockActivity(activityID, actorID, targetID string) *Activity {
 // Format: https://{instanceDomain}/activities/{ulid}
 //
 // The ULID provides time-sortability and uniqueness. The full IRI is globally
-// unique and resolvable (though Monstera does not serve GETs on activity IRIs
+// unique and resolvable (though Monstera-fed does not serve GETs on activity IRIs
 // in Phase 1 — remote servers use them as opaque identifiers).
 //
 // Used for all outgoing activities: Create, Delete, Follow, Undo, Accept,
@@ -520,8 +520,8 @@ import (
     "sync"
     "time"
 
-    "github.com/yourorg/monstera/internal/cache"
-    "github.com/yourorg/monstera/internal/store"
+    "github.com/yourorg/monstera-fed/internal/cache"
+    "github.com/yourorg/monstera-fed/internal/store"
 )
 
 // blocklistCacheKey is the single cache key holding the serialized domain block map.
@@ -668,11 +668,11 @@ import (
     "net/url"
     "strings"
 
-    "github.com/yourorg/monstera/internal/cache"
-    "github.com/yourorg/monstera/internal/config"
-    "github.com/yourorg/monstera/internal/store"
-    db "github.com/yourorg/monstera/internal/store/postgres/generated"
-    "github.com/yourorg/monstera/internal/uid"
+    "github.com/yourorg/monstera-fed/internal/cache"
+    "github.com/yourorg/monstera-fed/internal/config"
+    "github.com/yourorg/monstera-fed/internal/store"
+    db "github.com/yourorg/monstera-fed/internal/store/postgres/generated"
+    "github.com/yourorg/monstera-fed/internal/uid"
 )
 
 // PermanentError wraps an error that should not be retried. The inbox handler
@@ -693,7 +693,7 @@ type EventPublisher interface {
 }
 
 // InboxProcessor dispatches verified incoming AP activities to type-specific
-// handlers. It is the core of Monstera's federation inbox.
+// handlers. It is the core of Monstera-fed's federation inbox.
 //
 // All methods are safe for concurrent use. The processor is constructed once
 // at startup and shared across all inbox HTTP handler goroutines.
@@ -1415,7 +1415,7 @@ func (p *InboxProcessor) handleUpdate(ctx context.Context, activity *Activity) e
 }
 
 // handleBlock notes a remote block defensively.
-// Monstera records that the remote actor has blocked a local user so that
+// Monstera-fed records that the remote actor has blocked a local user so that
 // content is not delivered to the blocking actor. The block is recorded in
 // the blocks table (as if the remote user blocked the local user).
 func (p *InboxProcessor) handleBlock(ctx context.Context, activity *Activity) error {
@@ -1725,10 +1725,10 @@ import (
     "strings"
     "time"
 
-    "github.com/yourorg/monstera/internal/config"
-    "github.com/yourorg/monstera/internal/store"
-    db "github.com/yourorg/monstera/internal/store/postgres/generated"
-    "github.com/yourorg/monstera/internal/uid"
+    "github.com/yourorg/monstera-fed/internal/config"
+    "github.com/yourorg/monstera-fed/internal/store"
+    db "github.com/yourorg/monstera-fed/internal/store/postgres/generated"
+    "github.com/yourorg/monstera-fed/internal/uid"
 )
 
 // DeliveryEnqueuer abstracts NATS message publishing so that the outbox
@@ -2140,8 +2140,8 @@ import (
 
     "github.com/nats-io/nats.go/jetstream"
 
-    "github.com/yourorg/monstera/internal/ap"
-    "github.com/yourorg/monstera/internal/observability"
+    "github.com/yourorg/monstera-fed/internal/ap"
+    "github.com/yourorg/monstera-fed/internal/observability"
 )
 
 // streamName is the NATS JetStream stream for federation delivery.
@@ -2263,11 +2263,11 @@ import (
 
     "github.com/nats-io/nats.go/jetstream"
 
-    "github.com/yourorg/monstera/internal/ap"
-    "github.com/yourorg/monstera/internal/cache"
-    "github.com/yourorg/monstera/internal/config"
-    "github.com/yourorg/monstera/internal/observability"
-    "github.com/yourorg/monstera/internal/store"
+    "github.com/yourorg/monstera-fed/internal/ap"
+    "github.com/yourorg/monstera-fed/internal/cache"
+    "github.com/yourorg/monstera-fed/internal/config"
+    "github.com/yourorg/monstera-fed/internal/observability"
+    "github.com/yourorg/monstera-fed/internal/store"
 )
 
 // consumerName is the durable consumer name on the FEDERATION stream.
@@ -2493,7 +2493,7 @@ func (w *FederationWorker) deliverHTTP(ctx context.Context, delivery ap.Delivery
     }
 
     req.Header.Set("Content-Type", "application/activity+json")
-    req.Header.Set("User-Agent", fmt.Sprintf("Monstera/0.1 (+https://%s)", w.cfg.InstanceDomain))
+    req.Header.Set("User-Agent", fmt.Sprintf("Monstera-fed/0.1 (+https://%s)", w.cfg.InstanceDomain))
     req.Header.Set("Accept", "application/activity+json")
 
     if err := ap.Sign(req, keyID, privateKey); err != nil {
@@ -2614,7 +2614,7 @@ FederationWorkerConcurrency int // default: 5; env: FEDERATION_WORKER_CONCURRENC
 ### Startup Wiring
 
 ```go
-// In cmd/monstera/serve.go, after NATS connection and before HTTP server start:
+// In cmd/monstera-fed/serve.go, after NATS connection and before HTTP server start:
 
 // Ensure NATS JetStream streams exist.
 if err := federation.EnsureStreams(ctx, js); err != nil {
@@ -2690,10 +2690,10 @@ package activitypub
 import (
     "log/slog"
 
-    "github.com/yourorg/monstera/internal/ap"
-    "github.com/yourorg/monstera/internal/cache"
-    "github.com/yourorg/monstera/internal/config"
-    "github.com/yourorg/monstera/internal/store"
+    "github.com/yourorg/monstera-fed/internal/ap"
+    "github.com/yourorg/monstera-fed/internal/cache"
+    "github.com/yourorg/monstera-fed/internal/config"
+    "github.com/yourorg/monstera-fed/internal/store"
 )
 
 // Deps collects all dependencies needed by AP HTTP handlers.
@@ -2956,7 +2956,7 @@ func (h *NodeInfoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     resp := nodeInfoResponse{
         Version: "2.0",
         Software: nodeInfoSoftware{
-            Name:    "monstera",
+            Name:    "monstera-fed",
             Version: h.deps.Config.Version, // set at build time via -ldflags
         },
         Protocols: []string{"activitypub"},
@@ -2998,14 +2998,14 @@ import (
 
     "github.com/go-chi/chi/v5"
 
-    "github.com/yourorg/monstera/internal/ap"
+    "github.com/yourorg/monstera-fed/internal/ap"
 )
 
 // ActorHandler serves the AP Actor document for a local user.
 // GET /users/{username}
 //
 // Always returns application/activity+json regardless of the Accept header.
-// Monstera has no HTML profile; all /users/:username requests serve AP JSON.
+// Monstera-fed has no HTML profile; all /users/:username requests serve AP JSON.
 //
 // Remote servers fetch this document to:
 //  - Discover the user's inbox/outbox/followers/following URLs
@@ -3138,7 +3138,7 @@ import (
 
     "github.com/go-chi/chi/v5"
 
-    "github.com/yourorg/monstera/internal/ap"
+    "github.com/yourorg/monstera-fed/internal/ap"
 )
 
 // OutboxHandler serves the AP Outbox for a local user.
@@ -3276,7 +3276,7 @@ import (
 
     "github.com/go-chi/chi/v5"
 
-    "github.com/yourorg/monstera/internal/ap"
+    "github.com/yourorg/monstera-fed/internal/ap"
 )
 
 // FollowersHandler serves the followers collection for a local user.
@@ -3429,7 +3429,7 @@ import (
 
     "github.com/go-chi/chi/v5"
 
-    "github.com/yourorg/monstera/internal/ap"
+    "github.com/yourorg/monstera-fed/internal/ap"
 )
 
 // InboxHandler processes incoming AP activities.
@@ -3581,19 +3581,19 @@ func isActivityPubContentType(ct string) bool {
 
 ### 8a. WebFinger Response
 
-`GET /.well-known/webfinger?resource=acct:alice@monstera.social`
+`GET /.well-known/webfinger?resource=acct:alice@monstera-fed.social`
 
 ```json
 {
-  "subject": "acct:alice@monstera.social",
+  "subject": "acct:alice@monstera-fed.social",
   "aliases": [
-    "https://monstera.social/users/alice"
+    "https://monstera-fed.social/users/alice"
   ],
   "links": [
     {
       "rel": "self",
       "type": "application/activity+json",
-      "href": "https://monstera.social/users/alice"
+      "href": "https://monstera-fed.social/users/alice"
     }
   ]
 }
@@ -3607,7 +3607,7 @@ func isActivityPubContentType(ct string) bool {
 {
   "version": "2.0",
   "software": {
-    "name": "monstera",
+    "name": "monstera-fed",
     "version": "0.1.0"
   },
   "protocols": ["activitypub"],
@@ -3641,31 +3641,31 @@ func isActivityPubContentType(ct string) bool {
       "featuredTags": { "@id": "toot:featuredTags", "@type": "@id" }
     }
   ],
-  "id": "https://monstera.social/users/alice",
+  "id": "https://monstera-fed.social/users/alice",
   "type": "Person",
   "preferredUsername": "alice",
   "name": "Alice",
   "summary": "<p>Plant enthusiast and software developer.</p>",
-  "inbox": "https://monstera.social/users/alice/inbox",
-  "outbox": "https://monstera.social/users/alice/outbox",
-  "followers": "https://monstera.social/users/alice/followers",
-  "following": "https://monstera.social/users/alice/following",
-  "url": "https://monstera.social/users/alice",
-  "featured": "https://monstera.social/users/alice/collections/featured",
+  "inbox": "https://monstera-fed.social/users/alice/inbox",
+  "outbox": "https://monstera-fed.social/users/alice/outbox",
+  "followers": "https://monstera-fed.social/users/alice/followers",
+  "following": "https://monstera-fed.social/users/alice/following",
+  "url": "https://monstera-fed.social/users/alice",
+  "featured": "https://monstera-fed.social/users/alice/collections/featured",
   "published": "2026-01-15T10:30:00Z",
   "manuallyApprovesFollowers": false,
   "publicKey": {
-    "id": "https://monstera.social/users/alice#main-key",
-    "owner": "https://monstera.social/users/alice",
+    "id": "https://monstera-fed.social/users/alice#main-key",
+    "owner": "https://monstera-fed.social/users/alice",
     "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhki...\n-----END PUBLIC KEY-----\n"
   },
   "endpoints": {
-    "sharedInbox": "https://monstera.social/inbox"
+    "sharedInbox": "https://monstera-fed.social/inbox"
   },
   "icon": {
     "type": "Image",
     "mediaType": "image/png",
-    "url": "https://monstera.social/media/avatars/alice.png"
+    "url": "https://monstera-fed.social/media/avatars/alice.png"
   }
 }
 ```
@@ -3689,34 +3689,34 @@ Sent when a local user publishes a public status.
       "featuredTags": { "@id": "toot:featuredTags", "@type": "@id" }
     }
   ],
-  "id": "https://monstera.social/activities/01JMQR3K5V8X2WFGN4HTBA9YCD",
+  "id": "https://monstera-fed.social/activities/01JMQR3K5V8X2WFGN4HTBA9YCD",
   "type": "Create",
-  "actor": "https://monstera.social/users/alice",
+  "actor": "https://monstera-fed.social/users/alice",
   "published": "2026-02-24T14:30:00Z",
   "to": ["https://www.w3.org/ns/activitystreams#Public"],
-  "cc": ["https://monstera.social/users/alice/followers"],
+  "cc": ["https://monstera-fed.social/users/alice/followers"],
   "object": {
-    "id": "https://monstera.social/users/alice/statuses/01JMQR3K5V8X2WFGN4HTBA9YAB",
+    "id": "https://monstera-fed.social/users/alice/statuses/01JMQR3K5V8X2WFGN4HTBA9YAB",
     "type": "Note",
-    "attributedTo": "https://monstera.social/users/alice",
-    "content": "<p>Just repotted my monstera deliciosa. The root ball was enormous! 🌿</p>",
+    "attributedTo": "https://monstera-fed.social/users/alice",
+    "content": "<p>Just repotted my monstera-fed deliciosa. The root ball was enormous! 🌿</p>",
     "contentMap": {
-      "en": "<p>Just repotted my monstera deliciosa. The root ball was enormous! 🌿</p>"
+      "en": "<p>Just repotted my monstera-fed deliciosa. The root ball was enormous! 🌿</p>"
     },
     "source": {
-      "content": "Just repotted my monstera deliciosa. The root ball was enormous! 🌿",
+      "content": "Just repotted my monstera-fed deliciosa. The root ball was enormous! 🌿",
       "mediaType": "text/plain"
     },
     "to": ["https://www.w3.org/ns/activitystreams#Public"],
-    "cc": ["https://monstera.social/users/alice/followers"],
+    "cc": ["https://monstera-fed.social/users/alice/followers"],
     "published": "2026-02-24T14:30:00Z",
-    "url": "https://monstera.social/@alice/01JMQR3K5V8X2WFGN4HTBA9YAB",
+    "url": "https://monstera-fed.social/@alice/01JMQR3K5V8X2WFGN4HTBA9YAB",
     "sensitive": false,
     "summary": null,
     "tag": [
       {
         "type": "Hashtag",
-        "href": "https://monstera.social/tags/plants",
+        "href": "https://monstera-fed.social/tags/plants",
         "name": "#plants"
       }
     ],
@@ -3724,8 +3724,8 @@ Sent when a local user publishes a public status.
       {
         "type": "Document",
         "mediaType": "image/jpeg",
-        "url": "https://monstera.social/media/statuses/monstera-repot.jpg",
-        "name": "A large monstera plant freshly repotted in a terracotta pot"
+        "url": "https://monstera-fed.social/media/statuses/monstera-fed-repot.jpg",
+        "name": "A large monstera-fed plant freshly repotted in a terracotta pot"
       }
     ]
   }
@@ -3739,9 +3739,9 @@ Sent when a local user follows a remote user.
 ```json
 {
   "@context": "https://www.w3.org/ns/activitystreams",
-  "id": "https://monstera.social/activities/01JMQR4N7HZXK9PQ3YWMTC6EFG",
+  "id": "https://monstera-fed.social/activities/01JMQR4N7HZXK9PQ3YWMTC6EFG",
   "type": "Follow",
-  "actor": "https://monstera.social/users/alice",
+  "actor": "https://monstera-fed.social/users/alice",
   "object": "https://mastodon.example.com/users/bob"
 }
 ```
@@ -3753,14 +3753,14 @@ Sent when a local user (or auto-accept logic) accepts an incoming follow.
 ```json
 {
   "@context": "https://www.w3.org/ns/activitystreams",
-  "id": "https://monstera.social/activities/01JMQR5QA2BFD8VNXR7KSJP4HJ",
+  "id": "https://monstera-fed.social/activities/01JMQR5QA2BFD8VNXR7KSJP4HJ",
   "type": "Accept",
-  "actor": "https://monstera.social/users/alice",
+  "actor": "https://monstera-fed.social/users/alice",
   "object": {
     "id": "https://mastodon.example.com/activities/abc123",
     "type": "Follow",
     "actor": "https://mastodon.example.com/users/bob",
-    "object": "https://monstera.social/users/alice"
+    "object": "https://monstera-fed.social/users/alice"
   }
 }
 ```
@@ -3772,13 +3772,13 @@ Sent when a local user unfollows a remote user.
 ```json
 {
   "@context": "https://www.w3.org/ns/activitystreams",
-  "id": "https://monstera.social/activities/01JMQR6T3CKGE9WPYS8LNUF5KM",
+  "id": "https://monstera-fed.social/activities/01JMQR6T3CKGE9WPYS8LNUF5KM",
   "type": "Undo",
-  "actor": "https://monstera.social/users/alice",
+  "actor": "https://monstera-fed.social/users/alice",
   "object": {
-    "id": "https://monstera.social/activities/01JMQR4N7HZXK9PQ3YWMTC6EFG",
+    "id": "https://monstera-fed.social/activities/01JMQR4N7HZXK9PQ3YWMTC6EFG",
     "type": "Follow",
-    "actor": "https://monstera.social/users/alice",
+    "actor": "https://monstera-fed.social/users/alice",
     "object": "https://mastodon.example.com/users/bob"
   }
 }
@@ -3791,12 +3791,12 @@ Sent when a local user boosts a remote status.
 ```json
 {
   "@context": "https://www.w3.org/ns/activitystreams",
-  "id": "https://monstera.social/activities/01JMQR7W5DLHFAXQZT9MPVG6NP",
+  "id": "https://monstera-fed.social/activities/01JMQR7W5DLHFAXQZT9MPVG6NP",
   "type": "Announce",
-  "actor": "https://monstera.social/users/alice",
+  "actor": "https://monstera-fed.social/users/alice",
   "published": "2026-02-24T15:10:00Z",
   "to": ["https://www.w3.org/ns/activitystreams#Public"],
-  "cc": ["https://monstera.social/users/alice/followers"],
+  "cc": ["https://monstera-fed.social/users/alice/followers"],
   "object": "https://mastodon.example.com/users/bob/statuses/109876543210"
 }
 ```
@@ -3808,9 +3808,9 @@ Sent when a local user favourites a remote status.
 ```json
 {
   "@context": "https://www.w3.org/ns/activitystreams",
-  "id": "https://monstera.social/activities/01JMQR8Y7EMJGBYRSV0NQWH7QR",
+  "id": "https://monstera-fed.social/activities/01JMQR8Y7EMJGBYRSV0NQWH7QR",
   "type": "Like",
-  "actor": "https://monstera.social/users/alice",
+  "actor": "https://monstera-fed.social/users/alice",
   "object": "https://mastodon.example.com/users/bob/statuses/109876543210"
 }
 ```
@@ -3822,11 +3822,11 @@ Sent when a local user deletes their own status.
 ```json
 {
   "@context": "https://www.w3.org/ns/activitystreams",
-  "id": "https://monstera.social/activities/01JMQR9Z8FNKHCZSTW1PRXI8ST",
+  "id": "https://monstera-fed.social/activities/01JMQR9Z8FNKHCZSTW1PRXI8ST",
   "type": "Delete",
-  "actor": "https://monstera.social/users/alice",
+  "actor": "https://monstera-fed.social/users/alice",
   "object": {
-    "id": "https://monstera.social/users/alice/statuses/01JMQR3K5V8X2WFGN4HTBA9YAB",
+    "id": "https://monstera-fed.social/users/alice/statuses/01JMQR3K5V8X2WFGN4HTBA9YAB",
     "type": "Tombstone"
   }
 }

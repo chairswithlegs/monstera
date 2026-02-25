@@ -13,7 +13,7 @@
 | `EnsureStreams` location | **`internal/nats/streams.go`** — consolidated. All JetStream stream definitions (FEDERATION, FEDERATION_DLQ, and any future streams) live in one file. Refactors ADR 07's per-package `EnsureStreams`. |
 | FEDERATION stream MaxAge | **72 hours** — work queue messages older than 3 days are stale and can be dropped. |
 | FEDERATION_DLQ MaxAge | **30 days** — admins need time to inspect and re-queue failed deliveries. |
-| SSE follower fan-out strategy | **Fan-out at publish time** — publish to `stream.user.{followerID}` for each follower. Simple, correct, and appropriate for Monstera's self-hosted scale target. Hub-side follow-list filtering documented as a Phase 2 optimization. |
+| SSE follower fan-out strategy | **Fan-out at publish time** — publish to `stream.user.{followerID}` for each follower. Simple, correct, and appropriate for Monstera-fed's self-hosted scale target. Hub-side follow-list filtering documented as a Phase 2 optimization. |
 | SSE transport | **Server-Sent Events only** — no WebSocket support in Phase 1. Mastodon clients handle SSE natively. WebSocket is a Phase 2 consideration. |
 | NATS delivery semantics for SSE | **Core pub/sub (at-most-once)** — no JetStream for SSE fan-out. Missed events are backfilled via REST on reconnect (standard Mastodon client behavior). |
 | Hub channel buffer size | **16 events** per SSE connection. On buffer full, drop oldest event (non-blocking send) and log warning. |
@@ -90,7 +90,7 @@ Calls `c.Conn.Drain()` — flushes pending publishes and waits for active subscr
 
 ## 2. `internal/nats/streams.go` — JetStream Stream Definitions
 
-All JetStream stream and consumer configurations are consolidated here. Called once at startup by `cmd/monstera/serve.go`, after the NATS client connects but before the HTTP server starts.
+All JetStream stream and consumer configurations are consolidated here. Called once at startup by `cmd/monstera-fed/serve.go`, after the NATS client connects but before the HTTP server starts.
 
 ```go
 func EnsureStreams(ctx context.Context, js jetstream.JetStream) error
@@ -278,7 +278,7 @@ type PublishOpts struct {
 
 ### Metrics
 
-Every NATS publish call increments `monstera_nats_publish_total{subject, result}`:
+Every NATS publish call increments `monstera-fed_nats_publish_total{subject, result}`:
 - `result="ok"` on success.
 - `result="error"` on failure (logged at `slog.Error`; error is **not** propagated to the caller — SSE fan-out failures should not fail the user's request).
 
@@ -295,7 +295,7 @@ The service layer publishes events through an `EventBus` interface. This keeps s
 ```go
 package service
 
-import "github.com/yourorg/monstera/internal/nats/streaming"
+import "github.com/yourorg/monstera-fed/internal/nats/streaming"
 
 // EventBus is the interface that service-layer code uses to publish
 // real-time events. The NATS streaming.Publisher implements it.
@@ -428,7 +428,7 @@ Called by the HTTP handler when a new SSE client connects. Steps:
 3. Append the subscriber to `subscribers[streamKey]`.
 4. If this is the first subscriber for an on-demand stream key, create the NATS subscription (map stream key → NATS subject: `user:abc123` → `stream.user.abc123`, `hashtag:golang` → `events.hashtag.golang`).
 5. If it's an existing on-demand subscription, increment `refCount`.
-6. Increment `monstera_active_sse_connections{stream=streamKey}` gauge.
+6. Increment `monstera-fed_active_sse_connections{stream=streamKey}` gauge.
 7. Return the channel and a cancel function.
 
 The **cancel function** (returned to the caller, invoked on client disconnect):
@@ -437,7 +437,7 @@ The **cancel function** (returned to the caller, invoked on client disconnect):
 2. Remove this subscriber from `subscribers[streamKey]`.
 3. Close the subscriber's channel.
 4. For on-demand subscriptions: decrement `refCount`. If zero, call `sub.Unsubscribe()` and remove from `natsSubs`.
-5. Decrement `monstera_active_sse_connections{stream=streamKey}` gauge.
+5. Decrement `monstera-fed_active_sse_connections{stream=streamKey}` gauge.
 
 ### `fanOut(streamKey string, event SSEEvent)`
 
@@ -657,14 +657,14 @@ Events delivered: `update` (posts containing the hashtag), `delete`.
 
 ## 8. Metrics Instrumentation
 
-### `monstera_active_sse_connections` (Gauge)
+### `monstera-fed_active_sse_connections` (Gauge)
 
 - **Labels:** `stream` — the stream key category: `user`, `public`, `public:local`, `hashtag`.
   - For `user:{accountID}` and `hashtag:{tag}`, the label is the prefix only (`user`, `hashtag`) to prevent unbounded cardinality.
 - **Incremented:** in `Hub.Subscribe` when a new client connects.
 - **Decremented:** in the cancel function when a client disconnects.
 
-### `monstera_nats_publish_total` (Counter)
+### `monstera-fed_nats_publish_total` (Counter)
 
 - **Labels:** `subject`, `result` (`ok` | `error`).
 - **Incremented:** in `Publisher.PublishUpdate`, `PublishNotification`, `PublishDelete` on every `nc.Publish` call.
@@ -678,7 +678,7 @@ Both metrics are defined in `observability.Metrics` (ADR 01) and already have re
 
 No new environment variables are needed. The NATS connection is configured via the existing `NATS_URL` and `NATS_CREDS_FILE` (ADR 01, §2). The SSE keepalive interval (30s) and channel buffer size (16) are compile-time constants — they don't need runtime configurability for Phase 1.
 
-### Startup Wiring Update (`cmd/monstera/serve.go`)
+### Startup Wiring Update (`cmd/monstera-fed/serve.go`)
 
 After the existing NATS connection and `EnsureStreams` call, add:
 
@@ -739,7 +739,7 @@ Used by `StatusService.Delete` to populate `PublishOpts.MentionedAccountIDs` for
 | 1 | **Mute/block filtering on public streams** — Mastodon's streaming server filters out posts from muted/blocked accounts before delivering to authenticated clients on the public stream. Phase 1's Hub does pure fan-out with no per-client filtering. | Defer to Phase 2. Filtering requires the Hub to load each connected user's mute/block lists, adding significant complexity. Clients already filter locally based on their cached block/mute lists. | Low — cosmetic. Clients handle it. |
 | 2 | **WebSocket support** — Mastodon also supports WebSocket connections to the streaming endpoint (same URL, upgraded via `Upgrade: websocket` header). Some clients prefer WebSocket. | Defer to Phase 2. SSE covers all major Mastodon clients. WebSocket adds a second transport with framing differences. | Medium — some clients may prefer it, but all support SSE as fallback. |
 | 3 | **Multi-stream subscriptions** — Mastodon supports `?stream=user&stream=public` and the `?list=` parameter to subscribe to multiple streams on a single SSE connection. | Defer to Phase 2. Phase 1 requires one connection per stream (standard Mastodon client behavior). Multi-stream reduces connection count but adds multiplexing complexity to the Hub. | Low — clients open multiple connections today. |
-| 4 | **Hub-side follower filtering optimization** — For large instances, publishing to `stream.user.{followerID}` for every follower on every public post may generate high NATS message volume. The alternative is publishing only to `events.public.*` and having the Hub filter based on follow lists. | Defer until NATS volume metrics indicate a problem. The Phase 1 fan-out-at-publish approach is correct and simple. Monitor `monstera_nats_publish_total` to detect scaling thresholds. | Low for self-hosted target. Revisit at ~10k+ active users. |
+| 4 | **Hub-side follower filtering optimization** — For large instances, publishing to `stream.user.{followerID}` for every follower on every public post may generate high NATS message volume. The alternative is publishing only to `events.public.*` and having the Hub filter based on follow lists. | Defer until NATS volume metrics indicate a problem. The Phase 1 fan-out-at-publish approach is correct and simple. Monitor `monstera-fed_nats_publish_total` to detect scaling thresholds. | Low for self-hosted target. Revisit at ~10k+ active users. |
 | 5 | **`filters_changed` event** — Mastodon sends this event on the `user` stream when a user updates their content filters. Phase 1 defers content filters (ADR 08). | Implement `filters_changed` when content filters are added in Phase 2. The `SSEEvent.Event` field already supports it. | None for Phase 1. |
 
 ---

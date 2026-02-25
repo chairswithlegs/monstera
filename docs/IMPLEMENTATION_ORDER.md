@@ -1,4 +1,4 @@
-# Monstera — Implementation Order
+# Monstera-fed — Implementation Order
 
 > Build sequence for Phase 1, organized around dependency order and validation milestones.
 
@@ -42,8 +42,8 @@ These have zero internal dependencies and unlock everything downstream.
 
 **Validation:**
 - Stand up PostgreSQL via Docker Compose.
-- Run `cmd/monstera migrate up` — all 32 migrations apply cleanly.
-- Run `cmd/monstera migrate down` — full rollback succeeds.
+- Run `cmd/monstera-fed migrate up` — all 32 migrations apply cleanly.
+- Run `cmd/monstera-fed migrate down` — full rollback succeeds.
 - Integration tests (build tag `integration`) verify every sqlc query against a real database.
 - Cache unit tests verify get/set/delete/TTL for both memory and Redis drivers.
 
@@ -156,11 +156,11 @@ This is the most important validation milestone in the project. Client compatibi
 
 ### Milestone: First federated interaction
 
-Stand up a local Mastodon instance (via its Docker Compose) alongside Monstera. Verify:
-- Mastodon can discover a Monstera user via WebFinger.
-- Following a Monstera user from Mastodon sends a `Follow` activity that Monstera accepts.
-- A Monstera post appears in the Mastodon user's home timeline.
-- A Mastodon reply appears in Monstera's inbox and creates a notification.
+Stand up a local Mastodon instance (via its Docker Compose) alongside Monstera-fed. Verify:
+- Mastodon can discover a Monstera-fed user via WebFinger.
+- Following a Monstera-fed user from Mastodon sends a `Follow` activity that Monstera-fed accepts.
+- A Monstera-fed post appears in the Mastodon user's home timeline.
+- A Mastodon reply appears in Monstera-fed's inbox and creates a notification.
 
 This is the second critical milestone. Federation bugs are the hardest to diagnose — invest time here.
 
@@ -183,7 +183,7 @@ This is the second critical milestone. Federation bugs are the hardest to diagno
 
 **Validation:**
 - Connect a Mastodon client's streaming endpoint. Post a status from another account. Verify the status appears in real-time without a page refresh.
-- Test with two replicas (scale `monstera` to 2 in Docker Compose) to verify cross-replica fan-out via NATS.
+- Test with two replicas (scale `monstera-fed` to 2 in Docker Compose) to verify cross-replica fan-out via NATS.
 
 ---
 
@@ -212,7 +212,7 @@ Build in this order:
 
 | Task | Details |
 |------|---------|
-| Docker Compose | Full local dev environment (Monstera, PostgreSQL, NATS, Redis, MinIO, Mailpit) |
+| Docker Compose | Full local dev environment (Monstera-fed, PostgreSQL, NATS, Redis, MinIO, Mailpit) |
 | Kubernetes manifests | Deployment, Service, ConfigMap, HPA, NATS Helm values |
 | Health endpoints | `/healthz/live`, `/healthz/ready` |
 | Prometheus metrics | Verify all counters/histograms emit under load |
@@ -232,7 +232,7 @@ Build in this order:
 | Stage 2 | Migrations apply and roll back cleanly; queries return correct results |
 | Stage 4 | OAuth flow works; HTTP signatures verify against known-good fixtures |
 | Stage 6 | A real Mastodon client can log in, post, and read timelines |
-| Stage 7 | A local Mastodon instance can follow and receive posts from Monstera |
+| Stage 7 | A local Mastodon instance can follow and receive posts from Monstera-fed |
 | Stage 8 | Real-time updates appear in client without refresh |
 | Stage 9 | Admin can log in, view dashboard, and moderate users |
 | Stage 10 | Multi-replica Kubernetes deployment works end-to-end |

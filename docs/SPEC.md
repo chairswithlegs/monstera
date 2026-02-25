@@ -1,7 +1,7 @@
-# Monstera — Project Specification
+# Monstera-fed — Project Specification
 
 > **Status:** Draft v0.1 — Feb 24, 2026  
-> **Project name placeholder:** *Monstera* (rename as desired)
+> **Project name placeholder:** *Monstera-fed* (rename as desired)
 
 ---
 
@@ -33,7 +33,7 @@
 
 ## 1. Overview
 
-Monstera is a self-hosted **ActivityPub server** written in Go that exposes the **Mastodon-compatible REST API**. Because it speaks the Mastodon API, any Mastodon client (Ivory, Tusky, Elk, Mona, etc.) can connect to it without modification.
+Monstera-fed is a self-hosted **ActivityPub server** written in Go that exposes the **Mastodon-compatible REST API**. Because it speaks the Mastodon API, any Mastodon client (Ivory, Tusky, Elk, Mona, etc.) can connect to it without modification.
 
 ### Goals
 
@@ -104,7 +104,7 @@ Two concrete use cases make NATS worth the operational cost:
   (federation inbox)      │    │                                  │
                           │    ▼                                  │
                           │  ┌─────────────────────────────────┐  │
-                          │  │  Monstera API Pods (N replicas) │  │
+                          │  │  Monstera-fed API Pods (N replicas) │  │
                           │  │                                 │  │
                           │  │  ┌──────┐  ┌────────────────┐  │  │
                           │  │  │ HTTP │  │ Federation     │  │  │
@@ -145,9 +145,9 @@ Two concrete use cases make NATS worth the operational cost:
 ## 5. Project Structure
 
 ```
-monstera/
+monstera-fed/
 ├── cmd/
-│   └── monstera/
+│   └── monstera-fed/
 │       └── main.go               # Entry point; wires everything together
 │
 ├── internal/
@@ -585,7 +585,7 @@ All endpoints are prefixed `/api/v1/` unless noted.
 The primary flow for mobile and desktop Mastodon clients:
 
 ```
-Client                     Monstera
+Client                     Monstera-fed
   │                            │
   │── GET /oauth/authorize ────▶│  (code_challenge, code_challenge_method=S256)
   │                            │  Display login/consent screen
@@ -629,7 +629,7 @@ All incoming ActivityPub `POST` requests to `/inbox` and `/users/:username/inbox
 
 ### Overview
 
-Monstera implements the ActivityPub Server-to-Server (S2S) protocol. The scope is **Mastodon-compatible federation** — full compatibility with Mastodon instances, and best-effort compatibility with other AP implementations (Pleroma, Calckey, Pixelfed).
+Monstera-fed implements the ActivityPub Server-to-Server (S2S) protocol. The scope is **Mastodon-compatible federation** — full compatibility with Mastodon instances, and best-effort compatibility with other AP implementations (Pleroma, Calckey, Pixelfed).
 
 ### Supported Activity Types (Inbox)
 
@@ -710,10 +710,10 @@ type MediaStore interface {
 
 ```
 MEDIA_DRIVER=local|s3
-MEDIA_LOCAL_PATH=/var/monstera/media
+MEDIA_LOCAL_PATH=/var/monstera-fed/media
 MEDIA_BASE_URL=https://example.com
 
-MEDIA_S3_BUCKET=monstera-media
+MEDIA_S3_BUCKET=monstera-fed-media
 MEDIA_S3_REGION=us-east-1
 MEDIA_S3_ENDPOINT=                   # optional: override for MinIO/R2
 MEDIA_CDN_BASE=https://cdn.example.com
@@ -795,7 +795,7 @@ The `Sender` interface allows additional vendor-specific HTTP API drivers to be 
 ```
 EMAIL_DRIVER=noop|smtp
 EMAIL_FROM=noreply@example.com
-EMAIL_FROM_NAME=Monstera
+EMAIL_FROM_NAME=Monstera-fed
 
 EMAIL_SMTP_HOST=smtp.example.com
 EMAIL_SMTP_PORT=587
@@ -818,7 +818,7 @@ Templates are embedded in the binary via `go:embed`. Types:
 
 ### Protocol
 
-Monstera implements the Mastodon Streaming API using **Server-Sent Events (SSE)**. Clients connect to a long-lived HTTP connection and receive newline-delimited event frames:
+Monstera-fed implements the Mastodon Streaming API using **Server-Sent Events (SSE)**. Clients connect to a long-lived HTTP connection and receive newline-delimited event frames:
 
 ```
 event: update
@@ -1014,15 +1014,15 @@ Key metrics:
 
 | Metric | Type | Labels |
 |--------|------|--------|
-| `monstera_http_requests_total` | Counter | method, path, status |
-| `monstera_http_request_duration_seconds` | Histogram | method, path |
-| `monstera_federation_deliveries_total` | Counter | result (success/failure/rejected) |
-| `monstera_federation_delivery_duration_seconds` | Histogram | |
-| `monstera_active_sse_connections` | Gauge | stream |
-| `monstera_nats_publish_total` | Counter | subject, result |
-| `monstera_db_query_duration_seconds` | Histogram | query_name |
-| `monstera_media_upload_bytes_total` | Counter | driver |
-| `monstera_accounts_total` | Gauge | type (local/remote) |
+| `monstera-fed_http_requests_total` | Counter | method, path, status |
+| `monstera-fed_http_request_duration_seconds` | Histogram | method, path |
+| `monstera-fed_federation_deliveries_total` | Counter | result (success/failure/rejected) |
+| `monstera-fed_federation_delivery_duration_seconds` | Histogram | |
+| `monstera-fed_active_sse_connections` | Gauge | stream |
+| `monstera-fed_nats_publish_total` | Counter | subject, result |
+| `monstera-fed_db_query_duration_seconds` | Histogram | query_name |
+| `monstera-fed_media_upload_bytes_total` | Counter | driver |
+| `monstera-fed_accounts_total` | Gauge | type (local/remote) |
 
 ### Health Endpoints
 
@@ -1048,7 +1048,7 @@ INSTANCE_NAME="Example Social"
 LOG_LEVEL=info
 
 # --- Database ---
-DATABASE_URL=postgres://user:pass@host:5432/monstera?sslmode=require
+DATABASE_URL=postgres://user:pass@host:5432/monstera-fed?sslmode=require
 DATABASE_MAX_OPEN_CONNS=20
 DATABASE_MAX_IDLE_CONNS=5
 
@@ -1066,7 +1066,7 @@ CACHE_REDIS_URL=redis://localhost:6379/0
 # MEDIA_DRIVER=local   →  no external service required; files stored on a PersistentVolume.
 # MEDIA_DRIVER=s3      →  recommended for multi-replica or high-storage deployments.
 MEDIA_DRIVER=local|s3
-MEDIA_LOCAL_PATH=/var/monstera/media
+MEDIA_LOCAL_PATH=/var/monstera-fed/media
 MEDIA_BASE_URL=https://social.example.com
 MEDIA_S3_BUCKET=
 MEDIA_S3_REGION=
@@ -1076,7 +1076,7 @@ MEDIA_CDN_BASE=
 # --- Email ---
 EMAIL_DRIVER=noop|smtp
 EMAIL_FROM=noreply@example.com
-EMAIL_FROM_NAME=Monstera
+EMAIL_FROM_NAME=Monstera-fed
 EMAIL_SMTP_HOST=
 EMAIL_SMTP_PORT=587
 EMAIL_SMTP_USERNAME=
@@ -1104,17 +1104,17 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o monstera ./cmd/monstera
+RUN CGO_ENABLED=0 go build -o monstera-fed ./cmd/monstera-fed
 
 FROM gcr.io/distroless/static:nonroot
-COPY --from=builder /app/monstera /monstera
-ENTRYPOINT ["/monstera"]
+COPY --from=builder /app/monstera-fed /monstera-fed
+ENTRYPOINT ["/monstera-fed"]
 ```
 
 ### Docker Compose (Local Development)
 
 `deployments/docker-compose.yml` provides:
-- `monstera` — the Go server
+- `monstera-fed` — the Go server
 - `postgres` — PostgreSQL 16 *(required)*
 - `nats` — NATS with JetStream enabled *(required)*
 - `redis` *(optional)* — include when testing `CACHE_DRIVER=redis`
@@ -1124,11 +1124,11 @@ The default compose file runs with `CACHE_DRIVER=memory` and `MEDIA_DRIVER=local
 
 ```yaml
 services:
-  monstera:
+  monstera-fed:
     build: .
     environment:
       APP_ENV: development
-      DATABASE_URL: postgres://monstera:monstera@postgres:5432/monstera?sslmode=disable
+      DATABASE_URL: postgres://monstera-fed:monstera-fed@postgres:5432/monstera-fed?sslmode=disable
       NATS_URL: nats://nats:4222
       CACHE_DRIVER: memory
       MEDIA_DRIVER: local
@@ -1142,9 +1142,9 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: monstera
-      POSTGRES_USER: monstera
-      POSTGRES_PASSWORD: monstera
+      POSTGRES_DB: monstera-fed
+      POSTGRES_USER: monstera-fed
+      POSTGRES_PASSWORD: monstera-fed
     volumes:
       - pgdata:/var/lib/postgresql/data
 
@@ -1163,7 +1163,7 @@ volumes:
 
 `deployments/k8s/` contains:
 
-- **`deployment.yaml`** — `Deployment` for the Monstera API pods
+- **`deployment.yaml`** — `Deployment` for the Monstera-fed API pods
   - `replicas: 3` (override with HPA)
   - `livenessProbe: /healthz/live`
   - `readinessProbe: /healthz/ready`
@@ -1198,11 +1198,11 @@ Migrations are run as a Kubernetes `Job` (or init container) before the `Deploym
 ```yaml
 initContainers:
   - name: migrate
-    image: monstera:latest
-    command: ["/monstera", "migrate", "up"]
+    image: monstera-fed:latest
+    command: ["/monstera-fed", "migrate", "up"]
     envFrom:
       - secretRef:
-          name: monstera-secrets
+          name: monstera-fed-secrets
 ```
 
 `golang-migrate` manages versioned SQL migration files in `internal/store/migrations/`.
@@ -1272,4 +1272,4 @@ initContainers:
 
 ---
 
-*End of Monstera Project Specification v0.1*
+*End of Monstera-fed Project Specification v0.1*

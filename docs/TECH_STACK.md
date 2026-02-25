@@ -1,6 +1,6 @@
-# Monstera — Technology Stack
+# Monstera-fed — Technology Stack
 
-> High-level overview of the technologies and libraries used in the Monstera project.
+> High-level overview of the technologies and libraries used in the Monstera-fed project.
 > For full design rationale, see `SPEC.md` and the documents in `adr/`.
 
 ---

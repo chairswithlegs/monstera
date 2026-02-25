@@ -1,4 +1,4 @@
-# Monstera — Phase two features
+# Monstera-fed — Phase two features
 
 > **Purpose:** Tracks features deferred from Phase 1 design that should be revisited in later phases.  
 > **Last updated:** Feb 24, 2026 (added items 18–21 from ADR 10)
@@ -26,7 +26,7 @@ Mastodon supports `urn:ietf:wg:oauth:2.0:oob` as a redirect URI for CLI tools. I
 
 **Origin:** ADR 06, Open Question #1
 
-Mastodon's default behaviour is non-expiring access tokens — clients cache the token indefinitely and never refresh. Monstera follows this default. However, security-conscious operators may want tokens to expire after a configurable period (e.g. 90 days), forcing users to re-authenticate periodically.
+Mastodon's default behaviour is non-expiring access tokens — clients cache the token indefinitely and never refresh. Monstera-fed follows this default. However, security-conscious operators may want tokens to expire after a configurable period (e.g. 90 days), forcing users to re-authenticate periodically.
 
 **Current state:** The schema (`oauth_access_tokens.expires_at`) and the token lookup code (`LookupToken`) already support expiry. The `expires_at` column is nullable; NULL means non-expiring. When set, the token is rejected after the timestamp passes and the cache entry uses the shorter of the standard cache TTL and the remaining token lifetime.
 
@@ -45,7 +45,7 @@ Mastodon's default behaviour is non-expiring access tokens — clients cache the
 
 **Origin:** ADR 07, Open Question #1
 
-Phase 1 deduplicates outbound federation deliveries by raw `inbox_url`. This works well because most Mastodon instances use the same shared inbox URL for all accounts. However, Pleroma/Akkoma instances often use per-user inboxes, meaning Monstera sends N identical deliveries to the same server (one per follower) instead of a single delivery to the shared inbox.
+Phase 1 deduplicates outbound federation deliveries by raw `inbox_url`. This works well because most Mastodon instances use the same shared inbox URL for all accounts. However, Pleroma/Akkoma instances often use per-user inboxes, meaning Monstera-fed sends N identical deliveries to the same server (one per follower) instead of a single delivery to the shared inbox.
 
 **Current state:** The `accounts` table does not have a `shared_inbox_url` column. The `GetFollowerInboxURLs` query returns `a.inbox_url` and deduplicates in application code.
 
@@ -67,7 +67,7 @@ Phase 1 stores `remote_url` on media attachments from incoming `Create{Note}` ac
 
 **Current state:** `media_attachments.remote_url` is populated; `media_attachments.url` and `storage_key` point to the remote URL. No local copy is stored.
 
-**Why deferred:** Fetching remote media on ingest is I/O-intensive and increases the processing time for incoming activities. Mastodon fetches immediately, but Monstera's Phase 1 prioritizes correctness and simplicity over media fidelity.
+**Why deferred:** Fetching remote media on ingest is I/O-intensive and increases the processing time for incoming activities. Mastodon fetches immediately, but Monstera-fed's Phase 1 prioritizes correctness and simplicity over media fidelity.
 
 **Implementation when ready:**
 - Add a NATS `MEDIA_FETCH` stream with subject `media.fetch.>`.
@@ -101,7 +101,7 @@ Phase 1 processes incoming ActivityPub activities synchronously on the HTTP hand
 
 NodeInfo 2.0 supports optional `usage.users.activeMonth` and `usage.users.activeHalfyear` fields. Mastodon populates these; some aggregation sites (instances.social, fediverse.observer) use them to rank instances by activity.
 
-**Current state:** Monstera's NodeInfo response includes `usage.users.total` but not active user counts.
+**Current state:** Monstera-fed's NodeInfo response includes `usage.users.total` but not active user counts.
 
 **Why deferred:** The counts are purely informational and do not affect federation. Computing them requires either a query against the `statuses` table (scanning for accounts with recent posts) or tracking a `last_active_at` timestamp on the `users` table. Neither is complex, but the `last_active_at` approach requires updating a row on every authenticated API request, which adds write load.
 
