@@ -1,0 +1,20 @@
+---
+description: Test file conventions
+globs: "**/*_test.go"
+alwaysApply: false
+---
+
+# Testing Conventions
+
+Full guide: `docs/TESTING.md`
+
+## Conventions
+
+- Use `require` for preconditions (stop on failure), `assert` for verifications (continue on failure).
+- Table-driven tests for functions with varying inputs. Name each case clearly.
+- Call `t.Helper()` in all test helper functions.
+- Mark tests with no shared mutable state as `t.Parallel()`.
+- Integration tests requiring PostgreSQL/NATS/Redis use `//go:build integration` build tag.
+- Prefer hand-written fakes for simple interfaces, testify `mock` for asserting call patterns.
+- HTTP handler tests use `net/http/httptest`.
+- Never log errors in test helpers — use `require`/`assert` which report via `t`.

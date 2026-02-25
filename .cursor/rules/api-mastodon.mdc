@@ -1,0 +1,20 @@
+---
+description: Mastodon REST API handler conventions
+globs: internal/api/mastodon/**/*.go
+alwaysApply: false
+---
+
+# Mastodon REST API Handlers
+
+Design doc: `docs/ADR/08-mastodon-rest-api.md`
+
+## Conventions
+
+- All error responses use `api.HandleError(w, r, logger, err)` — see `ERROR_HANDLING.md`.
+- Response shape: `{"error": "message"}` for errors. Mastodon clients depend on this exact format.
+- Pagination: cursor-based with `max_id`, `min_id`, `since_id` query params. Return `Link` header per RFC 5988.
+- Content input: plain text only in Phase 1. Strip HTML, auto-link URLs/@mentions/#hashtags.
+- HTML sanitization: `github.com/microcosm-cc/bluemonday`.
+- Presenter functions in `internal/api/mastodon/presenter/` map domain types to Mastodon JSON response types.
+- Viewer-relative fields (`favourited`, `reblogged`) resolved via batch lookup after fetching the main entities.
+- `acct` field: `username` for local, `username@domain` for remote.

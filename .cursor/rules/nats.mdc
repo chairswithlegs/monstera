@@ -1,0 +1,23 @@
+---
+description: NATS client and streaming conventions
+globs: internal/nats/**/*.go
+alwaysApply: false
+---
+
+# NATS Integration
+
+Design docs: `docs/ADR/09-sse-streaming-and-nats.md`, `docs/NATS_CONVENTIONS.md`
+
+## Subject naming
+
+- `federation.deliver.{activityType}` — JetStream, durable delivery queue
+- `federation.dlq.{activityType}` — JetStream, dead-letter queue
+- `events.public` / `events.public.local` / `events.user.{accountID}` / `events.hashtag.{tag}` — core pub/sub, ephemeral SSE fan-out
+
+## Conventions
+
+- Stream names: UPPER_SNAKE_CASE (`FEDERATION`, `FEDERATION_DLQ`).
+- Consumer names: lower-kebab-case (`federation-worker`).
+- All streams created via `EnsureStreams` in `internal/nats/streams.go` at startup.
+- SSE events use `SSEEvent` struct with pre-serialized JSON `Data` field — no re-serialization in the Hub.
+- Hub subscribes to NATS subjects on demand (when SSE client connects) and unsubscribes when last client disconnects.

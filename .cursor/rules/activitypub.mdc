@@ -1,0 +1,20 @@
+---
+description: ActivityPub and federation conventions
+globs: internal/ap/**/*.go
+alwaysApply: false
+---
+
+# ActivityPub & Federation
+
+Design doc: `docs/ADR/07-activitypub-and-federation.md`
+
+## Conventions
+
+- AP types defined in `internal/ap/vocab.go` — `Activity`, `Object`, `Actor`, `PublicAddress`.
+- HTTP Signatures: RSA-SHA256, sign with local actor key, verify with cached remote public key.
+- On signature verification failure: evict cached key, re-fetch from remote, retry once (key rotation handling).
+- Private keys encrypted at rest with AES-256-GCM (HKDF-derived key from `SECRET_KEY_BASE`).
+- Federation delivery via NATS JetStream `FEDERATION` stream. Subject: `federation.deliver.{activityType}`.
+- Retry: exponential backoff, max 5 attempts, then move to `FEDERATION_DLQ`.
+- Inbox processes activities synchronously in Phase 1.
+- Supported inbox types: `Create`, `Delete`, `Follow`, `Undo`, `Accept`, `Reject`, `Announce`, `Like`, `Block`, `Update`.

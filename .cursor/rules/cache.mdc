@@ -1,0 +1,18 @@
+---
+description: Cache abstraction conventions
+globs: internal/cache/**/*.go
+alwaysApply: false
+---
+
+# Cache Layer
+
+Design doc: `docs/ADR/03-cache-abstraction.md`
+
+## Conventions
+
+- Implements the `cache.Store` interface (`Get`, `Set`, `Delete`, `Exists`).
+- `Get` returns `cache.ErrCacheMiss` on miss — not `domain.ErrNotFound`.
+- Two drivers: `memory` (ristretto, single-node/dev) and `redis` (go-redis, multi-replica prod).
+- Driver selected at startup via `cfg.CacheDriver` env var.
+- All cache keys use a namespaced format: `{entity}:{id}` (e.g., `account:01ABC`, `admin_session:hextoken`).
+- TTLs are caller-specified per `Set` call, not global.

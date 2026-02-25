@@ -1,0 +1,33 @@
+---
+description: Monstera project conventions — Go, error handling, architecture
+alwaysApply: true
+---
+
+# Monstera Project Conventions
+
+Monstera is a self-hosted ActivityPub / Mastodon-compatible server written in Go 1.26.
+
+## Key docs
+
+- `docs/SPEC.md` — project specification
+- `docs/ERROR_HANDLING.md` — sentinel errors, wrapping, HTTP mapping
+- `docs/TESTING.md` — testify, golangci-lint, test conventions
+- `docs/NATS_CONVENTIONS.md` — stream names, subject patterns
+- `docs/IMPLEMENTATION_ORDER.md` — build sequence and validation milestones
+- `docs/ADR/` — detailed design documents per subsystem (01–10)
+
+## Architecture rules
+
+- `internal/domain` has zero internal imports — pure types and sentinel errors.
+- `internal/service` never imports `internal/api`. Dependencies point inward toward `domain`.
+- No layer below `internal/api` imports `net/http` or references HTTP status codes.
+- Errors use `fmt.Errorf("context: %w", err)` wrapping. HTTP mapping is handler-only via `api.HandleError`.
+- IDs are ULIDs via `internal/uid`.
+- Config is 12-factor (env vars only) via `internal/config`.
+
+## Code style
+
+- Use `require` for preconditions, `assert` for verifications in tests.
+- Use `t.Helper()` in all test helpers.
+- No comments that just narrate what the code does.
+- Structured logging via `slog` — no `fmt.Printf` or `log.Println`.

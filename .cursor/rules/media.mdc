@@ -1,0 +1,18 @@
+---
+description: Media storage abstraction conventions
+globs: internal/media/**/*.go
+alwaysApply: false
+---
+
+# Media Storage Layer
+
+Design doc: `docs/ADR/04-media-storage-abstraction.md`
+
+## Conventions
+
+- Implements the `media.Store` interface (`Put`, `Get`, `Delete`, `URL`).
+- Returns `media.ErrMediaNotFound` when a storage key doesn't exist.
+- Storage keys are nanoid-generated, not ULIDs (no time-sortability needed).
+- Two drivers: `local` (filesystem, dev) and `s3` (AWS SDK v2, prod).
+- BlurHash generation uses `github.com/buckket/go-blurhash`.
+- Media processing (resize, metadata extraction) happens in the service layer, not the store driver.

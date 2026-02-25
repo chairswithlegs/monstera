@@ -1,0 +1,20 @@
+---
+description: Admin portal handler conventions
+globs: internal/api/admin/**/*.go
+alwaysApply: false
+---
+
+# Admin Portal
+
+Design doc: `docs/ADR/10-admin-portal-and-moderation.md`
+
+## Conventions
+
+- Server-rendered with Go `html/template` + HTMX + Pico.css. No client-side JS framework.
+- Templates in `web/admin/templates/`, static assets in `web/admin/static/`, both embedded via `go:embed`.
+- Session: opaque 32-byte random token, hex-encoded, stored in cache with 8-hour sliding TTL.
+- Reverse index `admin_sessions_by_user:{userID}` enables immediate session invalidation on role change.
+- RBAC: `AdminAuth` middleware gates all `/admin/` routes. Per-handler `requireAdmin(ctx)` for admin-only endpoints.
+- Admin login rate limiting: 5 failed attempts per IP per 15 minutes, tracked in cache.
+- Error responses use `HandleAdminError` (renders HTML, HTMX-aware fragments for XHR requests).
+- HTMX partials in `web/admin/templates/partials/` — table bodies, action buttons, flash messages.
