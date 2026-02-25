@@ -41,12 +41,12 @@ internal/
 
 ### Build tags for integration tests
 
-Tests that require external infrastructure (PostgreSQL, NATS, Redis) use a build tag so they don't run in the default `go test ./...` pass:
+Tests that require external infrastructure (PostgreSQL, NATS, Redis) use a build tag so they don't run in the default `go test ./...` pass. They may live in the same package as the code under test (e.g. `package postgres`) for white-box testing:
 
 ```go
 //go:build integration
 
-package postgres_test
+package postgres
 ```
 
 Run them explicitly:
