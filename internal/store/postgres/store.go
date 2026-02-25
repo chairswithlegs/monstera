@@ -17,15 +17,15 @@ import (
 // PostgresStore wraps the sqlc-generated *db.Queries and satisfies store.Store.
 // It holds the pool so that WithTx can begin new transactions.
 type PostgresStore struct {
-	*db.Queries
+	q    *db.Queries
 	pool *pgxpool.Pool
 }
 
 // New constructs a PostgresStore from an open pool.
 func New(pool *pgxpool.Pool) store.Store {
 	return &PostgresStore{
-		Queries: db.New(pool),
-		pool:    pool,
+		q:    db.New(pool),
+		pool: pool,
 	}
 }
 
@@ -40,8 +40,8 @@ func (s *PostgresStore) WithTx(ctx context.Context, fn func(store.Store) error) 
 	defer tx.Rollback(ctx)
 
 	txStore := &PostgresStore{
-		Queries: db.New(tx),
-		pool:    s.pool,
+		q:    db.New(tx),
+		pool: s.pool,
 	}
 	if err := fn(txStore); err != nil {
 		return err

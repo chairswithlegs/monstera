@@ -11,7 +11,6 @@ import (
 
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
-	db "github.com/chairswithlegs/monstera-fed/internal/store/postgres/generated"
 	"github.com/chairswithlegs/monstera-fed/internal/uid"
 	"github.com/stretchr/testify/require"
 )
@@ -44,7 +43,7 @@ func TestIntegration_PostgresStore(t *testing.T) {
 		outbox := "https://test.example/users/alice/outbox"
 		followers := "https://test.example/users/alice/followers"
 		following := "https://test.example/users/alice/following"
-		arg := db.CreateAccountParams{
+		in := store.CreateAccountInput{
 			ID:           id,
 			Username:     "alice",
 			Domain:       strPtr("test.example"),
@@ -52,22 +51,24 @@ func TestIntegration_PostgresStore(t *testing.T) {
 			Note:         nil,
 			PublicKey:    "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA\n-----END PUBLIC KEY-----",
 			PrivateKey:   nil,
-			InboxUrl:     inbox,
-			OutboxUrl:    outbox,
-			FollowersUrl: followers,
-			FollowingUrl: following,
-			ApID:         apID,
+			InboxURL:     inbox,
+			OutboxURL:    outbox,
+			FollowersURL: followers,
+			FollowingURL: following,
+			APID:         apID,
 			ApRaw:        nil,
 			Bot:          false,
 			Locked:       false,
 		}
-		acc, err := s.CreateAccount(ctx, arg)
+		acc, err := s.CreateAccount(ctx, in)
 		require.NoError(t, err)
+		require.NotNil(t, acc)
 		require.Equal(t, id, acc.ID)
 		require.Equal(t, "alice", acc.Username)
 
 		got, err := s.GetAccountByID(ctx, id)
 		require.NoError(t, err)
+		require.NotNil(t, got)
 		require.Equal(t, id, got.ID)
 		require.Equal(t, "alice", got.Username)
 	})
