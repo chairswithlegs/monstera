@@ -266,3 +266,47 @@ func (f *fakeStore) GetPublicTimeline(ctx context.Context, localOnly bool, maxID
 	}
 	return out, nil
 }
+
+func (f *fakeStore) CreateApplication(ctx context.Context, in store.CreateApplicationInput) (*domain.OAuthApplication, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeStore) GetApplicationByClientID(ctx context.Context, clientID string) (*domain.OAuthApplication, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeStore) CreateAuthorizationCode(ctx context.Context, in store.CreateAuthorizationCodeInput) (*domain.OAuthAuthorizationCode, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeStore) GetAuthorizationCode(ctx context.Context, code string) (*domain.OAuthAuthorizationCode, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeStore) DeleteAuthorizationCode(ctx context.Context, code string) error {
+	return nil
+}
+func (f *fakeStore) CreateAccessToken(ctx context.Context, in store.CreateAccessTokenInput) (*domain.OAuthAccessToken, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeStore) GetAccessToken(ctx context.Context, token string) (*domain.OAuthAccessToken, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeStore) RevokeAccessToken(ctx context.Context, token string) error {
+	return nil
+}
+func (f *fakeStore) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, u := range f.usersByAccountID {
+		if u.Email == email {
+			return u, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+func (f *fakeStore) GetUserByAccountID(ctx context.Context, accountID string) (*domain.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.usersByAccountID[accountID]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return u, nil
+}

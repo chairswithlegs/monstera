@@ -1,5 +1,7 @@
 package store
 
+import "time"
+
 // CreateAccountInput is the input for creating an account.
 type CreateAccountInput struct {
 	ID           string
@@ -44,4 +46,38 @@ type CreateStatusInput struct {
 	ApRaw          []byte
 	Sensitive      bool
 	Local          bool
+}
+
+// CreateApplicationInput is the input for creating an OAuth application.
+type CreateApplicationInput struct {
+	ID           string
+	Name         string
+	ClientID     string
+	ClientSecret string
+	RedirectURIs string
+	Scopes       string
+	Website      *string
+}
+
+// CreateAuthorizationCodeInput is the input for creating an OAuth authorization code.
+type CreateAuthorizationCodeInput struct {
+	ID                  string
+	Code                string
+	ApplicationID       string
+	AccountID           string
+	RedirectURI         string
+	Scopes              string
+	CodeChallenge       *string
+	CodeChallengeMethod *string
+	ExpiresAt           time.Time
+}
+
+// CreateAccessTokenInput is the input for creating an OAuth access token.
+type CreateAccessTokenInput struct {
+	ID            string
+	ApplicationID string
+	AccountID     *string
+	Token         string
+	Scopes        string
+	ExpiresAt     *time.Time
 }

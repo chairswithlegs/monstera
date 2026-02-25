@@ -9,24 +9,9 @@ import (
 // Wrapper methods translate pgx/pgconn errors to domain errors (ErrNotFound, ErrConflict).
 // They shadow the embedded *db.Queries methods so store callers receive domain errors.
 
-func (s *PostgresStore) GetAccessToken(ctx context.Context, token string) (db.OauthAccessToken, error) {
-	tok, err := s.q.GetAccessToken(ctx, token)
-	return tok, mapErr(err)
-}
-
 func (s *PostgresStore) GetAccountByAPID(ctx context.Context, apID string) (db.Account, error) {
 	a, err := s.q.GetAccountByAPID(ctx, apID)
 	return a, mapErr(err)
-}
-
-func (s *PostgresStore) GetApplicationByClientID(ctx context.Context, clientID string) (db.OauthApplication, error) {
-	app, err := s.q.GetApplicationByClientID(ctx, clientID)
-	return app, mapErr(err)
-}
-
-func (s *PostgresStore) GetAuthorizationCode(ctx context.Context, code string) (db.OauthAuthorizationCode, error) {
-	ac, err := s.q.GetAuthorizationCode(ctx, code)
-	return ac, mapErr(err)
 }
 
 func (s *PostgresStore) GetBlock(ctx context.Context, arg db.GetBlockParams) (db.Block, error) {
@@ -134,39 +119,9 @@ func (s *PostgresStore) GetStatusByAPID(ctx context.Context, apID string) (db.St
 	return st, mapErr(err)
 }
 
-func (s *PostgresStore) GetUserByAccountID(ctx context.Context, accountID string) (db.User, error) {
-	u, err := s.q.GetUserByAccountID(ctx, accountID)
-	return u, mapErr(err)
-}
-
-func (s *PostgresStore) GetUserByEmail(ctx context.Context, email string) (db.User, error) {
-	u, err := s.q.GetUserByEmail(ctx, email)
-	return u, mapErr(err)
-}
-
-func (s *PostgresStore) GetUserByID(ctx context.Context, id string) (db.User, error) {
-	u, err := s.q.GetUserByID(ctx, id)
-	return u, mapErr(err)
-}
-
-func (s *PostgresStore) CreateAccessToken(ctx context.Context, arg db.CreateAccessTokenParams) (db.OauthAccessToken, error) {
-	tok, err := s.q.CreateAccessToken(ctx, arg)
-	return tok, mapErr(err)
-}
-
 func (s *PostgresStore) CreateAdminAction(ctx context.Context, arg db.CreateAdminActionParams) (db.AdminAction, error) {
 	aa, err := s.q.CreateAdminAction(ctx, arg)
 	return aa, mapErr(err)
-}
-
-func (s *PostgresStore) CreateApplication(ctx context.Context, arg db.CreateApplicationParams) (db.OauthApplication, error) {
-	app, err := s.q.CreateApplication(ctx, arg)
-	return app, mapErr(err)
-}
-
-func (s *PostgresStore) CreateAuthorizationCode(ctx context.Context, arg db.CreateAuthorizationCodeParams) (db.OauthAuthorizationCode, error) {
-	ac, err := s.q.CreateAuthorizationCode(ctx, arg)
-	return ac, mapErr(err)
 }
 
 func (s *PostgresStore) CreateBlock(ctx context.Context, arg db.CreateBlockParams) (db.Block, error) {

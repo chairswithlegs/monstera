@@ -26,4 +26,18 @@ type Store interface {
 
 	GetHomeTimeline(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error)
 	GetPublicTimeline(ctx context.Context, localOnly bool, maxID *string, limit int) ([]domain.Status, error)
+
+	CreateApplication(ctx context.Context, in CreateApplicationInput) (*domain.OAuthApplication, error)
+	GetApplicationByClientID(ctx context.Context, clientID string) (*domain.OAuthApplication, error)
+
+	CreateAuthorizationCode(ctx context.Context, in CreateAuthorizationCodeInput) (*domain.OAuthAuthorizationCode, error)
+	GetAuthorizationCode(ctx context.Context, code string) (*domain.OAuthAuthorizationCode, error)
+	DeleteAuthorizationCode(ctx context.Context, code string) error
+
+	CreateAccessToken(ctx context.Context, in CreateAccessTokenInput) (*domain.OAuthAccessToken, error)
+	GetAccessToken(ctx context.Context, token string) (*domain.OAuthAccessToken, error)
+	RevokeAccessToken(ctx context.Context, token string) error
+
+	GetUserByEmail(ctx context.Context, email string) (*domain.User, error)
+	GetUserByAccountID(ctx context.Context, accountID string) (*domain.User, error)
 }

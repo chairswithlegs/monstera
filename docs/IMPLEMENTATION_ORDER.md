@@ -49,6 +49,8 @@ These have zero internal dependencies and unlock everything downstream.
 
 This is the highest-risk stage — schema bugs found later are expensive. Invest in thorough query-level tests here.
 
+**Note on `wrappers.go`:** The file contains forward-looking methods on `*PostgresStore` that return `db.*` types. These are not on the `store.Store` interface. As each subsequent stage promotes methods to the interface (returning domain types via `store_domain.go`), the corresponding `db.*`-returning wrappers should be deleted from `wrappers.go`. The integration test should use the `store.Store` interface where possible instead of type-asserting to `*PostgresStore`.
+
 ---
 
 ## Stage 3 — Infrastructure Abstractions

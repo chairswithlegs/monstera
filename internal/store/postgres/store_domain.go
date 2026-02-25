@@ -63,6 +63,43 @@ func toDbCreateStatusParams(in store.CreateStatusInput) db.CreateStatusParams {
 	}
 }
 
+func toDbCreateApplicationParams(in store.CreateApplicationInput) db.CreateApplicationParams {
+	return db.CreateApplicationParams{
+		ID:           in.ID,
+		Name:         in.Name,
+		ClientID:     in.ClientID,
+		ClientSecret: in.ClientSecret,
+		RedirectUris: in.RedirectURIs,
+		Scopes:       in.Scopes,
+		Website:      in.Website,
+	}
+}
+
+func toDbCreateAuthorizationCodeParams(in store.CreateAuthorizationCodeInput) db.CreateAuthorizationCodeParams {
+	return db.CreateAuthorizationCodeParams{
+		ID:                  in.ID,
+		Code:                in.Code,
+		ApplicationID:       in.ApplicationID,
+		AccountID:           in.AccountID,
+		RedirectUri:         in.RedirectURI,
+		Scopes:              in.Scopes,
+		CodeChallenge:       in.CodeChallenge,
+		CodeChallengeMethod: in.CodeChallengeMethod,
+		ExpiresAt:           timeToPg(in.ExpiresAt),
+	}
+}
+
+func toDbCreateAccessTokenParams(in store.CreateAccessTokenInput) db.CreateAccessTokenParams {
+	return db.CreateAccessTokenParams{
+		ID:            in.ID,
+		ApplicationID: in.ApplicationID,
+		AccountID:     in.AccountID,
+		Token:         in.Token,
+		Scopes:        in.Scopes,
+		ExpiresAt:     timePtrToPg(in.ExpiresAt),
+	}
+}
+
 func (s *PostgresStore) CreateAccount(ctx context.Context, in store.CreateAccountInput) (*domain.Account, error) {
 	dbAcc, err := s.q.CreateAccount(ctx, toDbCreateAccountParams(in))
 	if err != nil {
@@ -182,4 +219,84 @@ func (s *PostgresStore) GetPublicTimeline(ctx context.Context, localOnly bool, m
 		out = append(out, ToDomainStatus(r))
 	}
 	return out, nil
+}
+
+func (s *PostgresStore) CreateApplication(ctx context.Context, in store.CreateApplicationInput) (*domain.OAuthApplication, error) {
+	app, err := s.q.CreateApplication(ctx, toDbCreateApplicationParams(in))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainOAuthApplication(app)
+	return &d, nil
+}
+
+func (s *PostgresStore) GetApplicationByClientID(ctx context.Context, clientID string) (*domain.OAuthApplication, error) {
+	app, err := s.q.GetApplicationByClientID(ctx, clientID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainOAuthApplication(app)
+	return &d, nil
+}
+
+func (s *PostgresStore) CreateAuthorizationCode(ctx context.Context, in store.CreateAuthorizationCodeInput) (*domain.OAuthAuthorizationCode, error) {
+	ac, err := s.q.CreateAuthorizationCode(ctx, toDbCreateAuthorizationCodeParams(in))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainOAuthAuthorizationCode(ac)
+	return &d, nil
+}
+
+func (s *PostgresStore) GetAuthorizationCode(ctx context.Context, code string) (*domain.OAuthAuthorizationCode, error) {
+	ac, err := s.q.GetAuthorizationCode(ctx, code)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainOAuthAuthorizationCode(ac)
+	return &d, nil
+}
+
+func (s *PostgresStore) DeleteAuthorizationCode(ctx context.Context, code string) error {
+	return mapErr(s.q.DeleteAuthorizationCode(ctx, code))
+}
+
+func (s *PostgresStore) CreateAccessToken(ctx context.Context, in store.CreateAccessTokenInput) (*domain.OAuthAccessToken, error) {
+	tok, err := s.q.CreateAccessToken(ctx, toDbCreateAccessTokenParams(in))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainOAuthAccessToken(tok)
+	return &d, nil
+}
+
+func (s *PostgresStore) GetAccessToken(ctx context.Context, token string) (*domain.OAuthAccessToken, error) {
+	tok, err := s.q.GetAccessToken(ctx, token)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainOAuthAccessToken(tok)
+	return &d, nil
+}
+
+func (s *PostgresStore) RevokeAccessToken(ctx context.Context, token string) error {
+	return mapErr(s.q.RevokeAccessToken(ctx, token))
+}
+
+func (s *PostgresStore) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
+	u, err := s.q.GetUserByEmail(ctx, email)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainUser(u)
+	return &d, nil
+}
+
+func (s *PostgresStore) GetUserByAccountID(ctx context.Context, accountID string) (*domain.User, error) {
+	u, err := s.q.GetUserByAccountID(ctx, accountID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainUser(u)
+	return &d, nil
 }

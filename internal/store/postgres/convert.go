@@ -23,6 +23,17 @@ func pgTimePtr(t pgtype.Timestamptz) *time.Time {
 	return &t.Time
 }
 
+func timeToPg(t time.Time) pgtype.Timestamptz {
+	return pgtype.Timestamptz{Time: t, Valid: true}
+}
+
+func timePtrToPg(t *time.Time) pgtype.Timestamptz {
+	if t == nil {
+		return pgtype.Timestamptz{Valid: false}
+	}
+	return pgtype.Timestamptz{Time: *t, Valid: true}
+}
+
 // ToDomainAccount converts a sqlc db.Account to a domain.Account.
 func ToDomainAccount(a db.Account) domain.Account {
 	d := domain.Account{
@@ -105,4 +116,48 @@ func ToDomainUser(u db.User) domain.User {
 	}
 	d.ConfirmedAt = pgTimePtr(u.ConfirmedAt)
 	return d
+}
+
+// ToDomainOAuthApplication converts a sqlc db.OauthApplication to a domain.OAuthApplication.
+func ToDomainOAuthApplication(a db.OauthApplication) domain.OAuthApplication {
+	return domain.OAuthApplication{
+		ID:           a.ID,
+		Name:         a.Name,
+		ClientID:     a.ClientID,
+		ClientSecret: a.ClientSecret,
+		RedirectURIs: a.RedirectUris,
+		Scopes:       a.Scopes,
+		Website:      a.Website,
+		CreatedAt:    pgTime(a.CreatedAt),
+	}
+}
+
+// ToDomainOAuthAccessToken converts a sqlc db.OauthAccessToken to a domain.OAuthAccessToken.
+func ToDomainOAuthAccessToken(t db.OauthAccessToken) domain.OAuthAccessToken {
+	return domain.OAuthAccessToken{
+		ID:            t.ID,
+		ApplicationID: t.ApplicationID,
+		AccountID:     t.AccountID,
+		Token:         t.Token,
+		Scopes:        t.Scopes,
+		ExpiresAt:     pgTimePtr(t.ExpiresAt),
+		RevokedAt:     pgTimePtr(t.RevokedAt),
+		CreatedAt:     pgTime(t.CreatedAt),
+	}
+}
+
+// ToDomainOAuthAuthorizationCode converts a sqlc db.OauthAuthorizationCode to a domain.OAuthAuthorizationCode.
+func ToDomainOAuthAuthorizationCode(c db.OauthAuthorizationCode) domain.OAuthAuthorizationCode {
+	return domain.OAuthAuthorizationCode{
+		ID:                  c.ID,
+		Code:                c.Code,
+		ApplicationID:       c.ApplicationID,
+		AccountID:           c.AccountID,
+		RedirectURI:         c.RedirectUri,
+		Scopes:              c.Scopes,
+		CodeChallenge:       c.CodeChallenge,
+		CodeChallengeMethod: c.CodeChallengeMethod,
+		ExpiresAt:           pgTime(c.ExpiresAt),
+		CreatedAt:           pgTime(c.CreatedAt),
+	}
 }
