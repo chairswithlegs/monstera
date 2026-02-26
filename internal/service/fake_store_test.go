@@ -311,6 +311,19 @@ func (f *fakeStore) GetUserByAccountID(ctx context.Context, accountID string) (*
 	return u, nil
 }
 
+func (f *fakeStore) ConfirmUser(ctx context.Context, userID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, u := range f.usersByAccountID {
+		if u.ID == userID {
+			now := time.Now()
+			u.ConfirmedAt = &now
+			return nil
+		}
+	}
+	return domain.ErrNotFound
+}
+
 func (f *fakeStore) CreateStatusMention(ctx context.Context, statusID, accountID string) error {
 	return nil
 }

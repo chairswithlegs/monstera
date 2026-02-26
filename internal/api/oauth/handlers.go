@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -60,27 +61,71 @@ func NewHandler(
 	}
 }
 
-// RegisterApp handles POST /api/v1/apps.
+// registerAppRequest is the JSON body for POST /api/v1/apps (Mastodon allows redirect_uris as string or array).
+type registerAppRequest struct {
+	ClientName   string      `json:"client_name"`
+	RedirectURIs interface{} `json:"redirect_uris"` // string or []string
+	Scopes       string      `json:"scopes"`
+	Website      string      `json:"website"`
+}
+
+// redirectURIsToString normalizes redirect_uris from JSON (string or []string) to newline-separated string.
+func redirectURIsToString(v interface{}) (string, bool) {
+	switch x := v.(type) {
+	case string:
+		return strings.TrimSpace(x), x != ""
+	case []interface{}:
+		var parts []string
+		for _, item := range x {
+			if s, ok := item.(string); ok && s != "" {
+				parts = append(parts, strings.TrimSpace(s))
+			}
+		}
+		return strings.Join(parts, "\n"), len(parts) > 0
+	default:
+		return "", false
+	}
+}
+
+// RegisterApp handles POST /api/v1/apps. Accepts application/x-www-form-urlencoded or application/json.
 func (h *Handler) RegisterApp(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		api.WriteError(w, http.StatusBadRequest, "invalid request body")
-		return
+	var name, redirectURIs, scopes, website string
+
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "application/json") {
+		var body registerAppRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			api.WriteError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		name = strings.TrimSpace(body.ClientName)
+		scopes = strings.TrimSpace(body.Scopes)
+		website = strings.TrimSpace(body.Website)
+		var ok bool
+		redirectURIs, ok = redirectURIsToString(body.RedirectURIs)
+		if !ok {
+			api.WriteError(w, http.StatusUnprocessableEntity, "redirect_uris is required")
+			return
+		}
+	} else {
+		if err := r.ParseForm(); err != nil {
+			api.WriteError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		name = strings.TrimSpace(r.FormValue("client_name"))
+		redirectURIs = strings.TrimSpace(r.FormValue("redirect_uris"))
+		scopes = r.FormValue("scopes")
+		website = r.FormValue("website")
 	}
 
-	name := r.FormValue("client_name")
 	if name == "" {
 		api.WriteError(w, http.StatusUnprocessableEntity, "client_name is required")
 		return
 	}
-
-	redirectURIs := r.FormValue("redirect_uris")
 	if redirectURIs == "" {
 		api.WriteError(w, http.StatusUnprocessableEntity, "redirect_uris is required")
 		return
 	}
-
-	scopes := r.FormValue("scopes")
-	website := r.FormValue("website")
 
 	app, err := h.oauth.RegisterApplication(r.Context(), name, redirectURIs, scopes, website)
 	if err != nil {

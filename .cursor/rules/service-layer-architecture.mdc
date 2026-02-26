@@ -18,8 +18,6 @@ internal/
   domain/        # Types and sentinel errors only (no internal imports)
 ```
 
-See also: `docs/ERROR_HANDLING.md` (layer diagram, sentinel errors).
-
 ---
 
 ## Handlers: HTTP layer only

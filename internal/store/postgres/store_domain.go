@@ -302,6 +302,10 @@ func (s *PostgresStore) GetUserByAccountID(ctx context.Context, accountID string
 	return &d, nil
 }
 
+func (s *PostgresStore) ConfirmUser(ctx context.Context, userID string) error {
+	return mapErr(s.q.ConfirmUser(ctx, userID))
+}
+
 func (s *PostgresStore) CreateStatusMention(ctx context.Context, statusID, accountID string) error {
 	return mapErr(s.q.CreateStatusMention(ctx, db.CreateStatusMentionParams{
 		StatusID:  statusID,

@@ -51,6 +51,7 @@ func New(deps Deps) http.Handler {
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Get("/instance", deps.Instance.GetInstance)
 		r.Post("/apps", deps.OAuthHandler.RegisterApp)
 		r.Get("/custom_emojis", deps.Instance.CustomEmojis)
 

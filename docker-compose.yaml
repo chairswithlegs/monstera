@@ -1,4 +1,31 @@
 services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      APP_ENV: development
+      APP_PORT: "8080"
+      INSTANCE_DOMAIN: localhost:8080
+      INSTANCE_NAME: Monstera-fed (local)
+      LOG_LEVEL: debug
+      DATABASE_URL: postgres://monstera:monstera@postgres:5432/monstera_fed?sslmode=disable
+      NATS_URL: nats://nats:4222
+      CACHE_DRIVER: memory
+      MEDIA_DRIVER: local
+      MEDIA_LOCAL_PATH: /data/media
+      MEDIA_BASE_URL: http://localhost:8080/media
+      EMAIL_DRIVER: noop
+      EMAIL_FROM: noreply@localhost
+      SECRET_KEY_BASE: "0000000000000000000000000000000000000000000000000000000000000000"
+    volumes:
+      - app_media:/data/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -29,3 +56,6 @@ services:
     ports:
       - "9000:9000"
       - "9001:9001"
+
+volumes:
+  app_media: {}

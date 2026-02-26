@@ -134,6 +134,9 @@ func (f *fakeOAuthStore) GetUserByEmail(ctx context.Context, email string) (*dom
 func (f *fakeOAuthStore) GetUserByAccountID(ctx context.Context, accountID string) (*domain.User, error) {
 	return nil, domain.ErrNotFound
 }
+func (f *fakeOAuthStore) ConfirmUser(ctx context.Context, userID string) error {
+	return nil
+}
 
 func (f *fakeOAuthStore) CreateAccount(ctx context.Context, in store.CreateAccountInput) (*domain.Account, error) {
 	return nil, domain.ErrNotFound

@@ -40,6 +40,7 @@ type Store interface {
 
 	GetUserByEmail(ctx context.Context, email string) (*domain.User, error)
 	GetUserByAccountID(ctx context.Context, accountID string) (*domain.User, error)
+	ConfirmUser(ctx context.Context, userID string) error
 
 	CreateStatusMention(ctx context.Context, statusID, accountID string) error
 	GetStatusMentions(ctx context.Context, statusID string) ([]*domain.Account, error)
