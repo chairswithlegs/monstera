@@ -25,13 +25,13 @@ type OutboxHandler struct {
 	deps Deps
 }
 
-// NewOutboxHandler constructs an OutboxHandler.
+// NewOutboxHandler returns a new OutboxHandler.
 func NewOutboxHandler(deps Deps) *OutboxHandler {
 	return &OutboxHandler{deps: deps}
 }
 
-// ServeHTTP serves the outbox collection or a page.
-func (h *OutboxHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// GETOutbox serves the outbox collection or a page.
+func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
 	if username == "" {
 		api.WriteError(w, http.StatusBadRequest, "missing username")
@@ -49,7 +49,8 @@ func (h *OutboxHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if page == "" {
 		total, err := h.deps.Timelines.CountAccountPublicStatuses(r.Context(), account.ID)
 		if err != nil {
-			total = 0
+			api.HandleError(w, r, h.deps.Logger, err)
+			return
 		}
 		coll := ap.OrderedCollection{
 			Context:    ap.DefaultContext,
@@ -59,7 +60,8 @@ func (h *OutboxHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			First:      outboxID + "?page=true",
 		}
 		w.Header().Set("Cache-Control", "max-age=60")
-		writeJSON(w, coll)
+		w.Header().Set("Content-Type", "application/activity+json; charset=utf-8")
+		api.WriteJSON(w, http.StatusOK, coll)
 		return
 	}
 
@@ -132,7 +134,8 @@ func (h *OutboxHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		pageResp.Next = outboxID + "?page=true&max_id=" + url.QueryEscape(publicStatuses[len(publicStatuses)-1].ID)
 	}
 	w.Header().Set("Cache-Control", "max-age=60")
-	writeJSON(w, pageResp)
+	w.Header().Set("Content-Type", "application/activity+json; charset=utf-8")
+	api.WriteJSON(w, http.StatusOK, pageResp)
 }
 
 func statusToNote(s *domain.Status, actorID, base string) *ap.Note {

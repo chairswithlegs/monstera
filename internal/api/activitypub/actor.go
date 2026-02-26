@@ -17,13 +17,13 @@ type ActorHandler struct {
 	deps Deps
 }
 
-// NewActorHandler constructs an ActorHandler.
+// NewActorHandler returns a new ActorHandler.
 func NewActorHandler(deps Deps) *ActorHandler {
 	return &ActorHandler{deps: deps}
 }
 
-// ServeHTTP returns the ActivityPub Actor JSON for the local user.
-func (h *ActorHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// GETActor returns the ActivityPub Actor JSON for the local user.
+func (h *ActorHandler) GETActor(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
 	if username == "" {
 		api.WriteError(w, http.StatusBadRequest, "missing username")
@@ -42,7 +42,7 @@ func (h *ActorHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		actor.Image = &ap.Icon{Type: "Image", URL: withMedia.HeaderURL}
 	}
 	w.Header().Set("Cache-Control", "max-age=300")
-	writeJSON(w, actor)
+	api.WriteActivityJSON(w, http.StatusOK, actor)
 }
 
 func accountToActor(a *domain.Account, deps Deps) *ap.Actor {

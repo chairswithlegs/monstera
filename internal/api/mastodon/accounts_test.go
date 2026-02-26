@@ -23,12 +23,13 @@ func TestAccountsHandler_VerifyCredentials(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	logger := slog.Default()
-	handler := NewAccountsHandler(accountSvc, nil, logger, "example.com")
+	deps := Deps{Accounts: accountSvc, Logger: logger, InstanceDomain: "example.com"}
+	handler := NewAccountsHandler(deps)
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/verify_credentials", nil)
 		rec := httptest.NewRecorder()
-		handler.VerifyCredentials(rec, req)
+		handler.GETVerifyCredentials(rec, req)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
 		var body map[string]any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
@@ -47,7 +48,7 @@ func TestAccountsHandler_VerifyCredentials(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/verify_credentials", nil)
 		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
 		rec := httptest.NewRecorder()
-		handler.VerifyCredentials(rec, req)
+		handler.GETVerifyCredentials(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		var body map[string]any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
@@ -60,7 +61,7 @@ func TestAccountsHandler_VerifyCredentials(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/verify_credentials", nil)
 		req = req.WithContext(middleware.WithAccount(req.Context(), orphan))
 		rec := httptest.NewRecorder()
-		handler.VerifyCredentials(rec, req)
+		handler.GETVerifyCredentials(rec, req)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
 		var body map[string]any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))

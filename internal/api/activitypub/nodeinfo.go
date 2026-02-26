@@ -1,12 +1,10 @@
 package activitypub
 
 import (
-	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 
-	"github.com/chairswithlegs/monstera-fed/internal/service"
+	"github.com/chairswithlegs/monstera-fed/internal/api"
 )
 
 // NodeInfoPointerHandler serves the well-known nodeinfo pointer document.
@@ -15,7 +13,7 @@ type NodeInfoPointerHandler struct {
 	deps Deps
 }
 
-// NewNodeInfoPointerHandler constructs a NodeInfoPointerHandler.
+// NewNodeInfoPointerHandler returns a new NodeInfoPointerHandler.
 func NewNodeInfoPointerHandler(deps Deps) *NodeInfoPointerHandler {
 	return &NodeInfoPointerHandler{deps: deps}
 }
@@ -29,8 +27,8 @@ type nodeInfoPointerLink struct {
 	Href string `json:"href"`
 }
 
-// ServeHTTP serves the nodeinfo pointer.
-func (h *NodeInfoPointerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// GETNodeInfoPointer serves the nodeinfo pointer.
+func (h *NodeInfoPointerHandler) GETNodeInfoPointer(w http.ResponseWriter, r *http.Request) {
 	resp := nodeInfoPointerResponse{
 		Links: []nodeInfoPointerLink{
 			{
@@ -39,10 +37,8 @@ func (h *NodeInfoPointerHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 			},
 		},
 	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "max-age=1800")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(resp)
+	api.WriteJSON(w, http.StatusOK, resp)
 }
 
 // NodeInfoHandler serves the full NodeInfo 2.0 document.
@@ -51,7 +47,7 @@ type NodeInfoHandler struct {
 	deps Deps
 }
 
-// NewNodeInfoHandler constructs a NodeInfoHandler.
+// NewNodeInfoHandler returns a new NodeInfoHandler.
 func NewNodeInfoHandler(deps Deps) *NodeInfoHandler {
 	return &NodeInfoHandler{deps: deps}
 }
@@ -79,13 +75,13 @@ type nodeInfoUsers struct {
 	Total int64 `json:"total"`
 }
 
-// ServeHTTP serves the NodeInfo 2.0 document.
-func (h *NodeInfoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// GETNodeInfo serves the NodeInfo 2.0 document.
+func (h *NodeInfoHandler) GETNodeInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	stats, err := h.deps.Instance.GetNodeInfoStats(ctx)
 	if err != nil {
-		h.deps.Logger.Error("nodeinfo: get stats", slog.Any("error", err))
-		stats = &service.NodeInfoStats{}
+		api.HandleError(w, r, h.deps.Logger, err)
+		return
 	}
 	resp := nodeInfoResponse{
 		Version: "2.0",
@@ -101,8 +97,6 @@ func (h *NodeInfoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		OpenRegistrations: stats.OpenRegistrations,
 		Metadata:          map[string]any{},
 	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "max-age=1800")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(resp)
+	api.WriteJSON(w, http.StatusOK, resp)
 }

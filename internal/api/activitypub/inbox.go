@@ -20,17 +20,13 @@ type InboxHandler struct {
 	deps Deps
 }
 
-// NewInboxHandler constructs an InboxHandler.
+// NewInboxHandler returns a new InboxHandler.
 func NewInboxHandler(deps Deps) *InboxHandler {
 	return &InboxHandler{deps: deps}
 }
 
-// ServeHTTP handles POST to the inbox.
-func (h *InboxHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		api.WriteError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
+// POSTInbox handles POST to the inbox.
+func (h *InboxHandler) POSTInbox(w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("Content-Type")
 	if ct != "" && !strings.Contains(ct, "application/activity+json") && !strings.Contains(ct, "application/ld+json") {
 		api.WriteError(w, http.StatusUnsupportedMediaType, "content type must be application/activity+json")

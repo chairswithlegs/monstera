@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -21,9 +20,9 @@ func NewHealthChecker(db *pgxpool.Pool, nc *nats.Conn) *HealthChecker {
 	return &HealthChecker{DB: db, NATS: nc}
 }
 
-// Liveness handles GET /healthz/live.
+// GETLiveness handles GET /healthz/live.
 // Always returns 200 OK. Used as the Kubernetes livenessProbe.
-func (h *HealthChecker) Liveness(w http.ResponseWriter, _ *http.Request) {
+func (h *HealthChecker) GETLiveness(w http.ResponseWriter, _ *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -33,10 +32,10 @@ type readinessResponse struct {
 	Checks map[string]string `json:"checks"`
 }
 
-// Readiness handles GET /healthz/ready.
+// GETReadiness handles GET /healthz/ready.
 // Pings PostgreSQL and NATS within a 2-second deadline.
 // Returns 200 if both pass; 503 if either fails.
-func (h *HealthChecker) Readiness(w http.ResponseWriter, r *http.Request) {
+func (h *HealthChecker) GETReadiness(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 
@@ -68,7 +67,5 @@ func (h *HealthChecker) Readiness(w http.ResponseWriter, r *http.Request) {
 	if status == checkError {
 		code = http.StatusServiceUnavailable
 	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(resp)
+	WriteJSON(w, code, resp)
 }

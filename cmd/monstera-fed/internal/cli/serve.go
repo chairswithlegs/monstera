@@ -140,19 +140,26 @@ func runServe(_ *cobra.Command, _ []string) error {
 	oauthHandler := oauthhandlers.NewHandler(oauthServer, s, logger, loginTmpl, cfg.InstanceName, secretKey)
 
 	health := api.NewHealthChecker(pool, natsClient.Conn)
-	accountsHandler := mastodon.NewAccountsHandler(accountSvc, followSvc, logger, cfg.InstanceDomain)
-	statusesHandler := mastodon.NewStatusesHandler(statusSvc, accountSvc, logger, cfg.InstanceDomain)
-	timelinesHandler := mastodon.NewTimelinesHandler(timelineSvc, logger, cfg.InstanceDomain)
-	instanceHandler := mastodon.NewInstanceHandler(
-		cfg.InstanceDomain,
-		cfg.InstanceName,
-		cfg.MaxStatusChars,
-		cfg.MediaMaxBytes,
-		nil,
-		logger,
-	)
-	notificationsHandler := mastodon.NewNotificationsHandler(notificationSvc, accountSvc, logger, cfg.InstanceDomain)
-	mediaHandler := mastodon.NewMediaHandler(mediaSvc, logger)
+	mastodonDeps := mastodon.Deps{
+		Accounts:           accountSvc,
+		Follows:            followSvc,
+		Statuses:           statusSvc,
+		Timeline:           timelineSvc,
+		Notifications:      notificationSvc,
+		Media:              mediaSvc,
+		Logger:             logger,
+		InstanceDomain:     cfg.InstanceDomain,
+		InstanceName:       cfg.InstanceName,
+		MaxStatusChars:     cfg.MaxStatusChars,
+		MediaMaxBytes:      cfg.MediaMaxBytes,
+		SupportedMimeTypes: nil,
+	}
+	accountsHandler := mastodon.NewAccountsHandler(mastodonDeps)
+	statusesHandler := mastodon.NewStatusesHandler(mastodonDeps)
+	timelinesHandler := mastodon.NewTimelinesHandler(mastodonDeps)
+	instanceHandler := mastodon.NewInstanceHandler(mastodonDeps)
+	notificationsHandler := mastodon.NewNotificationsHandler(mastodonDeps)
+	mediaHandler := mastodon.NewMediaHandler(mastodonDeps)
 
 	blocklistCache := ap.NewBlocklistCache(s, logger)
 	if err := blocklistCache.Refresh(ctx); err != nil {

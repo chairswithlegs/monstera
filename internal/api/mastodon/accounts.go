@@ -2,7 +2,6 @@ package mastodon
 
 import (
 	"errors"
-	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -11,74 +10,61 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/api/mastodon/apimodel"
 	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/service"
 )
 
 // AccountsHandler handles account-related Mastodon API endpoints.
 type AccountsHandler struct {
-	accounts *service.AccountService
-	follows  *service.FollowService
-	logger   *slog.Logger
-	domain   string
+	deps Deps
 }
 
-// NewAccountsHandler returns a new AccountsHandler. follows may be nil to disable follow endpoints.
-func NewAccountsHandler(accounts *service.AccountService, follows *service.FollowService, logger *slog.Logger, instanceDomain string) *AccountsHandler {
-	return &AccountsHandler{
-		accounts: accounts,
-		follows:  follows,
-		logger:   logger,
-		domain:   instanceDomain,
-	}
+// NewAccountsHandler returns a new AccountsHandler. deps.Follows may be nil to disable follow endpoints.
+func NewAccountsHandler(deps Deps) *AccountsHandler {
+	return &AccountsHandler{deps: deps}
 }
 
-// VerifyCredentials handles GET /api/v1/accounts/verify_credentials.
-func (h *AccountsHandler) VerifyCredentials(w http.ResponseWriter, r *http.Request) {
+// GETVerifyCredentials handles GET /api/v1/accounts/verify_credentials.
+func (h *AccountsHandler) GETVerifyCredentials(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
 	if account == nil {
 		api.WriteError(w, http.StatusUnauthorized, "The access token is invalid")
 		return
 	}
-	acc, user, err := h.accounts.GetAccountWithUser(r.Context(), account.ID)
+	acc, user, err := h.deps.Accounts.GetAccountWithUser(r.Context(), account.ID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.WriteError(w, http.StatusUnauthorized, "The access token is invalid")
 			return
 		}
-		api.HandleError(w, r, h.logger, err)
+		api.HandleError(w, r, h.deps.Logger, err)
 		return
 	}
-	out := apimodel.ToAccountWithSource(acc, user, h.domain)
+	out := apimodel.ToAccountWithSource(acc, user, h.deps.InstanceDomain)
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
-// Get handles GET /api/v1/accounts/:id. Auth optional.
-func (h *AccountsHandler) Get(w http.ResponseWriter, r *http.Request) {
+// GETAccounts handles GETAccounts /api/v1/accounts/:id. Auth optional.
+func (h *AccountsHandler) GETAccounts(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		api.WriteError(w, http.StatusNotFound, "Record not found")
 		return
 	}
-	acc, err := h.accounts.GetByID(r.Context(), id)
+	acc, err := h.deps.Accounts.GetByID(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.WriteError(w, http.StatusNotFound, "Record not found")
-			return
-		}
-		api.HandleError(w, r, h.logger, err)
+		api.HandleError(w, r, h.deps.Logger, err)
 		return
 	}
 	if acc.Suspended {
 		api.WriteError(w, http.StatusNotFound, "Record not found")
 		return
 	}
-	api.WriteJSON(w, http.StatusOK, apimodel.ToAccount(acc, h.domain))
+	api.WriteJSON(w, http.StatusOK, apimodel.ToAccount(acc, h.deps.InstanceDomain))
 }
 
-// Follow handles POST /api/v1/accounts/:id/follow. Auth required.
-func (h *AccountsHandler) Follow(w http.ResponseWriter, r *http.Request) {
-	if h.follows == nil {
-		api.HandleError(w, r, h.logger, errors.New("follow service not configured"))
+// POSTFollow handles POST /api/v1/accounts/:id/follow. Auth required.
+func (h *AccountsHandler) POSTFollow(w http.ResponseWriter, r *http.Request) {
+	if h.deps.Follows == nil {
+		api.HandleError(w, r, h.deps.Logger, errors.New("follow service not configured"))
 		return
 	}
 	account := middleware.AccountFromContext(r.Context())
@@ -91,30 +77,18 @@ func (h *AccountsHandler) Follow(w http.ResponseWriter, r *http.Request) {
 		api.WriteError(w, http.StatusNotFound, "Record not found")
 		return
 	}
-	rel, err := h.follows.Follow(r.Context(), account.ID, targetID)
+	rel, err := h.deps.Follows.Follow(r.Context(), account.ID, targetID)
 	if err != nil {
-		if errors.Is(err, domain.ErrValidation) {
-			api.WriteError(w, http.StatusBadRequest, "You cannot follow yourself")
-			return
-		}
-		if errors.Is(err, domain.ErrNotFound) {
-			api.WriteError(w, http.StatusNotFound, "Record not found")
-			return
-		}
-		if errors.Is(err, domain.ErrForbidden) {
-			api.WriteError(w, http.StatusForbidden, "This action is not allowed")
-			return
-		}
-		api.HandleError(w, r, h.logger, err)
+		api.HandleError(w, r, h.deps.Logger, err)
 		return
 	}
 	api.WriteJSON(w, http.StatusOK, apimodel.ToRelationship(rel))
 }
 
-// Unfollow handles POST /api/v1/accounts/:id/unfollow. Auth required.
-func (h *AccountsHandler) Unfollow(w http.ResponseWriter, r *http.Request) {
-	if h.follows == nil {
-		api.HandleError(w, r, h.logger, errors.New("follow service not configured"))
+// POSTUnfollow handles POST /api/v1/accounts/:id/unfollow. Auth required.
+func (h *AccountsHandler) POSTUnfollow(w http.ResponseWriter, r *http.Request) {
+	if h.deps.Follows == nil {
+		api.HandleError(w, r, h.deps.Logger, errors.New("follow service not configured"))
 		return
 	}
 	account := middleware.AccountFromContext(r.Context())
@@ -127,16 +101,16 @@ func (h *AccountsHandler) Unfollow(w http.ResponseWriter, r *http.Request) {
 		api.WriteError(w, http.StatusNotFound, "Record not found")
 		return
 	}
-	rel, err := h.follows.Unfollow(r.Context(), account.ID, targetID)
+	rel, err := h.deps.Follows.Unfollow(r.Context(), account.ID, targetID)
 	if err != nil {
-		api.HandleError(w, r, h.logger, err)
+		api.HandleError(w, r, h.deps.Logger, err)
 		return
 	}
 	api.WriteJSON(w, http.StatusOK, apimodel.ToRelationship(rel))
 }
 
-// Relationships handles GET /api/v1/accounts/relationships?id[]=... Returns []Relationship for each requested id.
-func (h *AccountsHandler) Relationships(w http.ResponseWriter, r *http.Request) {
+// GETRelationships handles GET /api/v1/accounts/relationships?id[]=... Returns []Relationship for each requested id.
+func (h *AccountsHandler) GETRelationships(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
 	if account == nil {
 		api.WriteError(w, http.StatusUnauthorized, "The access token is invalid")
@@ -152,9 +126,9 @@ func (h *AccountsHandler) Relationships(w http.ResponseWriter, r *http.Request) 
 		if targetID == "" {
 			continue
 		}
-		rel, err := h.accounts.GetRelationship(r.Context(), account.ID, targetID)
+		rel, err := h.deps.Accounts.GetRelationship(r.Context(), account.ID, targetID)
 		if err != nil {
-			api.HandleError(w, r, h.logger, err)
+			api.HandleError(w, r, h.deps.Logger, err)
 			return
 		}
 		out = append(out, apimodel.ToRelationship(rel))

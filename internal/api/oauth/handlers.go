@@ -87,8 +87,8 @@ func redirectURIsToString(v interface{}) (string, bool) {
 	}
 }
 
-// RegisterApp handles POST /api/v1/apps. Accepts application/x-www-form-urlencoded or application/json.
-func (h *Handler) RegisterApp(w http.ResponseWriter, r *http.Request) {
+// POSTRegisterApp handles POST /api/v1/apps. Accepts application/x-www-form-urlencoded or application/json.
+func (h *Handler) POSTRegisterApp(w http.ResponseWriter, r *http.Request) {
 	var name, redirectURIs, scopes, website string
 
 	ct := r.Header.Get("Content-Type")
@@ -152,8 +152,8 @@ type loginPageData struct {
 	Error               string
 }
 
-// Authorize handles GET /oauth/authorize.
-func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
+// GETAuthorize handles GET /oauth/authorize.
+func (h *Handler) GETAuthorize(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
 	clientID := q.Get("client_id")
@@ -209,8 +209,8 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// AuthorizeSubmit handles POST /oauth/authorize.
-func (h *Handler) AuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
+// POSTAuthorizeSubmit handles POST /oauth/authorize.
+func (h *Handler) POSTAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		api.WriteError(w, http.StatusBadRequest, "invalid form data")
 		return
@@ -278,8 +278,8 @@ func (h *Handler) AuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 }
 
-// Token handles POST /oauth/token.
-func (h *Handler) Token(w http.ResponseWriter, r *http.Request) {
+// POSTToken handles POST /oauth/token.
+func (h *Handler) POSTToken(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		api.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -321,8 +321,8 @@ func (h *Handler) Token(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Revoke handles POST /oauth/revoke (RFC 7009).
-func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {
+// POSTRevoke handles POST /oauth/revoke (RFC 7009).
+func (h *Handler) POSTRevoke(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		api.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return

@@ -89,4 +89,3 @@ func TestIntegration_PostgresStore(t *testing.T) {
 		require.GreaterOrEqual(t, remote, int64(0))
 	})
 }
-

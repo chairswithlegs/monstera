@@ -1,7 +1,6 @@
 package mastodon
 
 import (
-	"log/slog"
 	"net/http"
 
 	"github.com/chairswithlegs/monstera-fed/internal/api"
@@ -40,51 +39,39 @@ type InstanceResponse struct {
 
 // InstanceHandler handles instance metadata endpoints.
 type InstanceHandler struct {
-	instanceDomain     string
-	instanceName       string
-	maxStatusChars     int
-	mediaMaxBytes      int64
-	supportedMimeTypes []string
-	logger             *slog.Logger
+	deps Deps
 }
 
 // NewInstanceHandler returns a new InstanceHandler.
-func NewInstanceHandler(instanceDomain, instanceName string, maxStatusChars int, mediaMaxBytes int64, supportedMimeTypes []string, logger *slog.Logger) *InstanceHandler {
-	if supportedMimeTypes == nil {
-		supportedMimeTypes = []string{"image/jpeg", "image/png", "image/gif", "image/webp"}
-	}
-	return &InstanceHandler{
-		instanceDomain:     instanceDomain,
-		instanceName:       instanceName,
-		maxStatusChars:     maxStatusChars,
-		mediaMaxBytes:      mediaMaxBytes,
-		supportedMimeTypes: supportedMimeTypes,
-		logger:             logger,
-	}
+func NewInstanceHandler(deps Deps) *InstanceHandler {
+	return &InstanceHandler{deps: deps}
 }
 
-// GetInstance handles GET /api/v2/instance.
-func (h *InstanceHandler) GetInstance(w http.ResponseWriter, r *http.Request) {
+// GETInstance handles GET /api/v2/instance.
+func (h *InstanceHandler) GETInstance(w http.ResponseWriter, r *http.Request) {
+	mimeTypes := h.deps.SupportedMimeTypes
+	if mimeTypes == nil {
+		mimeTypes = []string{"image/jpeg", "image/png", "image/gif", "image/webp"}
+	}
 	resp := InstanceResponse{
-		Domain:      h.instanceDomain,
-		Title:       h.instanceName,
+		Domain:      h.deps.InstanceDomain,
+		Title:       h.deps.InstanceName,
 		Version:     "0.1.0 (compatible; Monstera-fed)",
 		SourceURL:   "",
 		Description: "",
 		Languages:   []string{"en"},
 		Rules:       []any{},
 	}
-	resp.Configuration.Statuses.MaxCharacters = h.maxStatusChars
+	resp.Configuration.Statuses.MaxCharacters = h.deps.MaxStatusChars
 	resp.Configuration.Statuses.MaxMediaAttachments = 4
-	resp.Configuration.MediaAttachments.SupportedMimeTypes = h.supportedMimeTypes
-	resp.Configuration.MediaAttachments.ImageSizeLimit = h.mediaMaxBytes
-	resp.Configuration.MediaAttachments.VideoSizeLimit = h.mediaMaxBytes
+	resp.Configuration.MediaAttachments.SupportedMimeTypes = mimeTypes
+	resp.Configuration.MediaAttachments.ImageSizeLimit = h.deps.MediaMaxBytes
+	resp.Configuration.MediaAttachments.VideoSizeLimit = h.deps.MediaMaxBytes
 	resp.Registrations.Enabled = true
 	api.WriteJSON(w, http.StatusOK, resp)
 }
 
-// CustomEmojis handles GET /api/v1/custom_emojis.
-func (h *InstanceHandler) CustomEmojis(w http.ResponseWriter, r *http.Request) {
-	_ = h.logger
+// GETCustomEmojis handles GET /api/v1/custom_emojis.
+func (h *InstanceHandler) GETCustomEmojis(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusOK, []any{})
 }

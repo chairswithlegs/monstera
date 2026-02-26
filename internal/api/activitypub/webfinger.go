@@ -15,7 +15,7 @@ type WebFingerHandler struct {
 	deps Deps
 }
 
-// NewWebFingerHandler constructs a WebFingerHandler.
+// NewWebFingerHandler returns a new WebFingerHandler.
 func NewWebFingerHandler(deps Deps) *WebFingerHandler {
 	return &WebFingerHandler{deps: deps}
 }
@@ -32,8 +32,8 @@ type webFingerLink struct {
 	Href string `json:"href,omitempty"`
 }
 
-// ServeHTTP handles the WebFinger request.
-func (h *WebFingerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// GETWebFinger handles the WebFinger request.
+func (h *WebFingerHandler) GETWebFinger(w http.ResponseWriter, r *http.Request) {
 	resource := r.URL.Query().Get("resource")
 	if resource == "" {
 		api.WriteError(w, http.StatusBadRequest, "missing resource parameter")
@@ -69,5 +69,5 @@ func (h *WebFingerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	w.Header().Set("Cache-Control", "max-age=3600")
-	writeJRD(w, http.StatusOK, resp)
+	api.WriteJRD(w, http.StatusOK, resp)
 }

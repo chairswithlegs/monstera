@@ -25,14 +25,15 @@ func TestStatusesHandler_Create(t *testing.T) {
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
 	logger := slog.Default()
-	handler := NewStatusesHandler(statusSvc, accountSvc, logger, "example.com")
+	deps := Deps{Statuses: statusSvc, Accounts: accountSvc, Logger: logger, InstanceDomain: "example.com"}
+	handler := NewStatusesHandler(deps)
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
 		body := bytes.NewBufferString(`{"status":"hello world"}`)
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses", body)
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
-		handler.Create(rec, req)
+		handler.POSTStatuses(rec, req)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
 		var errBody map[string]any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&errBody))
@@ -53,7 +54,7 @@ func TestStatusesHandler_Create(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
 		rec := httptest.NewRecorder()
-		handler.Create(rec, req)
+		handler.POSTStatuses(rec, req)
 		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 		var errBody map[string]any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&errBody))
@@ -74,7 +75,7 @@ func TestStatusesHandler_Create(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
 		rec := httptest.NewRecorder()
-		handler.Create(rec, req)
+		handler.POSTStatuses(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		var statusBody map[string]any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&statusBody))
@@ -96,7 +97,7 @@ func TestStatusesHandler_Create(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
 		rec := httptest.NewRecorder()
-		handler.Create(rec, req)
+		handler.POSTStatuses(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		var statusBody map[string]any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&statusBody))
@@ -112,7 +113,8 @@ func TestStatusesHandler_Create_account_without_user_returns_401(t *testing.T) {
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
 	logger := slog.Default()
-	handler := NewStatusesHandler(statusSvc, accountSvc, logger, "example.com")
+	deps := Deps{Statuses: statusSvc, Accounts: accountSvc, Logger: logger, InstanceDomain: "example.com"}
+	handler := NewStatusesHandler(deps)
 
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "nouser"})
 	require.NoError(t, err)
@@ -122,7 +124,7 @@ func TestStatusesHandler_Create_account_without_user_returns_401(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req = req.WithContext(middleware.WithAccount(req.Context(), acc))
 	rec := httptest.NewRecorder()
-	handler.Create(rec, req)
+	handler.POSTStatuses(rec, req)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	var errBody map[string]any
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&errBody))

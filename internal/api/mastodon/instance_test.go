@@ -15,11 +15,17 @@ import (
 func TestInstanceHandler_GetInstance(t *testing.T) {
 	t.Parallel()
 	logger := slog.Default()
-	handler := NewInstanceHandler("example.com", "Example Instance", 500, 10<<20, []string{"image/jpeg", "image/png"}, logger)
+	deps := Deps{
+		InstanceDomain: "example.com", InstanceName: "Example Instance",
+		MaxStatusChars: 500, MediaMaxBytes: 10 << 20,
+		SupportedMimeTypes: []string{"image/jpeg", "image/png"},
+		Logger:             logger,
+	}
+	handler := NewInstanceHandler(deps)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v2/instance", nil)
 	rec := httptest.NewRecorder()
-	handler.GetInstance(rec, req)
+	handler.GETInstance(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	var body InstanceResponse
@@ -36,11 +42,12 @@ func TestInstanceHandler_GetInstance(t *testing.T) {
 func TestInstanceHandler_GetInstance_default_mime_types(t *testing.T) {
 	t.Parallel()
 	logger := slog.Default()
-	handler := NewInstanceHandler("test.com", "Test", 500, 5<<20, nil, logger)
+	deps := Deps{InstanceDomain: "test.com", InstanceName: "Test", MaxStatusChars: 500, MediaMaxBytes: 5 << 20, Logger: logger}
+	handler := NewInstanceHandler(deps)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v2/instance", nil)
 	rec := httptest.NewRecorder()
-	handler.GetInstance(rec, req)
+	handler.GETInstance(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	var body InstanceResponse
@@ -52,11 +59,12 @@ func TestInstanceHandler_GetInstance_default_mime_types(t *testing.T) {
 func TestInstanceHandler_CustomEmojis(t *testing.T) {
 	t.Parallel()
 	logger := slog.Default()
-	handler := NewInstanceHandler("example.com", "Example", 500, 10<<20, nil, logger)
+	deps := Deps{InstanceDomain: "example.com", InstanceName: "Example", MaxStatusChars: 500, MediaMaxBytes: 10 << 20, Logger: logger}
+	handler := NewInstanceHandler(deps)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/custom_emojis", nil)
 	rec := httptest.NewRecorder()
-	handler.CustomEmojis(rec, req)
+	handler.GETCustomEmojis(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	var body []any

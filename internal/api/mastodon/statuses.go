@@ -3,7 +3,6 @@ package mastodon
 import (
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
 	"strings"
 
@@ -18,20 +17,12 @@ import (
 
 // StatusesHandler handles status-related Mastodon API endpoints.
 type StatusesHandler struct {
-	statuses *service.StatusService
-	accounts *service.AccountService
-	logger   *slog.Logger
-	domain   string
+	deps Deps
 }
 
 // NewStatusesHandler returns a new StatusesHandler.
-func NewStatusesHandler(statuses *service.StatusService, accounts *service.AccountService, logger *slog.Logger, instanceDomain string) *StatusesHandler {
-	return &StatusesHandler{
-		statuses: statuses,
-		accounts: accounts,
-		logger:   logger,
-		domain:   instanceDomain,
-	}
+func NewStatusesHandler(deps Deps) *StatusesHandler {
+	return &StatusesHandler{deps: deps}
 }
 
 // CreateStatusRequest is the request body for POST /api/v1/statuses.
@@ -43,8 +34,8 @@ type CreateStatusRequest struct {
 	Language    string `json:"language"`
 }
 
-// Create handles POST /api/v1/statuses.
-func (h *StatusesHandler) Create(w http.ResponseWriter, r *http.Request) {
+// POSTStatuses handles POST /api/v1/statuses.
+func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	account := middleware.AccountFromContext(ctx)
 	if account == nil {
@@ -58,13 +49,13 @@ func (h *StatusesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, user, err := h.accounts.GetAccountWithUser(ctx, account.ID)
+	_, user, err := h.deps.Accounts.GetAccountWithUser(ctx, account.ID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.WriteError(w, http.StatusUnauthorized, "The access token is invalid")
 			return
 		}
-		api.HandleError(w, r, h.logger, err)
+		api.HandleError(w, r, h.deps.Logger, err)
 		return
 	}
 
@@ -73,7 +64,7 @@ func (h *StatusesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		defaultVisibility = user.DefaultPrivacy
 	}
 
-	result, err := h.statuses.CreateWithContent(ctx, service.CreateWithContentInput{
+	result, err := h.deps.Statuses.CreateWithContent(ctx, service.CreateWithContentInput{
 		AccountID:         account.ID,
 		Username:          account.Username,
 		Text:              req.Status,
@@ -84,40 +75,32 @@ func (h *StatusesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Sensitive:         req.Sensitive,
 	})
 	if err != nil {
-		if errors.Is(err, domain.ErrValidation) {
-			api.WriteError(w, http.StatusUnprocessableEntity, err.Error())
-			return
-		}
-		api.HandleError(w, r, h.logger, err)
+		api.HandleError(w, r, h.deps.Logger, err)
 		return
 	}
 
-	out := createResultToAPIModel(result, h.domain)
+	out := createResultToAPIModel(result, h.deps.InstanceDomain)
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
-// Get handles GET /api/v1/statuses/:id. Auth optional.
-func (h *StatusesHandler) Get(w http.ResponseWriter, r *http.Request) {
+// GETStatuses handles GET /api/v1/statuses/:id. Auth optional.
+func (h *StatusesHandler) GETStatuses(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		api.WriteError(w, http.StatusNotFound, "Record not found")
 		return
 	}
-	result, err := h.statuses.GetByIDEnriched(r.Context(), id)
+	result, err := h.deps.Statuses.GetByIDEnriched(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.WriteError(w, http.StatusNotFound, "Record not found")
-			return
-		}
-		api.HandleError(w, r, h.logger, err)
+		api.HandleError(w, r, h.deps.Logger, err)
 		return
 	}
-	out := createResultToAPIModel(result, h.domain)
+	out := createResultToAPIModel(result, h.deps.InstanceDomain)
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
-// Delete handles DELETE /api/v1/statuses/:id. Auth required.
-func (h *StatusesHandler) Delete(w http.ResponseWriter, r *http.Request) {
+// DELETEStatuses handles DELETE /api/v1/statuses/:id. Auth required.
+func (h *StatusesHandler) DELETEStatuses(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
 	if account == nil {
 		api.WriteError(w, http.StatusUnauthorized, "The access token is invalid")
@@ -128,29 +111,25 @@ func (h *StatusesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		api.WriteError(w, http.StatusNotFound, "Record not found")
 		return
 	}
-	st, err := h.statuses.GetByID(r.Context(), id)
+	st, err := h.deps.Statuses.GetByID(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.WriteError(w, http.StatusNotFound, "Record not found")
-			return
-		}
-		api.HandleError(w, r, h.logger, err)
+		api.HandleError(w, r, h.deps.Logger, err)
 		return
 	}
 	if st.AccountID != account.ID {
 		api.WriteError(w, http.StatusForbidden, "This action is not allowed")
 		return
 	}
-	result, err := h.statuses.GetByIDEnriched(r.Context(), id)
+	result, err := h.deps.Statuses.GetByIDEnriched(r.Context(), id)
 	if err != nil {
-		api.HandleError(w, r, h.logger, err)
+		api.HandleError(w, r, h.deps.Logger, err)
 		return
 	}
-	if err := h.statuses.Delete(r.Context(), id); err != nil {
-		api.HandleError(w, r, h.logger, err)
+	if err := h.deps.Statuses.Delete(r.Context(), id); err != nil {
+		api.HandleError(w, r, h.deps.Logger, err)
 		return
 	}
-	out := createResultToAPIModel(result, h.domain)
+	out := createResultToAPIModel(result, h.deps.InstanceDomain)
 	api.WriteJSON(w, http.StatusOK, out)
 }
 

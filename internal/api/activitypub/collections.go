@@ -15,13 +15,13 @@ type CollectionsHandler struct {
 	deps Deps
 }
 
-// NewCollectionsHandler constructs a CollectionsHandler.
+// NewCollectionsHandler returns a new CollectionsHandler.
 func NewCollectionsHandler(deps Deps) *CollectionsHandler {
 	return &CollectionsHandler{deps: deps}
 }
 
-// ServeFollowers handles GET /users/{username}/followers.
-func (h *CollectionsHandler) ServeFollowers(w http.ResponseWriter, r *http.Request) {
+// GETFollowers handles GET /users/{username}/followers.
+func (h *CollectionsHandler) GETFollowers(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
 	if username == "" {
 		api.WriteError(w, http.StatusBadRequest, "missing username")
@@ -34,7 +34,8 @@ func (h *CollectionsHandler) ServeFollowers(w http.ResponseWriter, r *http.Reque
 	}
 	count, err := h.deps.Accounts.CountFollowers(r.Context(), account.ID)
 	if err != nil {
-		count = 0
+		api.HandleError(w, r, h.deps.Logger, err)
+		return
 	}
 	base := "https://" + h.deps.Config.InstanceDomain
 	id := base + "/users/" + username + "/followers"
@@ -45,11 +46,11 @@ func (h *CollectionsHandler) ServeFollowers(w http.ResponseWriter, r *http.Reque
 		TotalItems: int(count),
 	}
 	w.Header().Set("Cache-Control", "max-age=300")
-	writeJSON(w, coll)
+	api.WriteActivityJSON(w, http.StatusOK, coll)
 }
 
-// ServeFollowing handles GET /users/{username}/following.
-func (h *CollectionsHandler) ServeFollowing(w http.ResponseWriter, r *http.Request) {
+// GETFollowing handles GET /users/{username}/following.
+func (h *CollectionsHandler) GETFollowing(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
 	if username == "" {
 		api.WriteError(w, http.StatusBadRequest, "missing username")
@@ -62,7 +63,8 @@ func (h *CollectionsHandler) ServeFollowing(w http.ResponseWriter, r *http.Reque
 	}
 	count, err := h.deps.Accounts.CountFollowing(r.Context(), account.ID)
 	if err != nil {
-		count = 0
+		api.HandleError(w, r, h.deps.Logger, err)
+		return
 	}
 	base := "https://" + h.deps.Config.InstanceDomain
 	id := base + "/users/" + username + "/following"
@@ -73,12 +75,12 @@ func (h *CollectionsHandler) ServeFollowing(w http.ResponseWriter, r *http.Reque
 		TotalItems: int(count),
 	}
 	w.Header().Set("Cache-Control", "max-age=300")
-	writeJSON(w, coll)
+	api.WriteActivityJSON(w, http.StatusOK, coll)
 }
 
-// ServeFeatured handles GET /users/{username}/collections/featured.
+// GETFeatured handles GET /users/{username}/collections/featured.
 // Phase 1: stub with totalItems 0 (no pinned posts enumeration).
-func (h *CollectionsHandler) ServeFeatured(w http.ResponseWriter, r *http.Request) {
+func (h *CollectionsHandler) GETFeatured(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
 	if username == "" {
 		api.WriteError(w, http.StatusBadRequest, "missing username")
@@ -98,5 +100,5 @@ func (h *CollectionsHandler) ServeFeatured(w http.ResponseWriter, r *http.Reques
 		TotalItems: 0,
 	}
 	w.Header().Set("Cache-Control", "max-age=300")
-	writeJSON(w, coll)
+	api.WriteActivityJSON(w, http.StatusOK, coll)
 }

@@ -26,12 +26,13 @@ func TestTimelinesHandler_Home(t *testing.T) {
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	timelineSvc := service.NewTimelineService(st)
 	logger := slog.Default()
-	handler := NewTimelinesHandler(timelineSvc, logger, "example.com")
+	deps := Deps{Timeline: timelineSvc, Logger: logger, InstanceDomain: "example.com"}
+	handler := NewTimelinesHandler(deps)
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/timelines/home", nil)
 		rec := httptest.NewRecorder()
-		handler.Home(rec, req)
+		handler.GETHome(rec, req)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
 		var body map[string]any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
@@ -50,7 +51,7 @@ func TestTimelinesHandler_Home(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/timelines/home", nil)
 		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
 		rec := httptest.NewRecorder()
-		handler.Home(rec, req)
+		handler.GETHome(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		var body []any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
@@ -82,7 +83,7 @@ func TestTimelinesHandler_Home(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/timelines/home", nil)
 		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
 		rec := httptest.NewRecorder()
-		handler.Home(rec, req)
+		handler.GETHome(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		var body []map[string]any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
@@ -103,7 +104,7 @@ func TestTimelinesHandler_Home(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/timelines/home?max_id=01H&limit=5", nil)
 		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
 		rec := httptest.NewRecorder()
-		handler.Home(rec, req)
+		handler.GETHome(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		var body []any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
