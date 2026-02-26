@@ -1,4 +1,4 @@
-package presenter
+package apimodel
 
 // Account is the Mastodon API account response shape.
 type Account struct {

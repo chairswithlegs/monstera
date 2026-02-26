@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/chairswithlegs/monstera-fed/internal/api"
-	"github.com/chairswithlegs/monstera-fed/internal/api/mastodon/presenter"
+	"github.com/chairswithlegs/monstera-fed/internal/api/mastodon/apimodel"
 	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
@@ -90,7 +90,7 @@ func (h *StatusesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := createResultToPresenter(result, h.domain)
+	out := createResultToAPIModel(result, h.domain)
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -120,20 +120,20 @@ func parseCreateStatusRequest(r *http.Request) (CreateStatusRequest, error) {
 	return req, nil
 }
 
-// createResultToPresenter maps service.CreateResult to presenter.Status.
-func createResultToPresenter(result service.CreateResult, instanceDomain string) presenter.Status {
-	authorAcc := presenter.ToAccount(result.Author, instanceDomain)
-	mentionsResp := make([]presenter.Mention, 0, len(result.Mentions))
+// createResultToAPIModel maps service.CreateResult to apimodel.Status.
+func createResultToAPIModel(result service.CreateResult, instanceDomain string) apimodel.Status {
+	authorAcc := apimodel.ToAccount(result.Author, instanceDomain)
+	mentionsResp := make([]apimodel.Mention, 0, len(result.Mentions))
 	for _, a := range result.Mentions {
-		mentionsResp = append(mentionsResp, presenter.MentionFromAccount(a, instanceDomain))
+		mentionsResp = append(mentionsResp, apimodel.MentionFromAccount(a, instanceDomain))
 	}
-	tagsResp := make([]presenter.Tag, 0, len(result.Tags))
+	tagsResp := make([]apimodel.Tag, 0, len(result.Tags))
 	for _, t := range result.Tags {
-		tagsResp = append(tagsResp, presenter.TagFromName(t.Name, instanceDomain))
+		tagsResp = append(tagsResp, apimodel.TagFromName(t.Name, instanceDomain))
 	}
-	mediaResp := make([]presenter.MediaAttachment, 0, len(result.Media))
+	mediaResp := make([]apimodel.MediaAttachment, 0, len(result.Media))
 	for i := range result.Media {
-		mediaResp = append(mediaResp, presenter.MediaFromDomain(&result.Media[i]))
+		mediaResp = append(mediaResp, apimodel.MediaFromDomain(&result.Media[i]))
 	}
-	return presenter.ToStatus(result.Status, authorAcc, mentionsResp, tagsResp, mediaResp, instanceDomain)
+	return apimodel.ToStatus(result.Status, authorAcc, mentionsResp, tagsResp, mediaResp, instanceDomain)
 }

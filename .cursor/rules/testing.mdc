@@ -1,6 +1,6 @@
 ---
 description: Test file conventions
-globs: "**/*_test.go"
+globs: **/*_test.go
 alwaysApply: false
 ---
 

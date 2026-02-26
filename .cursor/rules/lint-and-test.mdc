@@ -1,9 +1,9 @@
 ---
-description: Run linter and unit tests after making code changes
+description: Run linter, unit tests, and formatter after making code changes
 alwaysApply: true
 ---
 
-# Lint and Test After Code Changes
+# Lint, Test, and Format After Code Changes
 
 After editing code, run the linter and unit tests before considering the change done.
 
@@ -20,6 +20,11 @@ After editing code, run the linter and unit tests before considering the change 
    make test
    ```
    Or `go test ./...` if `make test` cannot be used. Ensure all tests pass.
+
+3. **Format**:
+   ```bash
+   go fmt ./...
+   ```
 
 ## When to run
 

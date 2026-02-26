@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/chairswithlegs/monstera-fed/internal/api"
-	"github.com/chairswithlegs/monstera-fed/internal/api/mastodon/presenter"
+	"github.com/chairswithlegs/monstera-fed/internal/api/mastodon/apimodel"
 	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
@@ -44,6 +44,6 @@ func (h *AccountsHandler) VerifyCredentials(w http.ResponseWriter, r *http.Reque
 		api.HandleError(w, r, h.logger, err)
 		return
 	}
-	out := presenter.ToAccountWithSource(acc, user, h.domain)
+	out := apimodel.ToAccountWithSource(acc, user, h.domain)
 	api.WriteJSON(w, http.StatusOK, out)
 }

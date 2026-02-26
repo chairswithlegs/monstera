@@ -244,7 +244,7 @@ func (h *AccountHandler) Get(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    writeJSON(w, http.StatusOK, presenter.Account(account))
+    writeJSON(w, http.StatusOK, apimodel.Account(account))
 }
 ```
 

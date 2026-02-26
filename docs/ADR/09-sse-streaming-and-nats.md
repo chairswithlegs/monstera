@@ -186,7 +186,7 @@ type Publisher struct {
     store    FollowerStore
     metrics  *observability.Metrics
     logger   *slog.Logger
-    domain   string // INSTANCE_DOMAIN, for building presenter URLs
+    domain   string // INSTANCE_DOMAIN, for building API model URLs
 }
 
 func NewPublisher(

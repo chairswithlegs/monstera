@@ -4,7 +4,7 @@ build:
 	CGO_ENABLED=0 go build -o bin/monstera-fed ./cmd/monstera-fed
 
 build-seed:
-	CGO_ENABLED=0 go build -o bin/monstera-fed-seed ./cmd/monstera-fed-seed
+	CGO_ENABLED=0 go build -o bin/seed ./cmd/seed
 
 # seed runs the seeder against the docker-compose stack (postgres on localhost:5433).
 # Start the stack with docker compose up -d first.
@@ -17,7 +17,7 @@ seed: build-seed
 	MEDIA_LOCAL_PATH=./data/media \
 	EMAIL_FROM=noreply@localhost \
 	SECRET_KEY_BASE="0000000000000000000000000000000000000000000000000000000000000000" \
-	./bin/monstera-fed-seed
+	./bin/seed
 
 test:
 	go test -race -count=1 ./...

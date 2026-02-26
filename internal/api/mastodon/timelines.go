@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/chairswithlegs/monstera-fed/internal/api"
-	"github.com/chairswithlegs/monstera-fed/internal/api/mastodon/presenter"
+	"github.com/chairswithlegs/monstera-fed/internal/api/mastodon/apimodel"
 	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
 )
@@ -43,23 +43,23 @@ func (h *TimelinesHandler) Home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := make([]presenter.Status, 0, len(enriched))
+	out := make([]apimodel.Status, 0, len(enriched))
 	for i := range enriched {
 		e := &enriched[i]
-		authorAcc := presenter.ToAccount(e.Author, h.domain)
-		mentionsResp := make([]presenter.Mention, 0, len(e.Mentions))
+		authorAcc := apimodel.ToAccount(e.Author, h.domain)
+		mentionsResp := make([]apimodel.Mention, 0, len(e.Mentions))
 		for _, a := range e.Mentions {
-			mentionsResp = append(mentionsResp, presenter.MentionFromAccount(a, h.domain))
+			mentionsResp = append(mentionsResp, apimodel.MentionFromAccount(a, h.domain))
 		}
-		tagsResp := make([]presenter.Tag, 0, len(e.Tags))
+		tagsResp := make([]apimodel.Tag, 0, len(e.Tags))
 		for _, t := range e.Tags {
-			tagsResp = append(tagsResp, presenter.TagFromName(t.Name, h.domain))
+			tagsResp = append(tagsResp, apimodel.TagFromName(t.Name, h.domain))
 		}
-		mediaResp := make([]presenter.MediaAttachment, 0, len(e.Media))
+		mediaResp := make([]apimodel.MediaAttachment, 0, len(e.Media))
 		for j := range e.Media {
-			mediaResp = append(mediaResp, presenter.MediaFromDomain(&e.Media[j]))
+			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
 		}
-		out = append(out, presenter.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.domain))
+		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.domain))
 	}
 
 	firstID, lastID := firstLastIDsFromEnriched(enriched)

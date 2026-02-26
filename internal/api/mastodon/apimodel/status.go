@@ -1,4 +1,4 @@
-package presenter
+package apimodel
 
 import (
 	"time"
@@ -78,7 +78,7 @@ func TagFromName(name, instanceDomain string) Tag {
 	}
 }
 
-// MediaFromDomain converts a domain media attachment to the presenter shape.
+// MediaFromDomain converts a domain media attachment to the API model shape.
 func MediaFromDomain(m *domain.MediaAttachment) MediaAttachment {
 	preview := ""
 	if m.PreviewURL != nil {

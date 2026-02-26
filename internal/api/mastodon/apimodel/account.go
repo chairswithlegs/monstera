@@ -1,4 +1,4 @@
-package presenter
+package apimodel
 
 import (
 	"encoding/json"

@@ -27,7 +27,7 @@ import (
 //
 // Implementation: fetches the actor document over HTTPS, extracts the
 // publicKey.publicKeyPem field, parses the PEM-encoded RSA public key.
-// Results are cached under "ap:pubkey:{keyID}" with a 1-hour TTL.
+// Results are cached under "ap:pubkey:{keyID}".
 type KeyFetcher func(ctx context.Context, keyID string) (*rsa.PublicKey, error)
 
 // clockSkew is the maximum tolerated difference between the request's Date

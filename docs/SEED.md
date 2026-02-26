@@ -1,6 +1,6 @@
 # Database seeder (local testing)
 
-The `monstera-fed-seed` binary seeds the database with example users so you can sign in via the OAuth page and use a client (e.g. Pinafore) for local testing.
+The `seed` binary seeds the database with example users so you can sign in via the OAuth page and use a client (e.g. Pinafore) for local testing.
 
 ## Usage
 
@@ -21,13 +21,13 @@ This builds the seeder (if needed), then runs it with the same env as the compos
 
    ```bash
    make build-seed
-   ./bin/monstera-fed-seed
+   ./bin/seed
    ```
 
    Or with `go run`:
 
    ```bash
-   go run ./cmd/monstera-fed-seed
+   go run ./cmd/seed
    ```
 
 3. Sign in at your instance’s OAuth page with one of the seeded accounts.

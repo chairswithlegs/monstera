@@ -15,6 +15,6 @@ Design doc: `docs/ADR/08-mastodon-rest-api.md`
 - Pagination: cursor-based with `max_id`, `min_id`, `since_id` query params. Return `Link` header per RFC 5988.
 - Content input: plain text only in Phase 1. Strip HTML, auto-link URLs/@mentions/#hashtags.
 - HTML sanitization: `github.com/microcosm-cc/bluemonday`.
-- Presenter functions in `internal/api/mastodon/presenter/` map domain types to Mastodon JSON response types.
+- API model types and conversion functions in `internal/api/mastodon/apimodel/` map domain types to Mastodon JSON response types.
 - Viewer-relative fields (`favourited`, `reblogged`) resolved via batch lookup after fetching the main entities.
 - `acct` field: `username` for local, `username@domain` for remote.

@@ -41,7 +41,7 @@ internal/api/mastodon/
 ├── streaming.go        — SSE (detailed in Prompt 09)
 └── helpers.go          — Pagination helpers, common response writers
 
-internal/api/mastodon/presenter/
+internal/api/mastodon/apimodel/
 ├── account.go          — domain → MastodonAccount
 ├── status.go           — domain → MastodonStatus
 ├── notification.go     — domain → MastodonNotification
@@ -328,7 +328,7 @@ SELECT
 FROM unnest($2::text[]) AS s(id);
 ```
 
-The presenter merges these flags into each `Status` response. If the viewer is unauthenticated, all flags default to `false` (skip the query entirely).
+The API model layer merges these flags into each `Status` response. If the viewer is unauthenticated, all flags default to `false` (skip the query entirely).
 
 ### Account relationships
 
@@ -369,7 +369,7 @@ JOIN hashtags h ON h.id = sh.hashtag_id
 WHERE sh.status_id = ANY($1::text[]);
 ```
 
-The presenter groups results by `status_id` and merges into each Status response.
+The API model layer groups results by `status_id` and merges into each Status response.
 
 ### Batch media attachments
 
@@ -433,7 +433,7 @@ type AccountsHandler struct {
 
 - **Auth:** Optional.
 - **Query params:** `max_id`, `min_id`, `since_id`, `limit` (pagination); `only_media` (bool); `exclude_replies` (bool, default true); `exclude_reblogs` (bool).
-- **Logic:** Fetch statuses for the target account with filters. Visibility filtering: if viewer != account owner, exclude `private` and `direct` statuses; if viewer doesn't follow the account, also exclude `private`. Run batch presenter assembly.
+- **Logic:** Fetch statuses for the target account with filters. Visibility filtering: if viewer != account owner, exclude `private` and `direct` statuses; if viewer doesn't follow the account, also exclude `private`. Run batch API model assembly.
 - **Response:** 200 `[]Status` with `Link` header.
 
 ### `GET /api/v1/accounts/:id/followers` and `/following`
@@ -566,7 +566,7 @@ type AccountsHandler struct {
 ### `GET /api/v1/statuses/:id/context`
 
 - **Auth:** Optional.
-- **Logic:** Fetch ancestors via `GetStatusAncestors` (recursive CTE up the reply chain). Fetch descendants via `GetStatusDescendants` (recursive CTE down). Filter both lists for visibility (respect blocks, mutes, visibility levels). Run batch presenter assembly for both lists.
+- **Logic:** Fetch ancestors via `GetStatusAncestors` (recursive CTE up the reply chain). Fetch descendants via `GetStatusDescendants` (recursive CTE down). Filter both lists for visibility (respect blocks, mutes, visibility levels). Run batch API model assembly for both lists.
 - **Response:** 200 `{"ancestors": []Status, "descendants": []Status}`.
 
 The recursive CTEs (already defined in ADR 02) walk `in_reply_to_id` in both directions. Ancestors are ordered oldest-first (ASC); descendants are ordered oldest-first (ASC) for threading.
@@ -587,7 +587,7 @@ The recursive CTEs (already defined in ADR 02) walk `in_reply_to_id` in both dir
 
 - **Auth:** Required (`read:statuses`).
 - **Query params:** Standard pagination.
-- **Logic:** Call `GetHomeTimeline` (the UNION ALL query from ADR 02 that combines own posts + followed accounts' posts). Filter out statuses from muted/blocked accounts in the service layer. Run batch presenter assembly.
+- **Logic:** Call `GetHomeTimeline` (the UNION ALL query from ADR 02 that combines own posts + followed accounts' posts). Filter out statuses from muted/blocked accounts in the service layer. Run batch API model assembly.
 - **Response:** 200 `[]Status` with `Link` header.
 
 **Caching strategy:** Cache the raw status ID list under `timeline:home:{accountID}` with a 60-second TTL (ADR 03). On hit, fetch status rows by ID (cheap primary key lookup). On miss, run the full timeline query and cache the result.

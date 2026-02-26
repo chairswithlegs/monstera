@@ -222,7 +222,7 @@ Mastodon allows users to mute individual conversations (threads) so they stop re
 - Add `conversation_mutes (id, account_id, conversation_id TEXT, created_at)` table. `conversation_id` is the root status ID of the thread.
 - Add `POST /api/v1/statuses/:id/mute` and `/unmute` endpoints.
 - In the notification creation path, check `conversation_mutes` before creating `mention` notifications.
-- In the batch status presenter, query `conversation_mutes` to set the `muted` field.
+- In the batch status API model, query `conversation_mutes` to set the `muted` field.
 - Estimated effort: ~1 migration + ~80 lines of handler/service code.
 
 ---
@@ -241,7 +241,7 @@ Mastodon generates Open Graph / oEmbed link preview cards for URLs in statuses. 
 - Add `status_cards` table: `(status_id, url, title, description, image_url, type, provider_name, provider_url, blurhash, width, height)`.
 - After status creation, enqueue a `card.fetch.{statusID}` NATS message.
 - A `CardFetchWorker` fetches the first URL in the status, parses OG tags, stores the card, and pushes an SSE update event.
-- Add the card to the Status presenter (query `status_cards` in the batch lookup).
+- Add the card to the Status API model (query `status_cards` in the batch lookup).
 - Estimated effort: ~1 migration + ~200 lines of worker/parser code.
 
 ---
