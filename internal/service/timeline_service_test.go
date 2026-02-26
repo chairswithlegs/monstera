@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera-fed/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -12,7 +13,7 @@ import (
 func TestTimelineService_Home(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	timelineSvc := NewTimelineService(fake)
@@ -42,7 +43,7 @@ func TestTimelineService_Home(t *testing.T) {
 func TestTimelineService_Home_empty(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	timelineSvc := NewTimelineService(fake)
 
@@ -57,7 +58,7 @@ func TestTimelineService_Home_empty(t *testing.T) {
 func TestTimelineService_Home_respects_limit(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	timelineSvc := NewTimelineService(fake)
@@ -82,7 +83,7 @@ func TestTimelineService_Home_respects_limit(t *testing.T) {
 func TestTimelineService_PublicLocal(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	timelineSvc := NewTimelineService(fake)
@@ -106,7 +107,7 @@ func TestTimelineService_PublicLocal(t *testing.T) {
 func TestTimelineService_PublicLocal_default_limit(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	timelineSvc := NewTimelineService(fake)
 
 	pub, err := timelineSvc.PublicLocal(ctx, false, nil, 0)
@@ -117,7 +118,7 @@ func TestTimelineService_PublicLocal_default_limit(t *testing.T) {
 func TestTimelineService_HomeEnriched_empty(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	timelineSvc := NewTimelineService(fake)
 
@@ -132,7 +133,7 @@ func TestTimelineService_HomeEnriched_empty(t *testing.T) {
 func TestTimelineService_HomeEnriched_one_status(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	timelineSvc := NewTimelineService(fake)

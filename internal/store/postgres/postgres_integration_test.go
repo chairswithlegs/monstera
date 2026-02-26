@@ -11,6 +11,7 @@ import (
 
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
+	"github.com/chairswithlegs/monstera-fed/internal/testutil"
 	"github.com/chairswithlegs/monstera-fed/internal/uid"
 	"github.com/stretchr/testify/require"
 )
@@ -46,8 +47,8 @@ func TestIntegration_PostgresStore(t *testing.T) {
 		in := store.CreateAccountInput{
 			ID:           id,
 			Username:     "alice",
-			Domain:       strPtr("test.example"),
-			DisplayName:  strPtr("Alice"),
+			Domain:       testutil.StrPtr("test.example"),
+			DisplayName:  testutil.StrPtr("Alice"),
 			Note:         nil,
 			PublicKey:    "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA\n-----END PUBLIC KEY-----",
 			PrivateKey:   nil,
@@ -93,4 +94,3 @@ func TestIntegration_PostgresStore(t *testing.T) {
 	})
 }
 
-func strPtr(s string) *string { return &s }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera-fed/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -12,7 +13,7 @@ import (
 func TestStatusService_Create(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 
@@ -37,7 +38,7 @@ func TestStatusService_Create(t *testing.T) {
 func TestStatusService_Create_nil_text_returns_validation(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 
@@ -56,7 +57,7 @@ func TestStatusService_Create_nil_text_returns_validation(t *testing.T) {
 func TestStatusService_Create_invalid_visibility_returns_validation(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 
@@ -76,7 +77,7 @@ func TestStatusService_Create_invalid_visibility_returns_validation(t *testing.T
 func TestStatusService_GetByID(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 
@@ -99,7 +100,7 @@ func TestStatusService_GetByID(t *testing.T) {
 func TestStatusService_GetByID_not_found(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 
 	_, err := statusSvc.GetByID(ctx, "01nonexistent")
@@ -110,7 +111,7 @@ func TestStatusService_GetByID_not_found(t *testing.T) {
 func TestStatusService_Delete(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 
@@ -135,7 +136,7 @@ func TestStatusService_Delete(t *testing.T) {
 func TestStatusService_CreateWithContent_empty_text_returns_validation(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 
@@ -155,7 +156,7 @@ func TestStatusService_CreateWithContent_empty_text_returns_validation(t *testin
 func TestStatusService_CreateWithContent_over_char_limit_returns_validation(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 10)
 
@@ -175,7 +176,7 @@ func TestStatusService_CreateWithContent_over_char_limit_returns_validation(t *t
 func TestStatusService_CreateWithContent_success_returns_result_with_author(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 

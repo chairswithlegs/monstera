@@ -1,4 +1,4 @@
-package service
+package testutil
 
 import (
 	"context"
@@ -10,10 +10,9 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/store"
 )
 
-const noCursorSentinel = "ZZZZZZZZZZZZZZZZZZZZZZZZZZ"
-
-// fakeStore implements store.Store for unit tests using domain types only.
-type fakeStore struct {
+// FakeStore implements store.Store for unit tests using in-memory domain types.
+// Use NewFakeStore() to create an instance.
+type FakeStore struct {
 	mu sync.Mutex
 
 	accountsByID       map[string]*domain.Account
@@ -25,8 +24,9 @@ type fakeStore struct {
 	publicTimeline     []*domain.Status
 }
 
-func newFakeStore() *fakeStore {
-	return &fakeStore{
+// NewFakeStore returns a new FakeStore for use in tests.
+func NewFakeStore() *FakeStore {
+	return &FakeStore{
 		accountsByID:       make(map[string]*domain.Account),
 		accountsByUsername: make(map[string]*domain.Account),
 		usersByAccountID:   make(map[string]*domain.User),
@@ -36,14 +36,16 @@ func newFakeStore() *fakeStore {
 	}
 }
 
-// WithTx calls fn with the same store instance. It does not provide transaction
-// isolation or rollback — partial failures within fn leave state changes applied.
-// This is an intentional simplification for unit testing happy paths.
-func (f *fakeStore) WithTx(ctx context.Context, fn func(store.Store) error) error {
+// Ensure FakeStore implements store.Store.
+var _ store.Store = (*FakeStore)(nil)
+
+const noCursorSentinel = "ZZZZZZZZZZZZZZZZZZZZZZZZZZ"
+
+func (f *FakeStore) WithTx(ctx context.Context, fn func(store.Store) error) error {
 	return fn(f)
 }
 
-func (f *fakeStore) CreateAccount(ctx context.Context, in store.CreateAccountInput) (*domain.Account, error) {
+func (f *FakeStore) CreateAccount(ctx context.Context, in store.CreateAccountInput) (*domain.Account, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	key := in.Username
@@ -78,7 +80,7 @@ func (f *fakeStore) CreateAccount(ctx context.Context, in store.CreateAccountInp
 	return acc, nil
 }
 
-func (f *fakeStore) GetAccountByID(ctx context.Context, id string) (*domain.Account, error) {
+func (f *FakeStore) GetAccountByID(ctx context.Context, id string) (*domain.Account, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	a, ok := f.accountsByID[id]
@@ -88,7 +90,7 @@ func (f *fakeStore) GetAccountByID(ctx context.Context, id string) (*domain.Acco
 	return a, nil
 }
 
-func (f *fakeStore) GetLocalAccountByUsername(ctx context.Context, username string) (*domain.Account, error) {
+func (f *FakeStore) GetLocalAccountByUsername(ctx context.Context, username string) (*domain.Account, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	a, ok := f.accountsByUsername[username]
@@ -98,7 +100,7 @@ func (f *fakeStore) GetLocalAccountByUsername(ctx context.Context, username stri
 	return a, nil
 }
 
-func (f *fakeStore) GetRemoteAccountByUsername(ctx context.Context, username string, accountDomain *string) (*domain.Account, error) {
+func (f *FakeStore) GetRemoteAccountByUsername(ctx context.Context, username string, accountDomain *string) (*domain.Account, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	key := username
@@ -112,7 +114,7 @@ func (f *fakeStore) GetRemoteAccountByUsername(ctx context.Context, username str
 	return a, nil
 }
 
-func (f *fakeStore) CreateUser(ctx context.Context, in store.CreateUserInput) (*domain.User, error) {
+func (f *FakeStore) CreateUser(ctx context.Context, in store.CreateUserInput) (*domain.User, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	now := time.Now()
@@ -128,7 +130,7 @@ func (f *fakeStore) CreateUser(ctx context.Context, in store.CreateUserInput) (*
 	return u, nil
 }
 
-func (f *fakeStore) CreateStatus(ctx context.Context, in store.CreateStatusInput) (*domain.Status, error) {
+func (f *FakeStore) CreateStatus(ctx context.Context, in store.CreateStatusInput) (*domain.Status, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	now := time.Now()
@@ -165,7 +167,7 @@ func (f *fakeStore) CreateStatus(ctx context.Context, in store.CreateStatusInput
 	return s, nil
 }
 
-func (f *fakeStore) GetStatusByID(ctx context.Context, id string) (*domain.Status, error) {
+func (f *FakeStore) GetStatusByID(ctx context.Context, id string) (*domain.Status, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	s, ok := f.statusesByID[id]
@@ -178,7 +180,7 @@ func (f *fakeStore) GetStatusByID(ctx context.Context, id string) (*domain.Statu
 	return s, nil
 }
 
-func (f *fakeStore) DeleteStatus(ctx context.Context, id string) error {
+func (f *FakeStore) DeleteStatus(ctx context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	s, ok := f.statusesByID[id]
@@ -204,21 +206,21 @@ func (f *fakeStore) DeleteStatus(ctx context.Context, id string) error {
 	return nil
 }
 
-func (f *fakeStore) IncrementStatusesCount(ctx context.Context, accountID string) error {
+func (f *FakeStore) IncrementStatusesCount(ctx context.Context, accountID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.statusesCount[accountID]++
 	return nil
 }
 
-func (f *fakeStore) DecrementStatusesCount(ctx context.Context, accountID string) error {
+func (f *FakeStore) DecrementStatusesCount(ctx context.Context, accountID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.statusesCount[accountID]--
 	return nil
 }
 
-func (f *fakeStore) GetHomeTimeline(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error) {
+func (f *FakeStore) GetHomeTimeline(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	list := f.homeTimeline[accountID]
@@ -243,7 +245,7 @@ func (f *fakeStore) GetHomeTimeline(ctx context.Context, accountID string, maxID
 	return out, nil
 }
 
-func (f *fakeStore) GetPublicTimeline(ctx context.Context, localOnly bool, maxID *string, limit int) ([]domain.Status, error) {
+func (f *FakeStore) GetPublicTimeline(ctx context.Context, localOnly bool, maxID *string, limit int) ([]domain.Status, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	cursor := noCursorSentinel
@@ -267,31 +269,31 @@ func (f *fakeStore) GetPublicTimeline(ctx context.Context, localOnly bool, maxID
 	return out, nil
 }
 
-func (f *fakeStore) CreateApplication(ctx context.Context, in store.CreateApplicationInput) (*domain.OAuthApplication, error) {
+func (f *FakeStore) CreateApplication(ctx context.Context, in store.CreateApplicationInput) (*domain.OAuthApplication, error) {
 	return nil, domain.ErrNotFound
 }
-func (f *fakeStore) GetApplicationByClientID(ctx context.Context, clientID string) (*domain.OAuthApplication, error) {
+func (f *FakeStore) GetApplicationByClientID(ctx context.Context, clientID string) (*domain.OAuthApplication, error) {
 	return nil, domain.ErrNotFound
 }
-func (f *fakeStore) CreateAuthorizationCode(ctx context.Context, in store.CreateAuthorizationCodeInput) (*domain.OAuthAuthorizationCode, error) {
+func (f *FakeStore) CreateAuthorizationCode(ctx context.Context, in store.CreateAuthorizationCodeInput) (*domain.OAuthAuthorizationCode, error) {
 	return nil, domain.ErrNotFound
 }
-func (f *fakeStore) GetAuthorizationCode(ctx context.Context, code string) (*domain.OAuthAuthorizationCode, error) {
+func (f *FakeStore) GetAuthorizationCode(ctx context.Context, code string) (*domain.OAuthAuthorizationCode, error) {
 	return nil, domain.ErrNotFound
 }
-func (f *fakeStore) DeleteAuthorizationCode(ctx context.Context, code string) error {
+func (f *FakeStore) DeleteAuthorizationCode(ctx context.Context, code string) error {
 	return nil
 }
-func (f *fakeStore) CreateAccessToken(ctx context.Context, in store.CreateAccessTokenInput) (*domain.OAuthAccessToken, error) {
+func (f *FakeStore) CreateAccessToken(ctx context.Context, in store.CreateAccessTokenInput) (*domain.OAuthAccessToken, error) {
 	return nil, domain.ErrNotFound
 }
-func (f *fakeStore) GetAccessToken(ctx context.Context, token string) (*domain.OAuthAccessToken, error) {
+func (f *FakeStore) GetAccessToken(ctx context.Context, token string) (*domain.OAuthAccessToken, error) {
 	return nil, domain.ErrNotFound
 }
-func (f *fakeStore) RevokeAccessToken(ctx context.Context, token string) error {
+func (f *FakeStore) RevokeAccessToken(ctx context.Context, token string) error {
 	return nil
 }
-func (f *fakeStore) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
+func (f *FakeStore) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, u := range f.usersByAccountID {
@@ -301,7 +303,7 @@ func (f *fakeStore) GetUserByEmail(ctx context.Context, email string) (*domain.U
 	}
 	return nil, domain.ErrNotFound
 }
-func (f *fakeStore) GetUserByAccountID(ctx context.Context, accountID string) (*domain.User, error) {
+func (f *FakeStore) GetUserByAccountID(ctx context.Context, accountID string) (*domain.User, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	u, ok := f.usersByAccountID[accountID]
@@ -311,7 +313,7 @@ func (f *fakeStore) GetUserByAccountID(ctx context.Context, accountID string) (*
 	return u, nil
 }
 
-func (f *fakeStore) ConfirmUser(ctx context.Context, userID string) error {
+func (f *FakeStore) ConfirmUser(ctx context.Context, userID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, u := range f.usersByAccountID {
@@ -324,22 +326,22 @@ func (f *fakeStore) ConfirmUser(ctx context.Context, userID string) error {
 	return domain.ErrNotFound
 }
 
-func (f *fakeStore) CreateStatusMention(ctx context.Context, statusID, accountID string) error {
+func (f *FakeStore) CreateStatusMention(ctx context.Context, statusID, accountID string) error {
 	return nil
 }
-func (f *fakeStore) GetStatusMentions(ctx context.Context, statusID string) ([]*domain.Account, error) {
+func (f *FakeStore) GetStatusMentions(ctx context.Context, statusID string) ([]*domain.Account, error) {
 	return nil, nil
 }
-func (f *fakeStore) GetOrCreateHashtag(ctx context.Context, name string) (*domain.Hashtag, error) {
+func (f *FakeStore) GetOrCreateHashtag(ctx context.Context, name string) (*domain.Hashtag, error) {
 	return &domain.Hashtag{ID: "tag-" + name, Name: name}, nil
 }
-func (f *fakeStore) AttachHashtagsToStatus(ctx context.Context, statusID string, hashtagIDs []string) error {
+func (f *FakeStore) AttachHashtagsToStatus(ctx context.Context, statusID string, hashtagIDs []string) error {
 	return nil
 }
-func (f *fakeStore) GetStatusHashtags(ctx context.Context, statusID string) ([]domain.Hashtag, error) {
+func (f *FakeStore) GetStatusHashtags(ctx context.Context, statusID string) ([]domain.Hashtag, error) {
 	return nil, nil
 }
-func (f *fakeStore) CreateNotification(ctx context.Context, in store.CreateNotificationInput) (*domain.Notification, error) {
+func (f *FakeStore) CreateNotification(ctx context.Context, in store.CreateNotificationInput) (*domain.Notification, error) {
 	return &domain.Notification{
 		ID:        in.ID,
 		AccountID: in.AccountID,
@@ -349,6 +351,6 @@ func (f *fakeStore) CreateNotification(ctx context.Context, in store.CreateNotif
 		CreatedAt: time.Now(),
 	}, nil
 }
-func (f *fakeStore) GetStatusAttachments(ctx context.Context, statusID string) ([]domain.MediaAttachment, error) {
+func (f *FakeStore) GetStatusAttachments(ctx context.Context, statusID string) ([]domain.MediaAttachment, error) {
 	return nil, nil
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera-fed/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -12,7 +13,7 @@ import (
 func TestAccountService_Create(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	svc := NewAccountService(fake, "https://example.com")
 
 	acc, err := svc.Create(ctx, CreateAccountInput{
@@ -34,7 +35,7 @@ func TestAccountService_Create(t *testing.T) {
 func TestAccountService_Create_duplicate_username_returns_conflict(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	svc := NewAccountService(fake, "https://example.com")
 
 	_, err := svc.Create(ctx, CreateAccountInput{Username: "bob"})
@@ -47,7 +48,7 @@ func TestAccountService_Create_duplicate_username_returns_conflict(t *testing.T)
 func TestAccountService_Create_empty_username_returns_validation(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	svc := NewAccountService(fake, "https://example.com")
 
 	_, err := svc.Create(ctx, CreateAccountInput{Username: ""})
@@ -58,7 +59,7 @@ func TestAccountService_Create_empty_username_returns_validation(t *testing.T) {
 func TestAccountService_GetByID(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	svc := NewAccountService(fake, "https://example.com")
 
 	created, err := svc.Create(ctx, CreateAccountInput{Username: "alice"})
@@ -73,7 +74,7 @@ func TestAccountService_GetByID(t *testing.T) {
 func TestAccountService_GetByID_not_found(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	svc := NewAccountService(fake, "https://example.com")
 
 	_, err := svc.GetByID(ctx, "01nonexistent")
@@ -84,7 +85,7 @@ func TestAccountService_GetByID_not_found(t *testing.T) {
 func TestAccountService_GetByUsername_local(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	svc := NewAccountService(fake, "https://example.com")
 
 	_, err := svc.Create(ctx, CreateAccountInput{Username: "alice"})
@@ -98,7 +99,7 @@ func TestAccountService_GetByUsername_local(t *testing.T) {
 func TestAccountService_GetByUsername_not_found(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	svc := NewAccountService(fake, "https://example.com")
 
 	_, err := svc.GetByUsername(ctx, "nobody", nil)
@@ -109,7 +110,7 @@ func TestAccountService_GetByUsername_not_found(t *testing.T) {
 func TestAccountService_Register_invalid_role_returns_validation(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	svc := NewAccountService(fake, "https://example.com")
 
 	_, err := svc.Register(ctx, RegisterInput{
@@ -125,7 +126,7 @@ func TestAccountService_Register_invalid_role_returns_validation(t *testing.T) {
 func TestAccountService_Register(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	svc := NewAccountService(fake, "https://example.com")
 
 	acc, err := svc.Register(ctx, RegisterInput{
@@ -146,7 +147,7 @@ func TestAccountService_Register(t *testing.T) {
 func TestAccountService_GetAccountWithUser(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	svc := NewAccountService(fake, "https://example.com")
 
 	registered, err := svc.Register(ctx, RegisterInput{
@@ -170,7 +171,7 @@ func TestAccountService_GetAccountWithUser(t *testing.T) {
 func TestAccountService_GetAccountWithUser_account_not_found(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	svc := NewAccountService(fake, "https://example.com")
 
 	_, _, err := svc.GetAccountWithUser(ctx, "01nonexistent")
@@ -181,7 +182,7 @@ func TestAccountService_GetAccountWithUser_account_not_found(t *testing.T) {
 func TestAccountService_GetAccountWithUser_user_not_found(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	fake := newFakeStore()
+	fake := testutil.NewFakeStore()
 	svc := NewAccountService(fake, "https://example.com")
 
 	acc, err := svc.Create(ctx, CreateAccountInput{Username: "orphan"})
