@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/chairswithlegs/monstera-fed/internal/api"
 	"github.com/chairswithlegs/monstera-fed/internal/api/mastodon/apimodel"
 	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
@@ -90,6 +92,64 @@ func (h *StatusesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	out := createResultToAPIModel(result, h.domain)
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// Get handles GET /api/v1/statuses/:id. Auth optional.
+func (h *StatusesHandler) Get(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		api.WriteError(w, http.StatusNotFound, "Record not found")
+		return
+	}
+	result, err := h.statuses.GetByIDEnriched(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.WriteError(w, http.StatusNotFound, "Record not found")
+			return
+		}
+		api.HandleError(w, r, h.logger, err)
+		return
+	}
+	out := createResultToAPIModel(result, h.domain)
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// Delete handles DELETE /api/v1/statuses/:id. Auth required.
+func (h *StatusesHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.WriteError(w, http.StatusUnauthorized, "The access token is invalid")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		api.WriteError(w, http.StatusNotFound, "Record not found")
+		return
+	}
+	st, err := h.statuses.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.WriteError(w, http.StatusNotFound, "Record not found")
+			return
+		}
+		api.HandleError(w, r, h.logger, err)
+		return
+	}
+	if st.AccountID != account.ID {
+		api.WriteError(w, http.StatusForbidden, "This action is not allowed")
+		return
+	}
+	result, err := h.statuses.GetByIDEnriched(r.Context(), id)
+	if err != nil {
+		api.HandleError(w, r, h.logger, err)
+		return
+	}
+	if err := h.statuses.Delete(r.Context(), id); err != nil {
+		api.HandleError(w, r, h.logger, err)
+		return
+	}
 	out := createResultToAPIModel(result, h.domain)
 	api.WriteJSON(w, http.StatusOK, out)
 }

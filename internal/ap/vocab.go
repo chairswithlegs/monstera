@@ -253,3 +253,70 @@ func DomainFromActorID(actorID string) string {
 func DomainFromKeyID(keyID string) string {
 	return DomainFromActorID(keyID)
 }
+
+// NewDeleteActivity constructs a Delete activity with a Tombstone object.
+func NewDeleteActivity(activityID, actorID, objectID string) (*Activity, error) {
+	tombstone := map[string]string{
+		"id":   objectID,
+		"type": "Tombstone",
+	}
+	raw, err := json.Marshal(tombstone)
+	if err != nil {
+		return nil, fmt.Errorf("marshal tombstone: %w", err)
+	}
+	return &Activity{
+		Context:   DefaultContext,
+		ID:        activityID,
+		Type:      "Delete",
+		Actor:     actorID,
+		ObjectRaw: raw,
+	}, nil
+}
+
+// NewFollowActivity constructs a Follow activity. objectID is the target actor IRI.
+func NewFollowActivity(activityID, actorID, objectID string) (*Activity, error) {
+	objRaw, err := json.Marshal(objectID)
+	if err != nil {
+		return nil, fmt.Errorf("marshal follow object: %w", err)
+	}
+	return &Activity{
+		Context:   DefaultContext,
+		ID:        activityID,
+		Type:      "Follow",
+		Actor:     actorID,
+		ObjectRaw: objRaw,
+	}, nil
+}
+
+// NewUndoActivity constructs an Undo activity wrapping the given inner activity.
+func NewUndoActivity(activityID, actorID string, inner *Activity) (*Activity, error) {
+	raw, err := json.Marshal(inner)
+	if err != nil {
+		return nil, fmt.Errorf("marshal undo object: %w", err)
+	}
+	return &Activity{
+		Context:   DefaultContext,
+		ID:        activityID,
+		Type:      "Undo",
+		Actor:     actorID,
+		ObjectRaw: raw,
+	}, nil
+}
+
+// WrapInCreate wraps a Note in a Create activity with the given activity ID.
+func WrapInCreate(activityID string, note *Note) (*Activity, error) {
+	raw, err := json.Marshal(note)
+	if err != nil {
+		return nil, fmt.Errorf("marshal note: %w", err)
+	}
+	return &Activity{
+		Context:   DefaultContext,
+		ID:        activityID,
+		Type:      "Create",
+		Actor:     note.AttributedTo,
+		ObjectRaw: raw,
+		To:        note.To,
+		Cc:        note.Cc,
+		Published: note.Published,
+	}, nil
+}

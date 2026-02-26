@@ -4,13 +4,13 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/store"
 	"github.com/chairswithlegs/monstera-fed/internal/store/postgres"
 	"github.com/stretchr/testify/require"
 )
@@ -19,10 +19,6 @@ func TestIntegration_RegisterUser_CreateStatus_HomeTimeline(t *testing.T) {
 	url := os.Getenv("DATABASE_URL")
 	require.NotEmpty(t, url, "DATABASE_URL must be set for integration test")
 	ctx := context.Background()
-	require.NoError(t, store.RunUp(url))
-	t.Cleanup(func() {
-		_ = store.RunDownAll(url)
-	})
 
 	pool, err := pgxpool.New(ctx, url)
 	require.NoError(t, err)
@@ -31,7 +27,7 @@ func TestIntegration_RegisterUser_CreateStatus_HomeTimeline(t *testing.T) {
 	s := postgres.New(pool)
 	instanceBaseURL := "https://test.example.com"
 	accountSvc := NewAccountService(s, instanceBaseURL)
-	statusSvc := NewStatusService(s, instanceBaseURL, "test.example.com", 500)
+	statusSvc := NewStatusService(s, NoopFederationPublisher, instanceBaseURL, "test.example.com", 500, slog.Default())
 	timelineSvc := NewTimelineService(s)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{

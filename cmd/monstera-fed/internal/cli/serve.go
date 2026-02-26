@@ -14,7 +14,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cobra"
 
+	"github.com/chairswithlegs/monstera-fed/internal/ap"
 	"github.com/chairswithlegs/monstera-fed/internal/api"
+	"github.com/chairswithlegs/monstera-fed/internal/api/activitypub"
 	"github.com/chairswithlegs/monstera-fed/internal/api/mastodon"
 	oauthhandlers "github.com/chairswithlegs/monstera-fed/internal/api/oauth"
 	"github.com/chairswithlegs/monstera-fed/internal/api/router"
@@ -27,6 +29,7 @@ import (
 	_ "github.com/chairswithlegs/monstera-fed/internal/media/local"
 	_ "github.com/chairswithlegs/monstera-fed/internal/media/s3"
 	"github.com/chairswithlegs/monstera-fed/internal/nats"
+	"github.com/chairswithlegs/monstera-fed/internal/nats/federation"
 	"github.com/chairswithlegs/monstera-fed/internal/oauth"
 	"github.com/chairswithlegs/monstera-fed/internal/observability"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
@@ -97,7 +100,6 @@ func runServe(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("media: %w", err)
 	}
-	_ = mediaStore
 
 	emailSender, err := email.New(email.Config{
 		Driver:       cfg.EmailDriver,
@@ -117,10 +119,14 @@ func runServe(_ *cobra.Command, _ []string) error {
 	s := postgres.New(pool)
 	instanceBaseURL := "https://" + cfg.InstanceDomain
 	accountSvc := service.NewAccountService(s, instanceBaseURL)
-	statusSvc := service.NewStatusService(s, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars)
+	fedProducer := federation.NewProducer(natsClient.JS, metrics)
+	outboxPublisher := ap.NewOutboxPublisher(s, fedProducer, cfg, logger)
+	statusSvc := service.NewStatusService(s, outboxPublisher, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars, logger)
 	timelineSvc := service.NewTimelineService(s)
-	_ = accountSvc
-	_ = statusSvc
+	instanceSvc := service.NewInstanceService(s)
+	followSvc := service.NewFollowService(s, outboxPublisher)
+	notificationSvc := service.NewNotificationService(s)
+	mediaSvc := service.NewMediaService(s, mediaStore, cfg.MediaMaxBytes)
 
 	oauthServer := oauth.NewServer(s, cacheStore, logger)
 	loginTmpl, err := oauthhandlers.ParseLoginTemplate()
@@ -134,7 +140,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	oauthHandler := oauthhandlers.NewHandler(oauthServer, s, logger, loginTmpl, cfg.InstanceName, secretKey)
 
 	health := api.NewHealthChecker(pool, natsClient.Conn)
-	accountsHandler := mastodon.NewAccountsHandler(accountSvc, logger, cfg.InstanceDomain)
+	accountsHandler := mastodon.NewAccountsHandler(accountSvc, followSvc, logger, cfg.InstanceDomain)
 	statusesHandler := mastodon.NewStatusesHandler(statusSvc, accountSvc, logger, cfg.InstanceDomain)
 	timelinesHandler := mastodon.NewTimelinesHandler(timelineSvc, logger, cfg.InstanceDomain)
 	instanceHandler := mastodon.NewInstanceHandler(
@@ -145,18 +151,43 @@ func runServe(_ *cobra.Command, _ []string) error {
 		nil,
 		logger,
 	)
+	notificationsHandler := mastodon.NewNotificationsHandler(notificationSvc, accountSvc, logger, cfg.InstanceDomain)
+	mediaHandler := mastodon.NewMediaHandler(mediaSvc, logger)
 
+	blocklistCache := ap.NewBlocklistCache(s, logger)
+	if err := blocklistCache.Refresh(ctx); err != nil {
+		logger.Warn("blocklist refresh failed", slog.Any("error", err))
+	}
+	inboxProcessor := ap.NewInboxProcessor(s, cacheStore, blocklistCache, nil, nil, cfg, logger, ap.DefaultActorFetch)
+	apDeps := activitypub.Deps{
+		Accounts:  accountSvc,
+		Timelines: timelineSvc,
+		Instance:  instanceSvc,
+		Cache:     cacheStore,
+		Config:    cfg,
+		Logger:    logger,
+		Inbox:     inboxProcessor,
+	}
 	handler := router.New(router.Deps{
-		Logger:       logger,
-		Metrics:      metrics,
-		Health:       health,
-		OAuthHandler: oauthHandler,
-		OAuthServer:  oauthServer,
-		Store:        s,
-		Accounts:     accountsHandler,
-		Statuses:     statusesHandler,
-		Timelines:    timelinesHandler,
-		Instance:     instanceHandler,
+		Logger:        logger,
+		Metrics:       metrics,
+		Health:        health,
+		OAuthHandler:  oauthHandler,
+		OAuthServer:   oauthServer,
+		Store:         s,
+		Accounts:      accountsHandler,
+		Statuses:      statusesHandler,
+		Timelines:     timelinesHandler,
+		Instance:      instanceHandler,
+		Notifications: notificationsHandler,
+		Media:         mediaHandler,
+		WebFinger:     activitypub.NewWebFingerHandler(apDeps),
+		NodeInfoPtr:   activitypub.NewNodeInfoPointerHandler(apDeps),
+		NodeInfo:      activitypub.NewNodeInfoHandler(apDeps),
+		Actor:         activitypub.NewActorHandler(apDeps),
+		Collections:   activitypub.NewCollectionsHandler(apDeps),
+		Outbox:        activitypub.NewOutboxHandler(apDeps),
+		Inbox:         activitypub.NewInboxHandler(apDeps),
 	})
 
 	srv := &http.Server{

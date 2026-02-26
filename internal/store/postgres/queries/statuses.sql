@@ -51,6 +51,23 @@ WHERE deleted_at IS NULL
 ORDER BY id DESC
 LIMIT $3;
 
+-- name: CountLocalStatuses :one
+SELECT COUNT(*) FROM statuses WHERE local = TRUE AND deleted_at IS NULL;
+
+-- name: CountAccountPublicStatuses :one
+SELECT COUNT(*) FROM statuses
+WHERE account_id = $1 AND deleted_at IS NULL AND visibility = 'public' AND reblog_of_id IS NULL;
+
+-- name: GetAccountPublicStatuses :many
+SELECT * FROM statuses
+WHERE account_id = $1
+  AND deleted_at IS NULL
+  AND visibility = 'public'
+  AND reblog_of_id IS NULL
+  AND ($2::text IS NULL OR id < $2)
+ORDER BY id DESC
+LIMIT $3;
+
 -- name: GetAccountStatuses :many
 SELECT * FROM statuses
 WHERE account_id = $1

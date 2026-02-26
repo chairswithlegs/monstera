@@ -15,24 +15,35 @@ import (
 type FakeStore struct {
 	mu sync.Mutex
 
-	accountsByID       map[string]*domain.Account
-	accountsByUsername map[string]*domain.Account
-	usersByAccountID   map[string]*domain.User
-	statusesByID       map[string]*domain.Status
-	statusesCount      map[string]int
-	homeTimeline       map[string][]*domain.Status
-	publicTimeline     []*domain.Status
+	accountsByID           map[string]*domain.Account
+	accountsByUsername     map[string]*domain.Account
+	usersByAccountID       map[string]*domain.User
+	statusesByID           map[string]*domain.Status
+	statusesCount          map[string]int
+	homeTimeline           map[string][]*domain.Status
+	publicTimeline         []*domain.Status
+	followsByKey           map[string]*domain.Follow // "accountID:targetID"
+	blocksByKey            map[string]struct{}       // "accountID:targetID"
+	suspendedAccountIDs    map[string]struct{}
+	mediaByID              map[string]*domain.MediaAttachment
+	notificationsByAccount map[string][]*domain.Notification
+	Settings               map[string]string // optional; GetSetting reads from here
 }
 
 // NewFakeStore returns a new FakeStore for use in tests.
 func NewFakeStore() *FakeStore {
 	return &FakeStore{
-		accountsByID:       make(map[string]*domain.Account),
-		accountsByUsername: make(map[string]*domain.Account),
-		usersByAccountID:   make(map[string]*domain.User),
-		statusesByID:       make(map[string]*domain.Status),
-		statusesCount:      make(map[string]int),
-		homeTimeline:       make(map[string][]*domain.Status),
+		accountsByID:           make(map[string]*domain.Account),
+		accountsByUsername:     make(map[string]*domain.Account),
+		usersByAccountID:       make(map[string]*domain.User),
+		statusesByID:           make(map[string]*domain.Status),
+		statusesCount:          make(map[string]int),
+		homeTimeline:           make(map[string][]*domain.Status),
+		followsByKey:           make(map[string]*domain.Follow),
+		blocksByKey:            make(map[string]struct{}),
+		suspendedAccountIDs:    make(map[string]struct{}),
+		mediaByID:              make(map[string]*domain.MediaAttachment),
+		notificationsByAccount: make(map[string][]*domain.Notification),
 	}
 }
 
@@ -87,7 +98,34 @@ func (f *FakeStore) GetAccountByID(ctx context.Context, id string) (*domain.Acco
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
-	return a, nil
+	out := *a
+	if _, suspended := f.suspendedAccountIDs[id]; suspended {
+		out.Suspended = true
+	}
+	return &out, nil
+}
+
+func (f *FakeStore) GetAccountByAPID(ctx context.Context, apID string) (*domain.Account, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, a := range f.accountsByID {
+		if a.APID == apID {
+			return a, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
+func (f *FakeStore) CountLocalAccounts(ctx context.Context) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for _, a := range f.accountsByID {
+		if a.Domain == nil {
+			n++
+		}
+	}
+	return n, nil
 }
 
 func (f *FakeStore) GetLocalAccountByUsername(ctx context.Context, username string) (*domain.Account, error) {
@@ -178,6 +216,112 @@ func (f *FakeStore) GetStatusByID(ctx context.Context, id string) (*domain.Statu
 		return nil, domain.ErrNotFound
 	}
 	return s, nil
+}
+
+func (f *FakeStore) GetStatusByAPID(ctx context.Context, apID string) (*domain.Status, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, s := range f.statusesByID {
+		if s.DeletedAt != nil {
+			continue
+		}
+		if s.APID == apID {
+			return s, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
+func (f *FakeStore) GetAccountStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var list []*domain.Status
+	for _, s := range f.statusesByID {
+		if s.DeletedAt != nil || s.AccountID != accountID || s.ReblogOfID != nil {
+			continue
+		}
+		list = append(list, s)
+	}
+	for i := 0; i < len(list)-1; i++ {
+		for j := i + 1; j < len(list); j++ {
+			if list[j].ID > list[i].ID {
+				list[i], list[j] = list[j], list[i]
+			}
+		}
+	}
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	out := make([]domain.Status, 0, limit)
+	for _, s := range list {
+		if cursor != noCursorSentinel && s.ID >= cursor {
+			continue
+		}
+		if len(out) >= limit {
+			break
+		}
+		out = append(out, *s)
+	}
+	return out, nil
+}
+
+func (f *FakeStore) GetAccountPublicStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var list []*domain.Status
+	for _, s := range f.statusesByID {
+		if s.DeletedAt != nil || s.AccountID != accountID || s.ReblogOfID != nil || s.Visibility != domain.VisibilityPublic {
+			continue
+		}
+		list = append(list, s)
+	}
+	for i := 0; i < len(list)-1; i++ {
+		for j := i + 1; j < len(list); j++ {
+			if list[j].ID > list[i].ID {
+				list[i], list[j] = list[j], list[i]
+			}
+		}
+	}
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	out := make([]domain.Status, 0, limit)
+	for _, s := range list {
+		if cursor != noCursorSentinel && s.ID >= cursor {
+			continue
+		}
+		if len(out) >= limit {
+			break
+		}
+		out = append(out, *s)
+	}
+	return out, nil
+}
+
+func (f *FakeStore) CountLocalStatuses(ctx context.Context) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for _, s := range f.statusesByID {
+		if s.Local && s.DeletedAt == nil {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (f *FakeStore) CountAccountPublicStatuses(ctx context.Context, accountID string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for _, s := range f.statusesByID {
+		if s.AccountID == accountID && s.DeletedAt == nil && s.Visibility == domain.VisibilityPublic && s.ReblogOfID == nil {
+			n++
+		}
+	}
+	return n, nil
 }
 
 func (f *FakeStore) DeleteStatus(ctx context.Context, id string) error {
@@ -342,15 +486,242 @@ func (f *FakeStore) GetStatusHashtags(ctx context.Context, statusID string) ([]d
 	return nil, nil
 }
 func (f *FakeStore) CreateNotification(ctx context.Context, in store.CreateNotificationInput) (*domain.Notification, error) {
-	return &domain.Notification{
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := &domain.Notification{
 		ID:        in.ID,
 		AccountID: in.AccountID,
 		FromID:    in.FromID,
 		Type:      in.Type,
 		StatusID:  in.StatusID,
 		CreatedAt: time.Now(),
-	}, nil
+	}
+	f.notificationsByAccount[in.AccountID] = append(f.notificationsByAccount[in.AccountID], n)
+	return n, nil
+}
+func (f *FakeStore) ListNotifications(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Notification, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	list := f.notificationsByAccount[accountID]
+	if list == nil {
+		return nil, nil
+	}
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	out := make([]domain.Notification, 0, limit)
+	for i := len(list) - 1; i >= 0 && len(out) < limit; i-- {
+		n := list[i]
+		if cursor != noCursorSentinel && n.ID >= cursor {
+			continue
+		}
+		out = append(out, *n)
+	}
+	return out, nil
+}
+func (f *FakeStore) GetNotification(ctx context.Context, id, accountID string) (*domain.Notification, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *FakeStore) ClearNotifications(ctx context.Context, accountID string) error {
+	return nil
+}
+func (f *FakeStore) DismissNotification(ctx context.Context, id, accountID string) error {
+	return nil
 }
 func (f *FakeStore) GetStatusAttachments(ctx context.Context, statusID string) ([]domain.MediaAttachment, error) {
+	return nil, nil
+}
+
+func (f *FakeStore) GetSetting(ctx context.Context, key string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Settings != nil {
+		if v, ok := f.Settings[key]; ok {
+			return v, nil
+		}
+	}
+	return "", nil
+}
+
+func (f *FakeStore) GetMediaAttachment(ctx context.Context, id string) (*domain.MediaAttachment, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	a, ok := f.mediaByID[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return a, nil
+}
+
+func (f *FakeStore) CountFollowers(ctx context.Context, accountID string) (int64, error) {
+	return 0, nil
+}
+
+func (f *FakeStore) CountFollowing(ctx context.Context, accountID string) (int64, error) {
+	return 0, nil
+}
+func (f *FakeStore) IncrementFollowersCount(ctx context.Context, accountID string) error {
+	return nil
+}
+func (f *FakeStore) DecrementFollowersCount(ctx context.Context, accountID string) error {
+	return nil
+}
+func (f *FakeStore) IncrementFollowingCount(ctx context.Context, accountID string) error {
+	return nil
+}
+func (f *FakeStore) DecrementFollowingCount(ctx context.Context, accountID string) error {
+	return nil
+}
+
+func followKey(accountID, targetID string) string { return accountID + ":" + targetID }
+
+func (f *FakeStore) GetRelationship(ctx context.Context, accountID, targetID string) (*domain.Relationship, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	rel := &domain.Relationship{TargetID: targetID, ShowingReblogs: true}
+	if follow, ok := f.followsByKey[followKey(accountID, targetID)]; ok {
+		rel.Following = true
+		rel.Requested = follow.State == domain.FollowStatePending
+	}
+	if _, ok := f.followsByKey[followKey(targetID, accountID)]; ok {
+		rel.FollowedBy = true
+	}
+	if _, ok := f.blocksByKey[followKey(accountID, targetID)]; ok {
+		rel.Blocking = true
+	}
+	if _, ok := f.blocksByKey[followKey(targetID, accountID)]; ok {
+		rel.BlockedBy = true
+	}
+	return rel, nil
+}
+func (f *FakeStore) ListDomainBlocks(ctx context.Context) ([]domain.DomainBlock, error) {
+	return nil, nil
+}
+
+func (f *FakeStore) GetFollow(ctx context.Context, accountID, targetID string) (*domain.Follow, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	follow, ok := f.followsByKey[followKey(accountID, targetID)]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return follow, nil
+}
+func (f *FakeStore) GetFollowByAPID(ctx context.Context, apID string) (*domain.Follow, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *FakeStore) CreateFollow(ctx context.Context, in store.CreateFollowInput) (*domain.Follow, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	follow := &domain.Follow{
+		ID:        in.ID,
+		AccountID: in.AccountID,
+		TargetID:  in.TargetID,
+		State:     in.State,
+		APID:      in.APID,
+		CreatedAt: time.Now(),
+	}
+	f.followsByKey[followKey(in.AccountID, in.TargetID)] = follow
+	return follow, nil
+}
+func (f *FakeStore) AcceptFollow(ctx context.Context, followID string) error {
+	return nil
+}
+func (f *FakeStore) DeleteFollow(ctx context.Context, accountID, targetID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.followsByKey, followKey(accountID, targetID))
+	return nil
+}
+func (f *FakeStore) GetFollowers(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error) {
+	return nil, nil
+}
+func (f *FakeStore) GetFollowing(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error) {
+	return nil, nil
+}
+func (f *FakeStore) SoftDeleteStatus(ctx context.Context, id string) error {
+	return f.DeleteStatus(ctx, id)
+}
+func (f *FakeStore) SuspendAccount(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.suspendedAccountIDs[id] = struct{}{}
+	return nil
+}
+func (f *FakeStore) CreateBlock(ctx context.Context, in store.CreateBlockInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.blocksByKey[followKey(in.AccountID, in.TargetID)] = struct{}{}
+	return nil
+}
+func (f *FakeStore) DeleteBlock(ctx context.Context, accountID, targetID string) error {
+	return nil
+}
+func (f *FakeStore) CreateFavourite(ctx context.Context, in store.CreateFavouriteInput) (*domain.Favourite, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *FakeStore) DeleteFavourite(ctx context.Context, accountID, statusID string) error {
+	return nil
+}
+func (f *FakeStore) GetFavouriteByAPID(ctx context.Context, apID string) (*domain.Favourite, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *FakeStore) GetFavouriteByAccountAndStatus(ctx context.Context, accountID, statusID string) (*domain.Favourite, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *FakeStore) IncrementFavouritesCount(ctx context.Context, statusID string) error {
+	return nil
+}
+func (f *FakeStore) DecrementFavouritesCount(ctx context.Context, statusID string) error {
+	return nil
+}
+func (f *FakeStore) IncrementReblogsCount(ctx context.Context, statusID string) error {
+	return nil
+}
+func (f *FakeStore) DecrementReblogsCount(ctx context.Context, statusID string) error {
+	return nil
+}
+func (f *FakeStore) IncrementRepliesCount(ctx context.Context, statusID string) error {
+	return nil
+}
+func (f *FakeStore) GetReblogByAccountAndTarget(ctx context.Context, accountID, statusID string) (*domain.Status, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *FakeStore) UpdateAccount(ctx context.Context, in store.UpdateAccountInput) error {
+	return nil
+}
+func (f *FakeStore) UpdateAccountKeys(ctx context.Context, id, publicKey string, apRaw []byte) error {
+	return nil
+}
+func (f *FakeStore) AttachMediaToStatus(ctx context.Context, mediaID, statusID, accountID string) error {
+	return nil
+}
+func (f *FakeStore) CreateMediaAttachment(ctx context.Context, in store.CreateMediaAttachmentInput) (*domain.MediaAttachment, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	att := &domain.MediaAttachment{
+		ID:          in.ID,
+		AccountID:   in.AccountID,
+		Type:        in.Type,
+		StorageKey:  in.StorageKey,
+		URL:         in.URL,
+		PreviewURL:  in.PreviewURL,
+		RemoteURL:   in.RemoteURL,
+		Description: in.Description,
+		Blurhash:    in.Blurhash,
+		Meta:        json.RawMessage(in.Meta),
+		CreatedAt:   time.Now(),
+	}
+	f.mediaByID[in.ID] = att
+	return att, nil
+}
+func (f *FakeStore) CreateStatusEdit(ctx context.Context, in store.CreateStatusEditInput) error {
+	return nil
+}
+func (f *FakeStore) UpdateStatus(ctx context.Context, in store.UpdateStatusInput) error {
+	return nil
+}
+func (f *FakeStore) GetFollowerInboxURLs(ctx context.Context, accountID string) ([]string, error) {
 	return nil, nil
 }

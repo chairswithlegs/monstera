@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -317,4 +318,58 @@ func pubKeyCacheKey(keyID string) string {
 func ReplayCacheKey(keyID, date, reqTarget string) string {
 	h := sha256.Sum256([]byte(keyID + ":" + date + ":" + reqTarget))
 	return "httpsig:" + hex.EncodeToString(h[:16])
+}
+
+// DefaultKeyFetcher returns a KeyFetcher that fetches the remote Actor document
+// (from the key ID, stripping the fragment) and extracts publicKey.publicKeyPem.
+func DefaultKeyFetcher(ctx context.Context, keyID string) (*rsa.PublicKey, error) {
+	actorURL := keyID
+	if idx := strings.Index(keyID, "#"); idx >= 0 {
+		actorURL = keyID[:idx]
+	}
+	if actorURL == "" {
+		return nil, errors.New("httpsig: empty key ID")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, actorURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("httpsig: new request: %w", err)
+	}
+	req.Header.Set("Accept", "application/activity+json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("httpsig: fetch actor: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("httpsig: actor fetch status %d", resp.StatusCode)
+	}
+	var actor struct {
+		PublicKey struct {
+			ID           string `json:"id"`
+			PublicKeyPem string `json:"publicKeyPem"`
+		} `json:"publicKey"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&actor); err != nil {
+		return nil, fmt.Errorf("httpsig: decode actor: %w", err)
+	}
+	if actor.PublicKey.PublicKeyPem == "" {
+		return nil, errors.New("httpsig: actor has no publicKeyPem")
+	}
+	block, _ := pem.Decode([]byte(actor.PublicKey.PublicKeyPem))
+	if block == nil {
+		return nil, errors.New("httpsig: invalid PEM in publicKeyPem")
+	}
+	key, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		pk, errRSA := x509.ParsePKCS1PublicKey(block.Bytes)
+		if errRSA != nil {
+			return nil, fmt.Errorf("httpsig: parse public key: %w", err)
+		}
+		return pk, nil
+	}
+	pk, ok := key.(*rsa.PublicKey)
+	if !ok {
+		return nil, errors.New("httpsig: public key is not RSA")
+	}
+	return pk, nil
 }

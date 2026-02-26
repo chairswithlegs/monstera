@@ -15,18 +15,15 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
+	"github.com/chairswithlegs/monstera-fed/internal/ap"
 	"github.com/chairswithlegs/monstera-fed/internal/config"
 	"github.com/chairswithlegs/monstera-fed/internal/nats/federation"
 )
 
 // TestEnsureStreams_PublishConsume requires NATS with JetStream running (e.g. docker-compose up nats).
-// Run with: go test -tags=integration ./internal/nats/...
 func TestEnsureStreams_PublishConsume(t *testing.T) {
 	t.Helper()
 	url := os.Getenv("NATS_URL")
-	if url == "" {
-		url = "nats://localhost:4222"
-	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	cfg := &config.Config{NATSUrl: url}
 
@@ -41,7 +38,7 @@ func TestEnsureStreams_PublishConsume(t *testing.T) {
 	require.NoError(t, err)
 
 	producer := federation.NewProducer(client.JS, nil)
-	msg := federation.DeliveryMessage{
+	msg := ap.DeliveryMessage{
 		ActivityID:  "https://test.example/activity/1",
 		Activity:    json.RawMessage(`{"type":"Test"}`),
 		TargetInbox: "https://remote.example/inbox",
@@ -63,7 +60,7 @@ func TestEnsureStreams_PublishConsume(t *testing.T) {
 	}
 	require.NoError(t, msgs.Error())
 	require.NotNil(t, first, "expected one message from stream")
-	var decoded federation.DeliveryMessage
+	var decoded ap.DeliveryMessage
 	err = json.Unmarshal(first.Data(), &decoded)
 	require.NoError(t, err)
 	assert.Equal(t, msg.ActivityID, decoded.ActivityID)

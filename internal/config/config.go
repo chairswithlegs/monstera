@@ -50,9 +50,11 @@ type Config struct {
 	SecretKeyBase string
 	MetricsToken  string
 
-	FederationEnabled bool
-	MaxStatusChars    int
-	MediaMaxBytes     int64
+	FederationEnabled           bool
+	FederationWorkerConcurrency int
+	MaxStatusChars              int
+	MediaMaxBytes               int64
+	Version                     string
 }
 
 func Load() (*Config, error) {
@@ -94,9 +96,11 @@ func Load() (*Config, error) {
 		SecretKeyBase: envStringRequired("SECRET_KEY_BASE", &errs),
 		MetricsToken:  envString("METRICS_TOKEN", ""),
 
-		FederationEnabled: envBool("FEDERATION_ENABLED", true),
-		MaxStatusChars:    envInt("MAX_STATUS_CHARS", 500),
-		MediaMaxBytes:     envInt64("MEDIA_MAX_BYTES", 10485760),
+		FederationEnabled:           envBool("FEDERATION_ENABLED", true),
+		FederationWorkerConcurrency: envInt("FEDERATION_WORKER_CONCURRENCY", 5),
+		MaxStatusChars:              envInt("MAX_STATUS_CHARS", 500),
+		MediaMaxBytes:               envInt64("MEDIA_MAX_BYTES", 10485760),
+		Version:                     envString("VERSION", "0.0.0-dev"),
 	}
 
 	if len(errs) > 0 {

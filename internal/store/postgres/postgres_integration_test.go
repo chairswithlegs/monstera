@@ -20,10 +20,6 @@ func TestIntegration_PostgresStore(t *testing.T) {
 	url := os.Getenv("DATABASE_URL")
 	require.NotEmpty(t, url, "DATABASE_URL must be set for integration test")
 	ctx := context.Background()
-	require.NoError(t, store.RunUp(url))
-	t.Cleanup(func() {
-		_ = store.RunDownAll(url)
-	})
 
 	pool, err := pgxpool.New(ctx, url)
 	require.NoError(t, err)

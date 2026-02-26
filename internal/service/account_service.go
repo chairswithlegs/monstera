@@ -91,6 +91,7 @@ func (svc *AccountService) Register(ctx context.Context, in RegisterInput) (*dom
 	if in.Username == "" || in.Email == "" || in.PasswordHash == "" {
 		return nil, fmt.Errorf("Register: %w", domain.ErrValidation)
 	}
+	// TODO: ensure this is a safe assumption
 	if in.Role == "" {
 		in.Role = domain.RoleUser
 	}
@@ -153,6 +154,74 @@ func (svc *AccountService) GetByUsername(ctx context.Context, username string, a
 		return nil, fmt.Errorf("GetByUsername(%s): %w", username, err)
 	}
 	return acc, nil
+}
+
+// GetLocalActorForFederation returns the local account by username for federation (WebFinger, Actor, collections).
+// Returns ErrNotFound if the account does not exist or is suspended (callers treat as 404).
+func (svc *AccountService) GetLocalActorForFederation(ctx context.Context, username string) (*domain.Account, error) {
+	acc, err := svc.store.GetLocalAccountByUsername(ctx, username)
+	if err != nil {
+		return nil, fmt.Errorf("GetLocalActorForFederation(%s): %w", username, err)
+	}
+	if acc.Suspended {
+		return nil, fmt.Errorf("GetLocalActorForFederation(%s): %w", username, domain.ErrNotFound)
+	}
+	return acc, nil
+}
+
+// LocalActorWithMedia is the result of resolving a local actor with avatar/header URLs.
+type LocalActorWithMedia struct {
+	Account   *domain.Account
+	AvatarURL string
+	HeaderURL string
+}
+
+// GetLocalActorWithMedia returns the local account and resolved avatar/header URLs for federation (Actor document).
+// Returns ErrNotFound if the account does not exist or is suspended.
+func (svc *AccountService) GetLocalActorWithMedia(ctx context.Context, username string) (*LocalActorWithMedia, error) {
+	acc, err := svc.GetLocalActorForFederation(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+	out := &LocalActorWithMedia{Account: acc}
+	if acc.AvatarMediaID != nil {
+		if att, err := svc.store.GetMediaAttachment(ctx, *acc.AvatarMediaID); err == nil && att.URL != "" {
+			out.AvatarURL = att.URL
+		}
+	}
+	if acc.HeaderMediaID != nil {
+		if att, err := svc.store.GetMediaAttachment(ctx, *acc.HeaderMediaID); err == nil && att.URL != "" {
+			out.HeaderURL = att.URL
+		}
+	}
+	return out, nil
+}
+
+// CountFollowers returns the number of accepted followers for the account.
+func (svc *AccountService) CountFollowers(ctx context.Context, accountID string) (int64, error) {
+	n, err := svc.store.CountFollowers(ctx, accountID)
+	if err != nil {
+		return 0, fmt.Errorf("CountFollowers(%s): %w", accountID, err)
+	}
+	return n, nil
+}
+
+// CountFollowing returns the number of accepted follows for the account.
+func (svc *AccountService) CountFollowing(ctx context.Context, accountID string) (int64, error) {
+	n, err := svc.store.CountFollowing(ctx, accountID)
+	if err != nil {
+		return 0, fmt.Errorf("CountFollowing(%s): %w", accountID, err)
+	}
+	return n, nil
+}
+
+// GetRelationship returns the relationship between accountID (viewer) and targetID.
+func (svc *AccountService) GetRelationship(ctx context.Context, accountID, targetID string) (*domain.Relationship, error) {
+	rel, err := svc.store.GetRelationship(ctx, accountID, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("GetRelationship: %w", err)
+	}
+	return rel, nil
 }
 
 // GetAccountWithUser returns the account and its linked user by account ID.

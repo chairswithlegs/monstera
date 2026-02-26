@@ -26,6 +26,64 @@
 
 ---
 
+## Architecture overview
+
+```mermaid
+flowchart TD
+    subgraph remote [Remote Instance]
+        RemoteActor["Remote Actor"]
+    end
+
+    subgraph monstera [Monstera-fed]
+        subgraph discovery [Discovery Layer]
+            WF["WebFinger Handler"]
+            NI["NodeInfo Handler"]
+            ActorH["Actor Handler"]
+        end
+
+        subgraph inbound [Inbound Federation]
+            InboxH["Inbox HTTP Handler"]
+            SigVerify["HTTP Sig Verify"]
+            IP["InboxProcessor"]
+            BL["BlocklistCache"]
+        end
+
+        subgraph outbound [Outbound Federation]
+            OP["OutboxPublisher"]
+            NATSProd["NATS Producer"]
+            FedStream["FEDERATION Stream"]
+            Worker["Federation Worker"]
+            SigSign["HTTP Sig Sign"]
+        end
+
+        subgraph core [Core]
+            StoreIface["store.Store"]
+            DB[(PostgreSQL)]
+            Cache[(Cache)]
+        end
+
+        ServiceLayer["Service Layer"]
+    end
+
+    RemoteActor -->|"GET /.well-known/webfinger"| WF
+    RemoteActor -->|"GET /users/{username}"| ActorH
+    RemoteActor -->|"POST /inbox"| InboxH
+
+    InboxH --> SigVerify --> IP
+    IP --> BL
+    IP --> StoreIface
+
+    ServiceLayer --> OP
+    OP --> NATSProd --> FedStream --> Worker
+    Worker --> SigSign -->|"POST to remote inbox"| RemoteActor
+
+    StoreIface --> DB
+    BL --> Cache
+    SigVerify --> Cache
+```
+
+---
+
 ## 1. `internal/ap/vocab.go` — ActivityStreams / AP Vocabulary Types
 
 ### Constants

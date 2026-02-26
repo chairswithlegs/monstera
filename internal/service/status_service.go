@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
@@ -10,23 +11,45 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/uid"
 )
 
+// StatusFederationPublisher publishes status create/delete to federation (e.g. ap.OutboxPublisher).
+type StatusFederationPublisher interface {
+	PublishStatus(ctx context.Context, status *domain.Status) error
+	DeleteStatus(ctx context.Context, status *domain.Status) error
+}
+
+// NoopFederationPublisher is a StatusFederationPublisher that does nothing.
+// Use when federation is disabled (e.g. no NATS) or in tests.
+var NoopFederationPublisher StatusFederationPublisher = (*noopFederationPublisher)(nil)
+
+type noopFederationPublisher struct{}
+
+func (*noopFederationPublisher) PublishStatus(context.Context, *domain.Status) error { return nil }
+func (*noopFederationPublisher) DeleteStatus(context.Context, *domain.Status) error  { return nil }
+
 // StatusService handles status creation, lookup, and soft delete.
 type StatusService struct {
 	store           store.Store
+	fed             StatusFederationPublisher
 	instanceBaseURL string
 	instanceDomain  string
 	maxStatusChars  int
+	logger          *slog.Logger
 }
 
 // NewStatusService returns a StatusService that uses the given store and instance URLs.
-// instanceBaseURL is the scheme+host (e.g. "https://example.com"); instanceDomain is the host for Render (e.g. "example.com").
-func NewStatusService(s store.Store, instanceBaseURL string, instanceDomain string, maxStatusChars int) *StatusService {
+// fed must be non-nil; use NoopFederationPublisher when federation is disabled. logger may be nil (federation failures will not be logged).
+func NewStatusService(s store.Store, fed StatusFederationPublisher, instanceBaseURL string, instanceDomain string, maxStatusChars int, logger *slog.Logger) *StatusService {
+	if fed == nil {
+		panic("StatusService: fed must be non-nil. Use NoopFederationPublisher when federation is disabled")
+	}
 	base := strings.TrimSuffix(instanceBaseURL, "/")
 	return &StatusService{
 		store:           s,
+		fed:             fed,
 		instanceBaseURL: base,
 		instanceDomain:  instanceDomain,
 		maxStatusChars:  maxStatusChars,
+		logger:          logger,
 	}
 }
 
@@ -107,6 +130,9 @@ func (svc *StatusService) Create(ctx context.Context, in CreateStatusInput) (*do
 	if err != nil {
 		return nil, fmt.Errorf("CreateStatus: %w", err)
 	}
+	if err := svc.fed.PublishStatus(ctx, st); err != nil && svc.logger != nil {
+		svc.logger.WarnContext(ctx, "federation publish failed after status create", slog.Any("error", err), slog.String("status_id", st.ID))
+	}
 	return st, nil
 }
 
@@ -117,6 +143,40 @@ func (svc *StatusService) GetByID(ctx context.Context, id string) (*domain.Statu
 		return nil, fmt.Errorf("GetStatusByID(%s): %w", id, err)
 	}
 	return st, nil
+}
+
+// GetByIDEnriched returns the status with author, mentions, tags, and media for API response.
+func (svc *StatusService) GetByIDEnriched(ctx context.Context, id string) (CreateResult, error) {
+	st, err := svc.store.GetStatusByID(ctx, id)
+	if err != nil {
+		return CreateResult{}, fmt.Errorf("GetStatusByID(%s): %w", id, err)
+	}
+	if st.DeletedAt != nil {
+		return CreateResult{}, fmt.Errorf("GetByIDEnriched(%s): %w", id, domain.ErrNotFound)
+	}
+	author, err := svc.store.GetAccountByID(ctx, st.AccountID)
+	if err != nil {
+		return CreateResult{}, fmt.Errorf("GetAccountByID: %w", err)
+	}
+	mentions, err := svc.store.GetStatusMentions(ctx, st.ID)
+	if err != nil {
+		return CreateResult{}, fmt.Errorf("GetStatusMentions: %w", err)
+	}
+	tags, err := svc.store.GetStatusHashtags(ctx, st.ID)
+	if err != nil {
+		return CreateResult{}, fmt.Errorf("GetStatusHashtags: %w", err)
+	}
+	media, err := svc.store.GetStatusAttachments(ctx, st.ID)
+	if err != nil {
+		return CreateResult{}, fmt.Errorf("GetStatusAttachments: %w", err)
+	}
+	return CreateResult{
+		Status:   st,
+		Author:   author,
+		Mentions: mentions,
+		Tags:     tags,
+		Media:    media,
+	}, nil
 }
 
 // CreateWithContent creates a status from plain text: validates, renders content (mentions, hashtags),
@@ -136,6 +196,7 @@ func (svc *StatusService) CreateWithContent(ctx context.Context, in CreateWithCo
 	if err != nil {
 		return CreateResult{}, fmt.Errorf("CreateWithContent Render: %w", err)
 	}
+	// TODO: this should be a setting
 	language := in.Language
 	if language == "" {
 		language = "en"
@@ -168,6 +229,9 @@ func (svc *StatusService) CreateWithContent(ctx context.Context, in CreateWithCo
 	media, err := svc.store.GetStatusAttachments(ctx, statusID)
 	if err != nil {
 		return CreateResult{}, fmt.Errorf("CreateWithContent GetStatusAttachments: %w", err)
+	}
+	if err := svc.fed.PublishStatus(ctx, created); err != nil && svc.logger != nil {
+		svc.logger.WarnContext(ctx, "federation publish failed after CreateWithContent", slog.Any("error", err), slog.String("status_id", created.ID))
 	}
 	return CreateResult{
 		Status:   created,
@@ -284,6 +348,9 @@ func (svc *StatusService) Delete(ctx context.Context, id string) error {
 	})
 	if err != nil {
 		return fmt.Errorf("Delete(%s): %w", id, err)
+	}
+	if err := svc.fed.DeleteStatus(ctx, st); err != nil && svc.logger != nil {
+		svc.logger.WarnContext(ctx, "federation publish failed after status delete", slog.Any("error", err), slog.String("status_id", st.ID))
 	}
 	return nil
 }

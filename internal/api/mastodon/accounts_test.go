@@ -23,7 +23,7 @@ func TestAccountsHandler_VerifyCredentials(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	logger := slog.Default()
-	handler := NewAccountsHandler(accountSvc, logger, "example.com")
+	handler := NewAccountsHandler(accountSvc, nil, logger, "example.com")
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/verify_credentials", nil)

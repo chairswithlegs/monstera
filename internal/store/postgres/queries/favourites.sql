@@ -1,5 +1,11 @@
 -- name: CreateFavourite :one
-INSERT INTO favourites (id, account_id, status_id) VALUES ($1, $2, $3) RETURNING *;
+INSERT INTO favourites (id, account_id, status_id, ap_id) VALUES ($1, $2, $3, $4) RETURNING *;
+
+-- name: GetFavouriteByAPID :one
+SELECT * FROM favourites WHERE ap_id = $1;
+
+-- name: GetFavouriteByAccountAndStatus :one
+SELECT * FROM favourites WHERE account_id = $1 AND status_id = $2;
 
 -- name: DeleteFavourite :exec
 DELETE FROM favourites WHERE account_id = $1 AND status_id = $2;

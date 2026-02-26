@@ -202,7 +202,155 @@ func (f *fakeOAuthStore) CreateNotification(ctx context.Context, in store.Create
 		CreatedAt: time.Now(),
 	}, nil
 }
+func (f *fakeOAuthStore) ListNotifications(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Notification, error) {
+	return nil, nil
+}
+func (f *fakeOAuthStore) GetNotification(ctx context.Context, id, accountID string) (*domain.Notification, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeOAuthStore) ClearNotifications(ctx context.Context, accountID string) error {
+	return nil
+}
+func (f *fakeOAuthStore) DismissNotification(ctx context.Context, id, accountID string) error {
+	return nil
+}
 func (f *fakeOAuthStore) GetStatusAttachments(ctx context.Context, statusID string) ([]domain.MediaAttachment, error) {
+	return nil, nil
+}
+
+func (f *fakeOAuthStore) GetAccountByAPID(ctx context.Context, apID string) (*domain.Account, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeOAuthStore) CountLocalAccounts(ctx context.Context) (int64, error) {
+	return 0, nil
+}
+func (f *fakeOAuthStore) GetStatusByAPID(ctx context.Context, apID string) (*domain.Status, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeOAuthStore) GetAccountStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error) {
+	return nil, nil
+}
+func (f *fakeOAuthStore) GetAccountPublicStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error) {
+	return nil, nil
+}
+func (f *fakeOAuthStore) CountLocalStatuses(ctx context.Context) (int64, error) {
+	return 0, nil
+}
+func (f *fakeOAuthStore) CountAccountPublicStatuses(ctx context.Context, accountID string) (int64, error) {
+	return 0, nil
+}
+func (f *fakeOAuthStore) GetSetting(ctx context.Context, key string) (string, error) {
+	return "", nil
+}
+func (f *fakeOAuthStore) GetMediaAttachment(ctx context.Context, id string) (*domain.MediaAttachment, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeOAuthStore) CountFollowers(ctx context.Context, accountID string) (int64, error) {
+	return 0, nil
+}
+func (f *fakeOAuthStore) CountFollowing(ctx context.Context, accountID string) (int64, error) {
+	return 0, nil
+}
+func (f *fakeOAuthStore) IncrementFollowersCount(ctx context.Context, accountID string) error {
+	return nil
+}
+func (f *fakeOAuthStore) DecrementFollowersCount(ctx context.Context, accountID string) error {
+	return nil
+}
+func (f *fakeOAuthStore) IncrementFollowingCount(ctx context.Context, accountID string) error {
+	return nil
+}
+func (f *fakeOAuthStore) DecrementFollowingCount(ctx context.Context, accountID string) error {
+	return nil
+}
+func (f *fakeOAuthStore) GetRelationship(ctx context.Context, accountID, targetID string) (*domain.Relationship, error) {
+	return &domain.Relationship{TargetID: targetID, ShowingReblogs: true}, nil
+}
+func (f *fakeOAuthStore) GetFollowing(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error) {
+	return nil, nil
+}
+func (f *fakeOAuthStore) ListDomainBlocks(ctx context.Context) ([]domain.DomainBlock, error) {
+	return nil, nil
+}
+func (f *fakeOAuthStore) GetFollow(ctx context.Context, accountID, targetID string) (*domain.Follow, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeOAuthStore) GetFollowByAPID(ctx context.Context, apID string) (*domain.Follow, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeOAuthStore) CreateFollow(ctx context.Context, in store.CreateFollowInput) (*domain.Follow, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeOAuthStore) AcceptFollow(ctx context.Context, followID string) error {
+	return nil
+}
+func (f *fakeOAuthStore) DeleteFollow(ctx context.Context, accountID, targetID string) error {
+	return nil
+}
+func (f *fakeOAuthStore) GetFollowers(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error) {
+	return nil, nil
+}
+func (f *fakeOAuthStore) SoftDeleteStatus(ctx context.Context, id string) error {
+	return nil
+}
+func (f *fakeOAuthStore) SuspendAccount(ctx context.Context, id string) error {
+	return nil
+}
+func (f *fakeOAuthStore) CreateBlock(ctx context.Context, in store.CreateBlockInput) error {
+	return nil
+}
+func (f *fakeOAuthStore) DeleteBlock(ctx context.Context, accountID, targetID string) error {
+	return nil
+}
+func (f *fakeOAuthStore) CreateFavourite(ctx context.Context, in store.CreateFavouriteInput) (*domain.Favourite, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeOAuthStore) DeleteFavourite(ctx context.Context, accountID, statusID string) error {
+	return nil
+}
+func (f *fakeOAuthStore) GetFavouriteByAPID(ctx context.Context, apID string) (*domain.Favourite, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeOAuthStore) GetFavouriteByAccountAndStatus(ctx context.Context, accountID, statusID string) (*domain.Favourite, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeOAuthStore) IncrementFavouritesCount(ctx context.Context, statusID string) error {
+	return nil
+}
+func (f *fakeOAuthStore) DecrementFavouritesCount(ctx context.Context, statusID string) error {
+	return nil
+}
+func (f *fakeOAuthStore) IncrementReblogsCount(ctx context.Context, statusID string) error {
+	return nil
+}
+func (f *fakeOAuthStore) DecrementReblogsCount(ctx context.Context, statusID string) error {
+	return nil
+}
+func (f *fakeOAuthStore) IncrementRepliesCount(ctx context.Context, statusID string) error {
+	return nil
+}
+func (f *fakeOAuthStore) GetReblogByAccountAndTarget(ctx context.Context, accountID, statusID string) (*domain.Status, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeOAuthStore) UpdateAccount(ctx context.Context, in store.UpdateAccountInput) error {
+	return nil
+}
+func (f *fakeOAuthStore) UpdateAccountKeys(ctx context.Context, id, publicKey string, apRaw []byte) error {
+	return nil
+}
+func (f *fakeOAuthStore) AttachMediaToStatus(ctx context.Context, mediaID, statusID, accountID string) error {
+	return nil
+}
+func (f *fakeOAuthStore) CreateMediaAttachment(ctx context.Context, in store.CreateMediaAttachmentInput) (*domain.MediaAttachment, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeOAuthStore) CreateStatusEdit(ctx context.Context, in store.CreateStatusEditInput) error {
+	return nil
+}
+func (f *fakeOAuthStore) UpdateStatus(ctx context.Context, in store.UpdateStatusInput) error {
+	return nil
+}
+func (f *fakeOAuthStore) GetFollowerInboxURLs(ctx context.Context, accountID string) ([]string, error) {
 	return nil, nil
 }
 

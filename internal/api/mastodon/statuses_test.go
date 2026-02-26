@@ -23,7 +23,7 @@ func TestStatusesHandler_Create(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
 	logger := slog.Default()
 	handler := NewStatusesHandler(statusSvc, accountSvc, logger, "example.com")
 
@@ -110,7 +110,7 @@ func TestStatusesHandler_Create_account_without_user_returns_401(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
 	logger := slog.Default()
 	handler := NewStatusesHandler(statusSvc, accountSvc, logger, "example.com")
 

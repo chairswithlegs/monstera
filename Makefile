@@ -22,7 +22,12 @@ seed: build-seed
 test:
 	go test -race -count=1 ./...
 
-test-integration:
+# Reset DB and run migrations so integration tests see a fresh schema. Requires docker compose up.
+test-integration: build
+	DATABASE_URL="postgres://monstera:monstera@localhost:5433/monstera_fed?sslmode=disable" \
+		./bin/monstera-fed migrate down-all || true
+	DATABASE_URL="postgres://monstera:monstera@localhost:5433/monstera_fed?sslmode=disable" \
+		./bin/monstera-fed migrate up
 	DATABASE_URL="postgres://monstera:monstera@localhost:5433/monstera_fed?sslmode=disable" \
 	NATS_URL="nats://localhost:4222" \
 	AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \

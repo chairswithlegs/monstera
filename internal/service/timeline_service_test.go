@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
@@ -15,7 +16,7 @@ func TestTimelineService_Home(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
 	timelineSvc := NewTimelineService(fake)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
@@ -60,7 +61,7 @@ func TestTimelineService_Home_respects_limit(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
 	timelineSvc := NewTimelineService(fake)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
@@ -85,7 +86,7 @@ func TestTimelineService_PublicLocal(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
 	timelineSvc := NewTimelineService(fake)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
@@ -135,7 +136,7 @@ func TestTimelineService_HomeEnriched_one_status(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
 	timelineSvc := NewTimelineService(fake)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{

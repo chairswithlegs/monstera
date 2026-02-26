@@ -33,5 +33,6 @@ type Favourite struct {
 	ID        string
 	AccountID string
 	StatusID  string
+	APID      string
 	CreatedAt time.Time
 }

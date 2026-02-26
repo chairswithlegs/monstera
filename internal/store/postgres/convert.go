@@ -185,6 +185,43 @@ func ToDomainHashtag(h db.Hashtag) domain.Hashtag {
 	}
 }
 
+// ToDomainDomainBlock converts a sqlc db.DomainBlock to a domain.DomainBlock.
+func ToDomainDomainBlock(b db.DomainBlock) domain.DomainBlock {
+	return domain.DomainBlock{
+		ID:        b.ID,
+		Domain:    b.Domain,
+		Severity:  b.Severity,
+		Reason:    b.Reason,
+		CreatedAt: pgTime(b.CreatedAt),
+	}
+}
+
+// ToDomainFollow converts a sqlc db.Follow to a domain.Follow.
+func ToDomainFollow(f db.Follow) domain.Follow {
+	return domain.Follow{
+		ID:        f.ID,
+		AccountID: f.AccountID,
+		TargetID:  f.TargetID,
+		State:     f.State,
+		APID:      f.ApID,
+		CreatedAt: pgTime(f.CreatedAt),
+	}
+}
+
+// ToDomainFavourite converts a sqlc db.Favourite to a domain.Favourite.
+func ToDomainFavourite(f db.Favourite) domain.Favourite {
+	d := domain.Favourite{
+		ID:        f.ID,
+		AccountID: f.AccountID,
+		StatusID:  f.StatusID,
+		CreatedAt: pgTime(f.CreatedAt),
+	}
+	if f.ApID != nil {
+		d.APID = *f.ApID
+	}
+	return d
+}
+
 // ToDomainMediaAttachment converts a sqlc db.MediaAttachment to a domain.MediaAttachment.
 func ToDomainMediaAttachment(m db.MediaAttachment) domain.MediaAttachment {
 	d := domain.MediaAttachment{
