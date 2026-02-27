@@ -15,7 +15,7 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/chairswithlegs/monstera-fed/internal/ap"
+	ap "github.com/chairswithlegs/monstera-fed/internal/activitypub"
 	"github.com/chairswithlegs/monstera-fed/internal/config"
 	"github.com/chairswithlegs/monstera-fed/internal/nats/federation"
 )

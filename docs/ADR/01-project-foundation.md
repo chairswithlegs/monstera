@@ -3,6 +3,8 @@
 > **Status:** Draft v0.1 — Feb 24, 2026  
 > **Addresses:** `design-prompts/01-project-foundation.md`
 
+> **Implementation status (Feb 2026):** Several sections below are **out of date** relative to the current codebase. Out-of-date sections are annotated with **"Out of date:"** notes. The implementation has diverged in package layout (CLI under `internal/cli/`, router under `api/router/`), handler-centric router deps, auth middleware signatures, error-handling API (no logger arg; `WriteJSON` exported in `response.go`), health handler names, config extras, and missing routes (`/metrics`, `/admin`). Shutdown uses a 15s timeout and does not yet implement the full sequence (federation workers, SSE hub). `web/admin/` does not exist yet.
+
 ---
 
 ## Design Decisions (answered before authoring)
@@ -19,6 +21,8 @@
 ## 1. Package Layout
 
 Every file to create, with a one-line responsibility statement.
+
+> **Out of date:** Router lives in `internal/api/router/router.go` (package `router`), not `internal/api/router.go`. CLI lives in `cmd/monstera-fed/internal/cli/` (`serve.go`, `migrate.go`, `root.go`), not directly under `cmd/monstera-fed/`. `writeJSON` is implemented as exported `WriteJSON` in `internal/api/response.go` (with `WriteJRD`, `WriteActivityJSON`); `ERROR_HANDLING.md` is removed. `web/admin/` does not exist in the repo yet.
 
 ### `internal/config/`
 
@@ -44,6 +48,8 @@ Every file to create, with a one-line responsibility statement.
 
 ### `cmd/monstera-fed/`
 
+> **Out of date:** In code, `main.go` only calls `cli.Execute()`; root and sub-commands are in `internal/cli/` (`root.go`, `serve.go`, `migrate.go`). There is no `buildRootCmd()` in main. Migrate also has `down-all` in addition to `up`/`down`.
+
 | File | Responsibility |
 |------|----------------|
 | `main.go` | Cobra root command construction and `Execute()` call — nothing else |
@@ -51,6 +57,8 @@ Every file to create, with a one-line responsibility statement.
 | `migrate.go` | `migrate up` / `migrate down` sub-commands via golang-migrate |
 
 ### `web/admin/`
+
+> **Out of date:** `web/admin/` (templates + static) is not present in the repository; admin portal not yet implemented.
 
 | Path | Responsibility |
 |------|----------------|
@@ -62,6 +70,8 @@ Every file to create, with a one-line responsibility statement.
 ## 2. Go Signatures
 
 ### `internal/config/config.go`
+
+> **Out of date:** Implemented config adds `FederationWorkerConcurrency` (int), `Version` (string), and helpers `SecretKeyBytes()` and `DeriveKey(purpose, length)` not in this ADR.
 
 ```go
 package config
@@ -152,6 +162,8 @@ func envBool(key string, defaultVal bool) bool
 ---
 
 ### `internal/observability/logger.go`
+
+> **Out of date:** Request ID is a custom hex format (16 random bytes, hex-encoded with dashes), not UUID v4. The router also uses `chimw.RequestID` before `RequestLogger`; the effective ID in context/header comes from `RequestLogger`.
 
 ```go
 package observability
@@ -245,6 +257,8 @@ func MetricsMiddleware(m *Metrics) func(http.Handler) http.Handler
 
 ### `internal/api/health.go`
 
+> **Out of date:** Fields are exported (`DB`, `NATS`). Handler methods are named `GETLiveness` and `GETReadiness` (not `Liveness` / `Readiness`).
+
 ```go
 package api
 
@@ -283,6 +297,8 @@ func (h *HealthChecker) Readiness(w http.ResponseWriter, r *http.Request)
 
 ### `internal/api/errors.go`
 
+> **Out of date:** `HandleError` has signature `(w, r, err)` — no `logger` argument; default branch uses `slog.ErrorContext(r.Context(), ...)`. JSON writing is done via exported `WriteJSON` in `internal/api/response.go` (not unexported `writeJSON` here). `ERROR_HANDLING.md` is removed. API layer also defines its own sentinels (`ErrUnauthorized`, `ErrNotFound`, etc.) alongside domain errors.
+
 ```go
 package api
 
@@ -302,6 +318,8 @@ func writeJSON(w http.ResponseWriter, status int, v any)
 ---
 
 ### `internal/api/middleware/auth.go`
+
+> **Out of date:** `RequireAuth` and `OptionalAuth` take `(oauth *oauth.Server, accounts *service.AccountService)` instead of `(cache cache.Store, accounts AccountStore)`; token lookup is via OAuth server. `RequireAdmin` takes `(accounts *service.AccountService) func(http.Handler) http.Handler` to look up user role; it is not a simple wrapper of `next`.
 
 ```go
 package middleware
@@ -330,6 +348,8 @@ func WithAccount(ctx context.Context, a *domain.Account) context.Context
 ---
 
 ### `internal/api/router.go`
+
+> **Out of date:** Router lives in package `router` at `internal/api/router/router.go`. Function is `router.New(deps Deps)`, not `api.NewRouter(deps RouterDeps)`. `Deps` is handler-centric: no `Config`, `Logger`, `DB`, `NATS`, `Cache`, `MediaStore`, `Email`; it has `OAuthServer`, `AccountsService`, `Metrics`, `Health`, and concrete handlers (e.g. `Accounts`, `Statuses`, `Instance`, `WebFinger`, `Inbox`, …), not raw services.
 
 ```go
 package api
@@ -369,6 +389,8 @@ func NewRouter(deps RouterDeps) http.Handler
 
 ### `cmd/monstera-fed/main.go`
 
+> **Out of date:** `main()` calls `cli.Execute()` and exits 1 on error; there is no `buildRootCmd()` in main — root is built in `internal/cli/root.go`.
+
 ```go
 package main
 
@@ -397,6 +419,8 @@ func runServe(cmd *cobra.Command, args []string) error
 
 ### `cmd/monstera-fed/migrate.go`
 
+> **Out of date:** Implemented in `internal/cli/migrate.go`. There is an additional `migrate down-all` sub-command (`migrateDownAllCmd` / `runMigrateDownAll`). Migrations are run via `store.RunUp` / `store.RunDown` / `store.RunDownAll` from `internal/store/migrate.go` (embed from `internal/store/migrations/`).
+
 ```go
 var migrateCmd = &cobra.Command{
     Use:   "migrate",
@@ -419,6 +443,8 @@ var migrateDownCmd = &cobra.Command{
 ---
 
 ## 3. Dependency Graph
+
+> **Out of date:** Entry points are `cmd/monstera-fed/main.go` → `cli.Execute()` and `cmd/monstera-fed/internal/cli/serve.go` (and `migrate.go`). Router is built by `internal/api/router` (not `internal/api` directly with a single router.go).
 
 ```
 cmd/monstera-fed/main.go
@@ -465,7 +491,7 @@ cmd/monstera-fed/migrate.go
 9. **Build email sender** — switch on `cfg.EmailDriver`: instantiate `email/noop` or `email/smtp`.
 10. **Build services** — construct all `service.*` structs via constructor injection, passing the above dependencies.
 11. **Build health checker** — `api.NewHealthChecker(dbPool, natsConn)`.
-12. **Build router** — `api.NewRouter(deps)` assembles chi with the full middleware stack and registers all routes.
+12. **Build router** — `api.NewRouter(deps)` assembles chi with the full middleware stack and registers all routes. *(Out of date: code uses `router.New(deps)` from `internal/api/router` with handler-centric `Deps`.)*
 13. **Start HTTP server** — `http.Server{Addr: ":PORT", Handler: router}`. Call `ListenAndServe` in a goroutine.
 14. **Log ready** — structured `slog.Info("server started", "port", cfg.AppPort, "env", cfg.AppEnv)`.
 15. **Block on signal** — `signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)`. When the context is cancelled, proceed to shutdown.
@@ -473,6 +499,8 @@ cmd/monstera-fed/migrate.go
 ---
 
 ## 5. Shutdown Sequence
+
+> **Out of date:** Implementation uses a **15-second** shutdown timeout (not 30s). Only HTTP drain and NATS close are explicitly done; there is no explicit “stop federation workers” or “close SSE hub” step (DB closes via defer when `runServe` returns).
 
 Ordered to prevent data loss. Each step has a timeout budget drawn from the 30-second global shutdown deadline.
 
@@ -494,6 +522,8 @@ Ordered to prevent data loss. Each step has a timeout budget drawn from the 30-s
 ---
 
 ## 6. Router Middleware Stack
+
+> **Out of date:** CORS is implemented as custom `middleware.CORS` (sets `Access-Control-Allow-Origin: *` and handles OPTIONS), not `cors.Handler(cors.Options{...})`. `/metrics` is **not** registered in the router; `/admin/` routes are **not** registered (admin portal not implemented).
 
 Middleware is applied from outermost to innermost. Order matters:
 
@@ -557,11 +587,11 @@ chi.NewRouter()
 
 ## 7. Error Handling Conventions
 
-> **Full specification:** See `ERROR_HANDLING.md` for the complete error handling design.
-
 **Summary:** Domain/store/service layers define sentinel errors in `internal/domain/errors.go` (e.g., `ErrNotFound`, `ErrConflict`, `ErrForbidden`) and wrap errors with context via `fmt.Errorf` with `%w`. No layer below the handler imports `net/http`. A central `HandleError` function in `internal/api/errors.go` maps domain errors to HTTP status codes and the Mastodon-compatible `{"error": "message"}` response shape.
 
 > **Note:** This supersedes the `AppError` struct originally described in this section. `AppError` is removed in favour of domain sentinel errors + handler-layer mapping. See `ERROR_HANDLING.md` §"Compatibility with Existing ADRs" for the migration table.
+
+> **Out of date:** `ERROR_HANDLING.md` has been removed. The API layer also defines sentinels in `api/errors.go` and uses both domain and API errors in `HandleError`. Recoverer calls `api.HandleError(w, r, api.ErrInternalServerError)` instead of `writeJSON(..., ErrorResponse{...})`; logging of request_id, panic, and stack is implemented as in the snippet below.
 
 ### Panic Recovery
 
@@ -583,6 +613,8 @@ The client only ever sees `{"error":"Internal server error"}`. The full stack tr
 ## 8. Admin Portal: Go Embed Setup
 
 > **Revised in ADR 10** — the admin portal uses HTMX + Go `html/template` + Pico.css instead of React + Vite. No Node.js build step is needed.
+
+> **Out of date:** The `web/admin/` directory (templates + static) is not present in the repository; admin portal and embed setup are not yet implemented.
 
 - `web/admin/templates/` — Go `html/template` files (layouts, partials, HTMX fragments)
 - `web/admin/static/` — vendored static assets (htmx.min.js, Pico.css, custom CSS)

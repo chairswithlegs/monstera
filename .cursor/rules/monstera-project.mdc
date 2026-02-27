@@ -10,8 +10,6 @@ Monstera-fed is a self-hosted ActivityPub / Mastodon-compatible server written i
 ## Key docs
 
 - `docs/SPEC.md` — project specification
-- `docs/ERROR_HANDLING.md` — sentinel errors, wrapping, HTTP mapping
-- `docs/TESTING.md` — testify, golangci-lint, test conventions
 - `docs/NATS_CONVENTIONS.md` — stream names, subject patterns
 - `docs/IMPLEMENTATION_ORDER.md` — build sequence and validation milestones
 - `docs/ADR/` — detailed design documents per subsystem (01–10)

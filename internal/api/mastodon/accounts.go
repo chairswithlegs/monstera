@@ -10,16 +10,19 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/api/mastodon/apimodel"
 	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera-fed/internal/service"
 )
 
 // AccountsHandler handles account-related Mastodon API endpoints.
 type AccountsHandler struct {
-	deps Deps
+	accounts       *service.AccountService
+	follows        *service.FollowService
+	instanceDomain string
 }
 
-// NewAccountsHandler returns a new AccountsHandler. deps.Follows may be nil to disable follow endpoints.
-func NewAccountsHandler(deps Deps) *AccountsHandler {
-	return &AccountsHandler{deps: deps}
+// NewAccountsHandler returns a new AccountsHandler. follows may be nil to disable follow endpoints.
+func NewAccountsHandler(accounts *service.AccountService, follows *service.FollowService, instanceDomain string) *AccountsHandler {
+	return &AccountsHandler{accounts: accounts, follows: follows, instanceDomain: instanceDomain}
 }
 
 // GETVerifyCredentials handles GET /api/v1/accounts/verify_credentials.
@@ -29,7 +32,7 @@ func (h *AccountsHandler) GETVerifyCredentials(w http.ResponseWriter, r *http.Re
 		api.HandleError(w, r, api.NewUnauthorizedError("The access token is invalid"))
 		return
 	}
-	acc, user, err := h.deps.Accounts.GetAccountWithUser(r.Context(), account.ID)
+	acc, user, err := h.accounts.GetAccountWithUser(r.Context(), account.ID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.NewUnauthorizedError("The access token is invalid"))
@@ -38,7 +41,7 @@ func (h *AccountsHandler) GETVerifyCredentials(w http.ResponseWriter, r *http.Re
 		api.HandleError(w, r, err)
 		return
 	}
-	out := apimodel.ToAccountWithSource(acc, user, h.deps.InstanceDomain)
+	out := apimodel.ToAccountWithSource(acc, user, h.instanceDomain)
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -49,7 +52,7 @@ func (h *AccountsHandler) GETAccounts(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	acc, err := h.deps.Accounts.GetByID(r.Context(), id)
+	acc, err := h.accounts.GetByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -62,7 +65,7 @@ func (h *AccountsHandler) GETAccounts(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	api.WriteJSON(w, http.StatusOK, apimodel.ToAccount(acc, h.deps.InstanceDomain))
+	api.WriteJSON(w, http.StatusOK, apimodel.ToAccount(acc, h.instanceDomain))
 }
 
 // POSTFollow handles POST /api/v1/accounts/:id/follow. Auth required.
@@ -77,7 +80,7 @@ func (h *AccountsHandler) POSTFollow(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	rel, err := h.deps.Follows.Follow(r.Context(), account.ID, targetID)
+	rel, err := h.follows.Follow(r.Context(), account.ID, targetID)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -97,7 +100,7 @@ func (h *AccountsHandler) POSTUnfollow(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	rel, err := h.deps.Follows.Unfollow(r.Context(), account.ID, targetID)
+	rel, err := h.follows.Unfollow(r.Context(), account.ID, targetID)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -122,7 +125,7 @@ func (h *AccountsHandler) GETRelationships(w http.ResponseWriter, r *http.Reques
 		if targetID == "" {
 			continue
 		}
-		rel, err := h.deps.Accounts.GetRelationship(r.Context(), account.ID, targetID)
+		rel, err := h.accounts.GetRelationship(r.Context(), account.ID, targetID)
 		if err != nil {
 			api.HandleError(w, r, err)
 			return

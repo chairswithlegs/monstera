@@ -109,7 +109,7 @@ All admin assets are vendored and embedded into the Go binary via `go:embed` —
 | golangci-lint | v2.9.0+ (external binary) | Linter aggregator — runs `staticcheck`, `gosec`, `errcheck`, `testifylint`, and others |
 | gofumpt | via golangci-lint formatters | Strict `gofmt` superset for consistent formatting |
 
-See `TESTING.md` for conventions, configuration, and CI setup.
+See `.cursor/rules/testing.mdc` for test conventions; `.cursor/rules/lint-and-test.mdc` for lint/test commands and CI.
 
 ---
 

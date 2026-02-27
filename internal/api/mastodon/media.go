@@ -6,16 +6,17 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/api"
 	"github.com/chairswithlegs/monstera-fed/internal/api/mastodon/apimodel"
 	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
+	"github.com/chairswithlegs/monstera-fed/internal/service"
 )
 
 // MediaHandler handles media upload Mastodon API endpoints.
 type MediaHandler struct {
-	deps Deps
+	media *service.MediaService
 }
 
 // NewMediaHandler returns a new MediaHandler.
-func NewMediaHandler(deps Deps) *MediaHandler {
-	return &MediaHandler{deps: deps}
+func NewMediaHandler(media *service.MediaService) *MediaHandler {
+	return &MediaHandler{media: media}
 }
 
 // POSTMedia handles POSTMedia /api/v2/media.
@@ -43,7 +44,7 @@ func (h *MediaHandler) POSTMedia(w http.ResponseWriter, r *http.Request) {
 	if d := r.FormValue("description"); d != "" {
 		desc = &d
 	}
-	result, err := h.deps.Media.Upload(r.Context(), account.ID, file, contentType, desc)
+	result, err := h.media.Upload(r.Context(), account.ID, file, contentType, desc)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return

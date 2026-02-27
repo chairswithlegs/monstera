@@ -48,18 +48,22 @@ func init() {
 }
 
 func runServe(_ *cobra.Command, _ []string) error {
+	ctx := context.Background()
+	// Load config
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
 
+	// Initialize logger
 	logger := observability.NewLogger(cfg.AppEnv, cfg.LogLevel)
 	slog.SetDefault(logger)
 
+	// Initialize metrics
 	reg := prometheus.NewRegistry()
 	metrics := observability.NewMetrics(reg)
 
-	ctx := context.Background()
+	// Setup database and run migrations
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("database: %w", err)
@@ -72,6 +76,9 @@ func runServe(_ *cobra.Command, _ []string) error {
 	if err := store.RunUp(cfg.DatabaseURL); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
+
+	// Setup services and other dependencies
+	s := postgres.New(pool)
 
 	natsClient, err := nats.New(cfg, logger)
 	if err != nil {
@@ -118,7 +125,6 @@ func runServe(_ *cobra.Command, _ []string) error {
 	}
 	_ = emailSender
 
-	s := postgres.New(pool)
 	instanceBaseURL := "https://" + cfg.InstanceDomain
 	accountSvc := service.NewAccountService(s, instanceBaseURL)
 	fedProducer := federation.NewProducer(natsClient.JS, metrics)
@@ -139,55 +145,52 @@ func runServe(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("secret key: %w", err)
 	}
-	oauthHandler := oauthhandlers.NewHandler(oauthServer, s, logger, loginTmpl, cfg.InstanceName, secretKey)
-
-	health := api.NewHealthChecker(pool, natsClient.Conn)
-	mastodonDeps := mastodon.Deps{
-		Accounts:           accountSvc,
-		Follows:            followSvc,
-		Statuses:           statusSvc,
-		Timeline:           timelineSvc,
-		Notifications:      notificationSvc,
-		Media:              mediaSvc,
-		InstanceDomain:     cfg.InstanceDomain,
-		InstanceName:       cfg.InstanceName,
-		MaxStatusChars:     cfg.MaxStatusChars,
-		MediaMaxBytes:      cfg.MediaMaxBytes,
-		SupportedMimeTypes: nil,
-	}
-	accountsHandler := mastodon.NewAccountsHandler(mastodonDeps)
-	statusesHandler := mastodon.NewStatusesHandler(mastodonDeps)
-	timelinesHandler := mastodon.NewTimelinesHandler(mastodonDeps)
-	instanceHandler := mastodon.NewInstanceHandler(mastodonDeps)
-	notificationsHandler := mastodon.NewNotificationsHandler(mastodonDeps)
-	mediaHandler := mastodon.NewMediaHandler(mastodonDeps)
 
 	blocklistCache := ap.NewBlocklistCache(s, logger)
 	if err := blocklistCache.Refresh(ctx); err != nil {
 		logger.Warn("blocklist refresh failed", slog.Any("error", err))
 	}
 	inboxProcessor := ap.NewInboxProcessor(s, cacheStore, blocklistCache, nil, nil, cfg, logger, ap.DefaultActorFetch)
+
+	// Setup handlers and middleware
+	oauthHandler := oauthhandlers.NewHandler(oauthServer, s, logger, loginTmpl, cfg.InstanceName, secretKey)
+	health := api.NewHealthChecker(pool, natsClient.Conn)
+	accountsHandler := mastodon.NewAccountsHandler(accountSvc, followSvc, cfg.InstanceDomain)
+	statusesHandler := mastodon.NewStatusesHandler(accountSvc, statusSvc, cfg.InstanceDomain)
+	timelinesHandler := mastodon.NewTimelinesHandler(timelineSvc, cfg.InstanceDomain)
+	instanceHandler := mastodon.NewInstanceHandler(cfg.InstanceDomain, cfg.InstanceName, cfg.MaxStatusChars, cfg.MediaMaxBytes, nil)
+	notificationsHandler := mastodon.NewNotificationsHandler(notificationSvc, accountSvc, cfg.InstanceDomain)
+	mediaHandler := mastodon.NewMediaHandler(mediaSvc)
+	webFingerHandler := activitypub.NewWebFingerHandler(accountSvc, cfg)
+	nodeInfoPtrHandler := activitypub.NewNodeInfoPointerHandler(cfg)
+	nodeInfoHandler := activitypub.NewNodeInfoHandler(instanceSvc, cfg)
+	actorHandler := activitypub.NewActorHandler(accountSvc, cfg)
+	collectionsHandler := activitypub.NewCollectionsHandler(accountSvc, cfg)
+	outboxHandler := activitypub.NewOutbox(accountSvc, timelineSvc, cfg)
+	inboxHandler := activitypub.NewInboxHandler(inboxProcessor, cacheStore)
+
 	handler := router.New(router.Deps{
-		Metrics:       metrics,
-		Health:        health,
-		OAuthHandler:  oauthHandler,
-		OAuthServer:   oauthServer,
-		Store:         s,
-		Accounts:      accountsHandler,
-		Statuses:      statusesHandler,
-		Timelines:     timelinesHandler,
-		Instance:      instanceHandler,
-		Notifications: notificationsHandler,
-		Media:         mediaHandler,
-		WebFinger:     activitypub.NewWebFingerHandler(accountSvc, cfg),
-		NodeInfoPtr:   activitypub.NewNodeInfoPointerHandler(cfg),
-		NodeInfo:      activitypub.NewNodeInfoHandler(instanceSvc, cfg),
-		Actor:         activitypub.NewActorHandler(accountSvc, cfg),
-		Collections:   activitypub.NewCollectionsHandler(accountSvc, cfg),
-		Outbox:        activitypub.NewOutbox(accountSvc, timelineSvc, cfg),
-		Inbox:         activitypub.NewInboxHandler(inboxProcessor, cacheStore),
+		AccountsService: accountSvc,
+		Metrics:         metrics,
+		Health:          health,
+		OAuthHandler:    oauthHandler,
+		OAuthServer:     oauthServer,
+		Accounts:        accountsHandler,
+		Statuses:        statusesHandler,
+		Timelines:       timelinesHandler,
+		Instance:        instanceHandler,
+		Notifications:   notificationsHandler,
+		Media:           mediaHandler,
+		WebFinger:       webFingerHandler,
+		NodeInfoPtr:     nodeInfoPtrHandler,
+		NodeInfo:        nodeInfoHandler,
+		Actor:           actorHandler,
+		Collections:     collectionsHandler,
+		Outbox:          outboxHandler,
+		Inbox:           inboxHandler,
 	})
 
+	// Start HTTP server
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.AppPort),
 		Handler:      handler,
@@ -204,6 +207,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 
 	logger.Info("server ready", slog.Int("port", cfg.AppPort))
 
+	// Wait for shutdown signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

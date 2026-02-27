@@ -10,7 +10,7 @@ Design doc: `docs/ADR/08-mastodon-rest-api.md`
 
 ## Conventions
 
-- All error responses use `api.HandleError(w, r, logger, err)` — see `ERROR_HANDLING.md`.
+- All error responses use `api.HandleError(w, r, err)`.
 - Response shape: `{"error": "message"}` for errors. Mastodon clients depend on this exact format.
 - Pagination: cursor-based with `max_id`, `min_id`, `since_id` query params. Return `Link` header per RFC 5988.
 - Content input: plain text only in Phase 1. Strip HTML, auto-link URLs/@mentions/#hashtags.

@@ -11,12 +11,13 @@ import (
 
 // TimelinesHandler handles timeline Mastodon API endpoints.
 type TimelinesHandler struct {
-	deps Deps
+	timeline       *service.TimelineService
+	instanceDomain string
 }
 
 // NewTimelinesHandler returns a new TimelinesHandler.
-func NewTimelinesHandler(deps Deps) *TimelinesHandler {
-	return &TimelinesHandler{deps: deps}
+func NewTimelinesHandler(timeline *service.TimelineService, instanceDomain string) *TimelinesHandler {
+	return &TimelinesHandler{timeline: timeline, instanceDomain: instanceDomain}
 }
 
 // GETHome handles GET /api/v1/timelines/home.
@@ -30,7 +31,7 @@ func (h *TimelinesHandler) GETHome(w http.ResponseWriter, r *http.Request) {
 
 	params := PageParamsFromRequest(r)
 	maxID := optionalString(params.MaxID)
-	enriched, err := h.deps.Timeline.HomeEnriched(ctx, account.ID, maxID, params.Limit)
+	enriched, err := h.timeline.HomeEnriched(ctx, account.ID, maxID, params.Limit)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -39,20 +40,20 @@ func (h *TimelinesHandler) GETHome(w http.ResponseWriter, r *http.Request) {
 	out := make([]apimodel.Status, 0, len(enriched))
 	for i := range enriched {
 		e := &enriched[i]
-		authorAcc := apimodel.ToAccount(e.Author, h.deps.InstanceDomain)
+		authorAcc := apimodel.ToAccount(e.Author, h.instanceDomain)
 		mentionsResp := make([]apimodel.Mention, 0, len(e.Mentions))
 		for _, a := range e.Mentions {
-			mentionsResp = append(mentionsResp, apimodel.MentionFromAccount(a, h.deps.InstanceDomain))
+			mentionsResp = append(mentionsResp, apimodel.MentionFromAccount(a, h.instanceDomain))
 		}
 		tagsResp := make([]apimodel.Tag, 0, len(e.Tags))
 		for _, t := range e.Tags {
-			tagsResp = append(tagsResp, apimodel.TagFromName(t.Name, h.deps.InstanceDomain))
+			tagsResp = append(tagsResp, apimodel.TagFromName(t.Name, h.instanceDomain))
 		}
 		mediaResp := make([]apimodel.MediaAttachment, 0, len(e.Media))
 		for j := range e.Media {
 			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
 		}
-		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.deps.InstanceDomain))
+		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain))
 	}
 
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
@@ -67,7 +68,7 @@ func (h *TimelinesHandler) GETPublic(w http.ResponseWriter, r *http.Request) {
 	params := PageParamsFromRequest(r)
 	localOnly := r.URL.Query().Get("local") == "true"
 	maxID := optionalString(params.MaxID)
-	enriched, err := h.deps.Timeline.PublicLocalEnriched(r.Context(), localOnly, maxID, params.Limit)
+	enriched, err := h.timeline.PublicLocalEnriched(r.Context(), localOnly, maxID, params.Limit)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -75,20 +76,20 @@ func (h *TimelinesHandler) GETPublic(w http.ResponseWriter, r *http.Request) {
 	out := make([]apimodel.Status, 0, len(enriched))
 	for i := range enriched {
 		e := &enriched[i]
-		authorAcc := apimodel.ToAccount(e.Author, h.deps.InstanceDomain)
+		authorAcc := apimodel.ToAccount(e.Author, h.instanceDomain)
 		mentionsResp := make([]apimodel.Mention, 0, len(e.Mentions))
 		for _, a := range e.Mentions {
-			mentionsResp = append(mentionsResp, apimodel.MentionFromAccount(a, h.deps.InstanceDomain))
+			mentionsResp = append(mentionsResp, apimodel.MentionFromAccount(a, h.instanceDomain))
 		}
 		tagsResp := make([]apimodel.Tag, 0, len(e.Tags))
 		for _, t := range e.Tags {
-			tagsResp = append(tagsResp, apimodel.TagFromName(t.Name, h.deps.InstanceDomain))
+			tagsResp = append(tagsResp, apimodel.TagFromName(t.Name, h.instanceDomain))
 		}
 		mediaResp := make([]apimodel.MediaAttachment, 0, len(e.Media))
 		for j := range e.Media {
 			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
 		}
-		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.deps.InstanceDomain))
+		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain))
 	}
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
 	if link := LinkHeader(r.URL.String(), firstID, lastID); link != "" {

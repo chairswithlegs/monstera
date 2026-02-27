@@ -39,34 +39,44 @@ type InstanceResponse struct {
 
 // InstanceHandler handles instance metadata endpoints.
 type InstanceHandler struct {
-	deps Deps
+	instanceDomain     string
+	instanceName       string
+	maxStatusChars     int
+	mediaMaxBytes      int64
+	supportedMimeTypes []string
 }
 
 // NewInstanceHandler returns a new InstanceHandler.
-func NewInstanceHandler(deps Deps) *InstanceHandler {
-	return &InstanceHandler{deps: deps}
+func NewInstanceHandler(instanceDomain, instanceName string, maxStatusChars int, mediaMaxBytes int64, supportedMimeTypes []string) *InstanceHandler {
+	return &InstanceHandler{
+		instanceDomain:     instanceDomain,
+		instanceName:       instanceName,
+		maxStatusChars:     maxStatusChars,
+		mediaMaxBytes:      mediaMaxBytes,
+		supportedMimeTypes: supportedMimeTypes,
+	}
 }
 
 // GETInstance handles GET /api/v2/instance.
 func (h *InstanceHandler) GETInstance(w http.ResponseWriter, r *http.Request) {
-	mimeTypes := h.deps.SupportedMimeTypes
+	mimeTypes := h.supportedMimeTypes
 	if mimeTypes == nil {
 		mimeTypes = []string{"image/jpeg", "image/png", "image/gif", "image/webp"}
 	}
 	resp := InstanceResponse{
-		Domain:      h.deps.InstanceDomain,
-		Title:       h.deps.InstanceName,
+		Domain:      h.instanceDomain,
+		Title:       h.instanceName,
 		Version:     "0.1.0 (compatible; Monstera-fed)",
 		SourceURL:   "",
 		Description: "",
 		Languages:   []string{"en"},
 		Rules:       []any{},
 	}
-	resp.Configuration.Statuses.MaxCharacters = h.deps.MaxStatusChars
+	resp.Configuration.Statuses.MaxCharacters = h.maxStatusChars
 	resp.Configuration.Statuses.MaxMediaAttachments = 4
 	resp.Configuration.MediaAttachments.SupportedMimeTypes = mimeTypes
-	resp.Configuration.MediaAttachments.ImageSizeLimit = h.deps.MediaMaxBytes
-	resp.Configuration.MediaAttachments.VideoSizeLimit = h.deps.MediaMaxBytes
+	resp.Configuration.MediaAttachments.ImageSizeLimit = h.mediaMaxBytes
+	resp.Configuration.MediaAttachments.VideoSizeLimit = h.mediaMaxBytes
 	resp.Registrations.Enabled = true
 	api.WriteJSON(w, http.StatusOK, resp)
 }

@@ -24,8 +24,7 @@ func TestStatusesHandler_Create(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
-	deps := Deps{Statuses: statusSvc, Accounts: accountSvc, InstanceDomain: "example.com"}
-	handler := NewStatusesHandler(deps)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com")
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
 		body := bytes.NewBufferString(`{"status":"hello world"}`)
@@ -105,8 +104,7 @@ func TestStatusesHandler_Create_account_without_user_returns_401(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
-	deps := Deps{Statuses: statusSvc, Accounts: accountSvc, InstanceDomain: "example.com"}
-	handler := NewStatusesHandler(deps)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com")
 
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "nouser"})
 	require.NoError(t, err)

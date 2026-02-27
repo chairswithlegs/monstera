@@ -1,20 +1,31 @@
 ---
 description: Test file conventions
-globs: **/*_test.go
-alwaysApply: false
+alwaysApply: true
 ---
 
 # Testing Conventions
 
-Full guide: `docs/TESTING.md`
+## Tools
+
+- **go test** (stdlib) — test runner.
+- **testify** (v1.10.0) — `assert`, `require`, HTTP helpers, mocking.
+- **golangci-lint** — linter; see `lint-and-test` rule for usage.
+
+## Organisation
+
+- Tests live alongside code (`*_test.go` in same package).
+- Integration tests (PostgreSQL, NATS, Redis) use `//go:build integration` and live in the same package for white-box access. Run with: `go test -tags=integration ./path/...`.
 
 ## Conventions
 
-- Use `require` for preconditions (stop on failure), `assert` for verifications (continue on failure).
-- Table-driven tests for functions with varying inputs. Name each case clearly.
-- Call `t.Helper()` in all test helper functions.
-- Mark tests with no shared mutable state as `t.Parallel()`.
-- Integration tests requiring PostgreSQL/NATS/Redis use `//go:build integration` build tag.
-- Prefer hand-written fakes for simple interfaces, testify `mock` for asserting call patterns.
-- HTTP handler tests use `net/http/httptest`.
-- Never log errors in test helpers — use `require`/`assert` which report via `t`.
+- **require** for preconditions (stop on failure); **assert** for verifications (continue so you see all failures).
+- **Table-driven tests** for varying inputs; name each case in the struct (e.g. `name: "plain text"`) — it appears in failure output.
+- Call **t.Helper()** in any helper that calls `t.Fatal`/`t.Error`/`require`/`assert` so failures point to the caller.
+- Mark tests with no shared mutable state as **t.Parallel()**.
+- **HTTP handler tests** use `net/http/httptest` and testify assertions.
+- Never log errors in test helpers — use `require`/`assert` so failures report via `t`.
+
+## Mocking
+
+- Prefer **hand-written fakes** for simple interfaces (`store.Store`, `cache.Store`, etc.).
+- Use testify **mock** when you need to assert call order or arguments (e.g. "Send called once with this subject").

@@ -17,12 +17,14 @@ import (
 
 // StatusesHandler handles status-related Mastodon API endpoints.
 type StatusesHandler struct {
-	deps Deps
+	accounts       *service.AccountService
+	statuses       *service.StatusService
+	instanceDomain string
 }
 
 // NewStatusesHandler returns a new StatusesHandler.
-func NewStatusesHandler(deps Deps) *StatusesHandler {
-	return &StatusesHandler{deps: deps}
+func NewStatusesHandler(accounts *service.AccountService, statuses *service.StatusService, instanceDomain string) *StatusesHandler {
+	return &StatusesHandler{accounts: accounts, statuses: statuses, instanceDomain: instanceDomain}
 }
 
 // CreateStatusRequest is the request body for POST /api/v1/statuses.
@@ -49,7 +51,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, user, err := h.deps.Accounts.GetAccountWithUser(ctx, account.ID)
+	_, user, err := h.accounts.GetAccountWithUser(ctx, account.ID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrUnauthorized)
@@ -64,7 +66,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 		defaultVisibility = user.DefaultPrivacy
 	}
 
-	result, err := h.deps.Statuses.CreateWithContent(ctx, service.CreateWithContentInput{
+	result, err := h.statuses.CreateWithContent(ctx, service.CreateWithContentInput{
 		AccountID:         account.ID,
 		Username:          account.Username,
 		Text:              req.Status,
@@ -79,7 +81,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := createResultToAPIModel(result, h.deps.InstanceDomain)
+	out := createResultToAPIModel(result, h.instanceDomain)
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -90,12 +92,12 @@ func (h *StatusesHandler) GETStatuses(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	result, err := h.deps.Statuses.GetByIDEnriched(r.Context(), id)
+	result, err := h.statuses.GetByIDEnriched(r.Context(), id)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
-	out := createResultToAPIModel(result, h.deps.InstanceDomain)
+	out := createResultToAPIModel(result, h.instanceDomain)
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -111,7 +113,7 @@ func (h *StatusesHandler) DELETEStatuses(w http.ResponseWriter, r *http.Request)
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	st, err := h.deps.Statuses.GetByID(r.Context(), id)
+	st, err := h.statuses.GetByID(r.Context(), id)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -120,16 +122,16 @@ func (h *StatusesHandler) DELETEStatuses(w http.ResponseWriter, r *http.Request)
 		api.HandleError(w, r, api.ErrForbidden)
 		return
 	}
-	result, err := h.deps.Statuses.GetByIDEnriched(r.Context(), id)
+	result, err := h.statuses.GetByIDEnriched(r.Context(), id)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
-	if err := h.deps.Statuses.Delete(r.Context(), id); err != nil {
+	if err := h.statuses.Delete(r.Context(), id); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
-	out := createResultToAPIModel(result, h.deps.InstanceDomain)
+	out := createResultToAPIModel(result, h.instanceDomain)
 	api.WriteJSON(w, http.StatusOK, out)
 }
 

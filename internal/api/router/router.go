@@ -15,29 +15,29 @@ import (
 	oauthhandlers "github.com/chairswithlegs/monstera-fed/internal/api/oauth"
 	oauthpkg "github.com/chairswithlegs/monstera-fed/internal/oauth"
 	"github.com/chairswithlegs/monstera-fed/internal/observability"
-	"github.com/chairswithlegs/monstera-fed/internal/store"
+	"github.com/chairswithlegs/monstera-fed/internal/service"
 )
 
 // Deps holds dependencies required to build the HTTP router.
 type Deps struct {
-	Metrics       *observability.Metrics
-	Health        *api.HealthChecker
-	OAuthHandler  *oauthhandlers.Handler
-	OAuthServer   *oauthpkg.Server
-	Store         store.Store
-	Accounts      *mastodon.AccountsHandler
-	Statuses      *mastodon.StatusesHandler
-	Timelines     *mastodon.TimelinesHandler
-	Instance      *mastodon.InstanceHandler
-	Notifications *mastodon.NotificationsHandler
-	Media         *mastodon.MediaHandler
-	WebFinger     *activitypub.WebFingerHandler
-	NodeInfoPtr   *activitypub.NodeInfoPointerHandler
-	NodeInfo      *activitypub.NodeInfoHandler
-	Actor         *activitypub.ActorHandler
-	Collections   *activitypub.CollectionsHandler
-	Outbox        *activitypub.OutboxHandler
-	Inbox         *activitypub.InboxHandler
+	OAuthServer     *oauthpkg.Server
+	AccountsService *service.AccountService
+	Metrics         *observability.Metrics
+	Health          *api.HealthChecker
+	OAuthHandler    *oauthhandlers.Handler
+	Accounts        *mastodon.AccountsHandler
+	Statuses        *mastodon.StatusesHandler
+	Timelines       *mastodon.TimelinesHandler
+	Instance        *mastodon.InstanceHandler
+	Notifications   *mastodon.NotificationsHandler
+	Media           *mastodon.MediaHandler
+	WebFinger       *activitypub.WebFingerHandler
+	NodeInfoPtr     *activitypub.NodeInfoPointerHandler
+	NodeInfo        *activitypub.NodeInfoHandler
+	Actor           *activitypub.ActorHandler
+	Collections     *activitypub.CollectionsHandler
+	Outbox          *activitypub.OutboxHandler
+	Inbox           *activitypub.InboxHandler
 }
 
 // New builds the chi router with global middleware and P1–P2 routes.
@@ -69,7 +69,7 @@ func New(deps Deps) http.Handler {
 	r.Route("/api/v2", func(r chi.Router) {
 		r.Get("/instance", deps.Instance.GETInstance)
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.RequireAuth(deps.OAuthServer, deps.Store))
+			r.Use(middleware.RequireAuth(deps.OAuthServer, deps.AccountsService))
 			r.Method("POST", "/media", middleware.RequiredScopes("write:media")(http.HandlerFunc(deps.Media.POSTMedia)))
 		})
 	})
@@ -80,14 +80,14 @@ func New(deps Deps) http.Handler {
 		r.Get("/custom_emojis", deps.Instance.GETCustomEmojis)
 
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.OptionalAuth(deps.OAuthServer, deps.Store))
+			r.Use(middleware.OptionalAuth(deps.OAuthServer, deps.AccountsService))
 			r.Get("/accounts/{id}", deps.Accounts.GETAccounts)
 			r.Get("/statuses/{id}", deps.Statuses.GETStatuses)
 			r.Get("/timelines/public", deps.Timelines.GETPublic)
 		})
 
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.RequireAuth(deps.OAuthServer, deps.Store))
+			r.Use(middleware.RequireAuth(deps.OAuthServer, deps.AccountsService))
 			r.Method("GET", "/accounts/verify_credentials", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Accounts.GETVerifyCredentials)))
 			r.Method("GET", "/accounts/relationships", middleware.RequiredScopes("read:follows")(http.HandlerFunc(deps.Accounts.GETRelationships)))
 			r.Route("/accounts/{id}", func(r chi.Router) {

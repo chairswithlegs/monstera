@@ -11,7 +11,7 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	oauthpkg "github.com/chairswithlegs/monstera-fed/internal/oauth"
 	"github.com/chairswithlegs/monstera-fed/internal/observability"
-	"github.com/chairswithlegs/monstera-fed/internal/store"
+	"github.com/chairswithlegs/monstera-fed/internal/service"
 )
 
 type contextKey int
@@ -29,7 +29,7 @@ const (
 // associated account is suspended): returns 401 with the Mastodon error body:
 //
 //	{"error": "The access token is invalid"}
-func RequireAuth(oauth *oauthpkg.Server, s store.Store) func(http.Handler) http.Handler {
+func RequireAuth(oauth *oauthpkg.Server, accounts *service.AccountService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			rawToken := extractBearerToken(r)
@@ -48,7 +48,7 @@ func RequireAuth(oauth *oauthpkg.Server, s store.Store) func(http.Handler) http.
 			ctx := WithTokenClaims(r.Context(), claims)
 
 			if claims.AccountID != "" {
-				account, err := s.GetAccountByID(r.Context(), claims.AccountID)
+				account, err := accounts.GetByID(r.Context(), claims.AccountID)
 				if errors.Is(err, domain.ErrNotFound) || account.Suspended {
 					api.HandleError(w, r, api.ErrUnauthorized)
 					return
@@ -71,7 +71,7 @@ func RequireAuth(oauth *oauthpkg.Server, s store.Store) func(http.Handler) http.
 // requests. If a valid Bearer token is present, the account and claims are
 // stored in the context. If the token is missing or invalid, the request
 // proceeds with a nil account.
-func OptionalAuth(oauth *oauthpkg.Server, s store.Store) func(http.Handler) http.Handler {
+func OptionalAuth(oauth *oauthpkg.Server, accounts *service.AccountService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			rawToken := extractBearerToken(r)
@@ -89,7 +89,7 @@ func OptionalAuth(oauth *oauthpkg.Server, s store.Store) func(http.Handler) http
 			ctx := WithTokenClaims(r.Context(), claims)
 
 			if claims.AccountID != "" {
-				account, err := s.GetAccountByID(r.Context(), claims.AccountID)
+				account, err := accounts.GetByID(r.Context(), claims.AccountID)
 				if err == nil && !account.Suspended {
 					ctx = WithAccount(ctx, account)
 					ctx = observability.WithAccountID(ctx, account.ID)
@@ -103,7 +103,7 @@ func OptionalAuth(oauth *oauthpkg.Server, s store.Store) func(http.Handler) http
 
 // RequireAdmin checks that the authenticated account has role "admin" or
 // "moderator". Must be chained after RequireAuth.
-func RequireAdmin(s store.Store, logger *slog.Logger) func(http.Handler) http.Handler {
+func RequireAdmin(accounts *service.AccountService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			account := AccountFromContext(r.Context())
@@ -112,7 +112,7 @@ func RequireAdmin(s store.Store, logger *slog.Logger) func(http.Handler) http.Ha
 				return
 			}
 
-			user, err := s.GetUserByAccountID(r.Context(), account.ID)
+			_, user, err := accounts.GetAccountWithUser(r.Context(), account.ID)
 			if errors.Is(err, domain.ErrNotFound) {
 				api.HandleError(w, r, api.ErrForbidden)
 				return

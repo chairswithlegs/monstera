@@ -12,12 +12,7 @@ import (
 
 func TestInstanceHandler_GetInstance(t *testing.T) {
 	t.Parallel()
-	deps := Deps{
-		InstanceDomain: "example.com", InstanceName: "Example Instance",
-		MaxStatusChars: 500, MediaMaxBytes: 10 << 20,
-		SupportedMimeTypes: []string{"image/jpeg", "image/png"},
-	}
-	handler := NewInstanceHandler(deps)
+	handler := NewInstanceHandler("example.com", "Example Instance", 500, 10<<20, []string{"image/jpeg", "image/png"})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v2/instance", nil)
 	rec := httptest.NewRecorder()
@@ -37,8 +32,7 @@ func TestInstanceHandler_GetInstance(t *testing.T) {
 
 func TestInstanceHandler_GetInstance_default_mime_types(t *testing.T) {
 	t.Parallel()
-	deps := Deps{InstanceDomain: "test.com", InstanceName: "Test", MaxStatusChars: 500, MediaMaxBytes: 5 << 20}
-	handler := NewInstanceHandler(deps)
+	handler := NewInstanceHandler("test.com", "Test", 500, 5<<20, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v2/instance", nil)
 	rec := httptest.NewRecorder()
@@ -53,8 +47,7 @@ func TestInstanceHandler_GetInstance_default_mime_types(t *testing.T) {
 
 func TestInstanceHandler_CustomEmojis(t *testing.T) {
 	t.Parallel()
-	deps := Deps{InstanceDomain: "example.com", InstanceName: "Example", MaxStatusChars: 500, MediaMaxBytes: 10 << 20}
-	handler := NewInstanceHandler(deps)
+	handler := NewInstanceHandler("example.com", "Example", 500, 10<<20, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/custom_emojis", nil)
 	rec := httptest.NewRecorder()
