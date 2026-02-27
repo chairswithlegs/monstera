@@ -27,3 +27,9 @@ WHERE h.name = lower($1)
   AND ($2::text IS NULL OR s.id < $2)
 ORDER BY s.id DESC
 LIMIT $3;
+
+-- name: SearchHashtagsByPrefix :many
+SELECT * FROM hashtags
+WHERE LOWER(name) LIKE LOWER($1) || '%'
+ORDER BY name
+LIMIT $2;

@@ -141,6 +141,8 @@ type Querier interface {
 	ResolveReport(ctx context.Context, arg ResolveReportParams) error
 	RevokeAccessToken(ctx context.Context, token string) error
 	RevokeAllAccessTokensForAccount(ctx context.Context, accountID *string) error
+	SearchAccounts(ctx context.Context, arg SearchAccountsParams) ([]Account, error)
+	SearchHashtagsByPrefix(ctx context.Context, arg SearchHashtagsByPrefixParams) ([]Hashtag, error)
 	SetSetting(ctx context.Context, arg SetSettingParams) error
 	SilenceAccount(ctx context.Context, id string) error
 	SoftDeleteStatus(ctx context.Context, id string) error

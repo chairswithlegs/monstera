@@ -156,3 +156,40 @@ func (q *Queries) GetStatusHashtags(ctx context.Context, statusID string) ([]Has
 	}
 	return items, nil
 }
+
+const searchHashtagsByPrefix = `-- name: SearchHashtagsByPrefix :many
+SELECT id, name, created_at, updated_at FROM hashtags
+WHERE LOWER(name) LIKE LOWER($1) || '%'
+ORDER BY name
+LIMIT $2
+`
+
+type SearchHashtagsByPrefixParams struct {
+	Lower string `json:"lower"`
+	Limit int32  `json:"limit"`
+}
+
+func (q *Queries) SearchHashtagsByPrefix(ctx context.Context, arg SearchHashtagsByPrefixParams) ([]Hashtag, error) {
+	rows, err := q.db.Query(ctx, searchHashtagsByPrefix, arg.Lower, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Hashtag{}
+	for rows.Next() {
+		var i Hashtag
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

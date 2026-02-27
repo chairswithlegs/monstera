@@ -152,6 +152,22 @@ func (s *PostgresStore) GetRemoteAccountByUsername(ctx context.Context, username
 	return &acc, nil
 }
 
+func (s *PostgresStore) SearchAccounts(ctx context.Context, query string, limit int) ([]*domain.Account, error) {
+	rows, err := s.q.SearchAccounts(ctx, db.SearchAccountsParams{
+		Lower: query,
+		Limit: int32(limit), //nolint:gosec // limit clamped by caller
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]*domain.Account, 0, len(rows))
+	for i := range rows {
+		acc := ToDomainAccount(rows[i])
+		out = append(out, &acc)
+	}
+	return out, nil
+}
+
 func (s *PostgresStore) CountLocalAccounts(ctx context.Context) (int64, error) {
 	n, err := s.q.CountLocalAccounts(ctx)
 	return n, mapErr(err)
@@ -423,6 +439,21 @@ func (s *PostgresStore) AttachHashtagsToStatus(ctx context.Context, statusID str
 
 func (s *PostgresStore) GetStatusHashtags(ctx context.Context, statusID string) ([]domain.Hashtag, error) {
 	rows, err := s.q.GetStatusHashtags(ctx, statusID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.Hashtag, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainHashtag(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) SearchHashtagsByPrefix(ctx context.Context, prefix string, limit int) ([]domain.Hashtag, error) {
+	rows, err := s.q.SearchHashtagsByPrefix(ctx, db.SearchHashtagsByPrefixParams{
+		Lower: prefix,
+		Limit: int32(limit), //nolint:gosec // limit clamped by caller
+	})
 	if err != nil {
 		return nil, mapErr(err)
 	}

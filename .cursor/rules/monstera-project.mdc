@@ -9,10 +9,7 @@ Monstera-fed is a self-hosted ActivityPub / Mastodon-compatible server written i
 
 ## Architecture rules
 
-- `internal/domain` has zero internal imports — pure types and sentinel errors.
 - `internal/service` never imports `internal/api`. Dependencies point inward toward `domain`.
-- No layer below `internal/api` imports `net/http` or references HTTP status codes.
-- Errors use `fmt.Errorf("context: %w", err)` wrapping. HTTP mapping is handler-only via `api.HandleError`.
 - IDs are ULIDs via `internal/uid`.
 - Config is 12-factor (env vars only) via `internal/config`.
 

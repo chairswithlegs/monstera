@@ -77,3 +77,13 @@ UPDATE accounts SET statuses_count = statuses_count + 1 WHERE id = $1;
 
 -- name: DecrementStatusesCount :exec
 UPDATE accounts SET statuses_count = GREATEST(0, statuses_count - 1) WHERE id = $1;
+
+-- name: SearchAccounts :many
+SELECT * FROM accounts
+WHERE suspended = FALSE
+  AND (
+    LOWER(username) LIKE LOWER($1) || '%'
+    OR (domain IS NOT NULL AND LOWER(username) || '@' || LOWER(COALESCE(domain, '')) LIKE LOWER($1) || '%')
+  )
+ORDER BY (domain IS NOT NULL), username
+LIMIT $2;

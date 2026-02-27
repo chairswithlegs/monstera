@@ -97,10 +97,7 @@ If search doesn’t find the remote user, check that both instances are up and t
 
 ## TLS and self-signed certs
 
-Caddy uses `local_certs`, so it serves self-signed certificates for `monstera.local` and `monstera2.local`. Browsers will prompt to accept them. If the federation worker (outbound HTTP client) verifies TLS and rejects self-signed certs, you may need to either:
-
-- Use [mkcert](https://github.com/FiloSottile/mkcert) to generate locally trusted certs and configure Caddy to use them, or
-- Add a dev-only option to skip TLS verification for federation (if implemented).
+Caddy uses `local_certs`, so it serves self-signed certificates for `monstera.local` and `monstera2.local`. Browsers will prompt to accept them. The stack sets `APP_ENV=development`, so the app defaults `FEDERATION_INSECURE_SKIP_TLS_VERIFY=true`: the federation HTTP client (WebFinger and actor fetch) skips TLS verification. Search for remote users (e.g. `admin@monstera2.local`) from one instance therefore works without extra setup. In production, leave `APP_ENV=production` so TLS is verified.
 
 ## Stop
 

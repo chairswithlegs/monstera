@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	actorTypeService = "Service"
-	objectTypeNote   = "Note"
+	actorTypeService       = "Service"
+	objectTypeNote         = "Note"
+	defaultUsernameUnknown = "unknown"
 )
 
 // ErrFatal represent an inbox error that should not be retried.
@@ -133,7 +134,7 @@ func (p *InboxProcessor) resolveRemoteAccount(ctx context.Context, actorIRI stri
 	dom := DomainFromActorID(actorIRI)
 	username := usernameFromActorIRI(actorIRI, "")
 	if username == "" {
-		username = "unknown"
+		username = defaultUsernameUnknown
 	}
 	if p.actorFetch != nil {
 		actor, err := p.actorFetch(ctx, actorIRI)
@@ -171,7 +172,7 @@ func (p *InboxProcessor) syncRemoteActorFromDoc(ctx context.Context, actor *Acto
 	if err != nil {
 		username := usernameFromActorIRI(actor.ID, "")
 		if username == "" {
-			username = "unknown"
+			username = defaultUsernameUnknown
 		}
 		dom := DomainFromActorID(actor.ID)
 		apRaw, _ := json.Marshal(actor)
@@ -876,24 +877,32 @@ func (p *InboxProcessor) handleBlock(ctx context.Context, activity *Activity) er
 	return nil
 }
 
-// DefaultActorFetch fetches an Actor document from the given IRI using HTTP GET.
-func DefaultActorFetch(ctx context.Context, actorIRI string) (*Actor, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, actorIRI, nil)
-	if err != nil {
-		return nil, fmt.Errorf("actor fetch new request: %w", err)
+// ActorFetch fetches an Actor document from the given IRI using HTTP GET.
+func ActorFetch(ctx context.Context, actorIRI string) (*Actor, error) {
+	return ActorFetchWithClient(http.DefaultClient)(ctx, actorIRI)
+}
+
+// ActorFetchWithClient returns an actor fetch function that uses the given HTTP client.
+// Use this with a client that has InsecureSkipVerify for development federation.
+func ActorFetchWithClient(client *http.Client) func(context.Context, string) (*Actor, error) {
+	return func(ctx context.Context, actorIRI string) (*Actor, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, actorIRI, nil)
+		if err != nil {
+			return nil, fmt.Errorf("actor fetch new request: %w", err)
+		}
+		req.Header.Set("Accept", "application/activity+json")
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("actor fetch request: %w", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("actor fetch: status %d", resp.StatusCode)
+		}
+		var actor Actor
+		if err := json.NewDecoder(resp.Body).Decode(&actor); err != nil {
+			return nil, fmt.Errorf("actor fetch decode: %w", err)
+		}
+		return &actor, nil
 	}
-	req.Header.Set("Accept", "application/activity+json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("actor fetch request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("actor fetch: status %d", resp.StatusCode)
-	}
-	var actor Actor
-	if err := json.NewDecoder(resp.Body).Decode(&actor); err != nil {
-		return nil, fmt.Errorf("actor fetch decode: %w", err)
-	}
-	return &actor, nil
 }

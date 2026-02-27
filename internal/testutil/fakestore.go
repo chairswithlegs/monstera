@@ -3,6 +3,7 @@ package testutil
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,6 +28,7 @@ type FakeStore struct {
 	suspendedAccountIDs    map[string]struct{}
 	mediaByID              map[string]*domain.MediaAttachment
 	notificationsByAccount map[string][]*domain.Notification
+	hashtagsByName         map[string]*domain.Hashtag
 	Settings               map[string]string // optional; GetSetting reads from here
 }
 
@@ -44,6 +46,7 @@ func NewFakeStore() *FakeStore {
 		suspendedAccountIDs:    make(map[string]struct{}),
 		mediaByID:              make(map[string]*domain.MediaAttachment),
 		notificationsByAccount: make(map[string][]*domain.Notification),
+		hashtagsByName:         make(map[string]*domain.Hashtag),
 	}
 }
 
@@ -150,6 +153,45 @@ func (f *FakeStore) GetRemoteAccountByUsername(ctx context.Context, username str
 		return nil, domain.ErrNotFound
 	}
 	return a, nil
+}
+
+func (f *FakeStore) SearchAccounts(ctx context.Context, query string, limit int) ([]*domain.Account, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	query = strings.ToLower(query)
+	var local, remote []*domain.Account
+	for _, a := range f.accountsByID {
+		if _, suspended := f.suspendedAccountIDs[a.ID]; suspended {
+			continue
+		}
+		var acct string
+		if a.Domain != nil && *a.Domain != "" {
+			acct = strings.ToLower(a.Username + "@" + *a.Domain)
+		} else {
+			acct = strings.ToLower(a.Username)
+		}
+		if strings.HasPrefix(acct, query) || strings.Contains(acct, query) {
+			if a.Domain == nil || *a.Domain == "" {
+				local = append(local, a)
+			} else {
+				remote = append(remote, a)
+			}
+		}
+	}
+	out := make([]*domain.Account, 0, limit)
+	for _, a := range local {
+		if len(out) >= limit {
+			break
+		}
+		out = append(out, a)
+	}
+	for _, a := range remote {
+		if len(out) >= limit {
+			break
+		}
+		out = append(out, a)
+	}
+	return out, nil
 }
 
 func (f *FakeStore) CreateUser(ctx context.Context, in store.CreateUserInput) (*domain.User, error) {
@@ -477,13 +519,43 @@ func (f *FakeStore) GetStatusMentions(ctx context.Context, statusID string) ([]*
 	return nil, nil
 }
 func (f *FakeStore) GetOrCreateHashtag(ctx context.Context, name string) (*domain.Hashtag, error) {
-	return &domain.Hashtag{ID: "tag-" + name, Name: name}, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := strings.ToLower(name)
+	if h, ok := f.hashtagsByName[key]; ok {
+		return h, nil
+	}
+	h := &domain.Hashtag{ID: "tag-" + key, Name: key, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	f.hashtagsByName[key] = h
+	return h, nil
 }
 func (f *FakeStore) AttachHashtagsToStatus(ctx context.Context, statusID string, hashtagIDs []string) error {
 	return nil
 }
 func (f *FakeStore) GetStatusHashtags(ctx context.Context, statusID string) ([]domain.Hashtag, error) {
 	return nil, nil
+}
+func (f *FakeStore) SearchHashtagsByPrefix(ctx context.Context, prefix string, limit int) ([]domain.Hashtag, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	prefix = strings.ToLower(prefix)
+	var out []domain.Hashtag
+	for _, h := range f.hashtagsByName {
+		if strings.HasPrefix(h.Name, prefix) {
+			out = append(out, *h)
+		}
+	}
+	for i := 0; i < len(out)-1; i++ {
+		for j := i + 1; j < len(out); j++ {
+			if out[j].Name < out[i].Name {
+				out[i], out[j] = out[j], out[i]
+			}
+		}
+	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
 }
 func (f *FakeStore) CreateNotification(ctx context.Context, in store.CreateNotificationInput) (*domain.Notification, error) {
 	f.mu.Lock()

@@ -14,6 +14,9 @@ import (
 
 const minSecretKeyBytes = 32
 
+const appEnvDevelopment = "development"
+const appEnvProduction = "production"
+
 type Config struct {
 	AppEnv         string
 	AppPort        int
@@ -52,6 +55,7 @@ type Config struct {
 
 	FederationEnabled           bool
 	FederationWorkerConcurrency int
+	FederationInsecureSkipTLS   bool
 	MaxStatusChars              int
 	MediaMaxBytes               int64
 	Version                     string
@@ -61,7 +65,7 @@ func Load() (*Config, error) {
 	var errs []string
 
 	cfg := &Config{
-		AppEnv:         envString("APP_ENV", "development"),
+		AppEnv:         envString("APP_ENV", appEnvDevelopment),
 		AppPort:        envInt("APP_PORT", 8080),
 		InstanceDomain: envStringRequired("INSTANCE_DOMAIN", &errs),
 		InstanceName:   envString("INSTANCE_NAME", "Monstera-fed"),
@@ -98,9 +102,11 @@ func Load() (*Config, error) {
 
 		FederationEnabled:           envBool("FEDERATION_ENABLED", true),
 		FederationWorkerConcurrency: envInt("FEDERATION_WORKER_CONCURRENCY", 5),
-		MaxStatusChars:              envInt("MAX_STATUS_CHARS", 500),
-		MediaMaxBytes:               envInt64("MEDIA_MAX_BYTES", 10485760),
-		Version:                     envString("VERSION", "0.0.0-dev"),
+		// FederationInsecureSkipTLS defaults to true for development, false for production
+		FederationInsecureSkipTLS: envBool("FEDERATION_INSECURE_SKIP_TLS_VERIFY", envString("APP_ENV", appEnvDevelopment) == appEnvDevelopment),
+		MaxStatusChars:            envInt("MAX_STATUS_CHARS", 500),
+		MediaMaxBytes:             envInt64("MEDIA_MAX_BYTES", 10485760),
+		Version:                   envString("VERSION", "0.0.0-dev"),
 	}
 
 	if len(errs) > 0 {
@@ -118,7 +124,7 @@ func (c *Config) Validate() error {
 	var errs []string
 
 	switch c.AppEnv {
-	case "development", "production":
+	case appEnvDevelopment, appEnvProduction:
 	default:
 		errs = append(errs, "APP_ENV must be development or production")
 	}
@@ -179,7 +185,7 @@ func decodeSecretKeyBase(s string) ([]byte, error) {
 }
 
 func (c *Config) IsDevelopment() bool {
-	return c.AppEnv == "development"
+	return c.AppEnv == appEnvDevelopment
 }
 
 // SecretKeyBytes returns the raw secret key bytes from SECRET_KEY_BASE (hex or raw string).

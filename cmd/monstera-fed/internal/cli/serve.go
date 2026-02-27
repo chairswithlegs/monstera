@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -135,6 +136,8 @@ func runServe(_ *cobra.Command, _ []string) error {
 	followSvc := service.NewFollowService(s, outboxPublisher)
 	notificationSvc := service.NewNotificationService(s)
 	mediaSvc := service.NewMediaService(s, mediaStore, cfg.MediaMaxBytes)
+	remoteResolver, actorFetchForInbox := setupFederationResolver(s, cfg)
+	searchSvc := service.NewSearchService(s, remoteResolver, logger)
 
 	oauthServer := oauth.NewServer(s, cacheStore, logger)
 	loginTmpl, err := oauthhandlers.ParseLoginTemplate()
@@ -159,7 +162,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 		_ = fedWorker.Start(workerCtx)
 	}()
 	defer workerCancel()
-	inboxProcessor := ap.NewInboxProcessor(s, cacheStore, blocklistCache, nil, outboxPublisher, cfg, logger, ap.DefaultActorFetch)
+	inboxProcessor := ap.NewInboxProcessor(s, cacheStore, blocklistCache, nil, outboxPublisher, cfg, logger, actorFetchForInbox)
 
 	// Setup handlers and middleware
 	oauthHandler := oauthhandlers.NewHandler(oauthServer, s, logger, loginTmpl, cfg.InstanceName, secretKey)
@@ -170,6 +173,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	instanceHandler := mastodon.NewInstanceHandler(cfg.InstanceDomain, cfg.InstanceName, cfg.MaxStatusChars, cfg.MediaMaxBytes, nil)
 	notificationsHandler := mastodon.NewNotificationsHandler(notificationSvc, accountSvc, cfg.InstanceDomain)
 	mediaHandler := mastodon.NewMediaHandler(mediaSvc)
+	searchHandler := mastodon.NewSearchHandler(searchSvc, cfg.InstanceDomain)
 	webFingerHandler := activitypub.NewWebFingerHandler(accountSvc, cfg)
 	nodeInfoPtrHandler := activitypub.NewNodeInfoPointerHandler(cfg)
 	nodeInfoHandler := activitypub.NewNodeInfoHandler(instanceSvc, cfg)
@@ -190,6 +194,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 		Instance:        instanceHandler,
 		Notifications:   notificationsHandler,
 		Media:           mediaHandler,
+		Search:          searchHandler,
 		WebFinger:       webFingerHandler,
 		NodeInfoPtr:     nodeInfoPtrHandler,
 		NodeInfo:        nodeInfoHandler,
@@ -230,4 +235,22 @@ func runServe(_ *cobra.Command, _ []string) error {
 	natsClient.Close()
 	logger.Info("server stopped")
 	return nil
+}
+
+func setupFederationResolver(s store.Store, cfg *config.Config) (*ap.RemoteAccountResolver, func(context.Context, string) (*ap.Actor, error)) {
+	if !cfg.FederationInsecureSkipTLS {
+		actorFetch := ap.ActorFetch
+		return ap.NewRemoteAccountResolver(s, actorFetch, cfg.InstanceDomain, nil), actorFetch
+	}
+	fedClient := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			//nolint:gosec // G402: intentional for development federation with self-signed certs
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	actorFetchForInbox := ap.ActorFetchWithClient(fedClient)
+	remoteResolver := ap.NewRemoteAccountResolver(s, actorFetchForInbox, cfg.InstanceDomain, fedClient)
+	return remoteResolver, actorFetchForInbox
 }

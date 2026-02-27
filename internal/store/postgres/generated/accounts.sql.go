@@ -374,6 +374,68 @@ func (q *Queries) ListLocalAccounts(ctx context.Context, arg ListLocalAccountsPa
 	return items, nil
 }
 
+const searchAccounts = `-- name: SearchAccounts :many
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, ap_raw, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields FROM accounts
+WHERE suspended = FALSE
+  AND (
+    LOWER(username) LIKE LOWER($1) || '%'
+    OR (domain IS NOT NULL AND LOWER(username) || '@' || LOWER(COALESCE(domain, '')) LIKE LOWER($1) || '%')
+  )
+ORDER BY (domain IS NOT NULL), username
+LIMIT $2
+`
+
+type SearchAccountsParams struct {
+	Lower string `json:"lower"`
+	Limit int32  `json:"limit"`
+}
+
+func (q *Queries) SearchAccounts(ctx context.Context, arg SearchAccountsParams) ([]Account, error) {
+	rows, err := q.db.Query(ctx, searchAccounts, arg.Lower, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Account{}
+	for rows.Next() {
+		var i Account
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.Domain,
+			&i.DisplayName,
+			&i.Note,
+			&i.PublicKey,
+			&i.PrivateKey,
+			&i.InboxUrl,
+			&i.OutboxUrl,
+			&i.FollowersUrl,
+			&i.FollowingUrl,
+			&i.ApID,
+			&i.ApRaw,
+			&i.Bot,
+			&i.Locked,
+			&i.Suspended,
+			&i.Silenced,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AvatarMediaID,
+			&i.HeaderMediaID,
+			&i.FollowersCount,
+			&i.FollowingCount,
+			&i.StatusesCount,
+			&i.Fields,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const silenceAccount = `-- name: SilenceAccount :exec
 UPDATE accounts SET silenced = TRUE, updated_at = NOW() WHERE id = $1
 `

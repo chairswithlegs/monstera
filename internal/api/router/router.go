@@ -31,6 +31,7 @@ type Deps struct {
 	Instance        *mastodon.InstanceHandler
 	Notifications   *mastodon.NotificationsHandler
 	Media           *mastodon.MediaHandler
+	Search          *mastodon.SearchHandler
 	WebFinger       *activitypub.WebFingerHandler
 	NodeInfoPtr     *activitypub.NodeInfoPointerHandler
 	NodeInfo        *activitypub.NodeInfoHandler
@@ -68,6 +69,10 @@ func New(deps Deps) http.Handler {
 
 	r.Route("/api/v2", func(r chi.Router) {
 		r.Get("/instance", deps.Instance.GETInstance)
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.OptionalAuth(deps.OAuthServer, deps.AccountsService))
+			r.Get("/search", deps.Search.GETSearch)
+		})
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth(deps.OAuthServer, deps.AccountsService))
 			r.Method("POST", "/media", middleware.RequiredScopes("write:media")(http.HandlerFunc(deps.Media.POSTMedia)))

@@ -150,6 +150,12 @@ func (f *fakeOAuthStore) GetLocalAccountByUsername(ctx context.Context, username
 func (f *fakeOAuthStore) GetRemoteAccountByUsername(ctx context.Context, username string, d *string) (*domain.Account, error) {
 	return nil, domain.ErrNotFound
 }
+func (f *fakeOAuthStore) SearchAccounts(ctx context.Context, query string, limit int) ([]*domain.Account, error) {
+	return nil, nil
+}
+func (f *fakeOAuthStore) SearchHashtagsByPrefix(ctx context.Context, prefix string, limit int) ([]domain.Hashtag, error) {
+	return nil, nil
+}
 func (f *fakeOAuthStore) WithTx(ctx context.Context, fn func(store.Store) error) error {
 	return fn(f)
 }

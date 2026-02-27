@@ -13,6 +13,7 @@ type Store interface {
 	CreateAccount(ctx context.Context, in CreateAccountInput) (*domain.Account, error)
 	GetAccountByID(ctx context.Context, id string) (*domain.Account, error)
 	GetAccountByAPID(ctx context.Context, apID string) (*domain.Account, error)
+	SearchAccounts(ctx context.Context, query string, limit int) ([]*domain.Account, error)
 	GetLocalAccountByUsername(ctx context.Context, username string) (*domain.Account, error)
 	GetRemoteAccountByUsername(ctx context.Context, username string, domain *string) (*domain.Account, error)
 	CountLocalAccounts(ctx context.Context) (int64, error)
@@ -52,6 +53,7 @@ type Store interface {
 	CreateStatusMention(ctx context.Context, statusID, accountID string) error
 	GetStatusMentions(ctx context.Context, statusID string) ([]*domain.Account, error)
 	GetOrCreateHashtag(ctx context.Context, name string) (*domain.Hashtag, error)
+	SearchHashtagsByPrefix(ctx context.Context, prefix string, limit int) ([]domain.Hashtag, error)
 	AttachHashtagsToStatus(ctx context.Context, statusID string, hashtagIDs []string) error
 	GetStatusHashtags(ctx context.Context, statusID string) ([]domain.Hashtag, error)
 	CreateNotification(ctx context.Context, in CreateNotificationInput) (*domain.Notification, error)
