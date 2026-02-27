@@ -7,12 +7,12 @@ SELECT * FROM statuses WHERE ap_id = $1 AND deleted_at IS NULL;
 -- name: CreateStatus :one
 INSERT INTO statuses (
     id, uri, account_id, text, content, content_warning,
-    visibility, language, in_reply_to_id, reblog_of_id,
+    visibility, language, in_reply_to_id, in_reply_to_account_id, reblog_of_id,
     ap_id, ap_raw, sensitive, local
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
-    $7, $8, $9, $10,
-    $11, $12, $13, $14
+    $7, $8, $9, $10, $11,
+    $12, $13, $14, $15
 ) RETURNING *;
 
 -- name: UpdateStatus :one
@@ -128,6 +128,14 @@ UPDATE statuses SET favourites_count = GREATEST(0, favourites_count - 1) WHERE i
 -- name: GetReblogByAccountAndTarget :one
 SELECT * FROM statuses
 WHERE account_id = $1 AND reblog_of_id = $2 AND deleted_at IS NULL;
+
+-- name: GetRebloggedBy :many
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.ap_raw, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields FROM accounts a
+INNER JOIN statuses s ON s.account_id = a.id
+WHERE s.reblog_of_id = $1 AND s.deleted_at IS NULL
+  AND ($2::text IS NULL OR s.id < $2)
+ORDER BY s.id DESC
+LIMIT $3;
 
 -- name: CreateStatusEdit :one
 INSERT INTO status_edits (id, status_id, account_id, text, content, content_warning, sensitive)

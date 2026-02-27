@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -50,20 +51,21 @@ func toDbCreateUserParams(in store.CreateUserInput) db.CreateUserParams {
 
 func toDbCreateStatusParams(in store.CreateStatusInput) db.CreateStatusParams {
 	return db.CreateStatusParams{
-		ID:             in.ID,
-		Uri:            in.URI,
-		AccountID:      in.AccountID,
-		Text:           in.Text,
-		Content:        in.Content,
-		ContentWarning: in.ContentWarning,
-		Visibility:     in.Visibility,
-		Language:       in.Language,
-		InReplyToID:    in.InReplyToID,
-		ReblogOfID:     in.ReblogOfID,
-		ApID:           in.APID,
-		ApRaw:          in.ApRaw,
-		Sensitive:      in.Sensitive,
-		Local:          in.Local,
+		ID:                 in.ID,
+		Uri:                in.URI,
+		AccountID:          in.AccountID,
+		Text:               in.Text,
+		Content:            in.Content,
+		ContentWarning:     in.ContentWarning,
+		Visibility:         in.Visibility,
+		Language:           in.Language,
+		InReplyToID:        in.InReplyToID,
+		InReplyToAccountID: in.InReplyToAccountID,
+		ReblogOfID:         in.ReblogOfID,
+		ApID:               in.APID,
+		ApRaw:              in.ApRaw,
+		Sensitive:          in.Sensitive,
+		Local:              in.Local,
 	}
 }
 
@@ -310,6 +312,90 @@ func (s *PostgresStore) GetPublicTimeline(ctx context.Context, localOnly bool, m
 	out := make([]domain.Status, 0, len(dbRows))
 	for _, r := range dbRows {
 		out = append(out, ToDomainStatus(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetHashtagTimeline(ctx context.Context, tagName string, maxID *string, limit int) ([]domain.Status, error) {
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	dbRows, err := s.q.GetHashtagTimeline(ctx, db.GetHashtagTimelineParams{
+		Lower:   strings.ToLower(tagName),
+		Column2: cursor,
+		Limit:   int32(limit), //nolint:gosec // limit clamped by caller
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.Status, 0, len(dbRows))
+	for _, r := range dbRows {
+		out = append(out, ToDomainStatus(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetStatusAncestors(ctx context.Context, statusID string) ([]domain.Status, error) {
+	rows, err := s.q.GetStatusAncestors(ctx, statusID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.Status, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, AncestorRowToDomain(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetStatusDescendants(ctx context.Context, statusID string) ([]domain.Status, error) {
+	rows, err := s.q.GetStatusDescendants(ctx, &statusID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.Status, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, DescendantRowToDomain(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetStatusFavouritedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]domain.Account, error) {
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	rows, err := s.q.GetStatusFavouritedBy(ctx, db.GetStatusFavouritedByParams{
+		StatusID: statusID,
+		Column2:  cursor,
+		Limit:    int32(limit), //nolint:gosec // limit clamped by caller
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.Account, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainAccount(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetRebloggedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]domain.Account, error) {
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	rows, err := s.q.GetRebloggedBy(ctx, db.GetRebloggedByParams{
+		ReblogOfID: &statusID,
+		Column2:    cursor,
+		Limit:      int32(limit), //nolint:gosec // limit clamped by caller
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.Account, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainAccount(r))
 	}
 	return out, nil
 }
@@ -733,6 +819,20 @@ func (s *PostgresStore) DeleteBlock(ctx context.Context, accountID, targetID str
 	return mapErr(s.q.DeleteBlock(ctx, db.DeleteBlockParams{AccountID: accountID, TargetID: targetID}))
 }
 
+func (s *PostgresStore) CreateMute(ctx context.Context, in store.CreateMuteInput) error {
+	_, err := s.q.CreateMute(ctx, db.CreateMuteParams{
+		ID:                in.ID,
+		AccountID:         in.AccountID,
+		TargetID:          in.TargetID,
+		HideNotifications: in.HideNotifications,
+	})
+	return mapErr(err)
+}
+
+func (s *PostgresStore) DeleteMute(ctx context.Context, accountID, targetID string) error {
+	return mapErr(s.q.DeleteMute(ctx, db.DeleteMuteParams{AccountID: accountID, TargetID: targetID}))
+}
+
 func toDbCreateFavouriteParams(in store.CreateFavouriteInput) db.CreateFavouriteParams {
 	return db.CreateFavouriteParams{
 		ID:        in.ID,
@@ -809,6 +909,7 @@ func (s *PostgresStore) GetReblogByAccountAndTarget(ctx context.Context, account
 }
 
 func toDbUpdateAccountParams(in store.UpdateAccountInput) db.UpdateAccountParams {
+	fields := []byte(in.Fields)
 	return db.UpdateAccountParams{
 		ID:            in.ID,
 		DisplayName:   in.DisplayName,
@@ -818,6 +919,7 @@ func toDbUpdateAccountParams(in store.UpdateAccountInput) db.UpdateAccountParams
 		ApRaw:         in.APRaw,
 		Bot:           in.Bot,
 		Locked:        in.Locked,
+		Fields:        fields,
 	}
 }
 

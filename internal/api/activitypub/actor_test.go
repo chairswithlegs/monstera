@@ -31,7 +31,7 @@ func TestActorHandler_GETActor(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodGet, "/users/bob", nil)
 	r = r.WithContext(ctx)
-	r = addChiURLParam(r, "bob")
+	r = testutil.AddChiURLParam(r, "username", "bob")
 	w := httptest.NewRecorder()
 	h.GETActor(w, r)
 
@@ -60,7 +60,7 @@ func TestActorHandler_notFound(t *testing.T) {
 	t.Parallel()
 	h := NewActorHandler(service.NewAccountService(testutil.NewFakeStore(), "https://example.com"), &config.Config{InstanceDomain: "example.com"})
 	r := httptest.NewRequest(http.MethodGet, "/users/nobody", nil)
-	r = addChiURLParam(r, "nobody")
+	r = testutil.AddChiURLParam(r, "username", "nobody")
 	w := httptest.NewRecorder()
 	h.GETActor(w, r)
 	assert.Equal(t, http.StatusNotFound, w.Code)

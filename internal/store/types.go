@@ -1,6 +1,9 @@
 package store
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // CreateAccountInput is the input for creating an account.
 type CreateAccountInput struct {
@@ -32,20 +35,21 @@ type CreateUserInput struct {
 
 // CreateStatusInput is the input for creating a status.
 type CreateStatusInput struct {
-	ID             string
-	URI            string
-	AccountID      string
-	Text           *string
-	Content        *string
-	ContentWarning *string
-	Visibility     string
-	Language       *string
-	InReplyToID    *string
-	ReblogOfID     *string
-	APID           string
-	ApRaw          []byte
-	Sensitive      bool
-	Local          bool
+	ID                 string
+	URI                string
+	AccountID          string
+	Text               *string
+	Content            *string
+	ContentWarning     *string
+	Visibility         string
+	Language           *string
+	InReplyToID        *string
+	InReplyToAccountID *string
+	ReblogOfID         *string
+	APID               string
+	ApRaw              []byte
+	Sensitive          bool
+	Local              bool
 }
 
 // CreateApplicationInput is the input for creating an OAuth application.
@@ -107,6 +111,14 @@ type CreateBlockInput struct {
 	TargetID  string
 }
 
+// CreateMuteInput is the input for creating or updating a mute.
+type CreateMuteInput struct {
+	ID                string
+	AccountID         string
+	TargetID          string
+	HideNotifications bool
+}
+
 // CreateFavouriteInput is the input for creating a favourite.
 type CreateFavouriteInput struct {
 	ID        string
@@ -125,6 +137,7 @@ type UpdateAccountInput struct {
 	APRaw         []byte
 	Bot           bool
 	Locked        bool
+	Fields        json.RawMessage // when not updating fields, pass current account.Fields
 }
 
 // CreateMediaAttachmentInput is the input for creating a media attachment.

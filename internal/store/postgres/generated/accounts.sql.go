@@ -474,13 +474,14 @@ func (q *Queries) UnsuspendAccount(ctx context.Context, id string) error {
 
 const updateAccount = `-- name: UpdateAccount :one
 UPDATE accounts SET
-    display_name    = $2,
-    note            = $3,
-    avatar_media_id = $4,
-    header_media_id = $5,
-    ap_raw          = $6,
-    bot             = $7,
-    locked          = $8,
+    display_name    = COALESCE($2, display_name),
+    note            = COALESCE($3, note),
+    avatar_media_id = COALESCE($4, avatar_media_id),
+    header_media_id = COALESCE($5, header_media_id),
+    ap_raw          = COALESCE($6, ap_raw),
+    bot             = COALESCE($7, bot),
+    locked          = COALESCE($8, locked),
+    fields          = COALESCE($9, fields),
     updated_at      = NOW()
 WHERE id = $1
 RETURNING id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, ap_raw, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields
@@ -495,6 +496,7 @@ type UpdateAccountParams struct {
 	ApRaw         []byte  `json:"ap_raw"`
 	Bot           bool    `json:"bot"`
 	Locked        bool    `json:"locked"`
+	Fields        []byte  `json:"fields"`
 }
 
 func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error) {
@@ -507,6 +509,7 @@ func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (A
 		arg.ApRaw,
 		arg.Bot,
 		arg.Locked,
+		arg.Fields,
 	)
 	var i Account
 	err := row.Scan(

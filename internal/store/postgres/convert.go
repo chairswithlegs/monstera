@@ -101,6 +101,57 @@ func ToDomainStatus(s db.Status) domain.Status {
 	return d
 }
 
+// statusRowToDomain converts a status row (ancestors/descendants) to domain.Status.
+func statusRowToDomain(id, uri, accountID string, text, content, contentWarning *string, visibility string, language *string, inReplyToID, reblogOfID *string, apID string, apRaw []byte, sensitive, local bool, editedAt, createdAt, updatedAt, deletedAt pgtype.Timestamptz, repliesCount, reblogsCount, favouritesCount int32, inReplyToAccountID *string) domain.Status {
+	d := domain.Status{
+		ID:                 id,
+		URI:                uri,
+		AccountID:          accountID,
+		Text:               text,
+		Content:            content,
+		ContentWarning:     contentWarning,
+		Visibility:         visibility,
+		Language:           language,
+		InReplyToID:        inReplyToID,
+		InReplyToAccountID: inReplyToAccountID,
+		ReblogOfID:         reblogOfID,
+		APID:               apID,
+		Sensitive:          sensitive,
+		Local:              local,
+		RepliesCount:       int(repliesCount),
+		ReblogsCount:       int(reblogsCount),
+		FavouritesCount:    int(favouritesCount),
+		CreatedAt:          pgTime(createdAt),
+		UpdatedAt:          pgTime(updatedAt),
+	}
+	if len(apRaw) > 0 {
+		d.APRaw = json.RawMessage(apRaw)
+	}
+	d.EditedAt = pgTimePtr(editedAt)
+	d.DeletedAt = pgTimePtr(deletedAt)
+	return d
+}
+
+// AncestorRowToDomain converts GetStatusAncestorsRow to domain.Status.
+func AncestorRowToDomain(r db.GetStatusAncestorsRow) domain.Status {
+	return statusRowToDomain(
+		r.ID, r.Uri, r.AccountID, r.Text, r.Content, r.ContentWarning,
+		r.Visibility, r.Language, r.InReplyToID, r.ReblogOfID, r.ApID, r.ApRaw,
+		r.Sensitive, r.Local, r.EditedAt, r.CreatedAt, r.UpdatedAt, r.DeletedAt,
+		r.RepliesCount, r.ReblogsCount, r.FavouritesCount, r.InReplyToAccountID,
+	)
+}
+
+// DescendantRowToDomain converts GetStatusDescendantsRow to domain.Status.
+func DescendantRowToDomain(r db.GetStatusDescendantsRow) domain.Status {
+	return statusRowToDomain(
+		r.ID, r.Uri, r.AccountID, r.Text, r.Content, r.ContentWarning,
+		r.Visibility, r.Language, r.InReplyToID, r.ReblogOfID, r.ApID, r.ApRaw,
+		r.Sensitive, r.Local, r.EditedAt, r.CreatedAt, r.UpdatedAt, r.DeletedAt,
+		r.RepliesCount, r.ReblogsCount, r.FavouritesCount, r.InReplyToAccountID,
+	)
+}
+
 // ToDomainUser converts a sqlc db.User to a domain.User.
 func ToDomainUser(u db.User) domain.User {
 	d := domain.User{

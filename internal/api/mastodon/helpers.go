@@ -71,3 +71,11 @@ func LinkHeader(requestURL string, firstID, lastID string) string {
 	}
 	return strings.Join(parts, ", ")
 }
+
+// optionalString returns a pointer to s if non-empty, otherwise nil.
+func optionalString(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}

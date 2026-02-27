@@ -25,6 +25,7 @@ type FakeStore struct {
 	publicTimeline         []*domain.Status
 	followsByKey           map[string]*domain.Follow // "accountID:targetID"
 	blocksByKey            map[string]struct{}       // "accountID:targetID"
+	mutesByKey             map[string]struct{}       // "accountID:targetID"
 	suspendedAccountIDs    map[string]struct{}
 	mediaByID              map[string]*domain.MediaAttachment
 	notificationsByAccount map[string][]*domain.Notification
@@ -43,6 +44,7 @@ func NewFakeStore() *FakeStore {
 		homeTimeline:           make(map[string][]*domain.Status),
 		followsByKey:           make(map[string]*domain.Follow),
 		blocksByKey:            make(map[string]struct{}),
+		mutesByKey:             make(map[string]struct{}),
 		suspendedAccountIDs:    make(map[string]struct{}),
 		mediaByID:              make(map[string]*domain.MediaAttachment),
 		notificationsByAccount: make(map[string][]*domain.Notification),
@@ -455,6 +457,53 @@ func (f *FakeStore) GetPublicTimeline(ctx context.Context, localOnly bool, maxID
 	return out, nil
 }
 
+func (f *FakeStore) GetHashtagTimeline(ctx context.Context, tagName string, maxID *string, limit int) ([]domain.Status, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// FakeStore does not track status-hashtag joins; return empty.
+	return nil, nil
+}
+
+func (f *FakeStore) GetStatusAncestors(ctx context.Context, statusID string) ([]domain.Status, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// FakeStore does not walk reply chains; return empty.
+	return nil, nil
+}
+
+func (f *FakeStore) GetStatusDescendants(ctx context.Context, statusID string) ([]domain.Status, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// FakeStore does not walk reply chains; return empty.
+	return nil, nil
+}
+
+func (f *FakeStore) GetStatusFavouritedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]domain.Account, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// FakeStore does not track favourites; return empty.
+	return nil, nil
+}
+
+func (f *FakeStore) GetRebloggedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]domain.Account, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// FakeStore: collect accounts that have a reblog status for this ID.
+	out := make([]domain.Account, 0)
+	for _, s := range f.statusesByID {
+		if s.DeletedAt != nil {
+			continue
+		}
+		if s.ReblogOfID != nil && *s.ReblogOfID == statusID {
+			acc := f.accountsByID[s.AccountID]
+			if acc != nil {
+				out = append(out, *acc)
+			}
+		}
+	}
+	return out, nil
+}
+
 func (f *FakeStore) CreateApplication(ctx context.Context, in store.CreateApplicationInput) (*domain.OAuthApplication, error) {
 	return nil, domain.ErrNotFound
 }
@@ -593,6 +642,13 @@ func (f *FakeStore) ListNotifications(ctx context.Context, accountID string, max
 	return out, nil
 }
 func (f *FakeStore) GetNotification(ctx context.Context, id, accountID string) (*domain.Notification, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, n := range f.notificationsByAccount[accountID] {
+		if n != nil && n.ID == id {
+			return n, nil
+		}
+	}
 	return nil, domain.ErrNotFound
 }
 func (f *FakeStore) ClearNotifications(ctx context.Context, accountID string) error {
@@ -665,6 +721,10 @@ func (f *FakeStore) GetRelationship(ctx context.Context, accountID, targetID str
 	if _, ok := f.blocksByKey[followKey(targetID, accountID)]; ok {
 		rel.BlockedBy = true
 	}
+	if _, ok := f.mutesByKey[followKey(accountID, targetID)]; ok {
+		rel.Muting = true
+		rel.MutingNotifications = true
+	}
 	return rel, nil
 }
 func (f *FakeStore) ListDomainBlocks(ctx context.Context) ([]domain.DomainBlock, error) {
@@ -728,6 +788,21 @@ func (f *FakeStore) CreateBlock(ctx context.Context, in store.CreateBlockInput) 
 	return nil
 }
 func (f *FakeStore) DeleteBlock(ctx context.Context, accountID, targetID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.blocksByKey, followKey(accountID, targetID))
+	return nil
+}
+func (f *FakeStore) CreateMute(ctx context.Context, in store.CreateMuteInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.mutesByKey[followKey(in.AccountID, in.TargetID)] = struct{}{}
+	return nil
+}
+func (f *FakeStore) DeleteMute(ctx context.Context, accountID, targetID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.mutesByKey, followKey(accountID, targetID))
 	return nil
 }
 func (f *FakeStore) CreateFavourite(ctx context.Context, in store.CreateFavouriteInput) (*domain.Favourite, error) {
@@ -761,6 +836,29 @@ func (f *FakeStore) GetReblogByAccountAndTarget(ctx context.Context, accountID, 
 	return nil, domain.ErrNotFound
 }
 func (f *FakeStore) UpdateAccount(ctx context.Context, in store.UpdateAccountInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	acc := f.accountsByID[in.ID]
+	if acc == nil {
+		return domain.ErrNotFound
+	}
+	if in.DisplayName != nil {
+		acc.DisplayName = in.DisplayName
+	}
+	if in.Note != nil {
+		acc.Note = in.Note
+	}
+	if in.AvatarMediaID != nil {
+		acc.AvatarMediaID = in.AvatarMediaID
+	}
+	if in.HeaderMediaID != nil {
+		acc.HeaderMediaID = in.HeaderMediaID
+	}
+	if len(in.Fields) > 0 {
+		acc.Fields = in.Fields
+	}
+	acc.Bot = in.Bot
+	acc.Locked = in.Locked
 	return nil
 }
 func (f *FakeStore) UpdateAccountKeys(ctx context.Context, id, publicKey string, apRaw []byte) error {

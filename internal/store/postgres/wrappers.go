@@ -94,11 +94,6 @@ func (s *PostgresStore) CreateInvite(ctx context.Context, arg db.CreateInvitePar
 	return inv, mapErr(err)
 }
 
-func (s *PostgresStore) CreateMute(ctx context.Context, arg db.CreateMuteParams) (db.Mute, error) {
-	m, err := s.q.CreateMute(ctx, arg)
-	return m, mapErr(err)
-}
-
 func (s *PostgresStore) CreateReport(ctx context.Context, arg db.CreateReportParams) (db.Report, error) {
 	r, err := s.q.CreateReport(ctx, arg)
 	return r, mapErr(err)

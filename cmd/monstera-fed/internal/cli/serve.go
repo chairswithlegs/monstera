@@ -133,7 +133,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	statusSvc := service.NewStatusService(s, outboxPublisher, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars, logger)
 	timelineSvc := service.NewTimelineService(s)
 	instanceSvc := service.NewInstanceService(s)
-	followSvc := service.NewFollowService(s, outboxPublisher)
+	followSvc := service.NewFollowService(s, outboxPublisher, nil)
 	notificationSvc := service.NewNotificationService(s)
 	mediaSvc := service.NewMediaService(s, mediaStore, cfg.MediaMaxBytes)
 	remoteResolver, actorFetchForInbox := setupFederationResolver(s, cfg)
@@ -167,13 +167,14 @@ func runServe(_ *cobra.Command, _ []string) error {
 	// Setup handlers and middleware
 	oauthHandler := oauthhandlers.NewHandler(oauthServer, s, logger, loginTmpl, cfg.InstanceName, secretKey)
 	health := api.NewHealthChecker(pool, natsClient.Conn)
-	accountsHandler := mastodon.NewAccountsHandler(accountSvc, followSvc, cfg.InstanceDomain)
-	statusesHandler := mastodon.NewStatusesHandler(accountSvc, statusSvc, cfg.InstanceDomain)
+	accountsHandler := mastodon.NewAccountsHandler(accountSvc, followSvc, timelineSvc, cfg.InstanceDomain)
+	statusesHandler := mastodon.NewStatusesHandler(accountSvc, statusSvc, cfg.InstanceDomain, cacheStore)
 	timelinesHandler := mastodon.NewTimelinesHandler(timelineSvc, cfg.InstanceDomain)
 	instanceHandler := mastodon.NewInstanceHandler(cfg.InstanceDomain, cfg.InstanceName, cfg.MaxStatusChars, cfg.MediaMaxBytes, nil)
 	notificationsHandler := mastodon.NewNotificationsHandler(notificationSvc, accountSvc, cfg.InstanceDomain)
 	mediaHandler := mastodon.NewMediaHandler(mediaSvc)
 	searchHandler := mastodon.NewSearchHandler(searchSvc, cfg.InstanceDomain)
+	streamingHandler := mastodon.NewStreamingHandler()
 	webFingerHandler := activitypub.NewWebFingerHandler(accountSvc, cfg)
 	nodeInfoPtrHandler := activitypub.NewNodeInfoPointerHandler(cfg)
 	nodeInfoHandler := activitypub.NewNodeInfoHandler(instanceSvc, cfg)
@@ -195,6 +196,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 		Notifications:   notificationsHandler,
 		Media:           mediaHandler,
 		Search:          searchHandler,
+		Streaming:       streamingHandler,
 		WebFinger:       webFingerHandler,
 		NodeInfoPtr:     nodeInfoPtrHandler,
 		NodeInfo:        nodeInfoHandler,

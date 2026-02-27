@@ -94,6 +94,7 @@ type Querier interface {
 	GetPendingFollowRequests(ctx context.Context, targetID string) ([]GetPendingFollowRequestsRow, error)
 	GetPublicTimeline(ctx context.Context, arg GetPublicTimelineParams) ([]Status, error)
 	GetReblogByAccountAndTarget(ctx context.Context, arg GetReblogByAccountAndTargetParams) (Status, error)
+	GetRebloggedBy(ctx context.Context, arg GetRebloggedByParams) ([]Account, error)
 	GetRemoteAccountByUsername(ctx context.Context, arg GetRemoteAccountByUsernameParams) (Account, error)
 	GetReport(ctx context.Context, id string) (Report, error)
 	GetServerFilter(ctx context.Context, id string) (ServerFilter, error)

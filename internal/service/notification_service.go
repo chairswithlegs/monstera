@@ -39,3 +39,28 @@ func (svc *NotificationService) List(ctx context.Context, accountID string, maxI
 	}
 	return rows, nil
 }
+
+// Get returns a single notification by ID. Caller must ensure accountID is the owner.
+func (svc *NotificationService) Get(ctx context.Context, id, accountID string) (*domain.Notification, error) {
+	n, err := svc.store.GetNotification(ctx, id, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("GetNotification: %w", err)
+	}
+	return n, nil
+}
+
+// Clear removes all notifications for the account.
+func (svc *NotificationService) Clear(ctx context.Context, accountID string) error {
+	if err := svc.store.ClearNotifications(ctx, accountID); err != nil {
+		return fmt.Errorf("ClearNotifications: %w", err)
+	}
+	return nil
+}
+
+// Dismiss removes a single notification by ID. Caller must ensure accountID is the owner.
+func (svc *NotificationService) Dismiss(ctx context.Context, id, accountID string) error {
+	if err := svc.store.DismissNotification(ctx, id, accountID); err != nil {
+		return fmt.Errorf("DismissNotification: %w", err)
+	}
+	return nil
+}

@@ -30,7 +30,7 @@ func TestNotificationService_List_returns_notifications(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	followSvc := NewFollowService(fake, nil)
+	followSvc := NewFollowService(fake, nil, nil)
 	notifSvc := NewNotificationService(fake)
 
 	actor, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
@@ -54,7 +54,7 @@ func TestNotificationService_List_respects_limit(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	followSvc := NewFollowService(fake, nil)
+	followSvc := NewFollowService(fake, nil, nil)
 	notifSvc := NewNotificationService(fake)
 
 	actor1, _ := accountSvc.Create(ctx, CreateAccountInput{Username: "a1"})

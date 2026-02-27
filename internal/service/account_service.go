@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -236,4 +237,47 @@ func (svc *AccountService) GetAccountWithUser(ctx context.Context, accountID str
 		return nil, nil, fmt.Errorf("GetAccountWithUser: %w", err)
 	}
 	return acc, user, nil
+}
+
+// UpdateCredentialsInput is the input for updating the authenticated account's profile (PATCH update_credentials).
+type UpdateCredentialsInput struct {
+	AccountID     string
+	DisplayName   *string
+	Note          *string
+	AvatarMediaID *string
+	HeaderMediaID *string
+	Locked        bool
+	Bot           bool
+	Fields        json.RawMessage // when nil or empty, existing account.Fields are preserved
+}
+
+// UpdateCredentials updates the account profile. Caller should pass current account.Fields when not updating fields.
+// Returns the updated account and user for building the CredentialAccount response.
+func (svc *AccountService) UpdateCredentials(ctx context.Context, in UpdateCredentialsInput) (*domain.Account, *domain.User, error) {
+	acc, err := svc.store.GetAccountByID(ctx, in.AccountID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("UpdateCredentials GetAccountByID: %w", err)
+	}
+	fields := in.Fields
+	if len(fields) == 0 {
+		fields = acc.Fields
+	}
+	if err := svc.store.UpdateAccount(ctx, store.UpdateAccountInput{
+		ID:            in.AccountID,
+		DisplayName:   in.DisplayName,
+		Note:          in.Note,
+		AvatarMediaID: in.AvatarMediaID,
+		HeaderMediaID: in.HeaderMediaID,
+		Bot:           in.Bot,
+		Locked:        in.Locked,
+		Fields:        fields,
+	}); err != nil {
+		return nil, nil, fmt.Errorf("UpdateCredentials UpdateAccount: %w", err)
+	}
+	updated, err := svc.store.GetAccountByID(ctx, in.AccountID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("UpdateCredentials GetAccountByID after: %w", err)
+	}
+	user, _ := svc.store.GetUserByAccountID(ctx, in.AccountID)
+	return updated, user, nil
 }

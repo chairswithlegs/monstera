@@ -32,6 +32,7 @@ type Deps struct {
 	Notifications   *mastodon.NotificationsHandler
 	Media           *mastodon.MediaHandler
 	Search          *mastodon.SearchHandler
+	Streaming       *mastodon.StreamingHandler
 	WebFinger       *activitypub.WebFingerHandler
 	NodeInfoPtr     *activitypub.NodeInfoPointerHandler
 	NodeInfo        *activitypub.NodeInfoHandler
@@ -83,26 +84,48 @@ func New(deps Deps) http.Handler {
 		r.Get("/instance", deps.Instance.GETInstance)
 		r.Post("/apps", deps.OAuthHandler.POSTRegisterApp)
 		r.Get("/custom_emojis", deps.Instance.GETCustomEmojis)
+		r.Get("/streaming/health", deps.Streaming.GETHealth)
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.OptionalAuth(deps.OAuthServer, deps.AccountsService))
 			r.Get("/accounts/{id}", deps.Accounts.GETAccounts)
 			r.Get("/statuses/{id}", deps.Statuses.GETStatuses)
+			r.Get("/statuses/{id}/context", deps.Statuses.GETContext)
+			r.Get("/statuses/{id}/favourited_by", deps.Statuses.GETFavouritedBy)
+			r.Get("/statuses/{id}/reblogged_by", deps.Statuses.GETRebloggedBy)
 			r.Get("/timelines/public", deps.Timelines.GETPublic)
+			r.Get("/timelines/tag/{hashtag}", deps.Timelines.GETTag)
 		})
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth(deps.OAuthServer, deps.AccountsService))
 			r.Method("GET", "/accounts/verify_credentials", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Accounts.GETVerifyCredentials)))
+			r.Method("PATCH", "/accounts/update_credentials", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.Accounts.PATCHUpdateCredentials)))
 			r.Method("GET", "/accounts/relationships", middleware.RequiredScopes("read:follows")(http.HandlerFunc(deps.Accounts.GETRelationships)))
 			r.Route("/accounts/{id}", func(r chi.Router) {
+				r.Method("GET", "/statuses", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Accounts.GETAccountStatuses)))
+				r.Method("GET", "/followers", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Accounts.GETFollowers)))
+				r.Method("GET", "/following", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Accounts.GETFollowing)))
 				r.Method("POST", "/follow", middleware.RequiredScopes("write:follows")(http.HandlerFunc(deps.Accounts.POSTFollow)))
 				r.Method("POST", "/unfollow", middleware.RequiredScopes("write:follows")(http.HandlerFunc(deps.Accounts.POSTUnfollow)))
+				r.Method("POST", "/block", middleware.RequiredScopes("write:blocks")(http.HandlerFunc(deps.Accounts.POSTBlock)))
+				r.Method("POST", "/unblock", middleware.RequiredScopes("write:blocks")(http.HandlerFunc(deps.Accounts.POSTUnblock)))
+				r.Method("POST", "/mute", middleware.RequiredScopes("write:mutes")(http.HandlerFunc(deps.Accounts.POSTMute)))
+				r.Method("POST", "/unmute", middleware.RequiredScopes("write:mutes")(http.HandlerFunc(deps.Accounts.POSTUnmute)))
 			})
 			r.Method("POST", "/statuses", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.POSTStatuses)))
-			r.Method("DELETE", "/statuses/{id}", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.DELETEStatuses)))
+			r.Route("/statuses/{id}", func(r chi.Router) {
+				r.Method("DELETE", "/", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.DELETEStatuses)))
+				r.Method("POST", "/reblog", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.POSTReblog)))
+				r.Method("POST", "/unreblog", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.POSTUnreblog)))
+				r.Method("POST", "/favourite", middleware.RequiredScopes("write:favourites")(http.HandlerFunc(deps.Statuses.POSTFavourite)))
+				r.Method("POST", "/unfavourite", middleware.RequiredScopes("write:favourites")(http.HandlerFunc(deps.Statuses.POSTUnfavourite)))
+			})
 			r.Method("GET", "/timelines/home", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.Timelines.GETHome)))
 			r.Method("GET", "/notifications", middleware.RequiredScopes("read:notifications")(http.HandlerFunc(deps.Notifications.GETNotifications)))
+			r.Method("GET", "/notifications/{id}", middleware.RequiredScopes("read:notifications")(http.HandlerFunc(deps.Notifications.GETNotification)))
+			r.Method("POST", "/notifications/clear", middleware.RequiredScopes("write:notifications")(http.HandlerFunc(deps.Notifications.POSTClear)))
+			r.Method("POST", "/notifications/{id}/dismiss", middleware.RequiredScopes("write:notifications")(http.HandlerFunc(deps.Notifications.POSTDismiss)))
 		})
 	})
 

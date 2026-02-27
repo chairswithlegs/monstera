@@ -34,6 +34,11 @@ type Store interface {
 
 	GetHomeTimeline(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error)
 	GetPublicTimeline(ctx context.Context, localOnly bool, maxID *string, limit int) ([]domain.Status, error)
+	GetHashtagTimeline(ctx context.Context, tagName string, maxID *string, limit int) ([]domain.Status, error)
+	GetStatusAncestors(ctx context.Context, statusID string) ([]domain.Status, error)
+	GetStatusDescendants(ctx context.Context, statusID string) ([]domain.Status, error)
+	GetStatusFavouritedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]domain.Account, error)
+	GetRebloggedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]domain.Account, error)
 
 	CreateApplication(ctx context.Context, in CreateApplicationInput) (*domain.OAuthApplication, error)
 	GetApplicationByClientID(ctx context.Context, clientID string) (*domain.OAuthApplication, error)
@@ -88,6 +93,8 @@ type Store interface {
 
 	CreateBlock(ctx context.Context, in CreateBlockInput) error
 	DeleteBlock(ctx context.Context, accountID, targetID string) error
+	CreateMute(ctx context.Context, in CreateMuteInput) error
+	DeleteMute(ctx context.Context, accountID, targetID string) error
 	CreateFavourite(ctx context.Context, in CreateFavouriteInput) (*domain.Favourite, error)
 	DeleteFavourite(ctx context.Context, accountID, statusID string) error
 	GetFavouriteByAPID(ctx context.Context, apID string) (*domain.Favourite, error)

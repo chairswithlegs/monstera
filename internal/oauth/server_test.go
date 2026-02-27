@@ -308,6 +308,27 @@ func (f *fakeOAuthStore) CreateBlock(ctx context.Context, in store.CreateBlockIn
 func (f *fakeOAuthStore) DeleteBlock(ctx context.Context, accountID, targetID string) error {
 	return nil
 }
+func (f *fakeOAuthStore) CreateMute(ctx context.Context, in store.CreateMuteInput) error {
+	return nil
+}
+func (f *fakeOAuthStore) DeleteMute(ctx context.Context, accountID, targetID string) error {
+	return nil
+}
+func (f *fakeOAuthStore) GetHashtagTimeline(ctx context.Context, tagName string, maxID *string, limit int) ([]domain.Status, error) {
+	return nil, nil
+}
+func (f *fakeOAuthStore) GetStatusAncestors(ctx context.Context, statusID string) ([]domain.Status, error) {
+	return nil, nil
+}
+func (f *fakeOAuthStore) GetStatusDescendants(ctx context.Context, statusID string) ([]domain.Status, error) {
+	return nil, nil
+}
+func (f *fakeOAuthStore) GetStatusFavouritedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]domain.Account, error) {
+	return nil, nil
+}
+func (f *fakeOAuthStore) GetRebloggedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]domain.Account, error) {
+	return nil, nil
+}
 func (f *fakeOAuthStore) CreateFavourite(ctx context.Context, in store.CreateFavouriteInput) (*domain.Favourite, error) {
 	return nil, domain.ErrNotFound
 }

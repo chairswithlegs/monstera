@@ -37,30 +37,31 @@ func (q *Queries) CountLocalStatuses(ctx context.Context) (int64, error) {
 const createStatus = `-- name: CreateStatus :one
 INSERT INTO statuses (
     id, uri, account_id, text, content, content_warning,
-    visibility, language, in_reply_to_id, reblog_of_id,
+    visibility, language, in_reply_to_id, in_reply_to_account_id, reblog_of_id,
     ap_id, ap_raw, sensitive, local
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
-    $7, $8, $9, $10,
-    $11, $12, $13, $14
+    $7, $8, $9, $10, $11,
+    $12, $13, $14, $15
 ) RETURNING id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, ap_raw, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id
 `
 
 type CreateStatusParams struct {
-	ID             string  `json:"id"`
-	Uri            string  `json:"uri"`
-	AccountID      string  `json:"account_id"`
-	Text           *string `json:"text"`
-	Content        *string `json:"content"`
-	ContentWarning *string `json:"content_warning"`
-	Visibility     string  `json:"visibility"`
-	Language       *string `json:"language"`
-	InReplyToID    *string `json:"in_reply_to_id"`
-	ReblogOfID     *string `json:"reblog_of_id"`
-	ApID           string  `json:"ap_id"`
-	ApRaw          []byte  `json:"ap_raw"`
-	Sensitive      bool    `json:"sensitive"`
-	Local          bool    `json:"local"`
+	ID                 string  `json:"id"`
+	Uri                string  `json:"uri"`
+	AccountID          string  `json:"account_id"`
+	Text               *string `json:"text"`
+	Content            *string `json:"content"`
+	ContentWarning     *string `json:"content_warning"`
+	Visibility         string  `json:"visibility"`
+	Language           *string `json:"language"`
+	InReplyToID        *string `json:"in_reply_to_id"`
+	InReplyToAccountID *string `json:"in_reply_to_account_id"`
+	ReblogOfID         *string `json:"reblog_of_id"`
+	ApID               string  `json:"ap_id"`
+	ApRaw              []byte  `json:"ap_raw"`
+	Sensitive          bool    `json:"sensitive"`
+	Local              bool    `json:"local"`
 }
 
 func (q *Queries) CreateStatus(ctx context.Context, arg CreateStatusParams) (Status, error) {
@@ -74,6 +75,7 @@ func (q *Queries) CreateStatus(ctx context.Context, arg CreateStatusParams) (Sta
 		arg.Visibility,
 		arg.Language,
 		arg.InReplyToID,
+		arg.InReplyToAccountID,
 		arg.ReblogOfID,
 		arg.ApID,
 		arg.ApRaw,
@@ -512,6 +514,67 @@ func (q *Queries) GetReblogByAccountAndTarget(ctx context.Context, arg GetReblog
 		&i.InReplyToAccountID,
 	)
 	return i, err
+}
+
+const getRebloggedBy = `-- name: GetRebloggedBy :many
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.ap_raw, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields FROM accounts a
+INNER JOIN statuses s ON s.account_id = a.id
+WHERE s.reblog_of_id = $1 AND s.deleted_at IS NULL
+  AND ($2::text IS NULL OR s.id < $2)
+ORDER BY s.id DESC
+LIMIT $3
+`
+
+type GetRebloggedByParams struct {
+	ReblogOfID *string `json:"reblog_of_id"`
+	Column2    string  `json:"column_2"`
+	Limit      int32   `json:"limit"`
+}
+
+func (q *Queries) GetRebloggedBy(ctx context.Context, arg GetRebloggedByParams) ([]Account, error) {
+	rows, err := q.db.Query(ctx, getRebloggedBy, arg.ReblogOfID, arg.Column2, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Account{}
+	for rows.Next() {
+		var i Account
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.Domain,
+			&i.DisplayName,
+			&i.Note,
+			&i.PublicKey,
+			&i.PrivateKey,
+			&i.InboxUrl,
+			&i.OutboxUrl,
+			&i.FollowersUrl,
+			&i.FollowingUrl,
+			&i.ApID,
+			&i.ApRaw,
+			&i.Bot,
+			&i.Locked,
+			&i.Suspended,
+			&i.Silenced,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AvatarMediaID,
+			&i.HeaderMediaID,
+			&i.FollowersCount,
+			&i.FollowingCount,
+			&i.StatusesCount,
+			&i.Fields,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getStatusAncestors = `-- name: GetStatusAncestors :many

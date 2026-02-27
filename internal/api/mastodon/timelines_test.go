@@ -104,3 +104,29 @@ func TestTimelinesHandler_Home(t *testing.T) {
 		assert.NotNil(t, body)
 	})
 }
+
+func TestTimelinesHandler_GETTag(t *testing.T) {
+	t.Parallel()
+	st := testutil.NewFakeStore()
+	timelineSvc := service.NewTimelineService(st)
+	handler := NewTimelinesHandler(timelineSvc, "example.com")
+
+	t.Run("empty hashtag returns 404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/timelines/tag/", nil)
+		req = testutil.AddChiURLParam(req, "hashtag", "")
+		rec := httptest.NewRecorder()
+		handler.GETTag(rec, req)
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("returns 200 and empty or status list", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/timelines/tag/foo", nil)
+		req = testutil.AddChiURLParam(req, "hashtag", "foo")
+		rec := httptest.NewRecorder()
+		handler.GETTag(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body []any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.NotNil(t, body)
+	})
+}

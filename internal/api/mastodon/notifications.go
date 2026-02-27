@@ -1,7 +1,10 @@
 package mastodon
 
 import (
+	"errors"
 	"net/http"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/chairswithlegs/monstera-fed/internal/api"
 	"github.com/chairswithlegs/monstera-fed/internal/api/mastodon/apimodel"
@@ -54,4 +57,66 @@ func firstLastNotificationIDs(list []domain.Notification) (firstID, lastID strin
 		return "", ""
 	}
 	return list[0].ID, list[len(list)-1].ID
+}
+
+// GETNotification handles GET /api/v1/notifications/:id.
+func (h *NotificationsHandler) GETNotification(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	n, err := h.notifications.Get(r.Context(), id, account.ID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	fromAcc, _ := h.accounts.GetByID(r.Context(), n.FromID)
+	api.WriteJSON(w, http.StatusOK, apimodel.ToNotification(n, fromAcc, nil, h.instanceDomain))
+}
+
+// POSTClear handles POST /api/v1/notifications/clear.
+func (h *NotificationsHandler) POSTClear(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	if err := h.notifications.Clear(r.Context(), account.ID); err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, map[string]interface{}{})
+}
+
+// POSTDismiss handles POST /api/v1/notifications/:id/dismiss.
+func (h *NotificationsHandler) POSTDismiss(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	if err := h.notifications.Dismiss(r.Context(), id, account.ID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, map[string]interface{}{})
 }

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
@@ -155,6 +156,55 @@ func (svc *TimelineService) PublicLocalEnriched(ctx context.Context, localOnly b
 	return out, nil
 }
 
+// AccountStatusesEnriched returns statuses for an account (for GET /accounts/:id/statuses). When viewerAccountID is nil or != accountID, only public statuses are returned.
+func (svc *TimelineService) AccountStatusesEnriched(ctx context.Context, accountID string, viewerAccountID *string, maxID *string, limit int) ([]EnrichedStatus, error) {
+	l := limit
+	if l <= 0 {
+		l = defaultTimelineLimit
+	}
+	if l > maxTimelineLimit {
+		l = maxTimelineLimit
+	}
+	var statuses []domain.Status
+	var err error
+	if viewerAccountID != nil && *viewerAccountID == accountID {
+		statuses, err = svc.store.GetAccountStatuses(ctx, accountID, maxID, l)
+	} else {
+		statuses, err = svc.store.GetAccountPublicStatuses(ctx, accountID, maxID, l)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("GetAccountStatuses/GetAccountPublicStatuses: %w", err)
+	}
+	out := make([]EnrichedStatus, 0, len(statuses))
+	for i := range statuses {
+		s := &statuses[i]
+		author, err := svc.store.GetAccountByID(ctx, s.AccountID)
+		if err != nil {
+			return nil, fmt.Errorf("GetAccountByID(%s): %w", s.AccountID, err)
+		}
+		mentions, err := svc.store.GetStatusMentions(ctx, s.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetStatusMentions(%s): %w", s.ID, err)
+		}
+		tags, err := svc.store.GetStatusHashtags(ctx, s.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetStatusHashtags(%s): %w", s.ID, err)
+		}
+		media, err := svc.store.GetStatusAttachments(ctx, s.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetStatusAttachments(%s): %w", s.ID, err)
+		}
+		out = append(out, EnrichedStatus{
+			Status:   s,
+			Author:   author,
+			Mentions: mentions,
+			Tags:     tags,
+			Media:    media,
+		})
+	}
+	return out, nil
+}
+
 // GetAccountPublicStatuses returns public statuses for an account (for outbox). maxID is optional cursor; limit is clamped.
 func (svc *TimelineService) GetAccountPublicStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error) {
 	l := limit
@@ -178,4 +228,56 @@ func (svc *TimelineService) CountAccountPublicStatuses(ctx context.Context, acco
 		return 0, fmt.Errorf("CountAccountPublicStatuses(%s): %w", accountID, err)
 	}
 	return n, nil
+}
+
+// HashtagTimeline returns statuses for the given hashtag (public/unlisted only). Tag name is normalized to lowercase.
+func (svc *TimelineService) HashtagTimeline(ctx context.Context, tagName string, maxID *string, limit int) ([]domain.Status, error) {
+	l := limit
+	if l <= 0 {
+		l = defaultTimelineLimit
+	}
+	if l > maxTimelineLimit {
+		l = maxTimelineLimit
+	}
+	statuses, err := svc.store.GetHashtagTimeline(ctx, strings.ToLower(tagName), maxID, l)
+	if err != nil {
+		return nil, fmt.Errorf("GetHashtagTimeline: %w", err)
+	}
+	return statuses, nil
+}
+
+// HashtagTimelineEnriched returns the hashtag timeline with author, mentions, tags, and media for each status.
+func (svc *TimelineService) HashtagTimelineEnriched(ctx context.Context, tagName string, maxID *string, limit int) ([]EnrichedStatus, error) {
+	statuses, err := svc.HashtagTimeline(ctx, tagName, maxID, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]EnrichedStatus, 0, len(statuses))
+	for i := range statuses {
+		s := &statuses[i]
+		author, err := svc.store.GetAccountByID(ctx, s.AccountID)
+		if err != nil {
+			return nil, fmt.Errorf("GetAccountByID(%s): %w", s.AccountID, err)
+		}
+		mentions, err := svc.store.GetStatusMentions(ctx, s.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetStatusMentions(%s): %w", s.ID, err)
+		}
+		tags, err := svc.store.GetStatusHashtags(ctx, s.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetStatusHashtags(%s): %w", s.ID, err)
+		}
+		media, err := svc.store.GetStatusAttachments(ctx, s.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetStatusAttachments(%s): %w", s.ID, err)
+		}
+		out = append(out, EnrichedStatus{
+			Status:   s,
+			Author:   author,
+			Mentions: mentions,
+			Tags:     tags,
+			Media:    media,
+		})
+	}
+	return out, nil
 }

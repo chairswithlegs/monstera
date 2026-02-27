@@ -25,13 +25,14 @@ INSERT INTO accounts (
 
 -- name: UpdateAccount :one
 UPDATE accounts SET
-    display_name    = $2,
-    note            = $3,
-    avatar_media_id = $4,
-    header_media_id = $5,
-    ap_raw          = $6,
-    bot             = $7,
-    locked          = $8,
+    display_name    = COALESCE($2, display_name),
+    note            = COALESCE($3, note),
+    avatar_media_id = COALESCE($4, avatar_media_id),
+    header_media_id = COALESCE($5, header_media_id),
+    ap_raw          = COALESCE($6, ap_raw),
+    bot             = COALESCE($7, bot),
+    locked          = COALESCE($8, locked),
+    fields          = COALESCE($9, fields),
     updated_at      = NOW()
 WHERE id = $1
 RETURNING *;
