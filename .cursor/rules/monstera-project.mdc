@@ -7,13 +7,6 @@ alwaysApply: true
 
 Monstera-fed is a self-hosted ActivityPub / Mastodon-compatible server written in Go 1.26.
 
-## Key docs
-
-- `docs/SPEC.md` — project specification
-- `docs/NATS_CONVENTIONS.md` — stream names, subject patterns
-- `docs/IMPLEMENTATION_ORDER.md` — build sequence and validation milestones
-- `docs/ADR/` — detailed design documents per subsystem (01–10)
-
 ## Architecture rules
 
 - `internal/domain` has zero internal imports — pure types and sentinel errors.

@@ -6,7 +6,7 @@ alwaysApply: false
 
 # NATS Integration
 
-Design docs: `docs/ADR/09-sse-streaming-and-nats.md`, `docs/NATS_CONVENTIONS.md`
+Design docs: `docs/architecture/09-sse-streaming-and-nats.md`, `docs/nats_conventions.md`
 
 ## Subject naming
 

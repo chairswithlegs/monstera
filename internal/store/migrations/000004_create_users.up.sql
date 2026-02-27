@@ -5,7 +5,7 @@ CREATE TABLE users (
     password_hash        TEXT NOT NULL,                -- bcrypt, cost >= 12
     confirmed_at         TIMESTAMPTZ,                  -- NULL until email is confirmed
     role                 TEXT NOT NULL DEFAULT 'user', -- 'user'|'moderator'|'admin'
-    registration_reason TEXT,                          -- optional reason for registration (ADR 10)
+    registration_reason TEXT,                          -- optional reason for registration (IMPLEMENTATION 10)
     created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

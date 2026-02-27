@@ -32,6 +32,7 @@ type EventPublisher interface {
 
 // AcceptFollowSender sends an Accept{Follow} activity to a remote inbox (e.g. via NATS).
 // If nil, the inbox processor does not send accepts.
+// Implemented by OutboxPublisher.
 type AcceptFollowSender interface {
 	SendAcceptFollow(ctx context.Context, target, actor *domain.Account, followID string) error
 }

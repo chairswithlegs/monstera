@@ -211,6 +211,46 @@ func (p *OutboxPublisher) PublishUndoFollow(ctx context.Context, actor, target *
 	return nil
 }
 
+// SendAcceptFollow implements AcceptFollowSender; delivers Accept{Follow} to the follower's inbox.
+// target is the local account that accepted; actor is the remote follower.
+func (p *OutboxPublisher) SendAcceptFollow(ctx context.Context, target, actor *domain.Account, followID string) error {
+	if p.enqueue == nil || actor.InboxURL == "" {
+		return nil
+	}
+	targetID := target.APID
+	if targetID == "" {
+		targetID = fmt.Sprintf("https://%s/users/%s", p.cfg.InstanceDomain, target.Username)
+	}
+	actorID := actor.APID
+	if actorID == "" {
+		actorID = fmt.Sprintf("https://%s/users/%s", p.cfg.InstanceDomain, actor.Username)
+	}
+	followActivityID := fmt.Sprintf("https://%s/activities/%s", p.cfg.InstanceDomain, followID)
+	inner, err := NewFollowActivity(followActivityID, actorID, targetID)
+	if err != nil {
+		return fmt.Errorf("outbox: new follow for accept: %w", err)
+	}
+	acceptID := fmt.Sprintf("https://%s/activities/accept-%s", p.cfg.InstanceDomain, followID)
+	accept, err := NewAcceptActivity(acceptID, targetID, inner)
+	if err != nil {
+		return fmt.Errorf("outbox: new accept activity: %w", err)
+	}
+	raw, err := json.Marshal(accept)
+	if err != nil {
+		return fmt.Errorf("outbox: marshal accept: %w", err)
+	}
+	msg := DeliveryMessage{
+		ActivityID:  acceptID,
+		Activity:    raw,
+		TargetInbox: actor.InboxURL,
+		SenderID:    target.ID,
+	}
+	if err := p.enqueue.EnqueueDelivery(ctx, "accept", msg); err != nil {
+		p.logger.Warn("outbox: enqueue accept follow failed", slog.String("target", actor.InboxURL), slog.Any("error", err))
+	}
+	return nil
+}
+
 func (p *OutboxPublisher) statusToNote(s *domain.Status, account *domain.Account) *Note {
 	content := ""
 	if s.Content != nil {

@@ -6,7 +6,7 @@ alwaysApply: false
 
 # OAuth & Authentication
 
-Design doc: `docs/ADR/06-oauth-and-authentication.md`
+Design doc: `docs/architecture/06-oauth-and-authentication.md`
 
 ## Conventions
 

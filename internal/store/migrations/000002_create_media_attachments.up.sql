@@ -10,7 +10,7 @@ CREATE TABLE media_attachments (
     description TEXT,                           -- alt text
     blurhash    TEXT,
     meta        JSONB,                          -- width, height, duration, focal point, etc.
-    size_bytes  BIGINT NOT NULL DEFAULT 0,      -- file size in bytes; set at upload time (ADR 10)
+    size_bytes  BIGINT NOT NULL DEFAULT 0,      -- file size in bytes; set at upload time (IMPLEMENTATION 10)
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

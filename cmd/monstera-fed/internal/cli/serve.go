@@ -150,7 +150,16 @@ func runServe(_ *cobra.Command, _ []string) error {
 	if err := blocklistCache.Refresh(ctx); err != nil {
 		logger.Warn("blocklist refresh failed", slog.Any("error", err))
 	}
-	inboxProcessor := ap.NewInboxProcessor(s, cacheStore, blocklistCache, nil, nil, cfg, logger, ap.DefaultActorFetch)
+	if err := nats.EnsureStreams(ctx, natsClient.JS); err != nil {
+		return fmt.Errorf("nats: ensure streams: %w", err)
+	}
+	fedWorker := federation.NewFederationWorker(natsClient.JS, fedProducer, s, blocklistCache, cfg, logger, metrics)
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	go func() {
+		_ = fedWorker.Start(workerCtx)
+	}()
+	defer workerCancel()
+	inboxProcessor := ap.NewInboxProcessor(s, cacheStore, blocklistCache, nil, outboxPublisher, cfg, logger, ap.DefaultActorFetch)
 
 	// Setup handlers and middleware
 	oauthHandler := oauthhandlers.NewHandler(oauthServer, s, logger, loginTmpl, cfg.InstanceName, secretKey)
@@ -212,6 +221,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
+	workerCancel()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {

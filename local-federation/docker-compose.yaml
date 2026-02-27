@@ -1,0 +1,161 @@
+# Two Monstera-fed instances behind Caddy for local federation testing.
+#
+# Prerequisites:
+#   Add to /etc/hosts:  127.0.0.1  monstera.local monstera2.local
+#
+# Run from this directory:
+#   docker compose up -d
+#
+# Then run migrations and seed for each instance (from repo root):
+#   DATABASE_URL="postgres://monstera:monstera@localhost:5433/monstera_fed?sslmode=disable" ./bin/monstera-fed migrate up
+#   INSTANCE_DOMAIN=monstera.local DATABASE_URL="postgres://monstera:monstera@localhost:5433/monstera_fed?sslmode=disable" make seed
+#
+#   DATABASE_URL="postgres://monstera:monstera@localhost:5434/monstera_fed?sslmode=disable" ./bin/monstera-fed migrate up
+#   INSTANCE_DOMAIN=monstera2.local DATABASE_URL="postgres://monstera:monstera@localhost:5434/monstera_fed?sslmode=disable" make seed
+#
+# Open https://monstera.local and https://monstera2.local (accept self-signed certs).
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "443:443"
+      # Omit "80:80" if host port 80 is in use; HTTPS on 443 is enough for federation.
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - app-a
+      - app-b
+    networks:
+      federation:
+        aliases:
+          - monstera.local
+          - monstera2.local
+
+  app-a:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: development
+      APP_PORT: "8080"
+      INSTANCE_DOMAIN: monstera.local
+      INSTANCE_NAME: Monstera A (local)
+      LOG_LEVEL: debug
+      DATABASE_URL: postgres://monstera:monstera@postgres-a:5432/monstera_fed?sslmode=disable
+      NATS_URL: nats://nats-a:4222
+      CACHE_DRIVER: memory
+      MEDIA_DRIVER: local
+      MEDIA_LOCAL_PATH: /data/media
+      MEDIA_BASE_URL: https://monstera.local/media
+      EMAIL_DRIVER: noop
+      EMAIL_FROM: noreply@monstera.local
+      SECRET_KEY_BASE: "0000000000000000000000000000000000000000000000000000000000000001"
+    volumes:
+      - app_a_media:/data/media
+    depends_on:
+      postgres-a:
+        condition: service_healthy
+      nats-a:
+        condition: service_started
+    networks:
+      - federation
+
+  app-b:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: development
+      APP_PORT: "8080"
+      INSTANCE_DOMAIN: monstera2.local
+      INSTANCE_NAME: Monstera B (local)
+      LOG_LEVEL: debug
+      DATABASE_URL: postgres://monstera:monstera@postgres-b:5432/monstera_fed?sslmode=disable
+      NATS_URL: nats://nats-b:4222
+      CACHE_DRIVER: memory
+      MEDIA_DRIVER: local
+      MEDIA_LOCAL_PATH: /data/media
+      MEDIA_BASE_URL: https://monstera2.local/media
+      EMAIL_DRIVER: noop
+      EMAIL_FROM: noreply@monstera2.local
+      SECRET_KEY_BASE: "0000000000000000000000000000000000000000000000000000000000000002"
+    volumes:
+      - app_b_media:/data/media
+    depends_on:
+      postgres-b:
+        condition: service_healthy
+      nats-b:
+        condition: service_started
+    networks:
+      - federation
+
+  postgres-a:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: monstera
+      POSTGRES_PASSWORD: monstera
+      POSTGRES_DB: monstera_fed
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U monstera -d monstera_fed"]
+      interval: 2s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - pg_a_data:/var/lib/postgresql/data
+    networks:
+      - federation
+
+  postgres-b:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: monstera
+      POSTGRES_PASSWORD: monstera
+      POSTGRES_DB: monstera_fed
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U monstera -d monstera_fed"]
+      interval: 2s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - pg_b_data:/var/lib/postgresql/data
+    networks:
+      - federation
+
+  nats-a:
+    image: nats:2-alpine
+    command: ["--jetstream", "--store_dir", "/data"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats_a_data:/data
+    networks:
+      - federation
+
+  nats-b:
+    image: nats:2-alpine
+    command: ["--jetstream", "--store_dir", "/data"]
+    ports:
+      - "4223:4222"
+      - "8223:8222"
+    volumes:
+      - nats_b_data:/data
+    networks:
+      - federation
+
+volumes:
+  app_a_media: {}
+  app_b_media: {}
+  pg_a_data: {}
+  pg_b_data: {}
+  nats_a_data: {}
+  nats_b_data: {}
+
+networks:
+  federation:
+    driver: bridge

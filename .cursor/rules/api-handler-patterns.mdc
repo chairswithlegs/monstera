@@ -6,7 +6,7 @@ alwaysApply: false
 
 # API Handler Patterns
 
-When adding a new API handler, follow the structure and conventions used in `internal/api`. Handlers are HTTP-only: parse request, call service, map errors, write response. See `service-layer-architecture.mdc` and `error-handling.mdc` for layer and error rules.
+When adding a new API handler, follow the structure and conventions used in `internal/api`. Handlers are HTTP-only: parse request, call service, map errors, write response. See `monstera-project.mdc` for architecture rules and `error-handling.mdc` for error rules.
 
 ## Directory layout
 

@@ -71,7 +71,7 @@ All configuration is via environment variables.
 | `MEDIA_DRIVER` | `local` or `s3` | `local` |
 | `EMAIL_DRIVER` | `noop` or `smtp` | `noop` |
 
-Full list and deployment options: [docs/SPEC.md §19 Configuration](docs/SPEC.md#19-configuration).
+Full list and deployment options: [docs/spec.md §19 Configuration](docs/spec.md#19-configuration).
 
 ## Development
 
@@ -86,12 +86,14 @@ make lint-fix         # Auto-fix lint issues
 
 | Document | Description |
 |----------|-------------|
-| [docs/SPEC.md](docs/SPEC.md) | Project specification — architecture, API, data model, config |
-| [docs/TECH_STACK.md](docs/TECH_STACK.md) | Technologies and libraries |
-| [docs/IMPLEMENTATION_ORDER.md](docs/IMPLEMENTATION_ORDER.md) | Build sequence and validation milestones |
-| [docs/NATS_CONVENTIONS.md](docs/NATS_CONVENTIONS.md) | NATS streams and subject naming |
-| [docs/ADR/](docs/ADR/) | Architecture decision records (01–10) |
-| [docs/PHASE_TWO_FEATURES.md](docs/PHASE_TWO_FEATURES.md) | Deferred features for later phases |
+| [docs/spec.md](docs/spec.md) | Project specification — architecture, API, data model, config |
+| [docs/tech_stack.md](docs/tech_stack.md) | Technologies and libraries |
+| [docs/roadmap.md](docs/roadmap.md) | Build sequence and validation milestones |
+| [docs/nats_conventions.md](docs/nats_conventions.md) | NATS streams and subject naming |
+| [docs/architecture/](docs/architecture/) | Architecture and design docs (01–10) |
+| [docs/phase_two_features.md](docs/phase_two_features.md) | Deferred features for later phases |
+
+See [docs/README.md](docs/README.md) for a full index.
 
 ## License
 

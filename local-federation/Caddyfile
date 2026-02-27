@@ -1,0 +1,12 @@
+{
+  # Self-signed certs for .local hostnames (no public CA).
+  local_certs
+}
+
+monstera.local {
+  reverse_proxy app-a:8080
+}
+
+monstera2.local {
+  reverse_proxy app-b:8080
+}

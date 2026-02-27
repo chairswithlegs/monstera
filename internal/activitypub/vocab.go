@@ -303,6 +303,21 @@ func NewUndoActivity(activityID, actorID string, inner *Activity) (*Activity, er
 	}, nil
 }
 
+// NewAcceptActivity wraps an inner activity (typically Follow) in an Accept.
+func NewAcceptActivity(activityID, actorID string, inner *Activity) (*Activity, error) {
+	raw, err := json.Marshal(inner)
+	if err != nil {
+		return nil, fmt.Errorf("marshal accept object: %w", err)
+	}
+	return &Activity{
+		Context:   DefaultContext,
+		ID:        activityID,
+		Type:      "Accept",
+		Actor:     actorID,
+		ObjectRaw: raw,
+	}, nil
+}
+
 // WrapInCreate wraps a Note in a Create activity with the given activity ID.
 func WrapInCreate(activityID string, note *Note) (*Activity, error) {
 	raw, err := json.Marshal(note)

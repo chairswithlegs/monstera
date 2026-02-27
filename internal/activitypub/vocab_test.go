@@ -116,3 +116,17 @@ func TestDomainFromActorID(t *testing.T) {
 func TestDomainFromKeyID(t *testing.T) {
 	require.Equal(t, "remote.example.com", DomainFromKeyID("https://remote.example.com/users/alice#main-key"))
 }
+
+func TestNewAcceptActivity(t *testing.T) {
+	inner, err := NewFollowActivity("https://example.com/activities/follow-1", "https://remote.example/users/bob", "https://example.com/users/alice")
+	require.NoError(t, err)
+	accept, err := NewAcceptActivity("https://example.com/activities/accept-1", "https://example.com/users/alice", inner)
+	require.NoError(t, err)
+	require.Equal(t, "Accept", accept.Type)
+	require.Equal(t, "https://example.com/activities/accept-1", accept.ID)
+	require.Equal(t, "https://example.com/users/alice", accept.Actor)
+	require.NotEmpty(t, accept.ObjectRaw)
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(accept.ObjectRaw, &decoded))
+	require.Equal(t, "Follow", decoded["type"])
+}

@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Cache Layer
 
-Design doc: `docs/ADR/03-cache-abstraction.md`
+Design doc: `docs/architecture/03-cache-abstraction.md`
 
 ## Conventions
 
