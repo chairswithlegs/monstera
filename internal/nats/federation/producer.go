@@ -8,7 +8,7 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/chairswithlegs/monstera-fed/internal/ap"
+	"github.com/chairswithlegs/monstera-fed/internal/activitypub"
 	"github.com/chairswithlegs/monstera-fed/internal/observability"
 )
 
@@ -30,7 +30,7 @@ func NewProducer(js jetstream.JetStream, metrics *observability.Metrics) *Produc
 
 // EnqueueDelivery publishes a delivery message to the FEDERATION stream.
 // activityType is used as the subject suffix (e.g. "create" -> "federation.deliver.create").
-func (p *Producer) EnqueueDelivery(ctx context.Context, activityType string, msg ap.DeliveryMessage) error {
+func (p *Producer) EnqueueDelivery(ctx context.Context, activityType string, msg activitypub.DeliveryMessage) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("federation: marshal delivery message: %w", err)
@@ -50,7 +50,7 @@ func (p *Producer) EnqueueDelivery(ctx context.Context, activityType string, msg
 }
 
 // EnqueueDLQ moves a failed delivery message to the dead-letter queue.
-func (p *Producer) EnqueueDLQ(ctx context.Context, activityType string, msg ap.DeliveryMessage) error {
+func (p *Producer) EnqueueDLQ(ctx context.Context, activityType string, msg activitypub.DeliveryMessage) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("federation: marshal DLQ message: %w", err)

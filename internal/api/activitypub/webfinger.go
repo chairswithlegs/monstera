@@ -1,70 +1,70 @@
 package activitypub
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/chairswithlegs/monstera-fed/internal/api"
+	"github.com/chairswithlegs/monstera-fed/internal/api/activitypub/apimodel"
+	"github.com/chairswithlegs/monstera-fed/internal/config"
+	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera-fed/internal/service"
 )
 
 // WebFingerHandler handles GET /.well-known/webfinger?resource=acct:user@domain
 //
 // Returns a JRD (RFC 7033) document that maps an acct: URI to the AP Actor URL.
 type WebFingerHandler struct {
-	deps Deps
+	accounts *service.AccountService
+	config   *config.Config
 }
 
 // NewWebFingerHandler returns a new WebFingerHandler.
-func NewWebFingerHandler(deps Deps) *WebFingerHandler {
-	return &WebFingerHandler{deps: deps}
-}
-
-type webFingerResponse struct {
-	Subject string          `json:"subject"`
-	Aliases []string        `json:"aliases"`
-	Links   []webFingerLink `json:"links"`
-}
-
-type webFingerLink struct {
-	Rel  string `json:"rel"`
-	Type string `json:"type,omitempty"`
-	Href string `json:"href,omitempty"`
+func NewWebFingerHandler(accounts *service.AccountService, config *config.Config) *WebFingerHandler {
+	return &WebFingerHandler{accounts: accounts, config: config}
 }
 
 // GETWebFinger handles the WebFinger request.
 func (h *WebFingerHandler) GETWebFinger(w http.ResponseWriter, r *http.Request) {
 	resource := r.URL.Query().Get("resource")
-	if resource == "" {
-		api.WriteError(w, http.StatusBadRequest, "missing resource parameter")
+	if err := api.ValidateRequiredString(resource); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	if !strings.HasPrefix(resource, "acct:") {
-		api.WriteError(w, http.StatusBadRequest, "resource must use acct: scheme")
+		err := api.NewBadRequestError("resource must use acct: scheme")
+		api.HandleError(w, r, err)
 		return
 	}
 	acct := strings.TrimPrefix(resource, "acct:")
 	parts := strings.SplitN(acct, "@", 2)
 	if len(parts) != 2 {
-		api.WriteError(w, http.StatusBadRequest, "invalid acct URI")
+		err := api.NewBadRequestError("invalid acct URI")
+		api.HandleError(w, r, err)
 		return
 	}
 	username := parts[0]
 	acctDomain := parts[1]
-	if !strings.EqualFold(acctDomain, h.deps.Config.InstanceDomain) {
-		api.WriteError(w, http.StatusNotFound, "account not found")
+	if !strings.EqualFold(acctDomain, h.config.InstanceDomain) {
+		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	account, err := h.deps.Accounts.GetLocalActorForFederation(r.Context(), username)
+	account, err := h.accounts.GetLocalActorForFederation(r.Context(), username)
 	if err != nil {
-		api.HandleError(w, r, h.deps.Logger, err)
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
 		return
 	}
-	actorURL := fmt.Sprintf("https://%s/users/%s", h.deps.Config.InstanceDomain, account.Username)
-	resp := webFingerResponse{
+	actorURL := fmt.Sprintf("https://%s/users/%s", h.config.InstanceDomain, account.Username)
+	resp := apimodel.WebFingerResponse{
 		Subject: resource,
 		Aliases: []string{actorURL},
-		Links: []webFingerLink{
+		Links: []apimodel.WebFingerLink{
 			{Rel: "self", Type: "application/activity+json", Href: actorURL},
 		},
 	}

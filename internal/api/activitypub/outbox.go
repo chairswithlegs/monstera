@@ -12,9 +12,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/chairswithlegs/monstera-fed/internal/ap"
+	ap "github.com/chairswithlegs/monstera-fed/internal/activitypub"
 	"github.com/chairswithlegs/monstera-fed/internal/api"
+	"github.com/chairswithlegs/monstera-fed/internal/config"
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera-fed/internal/service"
 )
 
 const defaultOutboxPageSize = 20
@@ -22,34 +24,36 @@ const maxOutboxPageSize = 40
 
 // OutboxHandler serves GET /users/{username}/outbox — paginated OrderedCollectionPage of Create{Note} activities.
 type OutboxHandler struct {
-	deps Deps
+	accounts  *service.AccountService
+	timelines *service.TimelineService
+	config    *config.Config
 }
 
-// NewOutboxHandler returns a new OutboxHandler.
-func NewOutboxHandler(deps Deps) *OutboxHandler {
-	return &OutboxHandler{deps: deps}
+// NewOutbox returns a new OutboxHandler.
+func NewOutbox(accounts *service.AccountService, timelines *service.TimelineService, config *config.Config) *OutboxHandler {
+	return &OutboxHandler{accounts: accounts, timelines: timelines, config: config}
 }
 
 // GETOutbox serves the outbox collection or a page.
 func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
-	if username == "" {
-		api.WriteError(w, http.StatusBadRequest, "missing username")
+	if err := api.ValidateRequiredString(username); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
-	account, err := h.deps.Accounts.GetLocalActorForFederation(r.Context(), username)
+	account, err := h.accounts.GetLocalActorForFederation(r.Context(), username)
 	if err != nil {
-		api.HandleError(w, r, h.deps.Logger, err)
+		api.HandleError(w, r, err)
 		return
 	}
-	base := "https://" + h.deps.Config.InstanceDomain
+	base := "https://" + h.config.InstanceDomain
 	outboxID := base + "/users/" + username + "/outbox"
 
 	page := r.URL.Query().Get("page")
 	if page == "" {
-		total, err := h.deps.Timelines.CountAccountPublicStatuses(r.Context(), account.ID)
+		total, err := h.timelines.CountAccountPublicStatuses(r.Context(), account.ID)
 		if err != nil {
-			api.HandleError(w, r, h.deps.Logger, err)
+			api.HandleError(w, r, err)
 			return
 		}
 		coll := ap.OrderedCollection{
@@ -80,9 +84,9 @@ func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 	if maxID != "" {
 		maxIDPtr = &maxID
 	}
-	statuses, err := h.deps.Timelines.GetAccountPublicStatuses(r.Context(), account.ID, maxIDPtr, limit+1)
+	statuses, err := h.timelines.GetAccountPublicStatuses(r.Context(), account.ID, maxIDPtr, limit+1)
 	if err != nil {
-		api.HandleError(w, r, h.deps.Logger, err)
+		api.HandleError(w, r, err)
 		return
 	}
 	hasMore := len(statuses) > limit
@@ -108,12 +112,12 @@ func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 		}
 		create, err := ap.WrapInCreate(activityID, note)
 		if err != nil {
-			h.deps.Logger.Warn("outbox: wrap create failed", slog.String("status_id", publicStatuses[i].ID), slog.Any("error", err))
+			slog.WarnContext(r.Context(), "outbox: wrap create failed", slog.String("status_id", publicStatuses[i].ID), slog.Any("error", err))
 			continue
 		}
 		raw, err := json.Marshal(create)
 		if err != nil {
-			h.deps.Logger.Warn("outbox: marshal create failed", slog.String("status_id", publicStatuses[i].ID), slog.Any("error", err))
+			slog.WarnContext(r.Context(), "outbox: marshal create failed", slog.String("status_id", publicStatuses[i].ID), slog.Any("error", err))
 			continue
 		}
 		orderedItems = append(orderedItems, raw)

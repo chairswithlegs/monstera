@@ -1,4 +1,4 @@
-package ap
+package activitypub
 
 import (
 	"context"
@@ -36,7 +36,5 @@ func TestInboxProcessor_Process_emptyActorDomain(t *testing.T) {
 	proc := NewInboxProcessor(fake, cacheStore, bl, nil, nil, &config.Config{InstanceDomain: "example.com"}, slog.Default(), nil)
 	activity := &Activity{Type: "Follow", Actor: "not-a-url"}
 	err := proc.Process(ctx, activity)
-	require.Error(t, err)
-	var perm *PermanentError
-	assert.ErrorAs(t, err, &perm)
+	assert.ErrorIs(t, err, ErrFatal)
 }

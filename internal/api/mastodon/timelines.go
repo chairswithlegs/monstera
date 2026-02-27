@@ -24,7 +24,7 @@ func (h *TimelinesHandler) GETHome(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	account := middleware.AccountFromContext(ctx)
 	if account == nil {
-		api.WriteError(w, http.StatusUnauthorized, "The access token is invalid")
+		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
 
@@ -32,7 +32,7 @@ func (h *TimelinesHandler) GETHome(w http.ResponseWriter, r *http.Request) {
 	maxID := optionalString(params.MaxID)
 	enriched, err := h.deps.Timeline.HomeEnriched(ctx, account.ID, maxID, params.Limit)
 	if err != nil {
-		api.HandleError(w, r, h.deps.Logger, err)
+		api.HandleError(w, r, err)
 		return
 	}
 
@@ -69,7 +69,7 @@ func (h *TimelinesHandler) GETPublic(w http.ResponseWriter, r *http.Request) {
 	maxID := optionalString(params.MaxID)
 	enriched, err := h.deps.Timeline.PublicLocalEnriched(r.Context(), localOnly, maxID, params.Limit)
 	if err != nil {
-		api.HandleError(w, r, h.deps.Logger, err)
+		api.HandleError(w, r, err)
 		return
 	}
 	out := make([]apimodel.Status, 0, len(enriched))

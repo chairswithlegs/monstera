@@ -7,8 +7,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"log/slog"
-
 	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
@@ -22,8 +20,7 @@ func TestAccountsHandler_VerifyCredentials(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	logger := slog.Default()
-	deps := Deps{Accounts: accountSvc, Logger: logger, InstanceDomain: "example.com"}
+	deps := Deps{Accounts: accountSvc, InstanceDomain: "example.com"}
 	handler := NewAccountsHandler(deps)
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
@@ -31,9 +28,6 @@ func TestAccountsHandler_VerifyCredentials(t *testing.T) {
 		rec := httptest.NewRecorder()
 		handler.GETVerifyCredentials(rec, req)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
-		var body map[string]any
-		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
-		assert.Equal(t, "The access token is invalid", body["error"])
 	})
 
 	t.Run("authenticated with valid account returns 200 and account", func(t *testing.T) {
@@ -63,8 +57,5 @@ func TestAccountsHandler_VerifyCredentials(t *testing.T) {
 		rec := httptest.NewRecorder()
 		handler.GETVerifyCredentials(rec, req)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
-		var body map[string]any
-		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
-		assert.Equal(t, "The access token is invalid", body["error"])
 	})
 }

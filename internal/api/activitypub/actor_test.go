@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/chairswithlegs/monstera-fed/internal/config"
+	"github.com/chairswithlegs/monstera-fed/internal/service"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
 	"github.com/chairswithlegs/monstera-fed/internal/testutil"
 )
@@ -26,8 +27,7 @@ func TestActorHandler_GETActor(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := &config.Config{InstanceDomain: "example.com"}
-	deps := testDeps(fake, cfg)
-	h := NewActorHandler(deps)
+	h := NewActorHandler(service.NewAccountService(fake, "https://example.com"), cfg)
 
 	r := httptest.NewRequest(http.MethodGet, "/users/bob", nil)
 	r = r.WithContext(ctx)
@@ -58,8 +58,7 @@ func TestActorHandler_GETActor(t *testing.T) {
 
 func TestActorHandler_notFound(t *testing.T) {
 	t.Parallel()
-	deps := testDeps(testutil.NewFakeStore(), &config.Config{InstanceDomain: "example.com"})
-	h := NewActorHandler(deps)
+	h := NewActorHandler(service.NewAccountService(testutil.NewFakeStore(), "https://example.com"), &config.Config{InstanceDomain: "example.com"})
 	r := httptest.NewRequest(http.MethodGet, "/users/nobody", nil)
 	r = addChiURLParam(r, "nobody")
 	w := httptest.NewRecorder()

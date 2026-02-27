@@ -39,23 +39,23 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	account := middleware.AccountFromContext(ctx)
 	if account == nil {
-		api.WriteError(w, http.StatusUnauthorized, "The access token is invalid")
+		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
 
 	req, err := parseCreateStatusRequest(r)
 	if err != nil {
-		api.WriteError(w, http.StatusUnprocessableEntity, err.Error())
+		api.HandleError(w, r, err)
 		return
 	}
 
 	_, user, err := h.deps.Accounts.GetAccountWithUser(ctx, account.ID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			api.WriteError(w, http.StatusUnauthorized, "The access token is invalid")
+			api.HandleError(w, r, api.ErrUnauthorized)
 			return
 		}
-		api.HandleError(w, r, h.deps.Logger, err)
+		api.HandleError(w, r, err)
 		return
 	}
 
@@ -75,7 +75,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 		Sensitive:         req.Sensitive,
 	})
 	if err != nil {
-		api.HandleError(w, r, h.deps.Logger, err)
+		api.HandleError(w, r, err)
 		return
 	}
 
@@ -87,12 +87,12 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 func (h *StatusesHandler) GETStatuses(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		api.WriteError(w, http.StatusNotFound, "Record not found")
+		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
 	result, err := h.deps.Statuses.GetByIDEnriched(r.Context(), id)
 	if err != nil {
-		api.HandleError(w, r, h.deps.Logger, err)
+		api.HandleError(w, r, err)
 		return
 	}
 	out := createResultToAPIModel(result, h.deps.InstanceDomain)
@@ -103,30 +103,30 @@ func (h *StatusesHandler) GETStatuses(w http.ResponseWriter, r *http.Request) {
 func (h *StatusesHandler) DELETEStatuses(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
 	if account == nil {
-		api.WriteError(w, http.StatusUnauthorized, "The access token is invalid")
+		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		api.WriteError(w, http.StatusNotFound, "Record not found")
+		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
 	st, err := h.deps.Statuses.GetByID(r.Context(), id)
 	if err != nil {
-		api.HandleError(w, r, h.deps.Logger, err)
+		api.HandleError(w, r, err)
 		return
 	}
 	if st.AccountID != account.ID {
-		api.WriteError(w, http.StatusForbidden, "This action is not allowed")
+		api.HandleError(w, r, api.ErrForbidden)
 		return
 	}
 	result, err := h.deps.Statuses.GetByIDEnriched(r.Context(), id)
 	if err != nil {
-		api.HandleError(w, r, h.deps.Logger, err)
+		api.HandleError(w, r, err)
 		return
 	}
 	if err := h.deps.Statuses.Delete(r.Context(), id); err != nil {
-		api.HandleError(w, r, h.deps.Logger, err)
+		api.HandleError(w, r, err)
 		return
 	}
 	out := createResultToAPIModel(result, h.deps.InstanceDomain)
@@ -140,11 +140,13 @@ func parseCreateStatusRequest(r *http.Request) (CreateStatusRequest, error) {
 	ct := r.Header.Get("Content-Type")
 	if strings.HasPrefix(ct, "application/json") {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			return CreateStatusRequest{}, errors.New("invalid JSON")
+			// nolint:wrapcheck
+			return CreateStatusRequest{}, api.NewUnprocessableError("invalid JSON")
 		}
 	} else {
 		if err := r.ParseForm(); err != nil {
-			return CreateStatusRequest{}, errors.New("invalid form")
+			// nolint:wrapcheck
+			return CreateStatusRequest{}, api.NewUnprocessableError("invalid form")
 		}
 		req.Status = r.FormValue("status")
 		req.Visibility = r.FormValue("visibility")
@@ -154,7 +156,8 @@ func parseCreateStatusRequest(r *http.Request) (CreateStatusRequest, error) {
 	}
 	req.Status = strings.TrimSpace(req.Status)
 	if req.Status == "" {
-		return CreateStatusRequest{}, errors.New("status cannot be blank")
+		// nolint:wrapcheck
+		return CreateStatusRequest{}, api.NewUnprocessableError("status cannot be blank")
 	}
 	return req, nil
 }

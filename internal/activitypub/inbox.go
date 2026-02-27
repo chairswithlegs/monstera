@@ -1,4 +1,4 @@
-package ap
+package activitypub
 
 import (
 	"context"
@@ -21,13 +21,8 @@ const (
 	objectTypeNote   = "Note"
 )
 
-// PermanentError wraps an error that should not be retried.
-type PermanentError struct {
-	Err error
-}
-
-func (e *PermanentError) Error() string { return e.Err.Error() }
-func (e *PermanentError) Unwrap() error { return e.Err }
+// ErrFatal represent an inbox error that should not be retried.
+var ErrFatal = errors.New("fatal inbox error")
 
 // EventPublisher publishes SSE events to connected clients.
 type EventPublisher interface {
@@ -80,7 +75,7 @@ func NewInboxProcessor(
 func (p *InboxProcessor) Process(ctx context.Context, activity *Activity) error {
 	actorDomain := DomainFromActorID(activity.Actor)
 	if actorDomain == "" {
-		return &PermanentError{Err: fmt.Errorf("cannot extract domain from actor %q", activity.Actor)}
+		return fmt.Errorf("%w: cannot extract domain from actor %q", ErrFatal, activity.Actor)
 	}
 	if p.blocklist.IsSuspended(ctx, actorDomain) {
 		p.logger.Debug("inbox: dropped activity from suspended domain",
@@ -245,15 +240,15 @@ func (p *InboxProcessor) createNotification(ctx context.Context, accountID, from
 func (p *InboxProcessor) handleFollow(ctx context.Context, activity *Activity) error {
 	targetID, ok := activity.ObjectID()
 	if !ok {
-		return &PermanentError{Err: errors.New("follow object is not an actor IRI")}
+		return fmt.Errorf("%w: follow object is not an actor IRI", ErrFatal)
 	}
 	targetUsername := usernameFromActorIRI(targetID, p.cfg.InstanceDomain)
 	if targetUsername == "" {
-		return &PermanentError{Err: fmt.Errorf("follow target %q is not a local user", targetID)}
+		return fmt.Errorf("%w: follow target %q is not a local user", ErrFatal, targetID)
 	}
 	target, err := p.store.GetLocalAccountByUsername(ctx, targetUsername)
 	if err != nil {
-		return &PermanentError{Err: fmt.Errorf("follow target not found: %s", targetUsername)}
+		return fmt.Errorf("%w: follow target not found: %s", ErrFatal, targetUsername)
 	}
 	actor, err := p.resolveRemoteAccount(ctx, activity.Actor)
 	if err != nil {
@@ -301,11 +296,11 @@ func (p *InboxProcessor) handleAcceptFollow(ctx context.Context, activity *Activ
 	if err != nil {
 		objectID, ok := activity.ObjectID()
 		if !ok {
-			return &PermanentError{Err: errors.New("accept object is not a follow activity or IRI")}
+			return fmt.Errorf("%w: accept object is not a follow activity or IRI", ErrFatal)
 		}
 		follow, err := p.store.GetFollowByAPID(ctx, objectID)
 		if err != nil {
-			return &PermanentError{Err: fmt.Errorf("accept: follow not found for ap_id %q", objectID)}
+			return fmt.Errorf("%w: accept: follow not found for ap_id %q", ErrFatal, objectID)
 		}
 		if acceptErr := p.store.AcceptFollow(ctx, follow.ID); acceptErr != nil {
 			return fmt.Errorf("inbox: AcceptFollow by objectID: %w", acceptErr)
@@ -323,16 +318,16 @@ func (p *InboxProcessor) handleAcceptFollow(ctx context.Context, activity *Activ
 	}
 	actorAccount, err := p.store.GetAccountByAPID(ctx, inner.Actor)
 	if err != nil {
-		return &PermanentError{Err: fmt.Errorf("accept: actor not found %q", inner.Actor)}
+		return fmt.Errorf("%w: accept: actor not found %q", ErrFatal, inner.Actor)
 	}
 	targetID, _ := inner.ObjectID()
 	targetAccount, err := p.store.GetAccountByAPID(ctx, targetID)
 	if err != nil {
-		return &PermanentError{Err: fmt.Errorf("accept: target not found %q", targetID)}
+		return fmt.Errorf("%w: accept: target not found %q", ErrFatal, targetID)
 	}
 	follow, err := p.store.GetFollow(ctx, actorAccount.ID, targetAccount.ID)
 	if err != nil {
-		return &PermanentError{Err: errors.New("accept: follow relationship not found")}
+		return fmt.Errorf("%w: accept: follow relationship not found", ErrFatal)
 	}
 	if acceptErr := p.store.AcceptFollow(ctx, follow.ID); acceptErr != nil {
 		return fmt.Errorf("inbox: AcceptFollow: %w", acceptErr)
@@ -345,7 +340,7 @@ func (p *InboxProcessor) handleRejectFollow(ctx context.Context, activity *Activ
 	if err != nil {
 		objectID, ok := activity.ObjectID()
 		if !ok {
-			return &PermanentError{Err: errors.New("reject object is not a follow activity or IRI")}
+			return fmt.Errorf("%w: reject object is not a follow activity or IRI", ErrFatal)
 		}
 		follow, err := p.store.GetFollowByAPID(ctx, objectID)
 		if err != nil {
@@ -403,7 +398,7 @@ func (p *InboxProcessor) handleUndo(ctx context.Context, activity *Activity) err
 func (p *InboxProcessor) handleUndoFollow(ctx context.Context, activity *Activity) error {
 	inner, err := activity.ObjectActivity()
 	if err != nil {
-		return &PermanentError{Err: errors.New("undo{Follow} object is not a follow activity")}
+		return fmt.Errorf("%w: undo{Follow} object is not a follow activity", ErrFatal)
 	}
 	if inner.ID != "" {
 		follow, err := p.store.GetFollowByAPID(ctx, inner.ID)
@@ -442,7 +437,7 @@ func (p *InboxProcessor) undoFavourite(ctx context.Context, fav *domain.Favourit
 func (p *InboxProcessor) handleUndoLike(ctx context.Context, activity *Activity) error {
 	inner, err := activity.ObjectActivity()
 	if err != nil {
-		return &PermanentError{Err: errors.New("undo{Like} object is not a like activity")}
+		return fmt.Errorf("%w: undo{Like} object is not a like activity", ErrFatal)
 	}
 	if inner.ID != "" {
 		if fav, err := p.store.GetFavouriteByAPID(ctx, inner.ID); err == nil {
@@ -468,7 +463,7 @@ func (p *InboxProcessor) handleUndoLike(ctx context.Context, activity *Activity)
 func (p *InboxProcessor) handleUndoAnnounce(ctx context.Context, activity *Activity) error {
 	inner, err := activity.ObjectActivity()
 	if err != nil {
-		return &PermanentError{Err: errors.New("undo{Announce} object is not an announce activity")}
+		return fmt.Errorf("%w: undo{Announce} object is not an announce activity", ErrFatal)
 	}
 	if inner.ID != "" {
 		boost, err := p.store.GetStatusByAPID(ctx, inner.ID)
@@ -600,10 +595,10 @@ func (p *InboxProcessor) processMentionNotifications(ctx context.Context, tags [
 func (p *InboxProcessor) handleCreate(ctx context.Context, activity *Activity, _ string) error {
 	note, err := activity.ObjectNote()
 	if err != nil {
-		return &PermanentError{Err: fmt.Errorf("create object is not a note: %w", err)}
+		return fmt.Errorf("%w: create object is not a note: %w", ErrFatal, err)
 	}
 	if note.Type != objectTypeNote {
-		return &PermanentError{Err: fmt.Errorf("create object type %q is not supported", note.Type)}
+		return fmt.Errorf("%w: create object type %q is not supported", ErrFatal, note.Type)
 	}
 	if note.ID != "" {
 		if _, err := p.store.GetStatusByAPID(ctx, note.ID); err == nil {
@@ -682,7 +677,7 @@ func (p *InboxProcessor) handleAnnounce(ctx context.Context, activity *Activity,
 	}
 	objectID, ok := activity.ObjectID()
 	if !ok {
-		return &PermanentError{Err: errors.New("announce object is not a status IRI")}
+		return fmt.Errorf("%w: announce object is not a status IRI", ErrFatal)
 	}
 	original, err := p.store.GetStatusByAPID(ctx, objectID)
 	if err != nil {
@@ -722,7 +717,7 @@ func (p *InboxProcessor) handleAnnounce(ctx context.Context, activity *Activity,
 func (p *InboxProcessor) handleLike(ctx context.Context, activity *Activity) error {
 	objectID, ok := activity.ObjectID()
 	if !ok {
-		return &PermanentError{Err: errors.New("like object is not a status IRI")}
+		return fmt.Errorf("%w: like object is not a status IRI", ErrFatal)
 	}
 	status, err := p.store.GetStatusByAPID(ctx, objectID)
 	if err != nil {
@@ -766,7 +761,7 @@ func (p *InboxProcessor) handleDelete(ctx context.Context, activity *Activity) e
 				ID string `json:"id"`
 			}
 			if err := json.Unmarshal(activity.ObjectRaw, &obj); err != nil {
-				return &PermanentError{Err: errors.New("delete: cannot extract object ID")}
+				return fmt.Errorf("%w: delete: cannot extract object ID", ErrFatal)
 			}
 			objectID = obj.ID
 		}
@@ -779,7 +774,7 @@ func (p *InboxProcessor) handleDelete(ctx context.Context, activity *Activity) e
 		}
 		statusAuthor, _ := p.store.GetAccountByID(ctx, status.AccountID)
 		if statusAuthor != nil && statusAuthor.APID != activity.Actor {
-			return &PermanentError{Err: fmt.Errorf("delete: actor %q is not the author", activity.Actor)}
+			return fmt.Errorf("%w: delete: actor %q is not the author", ErrFatal, activity.Actor)
 		}
 		if delErr := p.store.SoftDeleteStatus(ctx, status.ID); delErr != nil {
 			return fmt.Errorf("inbox: SoftDeleteStatus (Delete): %w", delErr)
@@ -806,7 +801,7 @@ func (p *InboxProcessor) handleUpdate(ctx context.Context, activity *Activity) e
 	case objectTypeNote:
 		note, err := activity.ObjectNote()
 		if err != nil {
-			return &PermanentError{Err: fmt.Errorf("update{Note}: %w", err)}
+			return fmt.Errorf("%w: update{Note}: %w", ErrFatal, err)
 		}
 		status, err := p.store.GetStatusByAPID(ctx, note.ID)
 		if err != nil {
@@ -814,7 +809,7 @@ func (p *InboxProcessor) handleUpdate(ctx context.Context, activity *Activity) e
 		}
 		author, _ := p.store.GetAccountByID(ctx, status.AccountID)
 		if author != nil && author.APID != activity.Actor {
-			return &PermanentError{Err: errors.New("update: actor is not the author")}
+			return fmt.Errorf("%w: update: actor is not the author", ErrFatal)
 		}
 		_ = p.store.CreateStatusEdit(ctx, store.CreateStatusEditInput{
 			ID:             uid.New(),
@@ -843,7 +838,7 @@ func (p *InboxProcessor) handleUpdate(ctx context.Context, activity *Activity) e
 	case "Person", actorTypeService:
 		actor, err := activity.ObjectActor()
 		if err != nil {
-			return &PermanentError{Err: fmt.Errorf("Update{Person}: %w", err)}
+			return fmt.Errorf("%w: Update{Person}: %w", ErrFatal, err)
 		}
 		_, err = p.syncRemoteActorFromDoc(ctx, actor)
 		return err
@@ -856,7 +851,7 @@ func (p *InboxProcessor) handleUpdate(ctx context.Context, activity *Activity) e
 func (p *InboxProcessor) handleBlock(ctx context.Context, activity *Activity) error {
 	targetID, ok := activity.ObjectID()
 	if !ok {
-		return &PermanentError{Err: errors.New("block object is not an actor IRI")}
+		return fmt.Errorf("%w: block object is not an actor IRI", ErrFatal)
 	}
 	targetUsername := usernameFromActorIRI(targetID, p.cfg.InstanceDomain)
 	if targetUsername == "" {

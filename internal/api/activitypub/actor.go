@@ -7,34 +7,37 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/chairswithlegs/monstera-fed/internal/ap"
+	ap "github.com/chairswithlegs/monstera-fed/internal/activitypub"
 	"github.com/chairswithlegs/monstera-fed/internal/api"
+	"github.com/chairswithlegs/monstera-fed/internal/config"
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera-fed/internal/service"
 )
 
 // ActorHandler serves GET /users/{username} — AP Actor document.
 type ActorHandler struct {
-	deps Deps
+	accounts *service.AccountService
+	config   *config.Config
 }
 
 // NewActorHandler returns a new ActorHandler.
-func NewActorHandler(deps Deps) *ActorHandler {
-	return &ActorHandler{deps: deps}
+func NewActorHandler(accounts *service.AccountService, config *config.Config) *ActorHandler {
+	return &ActorHandler{accounts: accounts, config: config}
 }
 
 // GETActor returns the ActivityPub Actor JSON for the local user.
 func (h *ActorHandler) GETActor(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
-	if username == "" {
-		api.WriteError(w, http.StatusBadRequest, "missing username")
+	if err := api.ValidateRequiredString(username); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
-	withMedia, err := h.deps.Accounts.GetLocalActorWithMedia(r.Context(), username)
+	withMedia, err := h.accounts.GetLocalActorWithMedia(r.Context(), username)
 	if err != nil {
-		api.HandleError(w, r, h.deps.Logger, err)
+		api.HandleError(w, r, err)
 		return
 	}
-	actor := accountToActor(withMedia.Account, h.deps)
+	actor := accountToActor(withMedia.Account, h.config)
 	if withMedia.AvatarURL != "" {
 		actor.Icon = &ap.Icon{Type: "Image", URL: withMedia.AvatarURL}
 	}
@@ -45,8 +48,8 @@ func (h *ActorHandler) GETActor(w http.ResponseWriter, r *http.Request) {
 	api.WriteActivityJSON(w, http.StatusOK, actor)
 }
 
-func accountToActor(a *domain.Account, deps Deps) *ap.Actor {
-	base := "https://" + deps.Config.InstanceDomain
+func accountToActor(a *domain.Account, config *config.Config) *ap.Actor {
+	base := "https://" + config.InstanceDomain
 	id := a.APID
 	if id == "" {
 		id = base + "/users/" + a.Username

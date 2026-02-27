@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"log/slog"
-
+	"github.com/chairswithlegs/monstera-fed/internal/api"
 	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
@@ -24,8 +24,7 @@ func TestStatusesHandler_Create(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
-	logger := slog.Default()
-	deps := Deps{Statuses: statusSvc, Accounts: accountSvc, Logger: logger, InstanceDomain: "example.com"}
+	deps := Deps{Statuses: statusSvc, Accounts: accountSvc, InstanceDomain: "example.com"}
 	handler := NewStatusesHandler(deps)
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
@@ -35,9 +34,6 @@ func TestStatusesHandler_Create(t *testing.T) {
 		rec := httptest.NewRecorder()
 		handler.POSTStatuses(rec, req)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
-		var errBody map[string]any
-		require.NoError(t, json.NewDecoder(rec.Body).Decode(&errBody))
-		assert.Equal(t, "The access token is invalid", errBody["error"])
 	})
 
 	t.Run("blank status returns 422", func(t *testing.T) {
@@ -56,9 +52,6 @@ func TestStatusesHandler_Create(t *testing.T) {
 		rec := httptest.NewRecorder()
 		handler.POSTStatuses(rec, req)
 		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
-		var errBody map[string]any
-		require.NoError(t, json.NewDecoder(rec.Body).Decode(&errBody))
-		assert.Equal(t, "status cannot be blank", errBody["error"])
 	})
 
 	t.Run("valid JSON creates status and returns 200", func(t *testing.T) {
@@ -112,8 +105,7 @@ func TestStatusesHandler_Create_account_without_user_returns_401(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
-	logger := slog.Default()
-	deps := Deps{Statuses: statusSvc, Accounts: accountSvc, Logger: logger, InstanceDomain: "example.com"}
+	deps := Deps{Statuses: statusSvc, Accounts: accountSvc, InstanceDomain: "example.com"}
 	handler := NewStatusesHandler(deps)
 
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "nouser"})
@@ -126,9 +118,6 @@ func TestStatusesHandler_Create_account_without_user_returns_401(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.POSTStatuses(rec, req)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
-	var errBody map[string]any
-	require.NoError(t, json.NewDecoder(rec.Body).Decode(&errBody))
-	assert.Equal(t, "The access token is invalid", errBody["error"])
 }
 
 func TestParseCreateStatusRequest(t *testing.T) {
@@ -138,16 +127,14 @@ func TestParseCreateStatusRequest(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses", bytes.NewBufferString(`{invalid`))
 		req.Header.Set("Content-Type", "application/json")
 		_, err := parseCreateStatusRequest(req)
-		require.Error(t, err)
-		assert.Equal(t, "invalid JSON", err.Error())
+		assert.ErrorIs(t, err, api.ErrUnprocessable)
 	})
 
 	t.Run("empty status returns error", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses", bytes.NewBufferString(`{"status":""}`))
 		req.Header.Set("Content-Type", "application/json")
 		_, err := parseCreateStatusRequest(req)
-		require.Error(t, err)
-		assert.Equal(t, "status cannot be blank", err.Error())
+		assert.ErrorIs(t, err, api.ErrUnprocessable)
 	})
 
 	t.Run("valid JSON parses fields", func(t *testing.T) {

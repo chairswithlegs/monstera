@@ -5,35 +5,29 @@ import (
 	"net/http"
 
 	"github.com/chairswithlegs/monstera-fed/internal/api"
+	"github.com/chairswithlegs/monstera-fed/internal/api/activitypub/apimodel"
+	"github.com/chairswithlegs/monstera-fed/internal/config"
+	"github.com/chairswithlegs/monstera-fed/internal/service"
 )
 
 // NodeInfoPointerHandler serves the well-known nodeinfo pointer document.
 // GET /.well-known/nodeinfo
 type NodeInfoPointerHandler struct {
-	deps Deps
+	config *config.Config
 }
 
 // NewNodeInfoPointerHandler returns a new NodeInfoPointerHandler.
-func NewNodeInfoPointerHandler(deps Deps) *NodeInfoPointerHandler {
-	return &NodeInfoPointerHandler{deps: deps}
-}
-
-type nodeInfoPointerResponse struct {
-	Links []nodeInfoPointerLink `json:"links"`
-}
-
-type nodeInfoPointerLink struct {
-	Rel  string `json:"rel"`
-	Href string `json:"href"`
+func NewNodeInfoPointerHandler(config *config.Config) *NodeInfoPointerHandler {
+	return &NodeInfoPointerHandler{config: config}
 }
 
 // GETNodeInfoPointer serves the nodeinfo pointer.
 func (h *NodeInfoPointerHandler) GETNodeInfoPointer(w http.ResponseWriter, r *http.Request) {
-	resp := nodeInfoPointerResponse{
-		Links: []nodeInfoPointerLink{
+	resp := apimodel.NodeInfoPointerResponse{
+		Links: []apimodel.NodeInfoPointerLink{
 			{
 				Rel:  "http://nodeinfo.diaspora.software/ns/schema/2.0",
-				Href: fmt.Sprintf("https://%s/nodeinfo/2.0", h.deps.Config.InstanceDomain),
+				Href: fmt.Sprintf("https://%s/nodeinfo/2.0", h.config.InstanceDomain),
 			},
 		},
 	}
@@ -44,54 +38,32 @@ func (h *NodeInfoPointerHandler) GETNodeInfoPointer(w http.ResponseWriter, r *ht
 // NodeInfoHandler serves the full NodeInfo 2.0 document.
 // GET /nodeinfo/2.0
 type NodeInfoHandler struct {
-	deps Deps
+	instance *service.InstanceService
+	config   *config.Config
 }
 
 // NewNodeInfoHandler returns a new NodeInfoHandler.
-func NewNodeInfoHandler(deps Deps) *NodeInfoHandler {
-	return &NodeInfoHandler{deps: deps}
-}
-
-type nodeInfoResponse struct {
-	Version           string           `json:"version"`
-	Software          nodeInfoSoftware `json:"software"`
-	Protocols         []string         `json:"protocols"`
-	Usage             nodeInfoUsage    `json:"usage"`
-	OpenRegistrations bool             `json:"openRegistrations"`
-	Metadata          map[string]any   `json:"metadata"`
-}
-
-type nodeInfoSoftware struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-}
-
-type nodeInfoUsage struct {
-	Users      nodeInfoUsers `json:"users"`
-	LocalPosts int64         `json:"localPosts"`
-}
-
-type nodeInfoUsers struct {
-	Total int64 `json:"total"`
+func NewNodeInfoHandler(instance *service.InstanceService, config *config.Config) *NodeInfoHandler {
+	return &NodeInfoHandler{instance: instance, config: config}
 }
 
 // GETNodeInfo serves the NodeInfo 2.0 document.
 func (h *NodeInfoHandler) GETNodeInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	stats, err := h.deps.Instance.GetNodeInfoStats(ctx)
+	stats, err := h.instance.GetNodeInfoStats(ctx)
 	if err != nil {
-		api.HandleError(w, r, h.deps.Logger, err)
+		api.HandleError(w, r, err)
 		return
 	}
-	resp := nodeInfoResponse{
+	resp := apimodel.NodeInfoResponse{
 		Version: "2.0",
-		Software: nodeInfoSoftware{
+		Software: apimodel.NodeInfoSoftware{
 			Name:    "monstera-fed",
-			Version: h.deps.Config.Version,
+			Version: h.config.Version,
 		},
 		Protocols: []string{"activitypub"},
-		Usage: nodeInfoUsage{
-			Users:      nodeInfoUsers{Total: stats.UserCount},
+		Usage: apimodel.NodeInfoUsage{
+			Users:      apimodel.NodeInfoUsers{Total: stats.UserCount},
 			LocalPosts: stats.LocalPostCount,
 		},
 		OpenRegistrations: stats.OpenRegistrations,

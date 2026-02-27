@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -32,13 +34,14 @@ func RequireAuth(oauth *oauthpkg.Server, s store.Store) func(http.Handler) http.
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			rawToken := extractBearerToken(r)
 			if rawToken == "" {
-				api.WriteError(w, http.StatusUnauthorized, "The access token is invalid")
+				api.HandleError(w, r, api.ErrUnauthorized)
 				return
 			}
 
 			claims, err := oauth.LookupToken(r.Context(), rawToken)
 			if err != nil {
-				api.WriteError(w, http.StatusUnauthorized, "The access token is invalid")
+				slog.ErrorContext(r.Context(), "lookup token failed", slog.Any("error", err))
+				api.HandleError(w, r, api.ErrUnauthorized)
 				return
 			}
 
@@ -46,8 +49,13 @@ func RequireAuth(oauth *oauthpkg.Server, s store.Store) func(http.Handler) http.
 
 			if claims.AccountID != "" {
 				account, err := s.GetAccountByID(r.Context(), claims.AccountID)
-				if err != nil || account.Suspended {
-					api.WriteError(w, http.StatusUnauthorized, "The access token is invalid")
+				if errors.Is(err, domain.ErrNotFound) || account.Suspended {
+					api.HandleError(w, r, api.ErrUnauthorized)
+					return
+				}
+				if err != nil {
+					slog.ErrorContext(r.Context(), "get account by id failed", slog.Any("error", err))
+					api.HandleError(w, r, err)
 					return
 				}
 				ctx = WithAccount(ctx, account)
@@ -95,24 +103,28 @@ func OptionalAuth(oauth *oauthpkg.Server, s store.Store) func(http.Handler) http
 
 // RequireAdmin checks that the authenticated account has role "admin" or
 // "moderator". Must be chained after RequireAuth.
-// Returns 403 {"error":"This action is not allowed"} if the check fails.
-func RequireAdmin(s store.Store) func(http.Handler) http.Handler {
+func RequireAdmin(s store.Store, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			account := AccountFromContext(r.Context())
 			if account == nil {
-				api.WriteError(w, http.StatusForbidden, "This action is not allowed")
+				api.HandleError(w, r, api.ErrForbidden)
 				return
 			}
 
 			user, err := s.GetUserByAccountID(r.Context(), account.ID)
+			if errors.Is(err, domain.ErrNotFound) {
+				api.HandleError(w, r, api.ErrForbidden)
+				return
+			}
 			if err != nil {
-				api.WriteError(w, http.StatusForbidden, "This action is not allowed")
+				slog.ErrorContext(r.Context(), "get user by account id failed", slog.Any("error", err))
+				api.HandleError(w, r, err)
 				return
 			}
 
 			if user.Role != domain.RoleAdmin && user.Role != domain.RoleModerator {
-				api.WriteError(w, http.StatusForbidden, "This action is not allowed")
+				api.HandleError(w, r, api.ErrForbidden)
 				return
 			}
 
@@ -123,18 +135,19 @@ func RequireAdmin(s store.Store) func(http.Handler) http.Handler {
 
 // RequiredScopes returns a middleware that checks whether the authenticated
 // token has all the listed scopes. Must be chained after RequireAuth.
-// Returns 403 {"error": "This action is outside the authorized scopes"} if not.
 func RequiredScopes(scopes ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			claims := TokenClaimsFromContext(r.Context())
 			if claims == nil {
-				api.WriteError(w, http.StatusForbidden, "This action is outside the authorized scopes")
+				err := api.NewForbiddenError("This action is outside the authorized scopes")
+				api.HandleError(w, r, err)
 				return
 			}
 
 			if !claims.Scopes.HasAll(scopes...) {
-				api.WriteError(w, http.StatusForbidden, "This action is outside the authorized scopes")
+				err := api.NewForbiddenError("This action is outside the authorized scopes")
+				api.HandleError(w, r, err)
 				return
 			}
 

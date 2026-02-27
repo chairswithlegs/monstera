@@ -20,7 +20,6 @@ import (
 
 // Deps holds dependencies required to build the HTTP router.
 type Deps struct {
-	Logger        *slog.Logger
 	Metrics       *observability.Metrics
 	Health        *api.HealthChecker
 	OAuthHandler  *oauthhandlers.Handler
@@ -47,9 +46,9 @@ func New(deps Deps) http.Handler {
 
 	r.Use(chimw.RequestID)
 	r.Use(chimw.RealIP)
-	r.Use(observability.RequestLogger(deps.Logger))
+	r.Use(observability.RequestLogger(slog.Default()))
 	r.Use(observability.MetricsMiddleware(deps.Metrics))
-	r.Use(middleware.Recoverer(deps.Logger))
+	r.Use(middleware.Recoverer())
 	r.Use(middleware.CORS)
 	r.Use(chimw.Timeout(30 * time.Second))
 

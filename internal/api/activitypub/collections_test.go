@@ -22,8 +22,8 @@ func TestCollectionsHandler_GETFollowers(t *testing.T) {
 	_, _ = fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID: "01HXXX", Username: "alice", APID: "https://example.com/users/alice",
 	})
-	deps := testDeps(fake, &config.Config{InstanceDomain: "example.com"})
-	h := NewCollectionsHandler(deps)
+	cfg := &config.Config{InstanceDomain: "example.com"}
+	h := NewCollectionsHandler(testAccountService(fake, cfg), cfg)
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/followers", nil)
 	r = r.WithContext(ctx)
 	r = addChiURLParam(r, "alice")
@@ -46,8 +46,8 @@ func TestCollectionsHandler_GETFeatured(t *testing.T) {
 	_, _ = fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID: "01HXXX", Username: "alice", APID: "https://example.com/users/alice",
 	})
-	deps := testDeps(fake, &config.Config{InstanceDomain: "example.com"})
-	h := NewCollectionsHandler(deps)
+	cfg := &config.Config{InstanceDomain: "example.com"}
+	h := NewCollectionsHandler(testAccountService(fake, cfg), cfg)
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/collections/featured", nil)
 	r = r.WithContext(ctx)
 	r = addChiURLParam(r, "alice")

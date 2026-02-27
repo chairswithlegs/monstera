@@ -1,4 +1,4 @@
-package ap
+package activitypub
 
 import (
 	"bytes"

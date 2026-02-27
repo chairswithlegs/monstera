@@ -14,7 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cobra"
 
-	"github.com/chairswithlegs/monstera-fed/internal/ap"
+	ap "github.com/chairswithlegs/monstera-fed/internal/activitypub"
 	"github.com/chairswithlegs/monstera-fed/internal/api"
 	"github.com/chairswithlegs/monstera-fed/internal/api/activitypub"
 	"github.com/chairswithlegs/monstera-fed/internal/api/mastodon"
@@ -54,6 +54,8 @@ func runServe(_ *cobra.Command, _ []string) error {
 	}
 
 	logger := observability.NewLogger(cfg.AppEnv, cfg.LogLevel)
+	slog.SetDefault(logger)
+
 	reg := prometheus.NewRegistry()
 	metrics := observability.NewMetrics(reg)
 
@@ -147,7 +149,6 @@ func runServe(_ *cobra.Command, _ []string) error {
 		Timeline:           timelineSvc,
 		Notifications:      notificationSvc,
 		Media:              mediaSvc,
-		Logger:             logger,
 		InstanceDomain:     cfg.InstanceDomain,
 		InstanceName:       cfg.InstanceName,
 		MaxStatusChars:     cfg.MaxStatusChars,
@@ -166,17 +167,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 		logger.Warn("blocklist refresh failed", slog.Any("error", err))
 	}
 	inboxProcessor := ap.NewInboxProcessor(s, cacheStore, blocklistCache, nil, nil, cfg, logger, ap.DefaultActorFetch)
-	apDeps := activitypub.Deps{
-		Accounts:  accountSvc,
-		Timelines: timelineSvc,
-		Instance:  instanceSvc,
-		Cache:     cacheStore,
-		Config:    cfg,
-		Logger:    logger,
-		Inbox:     inboxProcessor,
-	}
 	handler := router.New(router.Deps{
-		Logger:        logger,
 		Metrics:       metrics,
 		Health:        health,
 		OAuthHandler:  oauthHandler,
@@ -188,13 +179,13 @@ func runServe(_ *cobra.Command, _ []string) error {
 		Instance:      instanceHandler,
 		Notifications: notificationsHandler,
 		Media:         mediaHandler,
-		WebFinger:     activitypub.NewWebFingerHandler(apDeps),
-		NodeInfoPtr:   activitypub.NewNodeInfoPointerHandler(apDeps),
-		NodeInfo:      activitypub.NewNodeInfoHandler(apDeps),
-		Actor:         activitypub.NewActorHandler(apDeps),
-		Collections:   activitypub.NewCollectionsHandler(apDeps),
-		Outbox:        activitypub.NewOutboxHandler(apDeps),
-		Inbox:         activitypub.NewInboxHandler(apDeps),
+		WebFinger:     activitypub.NewWebFingerHandler(accountSvc, cfg),
+		NodeInfoPtr:   activitypub.NewNodeInfoPointerHandler(cfg),
+		NodeInfo:      activitypub.NewNodeInfoHandler(instanceSvc, cfg),
+		Actor:         activitypub.NewActorHandler(accountSvc, cfg),
+		Collections:   activitypub.NewCollectionsHandler(accountSvc, cfg),
+		Outbox:        activitypub.NewOutbox(accountSvc, timelineSvc, cfg),
+		Inbox:         activitypub.NewInboxHandler(inboxProcessor, cacheStore),
 	})
 
 	srv := &http.Server{

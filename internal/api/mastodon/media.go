@@ -22,16 +22,16 @@ func NewMediaHandler(deps Deps) *MediaHandler {
 func (h *MediaHandler) POSTMedia(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
 	if account == nil {
-		api.WriteError(w, http.StatusUnauthorized, "The access token is invalid")
+		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
 	if err := r.ParseMultipartForm(0); err != nil {
-		api.WriteError(w, http.StatusBadRequest, "Invalid multipart form")
+		api.HandleError(w, r, api.NewBadRequestError("invalid multipart form"))
 		return
 	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		api.WriteError(w, http.StatusBadRequest, "Missing or invalid file")
+		api.HandleError(w, r, api.NewBadRequestError("missing or invalid file"))
 		return
 	}
 	defer func() { _ = file.Close() }()
@@ -45,7 +45,7 @@ func (h *MediaHandler) POSTMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.deps.Media.Upload(r.Context(), account.ID, file, contentType, desc)
 	if err != nil {
-		api.HandleError(w, r, h.deps.Logger, err)
+		api.HandleError(w, r, err)
 		return
 	}
 	out := apimodel.MediaFromDomain(result.Attachment)

@@ -15,8 +15,8 @@ import (
 
 func TestNodeInfoPointerHandler_GETNodeInfoPointer(t *testing.T) {
 	t.Parallel()
-	deps := testDeps(testutil.NewFakeStore(), &config.Config{InstanceDomain: "example.com"})
-	h := NewNodeInfoPointerHandler(deps)
+	cfg := &config.Config{InstanceDomain: "example.com"}
+	h := NewNodeInfoPointerHandler(cfg)
 	r := httptest.NewRequest(http.MethodGet, "/.well-known/nodeinfo", nil)
 	w := httptest.NewRecorder()
 	h.GETNodeInfoPointer(w, r)
@@ -34,8 +34,9 @@ func TestNodeInfoPointerHandler_GETNodeInfoPointer(t *testing.T) {
 
 func TestNodeInfoHandler_GETNodeInfo(t *testing.T) {
 	t.Parallel()
-	deps := testDeps(testutil.NewFakeStore(), &config.Config{InstanceDomain: "example.com", Version: "0.1.0"})
-	h := NewNodeInfoHandler(deps)
+	fake := testutil.NewFakeStore()
+	cfg := &config.Config{InstanceDomain: "example.com", Version: "0.1.0"}
+	h := NewNodeInfoHandler(testInstanceService(fake), cfg)
 	r := httptest.NewRequest(http.MethodGet, "/nodeinfo/2.0", nil)
 	w := httptest.NewRecorder()
 	h.GETNodeInfo(w, r)

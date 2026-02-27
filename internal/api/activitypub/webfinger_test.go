@@ -34,8 +34,7 @@ func TestWebFingerHandler_GETWebFinger(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := &config.Config{InstanceDomain: "example.com"}
-	deps := testDeps(fake, cfg)
-	h := NewWebFingerHandler(deps)
+	h := NewWebFingerHandler(testAccountService(fake, cfg), cfg)
 
 	r := httptest.NewRequest(http.MethodGet, "/.well-known/webfinger?resource=acct:alice@example.com", nil)
 	r = r.WithContext(ctx)
@@ -62,8 +61,8 @@ func TestWebFingerHandler_GETWebFinger(t *testing.T) {
 
 func TestWebFingerHandler_missingResource(t *testing.T) {
 	t.Parallel()
-	deps := testDeps(testutil.NewFakeStore(), &config.Config{InstanceDomain: "example.com"})
-	h := NewWebFingerHandler(deps)
+	cfg := &config.Config{InstanceDomain: "example.com"}
+	h := NewWebFingerHandler(testAccountService(testutil.NewFakeStore(), cfg), cfg)
 	r := httptest.NewRequest(http.MethodGet, "/.well-known/webfinger", nil)
 	w := httptest.NewRecorder()
 	h.GETWebFinger(w, r)
@@ -77,8 +76,8 @@ func TestWebFingerHandler_wrongDomain(t *testing.T) {
 	_, _ = fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID: "01HXXX", Username: "alice", APID: "https://example.com/users/alice",
 	})
-	deps := testDeps(fake, &config.Config{InstanceDomain: "example.com"})
-	h := NewWebFingerHandler(deps)
+	cfg := &config.Config{InstanceDomain: "example.com"}
+	h := NewWebFingerHandler(testAccountService(fake, cfg), cfg)
 	r := httptest.NewRequest(http.MethodGet, "/.well-known/webfinger?resource=acct:alice@other.com", nil)
 	r = r.WithContext(ctx)
 	w := httptest.NewRecorder()

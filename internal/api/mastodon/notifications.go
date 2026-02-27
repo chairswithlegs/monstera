@@ -23,14 +23,14 @@ func NewNotificationsHandler(deps Deps) *NotificationsHandler {
 func (h *NotificationsHandler) GETNotifications(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
 	if account == nil {
-		api.WriteError(w, http.StatusUnauthorized, "The access token is invalid")
+		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
 	params := PageParamsFromRequest(r)
 	maxID := optionalString(params.MaxID)
 	list, err := h.deps.Notifications.List(r.Context(), account.ID, maxID, params.Limit)
 	if err != nil {
-		api.HandleError(w, r, h.deps.Logger, err)
+		api.HandleError(w, r, err)
 		return
 	}
 	out := make([]apimodel.Notification, 0, len(list))

@@ -3,6 +3,7 @@ package oauth
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/chairswithlegs/monstera-fed/internal/api"
+	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	oauthpkg "github.com/chairswithlegs/monstera-fed/internal/oauth"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
 	"golang.org/x/crypto/bcrypt"
@@ -95,7 +97,7 @@ func (h *Handler) POSTRegisterApp(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(ct, "application/json") {
 		var body registerAppRequest
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			api.WriteError(w, http.StatusBadRequest, "invalid request body")
+			api.HandleError(w, r, api.NewBadRequestError("invalid request body"))
 			return
 		}
 		name = strings.TrimSpace(body.ClientName)
@@ -104,12 +106,12 @@ func (h *Handler) POSTRegisterApp(w http.ResponseWriter, r *http.Request) {
 		var ok bool
 		redirectURIs, ok = redirectURIsToString(body.RedirectURIs)
 		if !ok {
-			api.WriteError(w, http.StatusUnprocessableEntity, "redirect_uris is required")
+			api.HandleError(w, r, api.NewBadRequestError("redirect_uris is required"))
 			return
 		}
 	} else {
 		if err := r.ParseForm(); err != nil {
-			api.WriteError(w, http.StatusBadRequest, "invalid request body")
+			api.HandleError(w, r, api.NewBadRequestError("invalid request body"))
 			return
 		}
 		name = strings.TrimSpace(r.FormValue("client_name"))
@@ -119,18 +121,17 @@ func (h *Handler) POSTRegisterApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if name == "" {
-		api.WriteError(w, http.StatusUnprocessableEntity, "client_name is required")
+		api.HandleError(w, r, api.NewBadRequestError("client_name is required"))
 		return
 	}
 	if redirectURIs == "" {
-		api.WriteError(w, http.StatusUnprocessableEntity, "redirect_uris is required")
+		api.HandleError(w, r, api.NewBadRequestError("redirect_uris is required"))
 		return
 	}
 
 	app, err := h.oauth.RegisterApplication(r.Context(), name, redirectURIs, scopes, website)
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "register application failed", slog.Any("error", err))
-		api.WriteError(w, http.StatusInternalServerError, "Internal server error")
+		api.HandleError(w, r, err)
 		return
 	}
 
@@ -169,23 +170,27 @@ func (h *Handler) GETAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if responseType != "code" {
-		api.WriteError(w, http.StatusBadRequest, "response_type must be 'code'")
+		api.HandleError(w, r, api.NewBadRequestError("response_type must be 'code'"))
 		return
 	}
 
 	if codeChallengeMethod != "" && codeChallengeMethod != "S256" {
-		api.WriteError(w, http.StatusBadRequest, "code_challenge_method must be 'S256'")
+		api.HandleError(w, r, api.NewBadRequestError("code_challenge_method must be 'S256'"))
 		return
 	}
 
 	app, err := h.store.GetApplicationByClientID(r.Context(), clientID)
 	if err != nil {
-		api.WriteError(w, http.StatusBadRequest, "invalid client_id")
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.NewBadRequestError("invalid client_id"))
+			return
+		}
+		api.HandleError(w, r, err)
 		return
 	}
 
 	if !isValidRedirectURI(redirectURI, app.RedirectURIs) {
-		api.WriteError(w, http.StatusBadRequest, "redirect_uri is not registered")
+		api.HandleError(w, r, api.NewBadRequestError("redirect_uri is not registered"))
 		return
 	}
 
@@ -212,7 +217,7 @@ func (h *Handler) GETAuthorize(w http.ResponseWriter, r *http.Request) {
 // POSTAuthorizeSubmit handles POST /oauth/authorize.
 func (h *Handler) POSTAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		api.WriteError(w, http.StatusBadRequest, "invalid form data")
+		api.HandleError(w, r, api.NewBadRequestError("invalid form data"))
 		return
 	}
 
@@ -227,7 +232,11 @@ func (h *Handler) POSTAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 
 	app, err := h.store.GetApplicationByClientID(r.Context(), clientID)
 	if err != nil {
-		api.WriteError(w, http.StatusBadRequest, "invalid client_id")
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.NewBadRequestError("invalid client_id"))
+			return
+		}
+		api.HandleError(w, r, err)
 		return
 	}
 
@@ -262,8 +271,7 @@ func (h *Handler) POSTAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 		CodeChallengeMethod: codeChallengeMethod,
 	})
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "authorize request failed", slog.Any("error", err))
-		api.WriteError(w, http.StatusInternalServerError, "Internal server error")
+		api.HandleError(w, r, err)
 		return
 	}
 
@@ -281,7 +289,7 @@ func (h *Handler) POSTAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 // POSTToken handles POST /oauth/token.
 func (h *Handler) POSTToken(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		api.WriteError(w, http.StatusBadRequest, "invalid request body")
+		api.HandleError(w, r, api.NewBadRequestError("invalid request body"))
 		return
 	}
 
@@ -298,7 +306,7 @@ func (h *Handler) POSTToken(w http.ResponseWriter, r *http.Request) {
 			CodeVerifier: r.FormValue("code_verifier"),
 		})
 		if err != nil {
-			api.WriteError(w, http.StatusBadRequest, err.Error())
+			api.HandleError(w, r, err)
 			return
 		}
 		api.WriteJSON(w, http.StatusOK, resp)
@@ -311,26 +319,26 @@ func (h *Handler) POSTToken(w http.ResponseWriter, r *http.Request) {
 			Scopes:       r.FormValue("scope"),
 		})
 		if err != nil {
-			api.WriteError(w, http.StatusBadRequest, err.Error())
+			api.HandleError(w, r, err)
 			return
 		}
 		api.WriteJSON(w, http.StatusOK, resp)
 
 	default:
-		api.WriteError(w, http.StatusBadRequest, "unsupported grant_type")
+		api.HandleError(w, r, api.NewBadRequestError("unsupported grant_type"))
 	}
 }
 
 // POSTRevoke handles POST /oauth/revoke (RFC 7009).
 func (h *Handler) POSTRevoke(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		api.WriteError(w, http.StatusBadRequest, "invalid request body")
+		api.HandleError(w, r, api.NewBadRequestError("invalid request body"))
 		return
 	}
 
 	token := r.FormValue("token")
-	if token == "" {
-		api.WriteError(w, http.StatusBadRequest, "token is required")
+	if err := api.ValidateRequiredString(token); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 

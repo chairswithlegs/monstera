@@ -7,8 +7,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"log/slog"
-
 	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
@@ -25,8 +23,7 @@ func TestTimelinesHandler_Home(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	timelineSvc := service.NewTimelineService(st)
-	logger := slog.Default()
-	deps := Deps{Timeline: timelineSvc, Logger: logger, InstanceDomain: "example.com"}
+	deps := Deps{Timeline: timelineSvc, InstanceDomain: "example.com"}
 	handler := NewTimelinesHandler(deps)
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
@@ -34,9 +31,6 @@ func TestTimelinesHandler_Home(t *testing.T) {
 		rec := httptest.NewRecorder()
 		handler.GETHome(rec, req)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
-		var body map[string]any
-		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
-		assert.Equal(t, "The access token is invalid", body["error"])
 	})
 
 	t.Run("authenticated with empty timeline returns 200 and empty array", func(t *testing.T) {

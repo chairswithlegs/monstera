@@ -22,8 +22,8 @@ func TestOutboxHandler_GETOutbox_collection(t *testing.T) {
 	_, _ = fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID: "01HXXX", Username: "alice", APID: "https://example.com/users/alice",
 	})
-	deps := testDeps(fake, &config.Config{InstanceDomain: "example.com"})
-	h := NewOutboxHandler(deps)
+	cfg := &config.Config{InstanceDomain: "example.com"}
+	h := NewOutbox(testAccountService(fake, cfg), testTimelineService(fake), cfg)
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/outbox", nil)
 	r = r.WithContext(ctx)
 	r = addChiURLParam(r, "alice")
@@ -55,8 +55,8 @@ func TestOutboxHandler_GETOutbox_page(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	deps := testDeps(fake, &config.Config{InstanceDomain: "example.com"})
-	h := NewOutboxHandler(deps)
+	cfg := &config.Config{InstanceDomain: "example.com"}
+	h := NewOutbox(testAccountService(fake, cfg), testTimelineService(fake), cfg)
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/outbox?page=true", nil)
 	r = r.WithContext(ctx)
 	r = addChiURLParam(r, "alice")
