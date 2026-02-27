@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -48,7 +49,7 @@ func (h *AccountsHandler) GETVerifyCredentials(w http.ResponseWriter, r *http.Re
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
-// GETAccounts handles GETAccounts /api/v1/accounts/:id. Auth optional.
+// GETAccounts handles GET /api/v1/accounts/:id. Auth optional. id is the account's internal ID (ULID).
 func (h *AccountsHandler) GETAccounts(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := api.ValidateRequiredString(id); err != nil {
@@ -56,6 +57,47 @@ func (h *AccountsHandler) GETAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	acc, err := h.accounts.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	if acc.Suspended {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, apimodel.ToAccount(acc, h.instanceDomain))
+}
+
+// GETAccountsLookup handles GET /api/v1/accounts/lookup?acct=username or username@domain.
+// Returns the account only if this instance already has it (local by username, remote by username@domain).
+// No remote resolution: it does not fetch from federation. For resolving unknown remote users, use GET /api/v2/search?q=user@domain&resolve=true.
+// Mastodon-compatible: clients use this to get the account (and ID) when they have the handle and the account is already known to the instance.
+func (h *AccountsHandler) GETAccountsLookup(w http.ResponseWriter, r *http.Request) {
+	acct := strings.TrimSpace(r.URL.Query().Get("acct"))
+	if acct == "" {
+		api.HandleError(w, r, api.NewUnprocessableError("acct parameter is required"))
+		return
+	}
+	var username string
+	var accountDomain *string
+	if idx := strings.Index(acct, "@"); idx >= 0 {
+		username = acct[:idx]
+		d := strings.TrimSpace(acct[idx+1:])
+		if d != "" {
+			accountDomain = &d
+		}
+	} else {
+		username = acct
+	}
+	if username == "" {
+		api.HandleError(w, r, api.NewUnprocessableError("acct must contain a username"))
+		return
+	}
+	acc, err := h.accounts.GetByUsername(r.Context(), username, accountDomain)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -83,7 +125,16 @@ func (h *AccountsHandler) POSTFollow(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	rel, err := h.follows.Follow(r.Context(), account.ID, targetID)
+	target, err := h.accounts.GetByID(r.Context(), targetID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	rel, err := h.follows.Follow(r.Context(), account.ID, target.ID)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -103,7 +154,16 @@ func (h *AccountsHandler) POSTUnfollow(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	rel, err := h.follows.Unfollow(r.Context(), account.ID, targetID)
+	target, err := h.accounts.GetByID(r.Context(), targetID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	rel, err := h.follows.Unfollow(r.Context(), account.ID, target.ID)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -128,7 +188,16 @@ func (h *AccountsHandler) GETRelationships(w http.ResponseWriter, r *http.Reques
 		if targetID == "" {
 			continue
 		}
-		rel, err := h.accounts.GetRelationship(r.Context(), account.ID, targetID)
+		target, err := h.accounts.GetByID(r.Context(), targetID)
+		if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				api.HandleError(w, r, api.ErrNotFound)
+				return
+			}
+			api.HandleError(w, r, err)
+			return
+		}
+		rel, err := h.accounts.GetRelationship(r.Context(), account.ID, target.ID)
 		if err != nil {
 			api.HandleError(w, r, err)
 			return
@@ -253,16 +322,22 @@ func (h *AccountsHandler) GETAccountStatuses(w http.ResponseWriter, r *http.Requ
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
+	target, err := h.accounts.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
 	if h.timeline == nil {
 		api.HandleError(w, r, api.NewUnprocessableError("timeline not configured"))
 		return
 	}
 	params := PageParamsFromRequest(r)
-	var viewerID *string
-	if account != nil {
-		viewerID = &account.ID
-	}
-	enriched, err := h.timeline.AccountStatusesEnriched(r.Context(), id, viewerID, optionalString(params.MaxID), params.Limit)
+	viewerID := &account.ID
+	enriched, err := h.timeline.AccountStatusesEnriched(r.Context(), target.ID, viewerID, optionalString(params.MaxID), params.Limit)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -311,9 +386,7 @@ func (h *AccountsHandler) GETFollowers(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	// TODO: if target locked and viewer does not follow, return empty
-	params := PageParamsFromRequest(r)
-	_, err := h.accounts.GetByID(r.Context(), targetID)
+	target, err := h.accounts.GetByID(r.Context(), targetID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -322,7 +395,9 @@ func (h *AccountsHandler) GETFollowers(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	followers, err := h.follows.GetFollowers(r.Context(), targetID, optionalString(params.MaxID), params.Limit)
+	// TODO: if target locked and viewer does not follow, return empty
+	params := PageParamsFromRequest(r)
+	followers, err := h.follows.GetFollowers(r.Context(), target.ID, optionalString(params.MaxID), params.Limit)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -357,7 +432,7 @@ func (h *AccountsHandler) GETFollowing(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	_, err := h.accounts.GetByID(r.Context(), targetID)
+	target, err := h.accounts.GetByID(r.Context(), targetID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -367,7 +442,7 @@ func (h *AccountsHandler) GETFollowing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	params := PageParamsFromRequest(r)
-	list, err := h.follows.GetFollowing(r.Context(), targetID, optionalString(params.MaxID), params.Limit)
+	list, err := h.follows.GetFollowing(r.Context(), target.ID, optionalString(params.MaxID), params.Limit)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -395,7 +470,16 @@ func (h *AccountsHandler) POSTBlock(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	rel, err := h.follows.Block(r.Context(), account.ID, targetID)
+	target, err := h.accounts.GetByID(r.Context(), targetID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	rel, err := h.follows.Block(r.Context(), account.ID, target.ID)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -415,7 +499,16 @@ func (h *AccountsHandler) POSTUnblock(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	rel, err := h.follows.Unblock(r.Context(), account.ID, targetID)
+	target, err := h.accounts.GetByID(r.Context(), targetID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	rel, err := h.follows.Unblock(r.Context(), account.ID, target.ID)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -435,6 +528,15 @@ func (h *AccountsHandler) POSTMute(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
+	target, err := h.accounts.GetByID(r.Context(), targetID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
 	hideNotifications := r.FormValue("notifications") == resolveQueryTrue || r.FormValue("notifications") == "1"
 	if r.Form == nil {
 		_ = r.ParseForm()
@@ -442,7 +544,7 @@ func (h *AccountsHandler) POSTMute(w http.ResponseWriter, r *http.Request) {
 	if r.Form != nil {
 		hideNotifications = r.Form.Get("notifications") == resolveQueryTrue || r.Form.Get("notifications") == "1"
 	}
-	rel, err := h.follows.Mute(r.Context(), account.ID, targetID, hideNotifications)
+	rel, err := h.follows.Mute(r.Context(), account.ID, target.ID, hideNotifications)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -462,7 +564,16 @@ func (h *AccountsHandler) POSTUnmute(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	rel, err := h.follows.Unmute(r.Context(), account.ID, targetID)
+	target, err := h.accounts.GetByID(r.Context(), targetID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	rel, err := h.follows.Unmute(r.Context(), account.ID, target.ID)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return

@@ -129,11 +129,11 @@ func (r *RemoteAccountResolver) fetchWebFingerActorIRI(ctx context.Context, acct
 func (r *RemoteAccountResolver) syncActorToStore(ctx context.Context, actor *Actor) (*domain.Account, error) {
 	existing, err := r.store.GetAccountByAPID(ctx, actor.ID)
 	if err != nil {
-		username := usernameFromActorIRI(actor.ID, "")
+		dom := DomainFromActorID(actor.ID)
+		username := usernameFromActorIRI(actor.ID, dom)
 		if username == "" {
 			username = "unknown"
 		}
-		dom := DomainFromActorID(actor.ID)
 		apRaw, _ := json.Marshal(actor)
 		in := store.CreateAccountInput{
 			ID:           uid.New(),

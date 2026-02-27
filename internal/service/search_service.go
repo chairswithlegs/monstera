@@ -50,6 +50,7 @@ func NewSearchService(s store.Store, resolver WebFingerResolver, logger *slog.Lo
 }
 
 // acctPattern matches user@domain (username and domain non-empty).
+// used to determine if the account is remote.
 var acctPattern = regexp.MustCompile(`^[a-zA-Z0-9_]+@[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$`)
 
 // Search runs account and/or hashtag search and optionally resolves a remote account by acct.
@@ -82,6 +83,7 @@ func (svc *SearchService) Search(ctx context.Context, viewer *domain.Account, q 
 			return nil, fmt.Errorf("SearchAccounts: %w", err)
 		}
 		out.Accounts = accounts
+		// If the account is remote, resolve it (only when resolver is configured).
 		if resolve && svc.resolver != nil && acctPattern.MatchString(q) {
 			remote, err := svc.resolver.ResolveRemoteAccount(ctx, q)
 			if err != nil {

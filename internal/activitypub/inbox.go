@@ -132,7 +132,7 @@ func (p *InboxProcessor) resolveRemoteAccount(ctx context.Context, actorIRI stri
 		return existing, nil
 	}
 	dom := DomainFromActorID(actorIRI)
-	username := usernameFromActorIRI(actorIRI, "")
+	username := usernameFromActorIRI(actorIRI, dom)
 	if username == "" {
 		username = defaultUsernameUnknown
 	}
@@ -170,11 +170,11 @@ func (p *InboxProcessor) resolveRemoteAccount(ctx context.Context, actorIRI stri
 func (p *InboxProcessor) syncRemoteActorFromDoc(ctx context.Context, actor *Actor) (*domain.Account, error) {
 	existing, err := p.store.GetAccountByAPID(ctx, actor.ID)
 	if err != nil {
-		username := usernameFromActorIRI(actor.ID, "")
+		dom := DomainFromActorID(actor.ID)
+		username := usernameFromActorIRI(actor.ID, dom)
 		if username == "" {
 			username = defaultUsernameUnknown
 		}
-		dom := DomainFromActorID(actor.ID)
 		apRaw, _ := json.Marshal(actor)
 		in := store.CreateAccountInput{
 			ID:           uid.New(),

@@ -11,6 +11,7 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
+	"github.com/chairswithlegs/monstera-fed/internal/store"
 	"github.com/chairswithlegs/monstera-fed/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -58,6 +59,63 @@ func TestAccountsHandler_VerifyCredentials(t *testing.T) {
 		rec := httptest.NewRecorder()
 		handler.GETVerifyCredentials(rec, req)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+}
+
+func TestAccountsHandler_GETAccountsLookup(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	followSvc := service.NewFollowService(st, nil, nil)
+	handler := NewAccountsHandler(accountSvc, followSvc, nil, "example.com")
+
+	t.Run("missing acct returns 422", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/lookup", nil)
+		rec := httptest.NewRecorder()
+		handler.GETAccountsLookup(rec, req)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	})
+
+	t.Run("unknown account returns 404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/lookup?acct=nobody", nil)
+		rec := httptest.NewRecorder()
+		handler.GETAccountsLookup(rec, req)
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("local account by username returns 200 and account", func(t *testing.T) {
+		acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/lookup?acct=alice", nil)
+		rec := httptest.NewRecorder()
+		handler.GETAccountsLookup(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Equal(t, acc.ID, body["id"])
+		assert.Equal(t, "alice", body["username"])
+		assert.Equal(t, "alice", body["acct"])
+	})
+
+	t.Run("remote account by acct returns 200 and account", func(t *testing.T) {
+		remoteDomain := "other.example"
+		_, err := st.CreateAccount(ctx, store.CreateAccountInput{
+			ID:       "01REMOTE001",
+			Username: "bob",
+			Domain:   &remoteDomain,
+			APID:     "https://other.example/users/bob",
+		})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/lookup?acct=bob@other.example", nil)
+		rec := httptest.NewRecorder()
+		handler.GETAccountsLookup(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Equal(t, "01REMOTE001", body["id"])
+		assert.Equal(t, "bob", body["username"])
+		assert.Equal(t, "bob@other.example", body["acct"])
 	})
 }
 
