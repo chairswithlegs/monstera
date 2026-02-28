@@ -63,6 +63,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	// Initialize metrics
 	reg := prometheus.NewRegistry()
 	metrics := observability.NewMetrics(reg)
+	observability.SetMetrics(metrics)
 
 	// Setup database and run migrations
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
@@ -81,7 +82,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	// Setup services and other dependencies
 	s := postgres.New(pool)
 
-	natsClient, err := nats.New(cfg, logger)
+	natsClient, err := nats.New(cfg)
 	if err != nil {
 		return fmt.Errorf("nats: %w", err)
 	}
@@ -128,8 +129,8 @@ func runServe(_ *cobra.Command, _ []string) error {
 
 	instanceBaseURL := "https://" + cfg.InstanceDomain
 	accountSvc := service.NewAccountService(s, instanceBaseURL)
-	fedProducer := federation.NewProducer(natsClient.JS, metrics)
-	outboxPublisher := ap.NewOutboxPublisher(s, fedProducer, cfg, logger)
+	fedProducer := federation.NewFederationProducer(natsClient.JS)
+	outboxPublisher := ap.NewOutboxPublisher(s, fedProducer, cfg)
 	statusSvc := service.NewStatusService(s, outboxPublisher, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars, logger)
 	timelineSvc := service.NewTimelineService(s)
 	instanceSvc := service.NewInstanceService(s)
@@ -156,16 +157,17 @@ func runServe(_ *cobra.Command, _ []string) error {
 	if err := nats.EnsureStreams(ctx, natsClient.JS); err != nil {
 		return fmt.Errorf("nats: ensure streams: %w", err)
 	}
-	fedWorker := federation.NewFederationWorker(natsClient.JS, fedProducer, s, blocklistCache, cfg, logger, metrics)
+	signatureService := ap.NewHTTPSignatureService(cfg, cacheStore, s)
+	fedWorker := federation.NewFederationWorker(natsClient.JS, fedProducer, blocklistCache, signatureService, cfg)
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	go func() {
 		_ = fedWorker.Start(workerCtx)
 	}()
 	defer workerCancel()
-	inboxProcessor := ap.NewInboxProcessor(s, cacheStore, blocklistCache, nil, outboxPublisher, cfg, logger, actorFetchForInbox)
+	inboxProcessor := ap.NewInboxProcessor(s, cacheStore, blocklistCache, nil, outboxPublisher, cfg, actorFetchForInbox)
 
 	// Setup handlers and middleware
-	oauthHandler := oauthhandlers.NewHandler(oauthServer, s, logger, loginTmpl, cfg.InstanceName, secretKey)
+	oauthHandler := oauthhandlers.NewHandler(oauthServer, s, loginTmpl, cfg.InstanceName, secretKey)
 	health := api.NewHealthChecker(pool, natsClient.Conn)
 	accountsHandler := mastodon.NewAccountsHandler(accountSvc, followSvc, timelineSvc, cfg.InstanceDomain)
 	statusesHandler := mastodon.NewStatusesHandler(accountSvc, statusSvc, cfg.InstanceDomain, cacheStore)
@@ -181,11 +183,10 @@ func runServe(_ *cobra.Command, _ []string) error {
 	actorHandler := activitypub.NewActorHandler(accountSvc, cfg)
 	collectionsHandler := activitypub.NewCollectionsHandler(accountSvc, cfg)
 	outboxHandler := activitypub.NewOutbox(accountSvc, timelineSvc, cfg)
-	inboxHandler := activitypub.NewInboxHandler(inboxProcessor, cacheStore)
+	inboxHandler := activitypub.NewInboxHandler(inboxProcessor, cacheStore, cfg, signatureService)
 
 	handler := router.New(router.Deps{
 		AccountsService: accountSvc,
-		Metrics:         metrics,
 		Health:          health,
 		OAuthHandler:    oauthHandler,
 		OAuthServer:     oauthServer,
@@ -239,6 +240,8 @@ func runServe(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
+// setupFederationResolver returns the remote resolver and actor fetch for inbox.
+// When FederationInsecureSkipTLS is true, the resolver uses an HTTP client with InsecureSkipVerify for development.
 func setupFederationResolver(s store.Store, cfg *config.Config) (*ap.RemoteAccountResolver, func(context.Context, string) (*ap.Actor, error)) {
 	if !cfg.FederationInsecureSkipTLS {
 		actorFetch := ap.ActorFetch

@@ -5,7 +5,6 @@ package nats
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"os"
 	"testing"
 	"time"
@@ -17,48 +16,79 @@ import (
 
 	ap "github.com/chairswithlegs/monstera-fed/internal/activitypub"
 	"github.com/chairswithlegs/monstera-fed/internal/config"
-	"github.com/chairswithlegs/monstera-fed/internal/nats/federation"
 )
 
-// TestEnsureStreams_PublishConsume requires NATS with JetStream running (e.g. docker-compose up nats).
-func TestEnsureStreams_PublishConsume(t *testing.T) {
-	t.Helper()
-	url := os.Getenv("NATS_URL")
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	cfg := &config.Config{NATSUrl: url}
-
-	client, err := New(cfg, logger)
-	require.NoError(t, err)
+// TestEnsureStreams_StreamAndConsumerConfig validates that the FEDERATION stream and
+// federation-worker consumer have the expected config.
+// This is used to ensure that EnsureStreams is working correctly.
+func TestEnsureStreams_StreamAndConsumerConfig(t *testing.T) {
+	client := setupNATSTest(t)
 	defer client.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	err = EnsureStreams(ctx, client.JS)
+	stream, err := client.JS.Stream(ctx, StreamFederation)
+	require.NoError(t, err)
+	streamInfo, err := stream.Info(ctx)
 	require.NoError(t, err)
 
-	producer := federation.NewProducer(client.JS, nil)
+	assert.Equal(t, StreamFederation, streamInfo.Config.Name, "stream name")
+	assert.Equal(t, jetstream.WorkQueuePolicy, streamInfo.Config.Retention,
+		"stream retention must be WorkQueue so each message is delivered to only one consumer")
+	assert.Equal(t, []string{subjectDeliver}, streamInfo.Config.Subjects, "stream subjects")
+
+	cons, err := client.JS.Consumer(ctx, StreamFederation, ConsumerFederationWorker)
+	require.NoError(t, err)
+	consInfo, err := cons.Info(ctx)
+	require.NoError(t, err)
+
+	assert.Equal(t, ConsumerFederationWorker, consInfo.Config.Durable, "consumer durable name")
+	assert.Equal(t, jetstream.AckExplicitPolicy, consInfo.Config.AckPolicy, "consumer ack policy")
+	assert.Empty(t, consInfo.Config.DeliverSubject,
+		"consumer must be pull (no DeliverSubject); DeliverSubject is for push only")
+	assert.Equal(t, MaxDeliverFederation, consInfo.Config.MaxDeliver, "consumer max deliver")
+}
+
+// TestEnsureStreams_PublishConsume requires NATS with JetStream running (e.g. docker-compose up nats).
+// It creates a producer and a consumer, and publishes a message to the stream and consumes it.
+func TestEnsureStreams_PublishConsume(t *testing.T) {
+	client := setupNATSTest(t)
+	defer client.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	msg := ap.DeliveryMessage{
 		ActivityID:  "https://test.example/activity/1",
 		Activity:    json.RawMessage(`{"type":"Test"}`),
 		TargetInbox: "https://remote.example/inbox",
 		SenderID:    "01ABC",
 	}
-	err = producer.EnqueueDelivery(ctx, "test", msg)
+	data, err := json.Marshal(msg)
+	require.NoError(t, err)
+	_, err = client.JS.Publish(ctx, "federation.deliver.test", data)
 	require.NoError(t, err)
 
 	// Use the existing federation-worker consumer (WorkQueue streams allow only one consumer).
-	cons, err := client.JS.Consumer(ctx, "FEDERATION", "federation-worker")
+	cons, err := client.JS.Consumer(ctx, StreamFederation, ConsumerFederationWorker)
 	require.NoError(t, err)
 
-	msgs, err := cons.Fetch(1, jetstream.FetchMaxWait(2*time.Second))
+	msgCh := make(chan jetstream.Msg, 1)
+	consCtx, err := cons.Consume(
+		func(m jetstream.Msg) {
+			select {
+			case msgCh <- m:
+			default:
+			}
+		},
+		jetstream.PullMaxMessages(1),
+		jetstream.PullExpiry(2*time.Second),
+	)
 	require.NoError(t, err)
-	var first jetstream.Msg
-	for m := range msgs.Messages() {
-		first = m
-		break
-	}
-	require.NoError(t, msgs.Error())
+	defer consCtx.Stop()
+
+	first := <-msgCh
 	require.NotNil(t, first, "expected one message from stream")
 	var decoded ap.DeliveryMessage
 	err = json.Unmarshal(first.Data(), &decoded)
@@ -66,4 +96,87 @@ func TestEnsureStreams_PublishConsume(t *testing.T) {
 	assert.Equal(t, msg.ActivityID, decoded.ActivityID)
 	assert.Equal(t, msg.TargetInbox, decoded.TargetInbox)
 	require.NoError(t, first.Ack())
+}
+
+// TestEnsureStreams_SingleMessageNotPulledTwice verifies that with WorkQueue retention,
+// a single message is delivered to only one consumer when multiple processes pull.
+func TestEnsureStreams_SingleMessageNotPulledTwice(t *testing.T) {
+	client := setupNATSTest(t)
+	defer client.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	msg := ap.DeliveryMessage{
+		ActivityID:  "https://test.example/activity/unique",
+		Activity:    json.RawMessage(`{"type":"Test"}`),
+		TargetInbox: "https://remote.example/inbox",
+		SenderID:    "01XYZ",
+	}
+	data, err := json.Marshal(msg)
+	require.NoError(t, err)
+
+	// Channel to receive messages
+	msgCh := make(chan jetstream.Msg, 2)
+
+	// Create two consumers
+	runConsumer := func() jetstream.ConsumeContext {
+		cons, err := client.JS.Consumer(ctx, StreamFederation, ConsumerFederationWorker)
+		require.NoError(t, err)
+
+		consCtx, err := cons.Consume(
+			func(m jetstream.Msg) {
+				msgCh <- m
+			},
+		)
+		require.NoError(t, err)
+		return consCtx
+	}
+
+	consCtx1 := runConsumer()
+	defer consCtx1.Stop()
+
+	consCtx2 := runConsumer()
+	defer consCtx2.Stop()
+
+	// Publish the message
+	_, err = client.JS.Publish(ctx, "federation.deliver.test", data)
+	require.NoError(t, err)
+
+	// Wait for the message
+	select {
+	case m := <-msgCh:
+		require.NotNil(t, m)
+		_ = m.Ack()
+	case <-time.After(6 * time.Second):
+		t.Fatal("timeout waiting for message")
+	}
+
+	// Assert no duplicate message is received
+	select {
+	case m := <-msgCh:
+		_ = m.Ack()
+		t.Fatal("expected exactly one message; got duplicate delivery")
+	case <-time.After(1 * time.Second):
+		// No second message — pass
+	}
+}
+
+func setupNATSTest(t *testing.T) *Client {
+	t.Helper()
+	url := os.Getenv("NATS_URL")
+	require.NotEmpty(t, url, "NATS_URL must be set for integration test")
+	ctx := context.Background()
+	cfg := &config.Config{NATSUrl: url}
+	client, err := New(cfg)
+	require.NoError(t, err)
+
+	require.NoError(t, EnsureStreams(ctx, client.JS))
+
+	stream, err := client.JS.Stream(ctx, StreamFederation)
+	require.NoError(t, err)
+	err = stream.Purge(ctx)
+	require.NoError(t, err)
+
+	return client
 }

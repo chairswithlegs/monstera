@@ -46,7 +46,6 @@ type InboxProcessor struct {
 	events     EventPublisher
 	acceptSend AcceptFollowSender
 	cfg        *config.Config
-	logger     *slog.Logger
 	actorFetch func(ctx context.Context, actorIRI string) (*Actor, error)
 }
 
@@ -58,7 +57,6 @@ func NewInboxProcessor(
 	events EventPublisher,
 	acceptSend AcceptFollowSender,
 	cfg *config.Config,
-	logger *slog.Logger,
 	actorFetch func(ctx context.Context, actorIRI string) (*Actor, error),
 ) *InboxProcessor {
 	return &InboxProcessor{
@@ -68,20 +66,25 @@ func NewInboxProcessor(
 		events:     events,
 		acceptSend: acceptSend,
 		cfg:        cfg,
-		logger:     logger,
 		actorFetch: actorFetch,
 	}
 }
 
 // Process dispatches a verified incoming activity to the appropriate handler.
 func (p *InboxProcessor) Process(ctx context.Context, activity *Activity) error {
+	slog.DebugContext(ctx, "inbox: processing activity",
+		slog.String("type", activity.Type), slog.String("id", activity.ID), slog.String("actor", activity.Actor))
+
 	actorDomain := DomainFromActorID(activity.Actor)
 	if actorDomain == "" {
 		return fmt.Errorf("%w: cannot extract domain from actor %q", ErrFatal, activity.Actor)
 	}
 	if p.blocklist.IsSuspended(ctx, actorDomain) {
-		p.logger.Debug("inbox: dropped activity from suspended domain",
-			slog.String("domain", actorDomain), slog.String("type", activity.Type), slog.String("id", activity.ID))
+		slog.DebugContext(ctx, "inbox: dropped activity from suspended domain",
+			slog.String("domain", actorDomain),
+			slog.String("type", activity.Type),
+			slog.String("id", activity.ID),
+		)
 		return nil
 	}
 	switch activity.Type {
@@ -106,7 +109,7 @@ func (p *InboxProcessor) Process(ctx context.Context, activity *Activity) error 
 	case "Block":
 		return p.handleBlock(ctx, activity)
 	default:
-		p.logger.Debug("inbox: unsupported activity type", slog.String("type", activity.Type), slog.String("id", activity.ID))
+		slog.DebugContext(ctx, "inbox: unsupported activity type", slog.String("type", activity.Type), slog.String("id", activity.ID))
 		return nil
 	}
 }
@@ -259,7 +262,7 @@ func (p *InboxProcessor) handleFollow(ctx context.Context, activity *Activity) e
 	if activity.ID != "" {
 		existing, _ := p.store.GetFollowByAPID(ctx, activity.ID)
 		if existing != nil {
-			p.logger.Debug("inbox: duplicate Follow ignored", slog.String("ap_id", activity.ID))
+			slog.Debug("inbox: duplicate Follow ignored", slog.String("ap_id", activity.ID))
 			return nil
 		}
 	}
@@ -392,7 +395,7 @@ func (p *InboxProcessor) handleUndo(ctx context.Context, activity *Activity) err
 				return p.undoFavourite(ctx, fav)
 			}
 		}
-		p.logger.Debug("inbox: unsupported Undo object type", slog.String("type", innerType), slog.String("id", activity.ID))
+		slog.Debug("inbox: unsupported Undo object type", slog.String("type", innerType), slog.String("id", activity.ID))
 		return nil
 	}
 }
@@ -683,7 +686,7 @@ func (p *InboxProcessor) handleAnnounce(ctx context.Context, activity *Activity,
 	}
 	original, err := p.store.GetStatusByAPID(ctx, objectID)
 	if err != nil {
-		p.logger.Debug("inbox: Announce of unknown status", slog.String("object", objectID))
+		slog.Debug("inbox: Announce of unknown status", slog.String("object", objectID))
 		return fmt.Errorf("inbox: GetStatusByAPID (Announce): %w", err)
 	}
 	actor, err := p.resolveRemoteAccount(ctx, activity.Actor)
@@ -723,7 +726,7 @@ func (p *InboxProcessor) handleLike(ctx context.Context, activity *Activity) err
 	}
 	status, err := p.store.GetStatusByAPID(ctx, objectID)
 	if err != nil {
-		p.logger.Debug("inbox: Like of unknown status", slog.String("object", objectID))
+		slog.Debug("inbox: Like of unknown status", slog.String("object", objectID))
 		return fmt.Errorf("inbox: GetStatusByAPID (Like): %w", err)
 	}
 	actor, err := p.resolveRemoteAccount(ctx, activity.Actor)
@@ -792,7 +795,7 @@ func (p *InboxProcessor) handleDelete(ctx context.Context, activity *Activity) e
 		}
 		return nil
 	default:
-		p.logger.Debug("inbox: unsupported Delete object type", slog.String("type", objectType))
+		slog.Debug("inbox: unsupported Delete object type", slog.String("type", objectType))
 		return nil
 	}
 }
@@ -845,7 +848,7 @@ func (p *InboxProcessor) handleUpdate(ctx context.Context, activity *Activity) e
 		_, err = p.syncRemoteActorFromDoc(ctx, actor)
 		return err
 	default:
-		p.logger.Debug("inbox: unsupported Update object type", slog.String("type", objectType))
+		slog.Debug("inbox: unsupported Update object type", slog.String("type", objectType))
 		return nil
 	}
 }

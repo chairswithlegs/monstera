@@ -35,7 +35,6 @@ func TestLoad_success(t *testing.T) {
 	assert.Equal(t, "info", cfg.LogLevel)
 	assert.Equal(t, "memory", cfg.CacheDriver)
 	assert.Equal(t, "local", cfg.MediaDriver)
-	assert.True(t, cfg.FederationEnabled)
 	assert.Equal(t, 500, cfg.MaxStatusChars)
 	assert.Equal(t, int64(10485760), cfg.MediaMaxBytes)
 }

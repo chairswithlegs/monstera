@@ -44,7 +44,7 @@ func parseLevel(level string) slog.Level {
 	}
 }
 
-func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
+func RequestLogger() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			requestID := generateRequestID()
@@ -63,7 +63,7 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			if accountID := AccountIDFromContext(ctx); accountID != "" {
 				attrs = append(attrs, slog.String("account_id", accountID))
 			}
-			logger.InfoContext(ctx, "request", attrs...)
+			slog.InfoContext(ctx, "request", attrs...)
 		})
 	}
 }

@@ -21,12 +21,9 @@ type Client struct {
 }
 
 // New creates a NATS client with reconnect and error handlers.
-func New(cfg *config.Config, logger *slog.Logger) (*Client, error) {
+func New(cfg *config.Config) (*Client, error) {
 	if cfg == nil || cfg.NATSUrl == "" {
 		return nil, ErrEmptyURL
-	}
-	if logger == nil {
-		logger = slog.Default()
 	}
 
 	opts := []nats.Option{
@@ -34,13 +31,13 @@ func New(cfg *config.Config, logger *slog.Logger) (*Client, error) {
 		nats.ReconnectWait(2 * time.Second),
 		nats.ReconnectBufSize(16 * 1024 * 1024),
 		nats.DisconnectErrHandler(func(nc *nats.Conn, err error) {
-			logger.Warn("nats: disconnected", slog.Any("error", err))
+			slog.Warn("nats: disconnected", slog.Any("error", err))
 		}),
 		nats.ReconnectHandler(func(nc *nats.Conn) {
-			logger.Info("nats: reconnected", slog.String("url", nc.ConnectedUrl()))
+			slog.Info("nats: reconnected", slog.String("url", nc.ConnectedUrl()))
 		}),
 		nats.ErrorHandler(func(nc *nats.Conn, sub *nats.Subscription, err error) {
-			logger.Error("nats: error", slog.Any("error", err), slog.String("subject", sub.Subject))
+			slog.Error("nats: error", slog.Any("error", err), slog.String("subject", sub.Subject))
 		}),
 	}
 	if cfg.NATSCredsFile != "" {

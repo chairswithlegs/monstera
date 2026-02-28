@@ -3,12 +3,14 @@
 package federation
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -21,105 +23,135 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	ap "github.com/chairswithlegs/monstera-fed/internal/activitypub"
+	"github.com/chairswithlegs/monstera-fed/internal/activitypub"
+	"github.com/chairswithlegs/monstera-fed/internal/cache"
 	"github.com/chairswithlegs/monstera-fed/internal/config"
-	"github.com/chairswithlegs/monstera-fed/internal/nats"
+	natsutil "github.com/chairswithlegs/monstera-fed/internal/nats"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
 	"github.com/chairswithlegs/monstera-fed/internal/testutil"
+	"github.com/chairswithlegs/monstera-fed/internal/uid"
 )
 
-// TestFederationWorker_Delivery requires NATS with JetStream running.
-// It enqueues a delivery, starts the worker with a fake store (account with valid key)
-// and a test HTTP server, and asserts the server receives a signed POST.
-func TestFederationWorker_Delivery(t *testing.T) {
-	t.Helper()
-	natsURL := os.Getenv("NATS_URL")
-	if natsURL == "" {
-		t.Fatal("NATS_URL must be set for integration test")
-	}
+// receivedRequest captures a request for assertions.
+type receivedRequest struct {
+	Method string
+	URL    string
+	Header http.Header
+	Body   []byte
+}
 
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-	privPEM := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
+// TestFederationWorker_PullDeliverAndNoDuplicate validates that the worker:
+// - pulls messages from the FEDERATION stream,
+// - makes an outgoing HTTP POST to the target inbox (via httptest server),
+// - delivers each message exactly once (no duplicate POSTs).
+func TestFederationWorker_PullDeliverAndNoDuplicate(t *testing.T) {
+	url := os.Getenv("NATS_URL")
+	require.NotEmpty(t, url, "NATS_URL must be set for integration test")
 
-	fake := testutil.NewFakeStore()
-	ctx := context.Background()
-	_, err = fake.CreateAccount(ctx, store.CreateAccountInput{
-		ID:         "01sender",
-		Username:   "alice",
-		APID:       "https://example.com/users/alice",
-		PrivateKey: &privPEM,
-	})
-	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 
-	var received sync.WaitGroup
-	received.Add(1)
-	var (
-		req     *http.Request
-		bodyBuf []byte
-	)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req = r
-		bodyBuf, _ = io.ReadAll(r.Body)
-		received.Done()
-		w.WriteHeader(http.StatusAccepted)
-	}))
-	defer srv.Close()
-
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	cfg := &config.Config{
-		NATSUrl:                     natsURL,
-		InstanceDomain:              "example.com",
+		NATSUrl:                     url,
+		InstanceDomain:              "test.example",
 		FederationWorkerConcurrency: 1,
 	}
-	client, err := nats.New(cfg, logger)
+	client, err := natsutil.New(cfg)
 	require.NoError(t, err)
 	defer client.Close()
 
-	streamCtx, streamCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	err = nats.EnsureStreams(streamCtx, client.JS)
-	streamCancel()
+	require.NoError(t, natsutil.EnsureStreams(ctx, client.JS))
+	stream, err := client.JS.Stream(ctx, natsutil.StreamFederation)
+	require.NoError(t, err)
+	require.NoError(t, stream.Purge(ctx), "purge stream so test starts with no messages")
+
+	var received []receivedRequest
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		received = append(received, receivedRequest{
+			Method: r.Method,
+			URL:    r.URL.String(),
+			Header: r.Header.Clone(),
+			Body:   body,
+		})
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	privPEM, err := generateTestKeyPair()
+	require.NoError(t, err)
+	senderID := uid.New()
+	apID := fmt.Sprintf("https://%s/users/alice", cfg.InstanceDomain)
+	inboxURL := srv.URL + "/inbox"
+
+	fake := testutil.NewFakeStore()
+	_, err = fake.CreateAccount(ctx, store.CreateAccountInput{
+		ID:           senderID,
+		Username:     "alice",
+		Domain:       nil,
+		DisplayName:  nil,
+		Note:         nil,
+		PublicKey:    "test-pubkey",
+		PrivateKey:   &privPEM,
+		InboxURL:     inboxURL,
+		OutboxURL:    "",
+		FollowersURL: "",
+		FollowingURL: "",
+		APID:         apID,
+		ApRaw:        nil,
+		Bot:          false,
+		Locked:       false,
+	})
 	require.NoError(t, err)
 
-	producer := NewProducer(client.JS, nil)
-	blocklist := ap.NewBlocklistCache(fake, logger)
-	_ = blocklist.Refresh(ctx)
+	activityBody := json.RawMessage(`{"type":"Create","object":{"type":"Note","content":"hello"}}`)
+	delivery := activitypub.DeliveryMessage{
+		ActivityID:  "https://test.example/activity/1",
+		Activity:    activityBody,
+		TargetInbox: inboxURL,
+		SenderID:    senderID,
+	}
 
-	worker := NewFederationWorker(client.JS, producer, fake, blocklist, cfg, logger, nil)
+	producer := NewFederationProducer(client.JS)
+	require.NoError(t, producer.EnqueueDelivery(ctx, "create", delivery))
+
+	cacheStore, err := cache.New(cache.Config{Driver: "memory", Logger: slog.Default()})
+	require.NoError(t, err)
+	defer func() { _ = cacheStore.Close() }()
+	signer := activitypub.NewHTTPSignatureService(cfg, cacheStore, fake)
+	worker := NewFederationWorker(client.JS, producer, nil, signer, cfg)
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	go func() {
 		_ = worker.Start(workerCtx)
 	}()
 	defer workerCancel()
 
-	delivery := ap.DeliveryMessage{
-		ActivityID:  "https://example.com/activities/1",
-		Activity:    json.RawMessage(`{"type":"Create","actor":"https://example.com/users/alice"}`),
-		TargetInbox: srv.URL,
-		SenderID:    "01sender",
-	}
-	err = producer.EnqueueDelivery(ctx, "create", delivery)
-	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		n := len(received)
+		mu.Unlock()
+		return n >= 1
+	}, 5*time.Second, 100*time.Millisecond, "worker should deliver one request to inbox")
 
-	done := make(chan struct{})
-	go func() {
-		received.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-		break
-	case <-time.After(15 * time.Second):
-		t.Fatal("timeout waiting for worker to POST")
-	}
+	mu.Lock()
+	require.Len(t, received, 1, "expected exactly one HTTP request (no duplicate delivery)")
+	req := received[0]
+	mu.Unlock()
 
-	require.NotNil(t, req)
 	assert.Equal(t, http.MethodPost, req.Method)
 	assert.Equal(t, "application/activity+json", req.Header.Get("Content-Type"))
-	assert.NotEmpty(t, req.Header.Get("Signature"))
-	assert.NotEmpty(t, req.Header.Get("Date"))
+	assert.NotEmpty(t, req.Header.Get("Signature"), "request must be signed with HTTP Signature")
+	assert.True(t, bytes.Equal(activityBody, req.Body), "request body must match enqueued activity")
+}
 
-	var body map[string]any
-	require.NoError(t, json.Unmarshal(bodyBuf, &body))
-	assert.Equal(t, "Create", body["type"])
+func generateTestKeyPair() (privPEM string, err error) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return "", err
+	}
+	privBlock := &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}
+	return string(pem.EncodeToMemory(privBlock)), nil
 }

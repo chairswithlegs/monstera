@@ -21,7 +21,7 @@ type DeliveryMessage struct {
 	SenderID    string          `json:"sender_id"`
 }
 
-// DeliveryEnqueuer enqueues outbound delivery messages (implemented by federation.Producer).
+// DeliveryEnqueuer enqueues outbound delivery messages (implemented by federation.FederationProducer).
 type DeliveryEnqueuer interface {
 	EnqueueDelivery(ctx context.Context, activityType string, msg DeliveryMessage) error
 }
@@ -31,12 +31,11 @@ type OutboxPublisher struct {
 	store   store.Store
 	enqueue DeliveryEnqueuer
 	cfg     *config.Config
-	logger  *slog.Logger
 }
 
 // NewOutboxPublisher constructs an OutboxPublisher.
-func NewOutboxPublisher(s store.Store, enqueue DeliveryEnqueuer, cfg *config.Config, logger *slog.Logger) *OutboxPublisher {
-	return &OutboxPublisher{store: s, enqueue: enqueue, cfg: cfg, logger: logger}
+func NewOutboxPublisher(s store.Store, enqueue DeliveryEnqueuer, cfg *config.Config) *OutboxPublisher {
+	return &OutboxPublisher{store: s, enqueue: enqueue, cfg: cfg}
 }
 
 // PublishStatus delivers a Create{Note} activity to the author's followers' inboxes.
@@ -69,11 +68,20 @@ func (p *OutboxPublisher) PublishStatus(ctx context.Context, status *domain.Stat
 		return fmt.Errorf("outbox: get follower inboxes: %w", err)
 	}
 	seen := make(map[string]bool)
+
+	// Deduplicate the inboxes, just in case there are somehow duplicates
+	var uniqueInboxes []string
 	for _, inbox := range inboxURLs {
 		if inbox == "" || seen[inbox] {
 			continue
 		}
 		seen[inbox] = true
+		uniqueInboxes = append(uniqueInboxes, inbox)
+	}
+
+	slog.DebugContext(ctx, "outbox: PublishStatus",
+		slog.String("status_id", status.ID), slog.String("activity_id", activityID), slog.Int("follower_inboxes", len(uniqueInboxes)))
+	for _, inbox := range uniqueInboxes {
 		msg := DeliveryMessage{
 			ActivityID:  activityID,
 			Activity:    raw,
@@ -81,7 +89,9 @@ func (p *OutboxPublisher) PublishStatus(ctx context.Context, status *domain.Stat
 			SenderID:    account.ID,
 		}
 		if err := p.enqueue.EnqueueDelivery(ctx, "create", msg); err != nil {
-			p.logger.Warn("outbox: enqueue create failed", slog.String("inbox", inbox), slog.Any("error", err))
+			slog.Warn("outbox: enqueue create failed", slog.String("inbox", inbox), slog.Any("error", err))
+		} else {
+			slog.DebugContext(ctx, "outbox: enqueued create", slog.String("activity_id", activityID), slog.String("target_inbox", inbox))
 		}
 	}
 	return nil
@@ -132,7 +142,7 @@ func (p *OutboxPublisher) DeleteStatus(ctx context.Context, status *domain.Statu
 			SenderID:    account.ID,
 		}
 		if err := p.enqueue.EnqueueDelivery(ctx, "delete", msg); err != nil {
-			p.logger.Warn("outbox: enqueue delete failed", slog.String("inbox", inbox), slog.Any("error", err))
+			slog.Warn("outbox: enqueue delete failed", slog.String("inbox", inbox), slog.Any("error", err))
 		}
 	}
 	return nil
@@ -167,7 +177,7 @@ func (p *OutboxPublisher) PublishFollow(ctx context.Context, actor, target *doma
 		SenderID:    actor.ID,
 	}
 	if err := p.enqueue.EnqueueDelivery(ctx, "follow", msg); err != nil {
-		p.logger.Warn("outbox: enqueue follow failed", slog.String("target", target.InboxURL), slog.Any("error", err))
+		slog.Warn("outbox: enqueue follow failed", slog.String("target", target.InboxURL), slog.Any("error", err))
 	}
 	return nil
 }
@@ -206,7 +216,7 @@ func (p *OutboxPublisher) PublishUndoFollow(ctx context.Context, actor, target *
 		SenderID:    actor.ID,
 	}
 	if err := p.enqueue.EnqueueDelivery(ctx, "undo", msg); err != nil {
-		p.logger.Warn("outbox: enqueue undo follow failed", slog.String("target", target.InboxURL), slog.Any("error", err))
+		slog.Warn("outbox: enqueue undo follow failed", slog.String("target", target.InboxURL), slog.Any("error", err))
 	}
 	return nil
 }
@@ -246,7 +256,7 @@ func (p *OutboxPublisher) SendAcceptFollow(ctx context.Context, target, actor *d
 		SenderID:    target.ID,
 	}
 	if err := p.enqueue.EnqueueDelivery(ctx, "accept", msg); err != nil {
-		p.logger.Warn("outbox: enqueue accept follow failed", slog.String("target", actor.InboxURL), slog.Any("error", err))
+		slog.Warn("outbox: enqueue accept follow failed", slog.String("target", actor.InboxURL), slog.Any("error", err))
 	}
 	return nil
 }

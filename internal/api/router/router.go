@@ -1,7 +1,6 @@
 package router
 
 import (
-	"log/slog"
 	"net/http"
 	"time"
 
@@ -22,7 +21,6 @@ import (
 type Deps struct {
 	OAuthServer     *oauthpkg.Server
 	AccountsService *service.AccountService
-	Metrics         *observability.Metrics
 	Health          *api.HealthChecker
 	OAuthHandler    *oauthhandlers.Handler
 	Accounts        *mastodon.AccountsHandler
@@ -48,8 +46,8 @@ func New(deps Deps) http.Handler {
 
 	r.Use(chimw.RequestID)
 	r.Use(chimw.RealIP)
-	r.Use(observability.RequestLogger(slog.Default()))
-	r.Use(observability.MetricsMiddleware(deps.Metrics))
+	r.Use(observability.RequestLogger())
+	r.Use(observability.MetricsMiddleware())
 	r.Use(middleware.Recoverer())
 	r.Use(middleware.CORS)
 	r.Use(chimw.Timeout(30 * time.Second))

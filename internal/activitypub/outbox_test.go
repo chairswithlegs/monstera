@@ -3,7 +3,6 @@ package activitypub
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -32,7 +31,7 @@ func TestOutboxPublisher_SendAcceptFollow(t *testing.T) {
 			return nil
 		},
 	}
-	pub := NewOutboxPublisher(fake, enqueuer, cfg, slog.Default())
+	pub := NewOutboxPublisher(fake, enqueuer, cfg)
 
 	target, err := fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID: "01local", Username: "alice", APID: "https://example.com/users/alice",

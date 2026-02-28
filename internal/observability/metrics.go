@@ -1,11 +1,6 @@
 package observability
 
 import (
-	"net/http"
-	"strconv"
-	"time"
-
-	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -75,23 +70,4 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	)
 
 	return m
-}
-
-func MetricsMiddleware(m *Metrics) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			start := time.Now()
-			rec := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
-			next.ServeHTTP(rec, r)
-			duration := time.Since(start).Seconds()
-			method := r.Method
-			path := r.URL.Path
-			if rc := chi.RouteContext(r.Context()); rc != nil && rc.RoutePattern() != "" {
-				path = rc.RoutePattern()
-			}
-			status := strconv.Itoa(rec.status)
-			m.HTTPRequestsTotal.WithLabelValues(method, path, status).Inc()
-			m.HTTPRequestDurationSeconds.WithLabelValues(method, path).Observe(duration)
-		})
-	}
 }

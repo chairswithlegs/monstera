@@ -12,50 +12,52 @@ import (
 	ap "github.com/chairswithlegs/monstera-fed/internal/activitypub"
 	"github.com/chairswithlegs/monstera-fed/internal/api"
 	"github.com/chairswithlegs/monstera-fed/internal/cache"
+	"github.com/chairswithlegs/monstera-fed/internal/config"
 )
 
 // InboxHandler handles POST /users/{username}/inbox and POST /inbox.
 // Verifies HTTP Signature, parses the activity, and dispatches to InboxProcessor.
 // Always returns 202 Accepted per ActivityPub spec.
 type InboxHandler struct {
-	inbox *ap.InboxProcessor
-	cache cache.Store
+	inbox    *ap.InboxProcessor
+	cache    cache.Store
+	verifier *ap.HTTPSignatureService
 }
 
 // NewInboxHandler returns a new InboxHandler.
-func NewInboxHandler(inbox *ap.InboxProcessor, cache cache.Store) *InboxHandler {
-	return &InboxHandler{inbox: inbox, cache: cache}
+func NewInboxHandler(inbox *ap.InboxProcessor, cache cache.Store, cfg *config.Config, verifier *ap.HTTPSignatureService) *InboxHandler {
+
+	return &InboxHandler{inbox: inbox, cache: cache, verifier: verifier}
 }
 
 // POSTInbox handles POST to the inbox.
 func (h *InboxHandler) POSTInbox(w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("Content-Type")
 	if ct != "" && !strings.Contains(ct, "application/activity+json") && !strings.Contains(ct, "application/ld+json") {
+		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "content type must be application/activity+json or application/ld+json"))
 		err := api.NewBadRequestError("content type must be application/activity+json or application/ld+json")
 		api.HandleError(w, r, err)
 		return
 	}
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "failed to read body"), slog.Any("error", err))
 		err := api.NewBadRequestError("failed to read body")
 		api.HandleError(w, r, err)
 		return
 	}
-	// When Inbox or Cache is nil (tests or federation intentionally disabled), accept without processing
-	// so the sender gets a valid 202 and we do not fail the request.
-	if h.inbox == nil || h.cache == nil {
-		w.WriteHeader(http.StatusAccepted)
-		return
-	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
-	keyID, err := ap.Verify(r.Context(), r, ap.DefaultKeyFetcher, h.cache)
+	keyID, err := h.verifier.Verify(r.Context(), r)
 	if err != nil {
+		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "signature verification failed"), slog.String("key_id", keyID), slog.Any("error", err))
 		err := api.NewBadRequestError("signature verification failed")
 		api.HandleError(w, r, err)
 		return
 	}
 	var activity ap.Activity
 	if err := json.Unmarshal(body, &activity); err != nil {
+		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "invalid activity json"), slog.Any("error", err))
 		err := api.NewBadRequestError("invalid activity json")
 		api.HandleError(w, r, err)
 		return
@@ -65,15 +67,19 @@ func (h *InboxHandler) POSTInbox(w http.ResponseWriter, r *http.Request) {
 	keyDomain := ap.DomainFromKeyID(keyID)
 	actorDomain := ap.DomainFromActorID(activity.Actor)
 	if keyDomain == "" || actorDomain == "" {
+		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "cannot verify key attribution"), slog.String("key_id", keyID), slog.String("actor", activity.Actor))
 		err := api.NewBadRequestError("cannot verify key attribution")
 		api.HandleError(w, r, err)
 		return
 	}
 	if keyDomain != actorDomain {
+		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "key domain does not match actor"), slog.String("key_domain", keyDomain), slog.String("actor_domain", actorDomain))
 		err := api.NewBadRequestError("key domain does not match actor")
 		api.HandleError(w, r, err)
 		return
 	}
+	slog.DebugContext(r.Context(), "inbox: received activity",
+		slog.String("type", activity.Type), slog.String("id", activity.ID), slog.String("actor", activity.Actor))
 	err = h.inbox.Process(r.Context(), &activity)
 	if err != nil {
 		if errors.Is(err, ap.ErrFatal) {

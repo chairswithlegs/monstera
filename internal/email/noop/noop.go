@@ -11,25 +11,21 @@ import (
 
 func init() {
 	email.Register("noop", func(cfg email.Config) (email.Sender, error) {
-		return New(cfg.Logger, cfg.From, cfg.FromName)
+		return New(cfg.From, cfg.FromName)
 	})
 }
 
 // Sender is the no-op email implementation.
 type Sender struct {
-	logger   *slog.Logger
 	from     string
 	fromName string
 }
 
 // New creates a no-op Sender. Logs a startup message indicating that emails
 // will not be delivered.
-func New(logger *slog.Logger, from, fromName string) (*Sender, error) {
-	if logger == nil {
-		logger = slog.Default()
-	}
-	logger.Info("email driver: noop — emails will be logged to stdout only")
-	return &Sender{logger: logger, from: from, fromName: fromName}, nil
+func New(from, fromName string) (*Sender, error) {
+	slog.Info("email driver: noop — emails will be logged to stdout only")
+	return &Sender{from: from, fromName: fromName}, nil
 }
 
 // Send logs the message via slog. Never delivers.
@@ -38,7 +34,7 @@ func (s *Sender) Send(_ context.Context, msg email.Message) error {
 	if from == "" {
 		from = s.from
 	}
-	s.logger.Info("email sent (noop)",
+	slog.Info("email sent (noop)",
 		slog.String("from", from),
 		slog.String("to", msg.To),
 		slog.String("subject", msg.Subject),

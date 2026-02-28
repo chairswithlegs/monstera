@@ -1,0 +1,51 @@
+---
+description: Logging with slog — use package-level functions, no passed loggers, prefer Context methods
+globs: "**/*.go"
+alwaysApply: false
+---
+
+# Logging
+
+Use the standard library `log/slog` and its **exported package-level functions**. Do not create or pass around `*slog.Logger` instances; the default logger is configured once at application startup.
+
+## Use Context methods when context is available
+
+Prefer `*Context()` variants so log output can be tied to request/trace context:
+
+- `slog.DebugContext(ctx, msg, ...)`
+- `slog.InfoContext(ctx, msg, ...)`
+- `slog.WarnContext(ctx, msg, ...)`
+- `slog.ErrorContext(ctx, msg, ...)`
+
+When no `context.Context` is in scope, use `slog.Debug`, `slog.Info`, `slog.Warn`, `slog.Error`.
+
+## Do not
+
+- Construct or inject `*slog.Logger` (or interfaces wrapping it) into handlers, services, or stores.
+- Use `fmt.Printf`, `log.Println`, or other ad-hoc logging.
+
+## Examples
+
+```go
+// ❌ BAD — passing a logger
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+    h.logger.InfoContext(r.Context(), "request received")
+}
+
+// ✅ GOOD — package-level slog with context
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+    slog.InfoContext(r.Context(), "request received")
+}
+```
+
+```go
+// ❌ BAD — no context when context is available
+func process(ctx context.Context, id string) {
+    slog.Info("processing", slog.String("id", id))
+}
+
+// ✅ GOOD
+func process(ctx context.Context, id string) {
+    slog.InfoContext(ctx, "processing", slog.String("id", id))
+}
+```

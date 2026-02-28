@@ -2,8 +2,6 @@ package noop
 
 import (
 	"context"
-	"log/slog"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,8 +12,7 @@ import (
 
 func TestSender_Send(t *testing.T) {
 	t.Helper()
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	s, err := New(logger, "noreply@test.example", "Test")
+	s, err := New("noreply@test.example", "Test")
 	require.NoError(t, err)
 
 	err = s.Send(context.Background(), email.Message{
@@ -29,8 +26,7 @@ func TestSender_Send(t *testing.T) {
 
 func TestSender_SendUsesDefaultFrom(t *testing.T) {
 	t.Helper()
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	s, err := New(logger, "default@test.example", "Test")
+	s, err := New("default@test.example", "Test")
 	require.NoError(t, err)
 
 	err = s.Send(context.Background(), email.Message{

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/chairswithlegs/monstera-fed/internal/config"
+	"github.com/chairswithlegs/monstera-fed/internal/service"
 	"github.com/chairswithlegs/monstera-fed/internal/testutil"
 )
 
@@ -36,7 +37,7 @@ func TestNodeInfoHandler_GETNodeInfo(t *testing.T) {
 	t.Parallel()
 	fake := testutil.NewFakeStore()
 	cfg := &config.Config{InstanceDomain: "example.com", Version: "0.1.0"}
-	h := NewNodeInfoHandler(testInstanceService(fake), cfg)
+	h := NewNodeInfoHandler(service.NewInstanceService(fake), cfg)
 	r := httptest.NewRequest(http.MethodGet, "/nodeinfo/2.0", nil)
 	w := httptest.NewRecorder()
 	h.GETNodeInfo(w, r)

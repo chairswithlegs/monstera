@@ -53,7 +53,6 @@ type Config struct {
 	SecretKeyBase string
 	MetricsToken  string
 
-	FederationEnabled           bool
 	FederationWorkerConcurrency int
 	FederationInsecureSkipTLS   bool
 	MaxStatusChars              int
@@ -100,7 +99,6 @@ func Load() (*Config, error) {
 		SecretKeyBase: envStringRequired("SECRET_KEY_BASE", &errs),
 		MetricsToken:  envString("METRICS_TOKEN", ""),
 
-		FederationEnabled:           envBool("FEDERATION_ENABLED", true),
 		FederationWorkerConcurrency: envInt("FEDERATION_WORKER_CONCURRENCY", 5),
 		// FederationInsecureSkipTLS defaults to true for development, false for production
 		FederationInsecureSkipTLS: envBool("FEDERATION_INSECURE_SKIP_TLS_VERIFY", envString("APP_ENV", appEnvDevelopment) == appEnvDevelopment),

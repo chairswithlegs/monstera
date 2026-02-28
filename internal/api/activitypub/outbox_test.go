@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/chairswithlegs/monstera-fed/internal/config"
+	"github.com/chairswithlegs/monstera-fed/internal/service"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
 	"github.com/chairswithlegs/monstera-fed/internal/testutil"
 )
@@ -23,7 +24,7 @@ func TestOutboxHandler_GETOutbox_collection(t *testing.T) {
 		ID: "01HXXX", Username: "alice", APID: "https://example.com/users/alice",
 	})
 	cfg := &config.Config{InstanceDomain: "example.com"}
-	h := NewOutbox(testAccountService(fake, cfg), testTimelineService(fake), cfg)
+	h := NewOutbox(service.NewAccountService(fake, "https://"+cfg.InstanceDomain), service.NewTimelineService(fake), cfg)
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/outbox", nil)
 	r = r.WithContext(ctx)
 	r = testutil.AddChiURLParam(r, "username", "alice")
@@ -56,7 +57,7 @@ func TestOutboxHandler_GETOutbox_page(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := &config.Config{InstanceDomain: "example.com"}
-	h := NewOutbox(testAccountService(fake, cfg), testTimelineService(fake), cfg)
+	h := NewOutbox(service.NewAccountService(fake, "https://"+cfg.InstanceDomain), service.NewTimelineService(fake), cfg)
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/outbox?page=true", nil)
 	r = r.WithContext(ctx)
 	r = testutil.AddChiURLParam(r, "username", "alice")

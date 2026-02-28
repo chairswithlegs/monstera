@@ -55,8 +55,7 @@ func TestWithAccountID_roundTrip(t *testing.T) {
 func TestRequestLogger_setsHeaderAndLogs(t *testing.T) {
 	t.Parallel()
 
-	logger := NewLogger("development", "info")
-	handler := RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequestLogger()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte("ok"))
 	}))

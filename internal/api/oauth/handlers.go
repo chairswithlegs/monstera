@@ -25,7 +25,6 @@ var templatesFS embed.FS
 type Handler struct {
 	oauth        *oauthpkg.Server
 	store        store.Store
-	logger       *slog.Logger
 	loginTmpl    *template.Template
 	instanceName string
 	secretKey    []byte
@@ -48,7 +47,6 @@ func ParseLoginTemplate() (*template.Template, error) {
 func NewHandler(
 	oauth *oauthpkg.Server,
 	store store.Store,
-	logger *slog.Logger,
 	loginTmpl *template.Template,
 	instanceName string,
 	secretKey []byte,
@@ -56,7 +54,6 @@ func NewHandler(
 	return &Handler{
 		oauth:        oauth,
 		store:        store,
-		logger:       logger,
 		loginTmpl:    loginTmpl,
 		instanceName: instanceName,
 		secretKey:    secretKey,
@@ -210,7 +207,7 @@ func (h *Handler) GETAuthorize(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	if err := h.loginTmpl.Execute(w, data); err != nil {
-		h.logger.Error("render login template", slog.Any("error", err))
+		slog.Default().Error("render login template", slog.Any("error", err))
 	}
 }
 
@@ -376,6 +373,6 @@ func (h *Handler) renderLoginError(w http.ResponseWriter, errMsg, appName, clien
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	if err := h.loginTmpl.Execute(w, data); err != nil {
-		h.logger.Error("render login template", slog.Any("error", err))
+		slog.Default().Error("render login template", slog.Any("error", err))
 	}
 }

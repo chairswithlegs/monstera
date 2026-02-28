@@ -21,7 +21,7 @@ func TestActorHandler_GETActor(t *testing.T) {
 	fake := testutil.NewFakeStore()
 	ctx := context.Background()
 	_, err := fake.CreateAccount(ctx, store.CreateAccountInput{
-		ID: "01HXXX", Username: "bob", Domain: nil, DisplayName: strPtr("Bob"),
+		ID: "01HXXX", Username: "bob", Domain: nil, DisplayName: testutil.StrPtr("Bob"),
 		PublicKey: "-----BEGIN PUBLIC KEY-----\nMIIB...", APID: "https://example.com/users/bob",
 	})
 	require.NoError(t, err)

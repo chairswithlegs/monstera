@@ -7,7 +7,7 @@ build-seed:
 	CGO_ENABLED=0 go build -o bin/seed ./cmd/seed
 
 # seed runs the seeder against the docker-compose stack (postgres on localhost:5433).
-# Start the stack with docker compose up -d first.
+# Docker stack must be running
 seed: build-seed
 	DATABASE_URL="postgres://monstera:monstera@localhost:5433/monstera_fed?sslmode=disable" \
 	NATS_URL="nats://localhost:4222" \
@@ -22,8 +22,9 @@ seed: build-seed
 test:
 	go test -race -count=1 ./...
 
-# Reset DB and run migrations so integration tests see a fresh schema. Requires docker compose up.
 test-integration: build
+	docker compose -f docker-compose.integration-tests.yaml up -d --wait
+	sleep 5 # wait for the services to be ready
 	DATABASE_URL="postgres://monstera:monstera@localhost:5433/monstera_fed?sslmode=disable" \
 		./bin/monstera-fed migrate down-all || true
 	DATABASE_URL="postgres://monstera:monstera@localhost:5433/monstera_fed?sslmode=disable" \
@@ -32,7 +33,12 @@ test-integration: build
 	NATS_URL="nats://localhost:4222" \
 	AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
 	MINIO_ENDPOINT=http://localhost:9000 S3_TEST_BUCKET=test-bucket \
-	go test -race -count=1 -tags=integration ./...
+	go test -race -count=1 -tags=integration -p 1 ./...
+	docker compose -f docker-compose.integration-tests.yaml down
+
+migrate:
+	DATABASE_URL="postgres://monstera:monstera@localhost:5433/monstera_fed?sslmode=disable" \
+	./bin/monstera-fed migrate up
 
 lint:
 	golangci-lint run

@@ -21,7 +21,7 @@ func TestInboxProcessor_Process_unsupportedType(t *testing.T) {
 	require.NoError(t, err)
 	bl := NewBlocklistCache(fake, slog.Default())
 	_ = bl.Refresh(ctx)
-	proc := NewInboxProcessor(fake, cacheStore, bl, nil, nil, &config.Config{InstanceDomain: "example.com"}, slog.Default(), nil)
+	proc := NewInboxProcessor(fake, cacheStore, bl, nil, nil, &config.Config{InstanceDomain: "example.com"}, nil)
 	activity := &Activity{Type: "Unknown", ID: "https://remote.example/activities/1", Actor: "https://remote.example/users/alice"}
 	err = proc.Process(ctx, activity)
 	assert.NoError(t, err)
@@ -33,7 +33,7 @@ func TestInboxProcessor_Process_emptyActorDomain(t *testing.T) {
 	fake := testutil.NewFakeStore()
 	cacheStore, _ := cache.New(cache.Config{Driver: "memory", Logger: slog.Default()})
 	bl := NewBlocklistCache(fake, slog.Default())
-	proc := NewInboxProcessor(fake, cacheStore, bl, nil, nil, &config.Config{InstanceDomain: "example.com"}, slog.Default(), nil)
+	proc := NewInboxProcessor(fake, cacheStore, bl, nil, nil, &config.Config{InstanceDomain: "example.com"}, nil)
 	activity := &Activity{Type: "Follow", Actor: "not-a-url"}
 	err := proc.Process(ctx, activity)
 	assert.ErrorIs(t, err, ErrFatal)

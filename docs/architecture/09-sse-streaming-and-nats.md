@@ -109,7 +109,7 @@ All JetStream stream and consumer configurations are consolidated here. Called o
 
 ### Refactor Note (IMPLEMENTATION 07)
 
-This consolidation moves stream definitions out of `internal/nats/federation/producer.go`. The `Producer` in that package retains `EnqueueDelivery` and `EnqueueDLQ` but no longer owns `EnsureStreams`. The `FederationWorker` now receives the pre-created consumer rather than creating it — `EnsureStreams` returns the consumer config, and `FederationWorker.Start` calls `js.CreateOrUpdateConsumer` as before.
+This consolidation moves stream definitions out of `internal/nats/federation/producer.go`. The `FederationProducer` in that package retains `EnqueueDelivery` and `EnqueueDLQ` but no longer owns `EnsureStreams`. The `FederationWorker` now receives the pre-created consumer rather than creating it — `EnsureStreams` returns the consumer config, and `FederationWorker.Start` calls `js.CreateOrUpdateConsumer` as before.
 
 ---
 

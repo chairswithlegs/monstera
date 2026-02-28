@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/chairswithlegs/monstera-fed/internal/config"
+	"github.com/chairswithlegs/monstera-fed/internal/service"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
 	"github.com/chairswithlegs/monstera-fed/internal/testutil"
 )
@@ -23,7 +24,7 @@ func TestCollectionsHandler_GETFollowers(t *testing.T) {
 		ID: "01HXXX", Username: "alice", APID: "https://example.com/users/alice",
 	})
 	cfg := &config.Config{InstanceDomain: "example.com"}
-	h := NewCollectionsHandler(testAccountService(fake, cfg), cfg)
+	h := NewCollectionsHandler(service.NewAccountService(fake, "https://"+cfg.InstanceDomain), cfg)
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/followers", nil)
 	r = r.WithContext(ctx)
 	r = testutil.AddChiURLParam(r, "username", "alice")
@@ -47,7 +48,7 @@ func TestCollectionsHandler_GETFeatured(t *testing.T) {
 		ID: "01HXXX", Username: "alice", APID: "https://example.com/users/alice",
 	})
 	cfg := &config.Config{InstanceDomain: "example.com"}
-	h := NewCollectionsHandler(testAccountService(fake, cfg), cfg)
+	h := NewCollectionsHandler(service.NewAccountService(fake, "https://"+cfg.InstanceDomain), cfg)
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/collections/featured", nil)
 	r = r.WithContext(ctx)
 	r = testutil.AddChiURLParam(r, "username", "alice")
