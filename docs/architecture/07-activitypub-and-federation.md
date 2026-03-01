@@ -48,10 +48,9 @@ flowchart TD
         end
 
         subgraph outbound [Outbound Federation]
-            OP["OutboxPublisher"]
-            NATSProd["NATS Producer"]
+            Outbox["Outbox"]
+            OW["OutboxWorker"]
             FedStream["FEDERATION Stream"]
-            Worker["Federation Worker"]
             SigSign["HTTP Sig Sign"]
         end
 
@@ -72,9 +71,11 @@ flowchart TD
     IP --> BL
     IP --> StoreIface
 
-    ServiceLayer --> OP
-    OP --> NATSProd --> FedStream --> Worker
-    Worker --> SigSign -->|"POST to remote inbox"| RemoteActor
+    ServiceLayer --> Outbox
+    Outbox --> OW
+    OW --> FedStream
+    FedStream --> OW
+    OW --> SigSign -->|"POST to remote inbox"| RemoteActor
 
     StoreIface --> DB
     BL --> Cache
@@ -83,21 +84,21 @@ flowchart TD
 
 ---
 
-## `internal/ap/blocklist.go` — Domain Block Cache
+## `internal/activitypub/blocklist.go` — Domain Block Cache
 
 The blocklist is checked on every inbound activity and before every outbound delivery. It must be fast (no DB round-trip per request) and consistent across replicas.
 
 ---
 
-## `internal/ap/outbox.go` — Outbox Publisher
+## `internal/activitypub/outbox.go` — Outbox
 
-The OutboxPublisher is called by the service layer when a local user performs an action that must be federated. It builds the AP activity JSON, determines the delivery targets, and enqueues NATS messages for the federation worker.
+The Outbox is called by the service layer when a local user performs an action that must be federated. It builds the AP activity JSON, determines the delivery targets, and sends delivery messages via the OutboxWorker’s `Process` method. The OutboxWorker publishes to the FEDERATION stream and (in a separate loop) consumes from it to POST to remote inboxes.
 
 ---
 
 ## `internal/api/activitypub/` — AP HTTP Handlers
 
-All handlers live under `internal/api/activitypub/`. Each file exports a handler struct constructed via dependency injection. Handlers never reference the NATS client or federation worker directly — they work through the `InboxProcessor` and `OutboxPublisher` interface.
+All handlers live under `internal/api/activitypub/`. Each file exports a handler struct constructed via dependency injection. Handlers never reference the NATS client or OutboxWorker directly — they work through the `Inbox` and `Outbox` types.
 
 ### Handler Summary Table
 

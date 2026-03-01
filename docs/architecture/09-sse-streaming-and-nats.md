@@ -109,7 +109,7 @@ All JetStream stream and consumer configurations are consolidated here. Called o
 
 ### Refactor Note (IMPLEMENTATION 07)
 
-This consolidation moves stream definitions out of `internal/nats/federation/producer.go`. The `FederationProducer` in that package retains `EnqueueDelivery` and `EnqueueDLQ` but no longer owns `EnsureStreams`. The `FederationWorker` now receives the pre-created consumer rather than creating it — `EnsureStreams` returns the consumer config, and `FederationWorker.Start` calls `js.CreateOrUpdateConsumer` as before.
+Stream definitions live in `internal/nats/streams.go`. The ActivityPub outbound path uses `internal/activitypub.Outbox` (builds activities) and `internal/activitypub.OutboxWorker` (publishes via `Process`, consumes via `Start`). `EnsureStreams` in `internal/nats` creates the FEDERATION stream and federation-worker consumer; the OutboxWorker obtains the consumer and runs the pull loop.
 
 ---
 

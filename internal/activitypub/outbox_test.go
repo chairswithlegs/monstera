@@ -13,7 +13,7 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/testutil"
 )
 
-func TestOutboxPublisher_SendAcceptFollow(t *testing.T) {
+func TestOutbox_SendAcceptFollow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
@@ -22,16 +22,16 @@ func TestOutboxPublisher_SendAcceptFollow(t *testing.T) {
 		ActivityType string
 		Msg          DeliveryMessage
 	}
-	enqueuer := &fakeDeliveryEnqueuer{
-		enqueue: func(_ context.Context, activityType string, msg DeliveryMessage) error {
+	worker := &mockOutboxWorker{
+		ProcessFn: func(_ context.Context, activityType string, msg DeliveryMessage) error {
 			enqueued = append(enqueued, struct {
 				ActivityType string
 				Msg          DeliveryMessage
-			}{activityType, msg})
+			}{ActivityType: activityType, Msg: msg})
 			return nil
 		},
 	}
-	pub := NewOutboxPublisher(fake, enqueuer, cfg)
+	outbox := NewOutbox(fake, worker, cfg)
 
 	target, err := fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID: "01local", Username: "alice", APID: "https://example.com/users/alice",
@@ -44,7 +44,7 @@ func TestOutboxPublisher_SendAcceptFollow(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = pub.SendAcceptFollow(ctx, target, actor, "01follow-ulid")
+	err = outbox.SendAcceptFollow(ctx, target, actor, "01follow-ulid")
 	require.NoError(t, err)
 
 	require.Len(t, enqueued, 1)
@@ -58,13 +58,15 @@ func TestOutboxPublisher_SendAcceptFollow(t *testing.T) {
 	assert.Equal(t, "https://example.com/users/alice", act["actor"])
 }
 
-type fakeDeliveryEnqueuer struct {
-	enqueue func(context.Context, string, DeliveryMessage) error
+type mockOutboxWorker struct {
+	StartFn   func(context.Context) error
+	ProcessFn func(context.Context, string, DeliveryMessage) error
 }
 
-func (f *fakeDeliveryEnqueuer) EnqueueDelivery(ctx context.Context, activityType string, msg DeliveryMessage) error {
-	if f.enqueue != nil {
-		return f.enqueue(ctx, activityType, msg)
-	}
-	return nil
+func (m *mockOutboxWorker) Start(ctx context.Context) error {
+	return m.StartFn(ctx)
+}
+
+func (m *mockOutboxWorker) Process(ctx context.Context, activityType string, msg DeliveryMessage) error {
+	return m.ProcessFn(ctx, activityType, msg)
 }

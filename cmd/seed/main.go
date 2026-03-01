@@ -74,7 +74,7 @@ func run() error {
 	return nil
 }
 
-func runSeedUser(ctx context.Context, logger *slog.Logger, s store.Store, accountSvc *service.AccountService, u seedUser) error {
+func runSeedUser(ctx context.Context, logger *slog.Logger, s store.Store, accountSvc service.AccountService, u seedUser) error {
 	acc, err := s.GetLocalAccountByUsername(ctx, u.Username)
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return fmt.Errorf("get account: %w", err)

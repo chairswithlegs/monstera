@@ -207,9 +207,9 @@ monstera-fed/
 │   │   ├── smtp/                 # SMTP implementation (covers all providers)
 │   │   └── noop/                 # No-op (for dev/testing)
 │   │
-│   ├── nats/                     # NATS client, stream definitions
+│   ├── nats/                     # NATS client, stream definitions (EnsureStreams)
 │   │   ├── client.go
-│   │   ├── federation/           # Federation delivery producer/consumer
+│   │   ├── streams.go
 │   │   └── streaming/            # SSE pub/sub bridge
 │   │
 │   ├── ap/                       # ActivityPub types and HTTP signatures

@@ -23,7 +23,7 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/cache"
 	"github.com/chairswithlegs/monstera-fed/internal/config"
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/store"
+	"github.com/chairswithlegs/monstera-fed/internal/service"
 )
 
 // clockSkew is the maximum tolerated difference between the request's Date
@@ -39,27 +39,22 @@ const replayTTL = 60 * time.Second
 const pubkeyCacheTTL = 1 * time.Hour
 
 // HTTPSignatureService verifies HTTP Signatures and fetches remote public keys (with caching).
-// For outgoing federation it can sign requests using a local account's key (SignWithSenderID); store and instanceDomain must be set.
+// For outgoing federation it can sign requests using a local account's key (SignWithSenderID).
 type HTTPSignatureService struct {
 	client         *http.Client
 	cache          cache.Store
-	store          store.Store
+	accountService service.AccountService
 	instanceDomain string
 }
 
 // NewHTTPSignatureService returns an HTTPSignatureService that builds its HTTP client from cfg.
 // When cfg.FederationInsecureSkipTLS is true, the client skips TLS verification (for development).
-// If s is non-nil, SignWithSenderID can sign requests using the local account's key; instanceDomain is taken from cfg.InstanceDomain.
-func NewHTTPSignatureService(cfg *config.Config, c cache.Store, s store.Store) *HTTPSignatureService {
-	instanceDomain := ""
-	if cfg != nil {
-		instanceDomain = cfg.InstanceDomain
-	}
+func NewHTTPSignatureService(cfg *config.Config, c cache.Store, a service.AccountService) *HTTPSignatureService {
 	return &HTTPSignatureService{
 		client:         federationHTTPClient(cfg),
 		cache:          c,
-		store:          s,
-		instanceDomain: instanceDomain,
+		accountService: a,
+		instanceDomain: cfg.InstanceDomain,
 	}
 }
 
@@ -180,14 +175,35 @@ func (s *HTTPSignatureService) FetchRemotePublicKey(ctx context.Context, keyID s
 	return pubKey, nil
 }
 
-// Sign signs an outgoing HTTP request with the given RSA private key.
+// SignWithSenderID looks up the local account by senderID, parses its private key, and signs r.
+// Returns an error if account is not found, account has no private key, or the key is invalid.
+func (s *HTTPSignatureService) SignWithSenderID(ctx context.Context, r *http.Request, senderID string) error {
+	account, err := s.accountService.GetByID(ctx, senderID)
+	if err != nil {
+		return fmt.Errorf("httpsignature: get account %s: %w", senderID, err)
+	}
+	if account == nil {
+		return fmt.Errorf("httpsignature: sender not found: %s", senderID)
+	}
+	if account.PrivateKey == nil || *account.PrivateKey == "" {
+		return fmt.Errorf("httpsignature: sender has no private key: %s", senderID)
+	}
+	privateKey, err := parseRSAPrivateKeyPEM(*account.PrivateKey)
+	if err != nil {
+		return fmt.Errorf("httpsignature: invalid private key for %s: %w", senderID, err)
+	}
+	keyID := actorKeyID(account, s.instanceDomain)
+	return s.sign(r, keyID, privateKey)
+}
+
+// sign signs an outgoing HTTP request with the given RSA private key.
 //
 // Signed headers: (request-target), host, date, digest (if body present).
 //
 // The Date header is set to the current time if not already present.
 // If the request has a body, the Digest header is computed and set.
 // The Signature header is constructed per draft-cavage-http-signatures-12.
-func (s *HTTPSignatureService) Sign(r *http.Request, keyID string, privateKey *rsa.PrivateKey) error {
+func (s *HTTPSignatureService) sign(r *http.Request, keyID string, privateKey *rsa.PrivateKey) error {
 	if r.Header.Get("Date") == "" {
 		r.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	}
@@ -226,30 +242,6 @@ func (s *HTTPSignatureService) Sign(r *http.Request, keyID string, privateKey *r
 			keyID, strings.Join(headers, " "), sig))
 
 	return nil
-}
-
-// SignWithSenderID looks up the local account by senderID, parses its private key, and signs r.
-// Returns an error if store is nil, account is not found, account has no private key, or the key is invalid.
-func (s *HTTPSignatureService) SignWithSenderID(ctx context.Context, r *http.Request, senderID string) error {
-	if s.store == nil {
-		return errors.New("httpsignature: store not configured for signing")
-	}
-	account, err := s.store.GetAccountByID(ctx, senderID)
-	if err != nil {
-		return fmt.Errorf("httpsignature: get account %s: %w", senderID, err)
-	}
-	if account == nil {
-		return fmt.Errorf("httpsignature: sender not found: %s", senderID)
-	}
-	if account.PrivateKey == nil || *account.PrivateKey == "" {
-		return fmt.Errorf("httpsignature: sender has no private key: %s", senderID)
-	}
-	privateKey, err := parseRSAPrivateKeyPEM(*account.PrivateKey)
-	if err != nil {
-		return fmt.Errorf("httpsignature: invalid private key for %s: %w", senderID, err)
-	}
-	keyID := actorKeyID(account, s.instanceDomain)
-	return s.Sign(r, keyID, privateKey)
 }
 
 // actorKeyID returns the ActivityPub key ID for the account (APID + "#main-key").

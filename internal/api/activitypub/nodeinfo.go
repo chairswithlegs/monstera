@@ -38,12 +38,12 @@ func (h *NodeInfoPointerHandler) GETNodeInfoPointer(w http.ResponseWriter, r *ht
 // NodeInfoHandler serves the full NodeInfo 2.0 document.
 // GET /nodeinfo/2.0
 type NodeInfoHandler struct {
-	instance *service.InstanceService
+	instance service.InstanceService
 	config   *config.Config
 }
 
 // NewNodeInfoHandler returns a new NodeInfoHandler.
-func NewNodeInfoHandler(instance *service.InstanceService, config *config.Config) *NodeInfoHandler {
+func NewNodeInfoHandler(instance service.InstanceService, config *config.Config) *NodeInfoHandler {
 	return &NodeInfoHandler{instance: instance, config: config}
 }
 

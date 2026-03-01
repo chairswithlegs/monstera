@@ -8,7 +8,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-// Subject prefixes for federation streams. Used by streams (with ">"), producer, and worker.
+// Subject prefixes for federation streams. Used by streams (with ">"), OutboxWorker (publish/consume), and tests.
 const (
 	SubjectPrefixFederationDeliver = "federation.deliver."
 	SubjectPrefixFederationDLQ     = "federation.dlq."
@@ -29,6 +29,8 @@ const (
 
 // EnsureStreams creates or updates the FEDERATION and FEDERATION_DLQ JetStream streams
 // and the federation-worker durable pull consumer. Idempotent; call once at startup.
+//
+// The purpose of this function is to ensure NATS is properly configured at application start.
 //
 // Scaling: WorkQueue allows only one consumer *definition* per stream (hence one
 // durable name, "federation-worker"). Each process runs a single pull loop that

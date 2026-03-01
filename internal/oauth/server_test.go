@@ -385,7 +385,7 @@ var _ store.Store = (*fakeOAuthStore)(nil)
 
 func TestServer_RegisterApplication(t *testing.T) {
 	ctx := context.Background()
-	c, err := cache.New(cache.Config{Driver: "memory", Logger: slog.Default()})
+	c, err := cache.New(cache.Config{Driver: "memory"})
 	require.NoError(t, err)
 	defer func() { _ = c.Close() }()
 
@@ -405,7 +405,7 @@ func TestServer_RegisterApplication(t *testing.T) {
 func TestServer_AuthorizeRequest_ExchangeCode(t *testing.T) {
 	ctx := context.Background()
 	st := newFakeOAuthStore()
-	c, err := cache.New(cache.Config{Driver: "memory", Logger: slog.Default()})
+	c, err := cache.New(cache.Config{Driver: "memory"})
 	require.NoError(t, err)
 	defer func() { _ = c.Close() }()
 
@@ -457,7 +457,7 @@ func TestServer_AuthorizeRequest_ExchangeCode(t *testing.T) {
 func TestServer_ExchangeClientCredentials(t *testing.T) {
 	ctx := context.Background()
 	st := newFakeOAuthStore()
-	c, err := cache.New(cache.Config{Driver: "memory", Logger: slog.Default()})
+	c, err := cache.New(cache.Config{Driver: "memory"})
 	require.NoError(t, err)
 	defer func() { _ = c.Close() }()
 
@@ -492,7 +492,7 @@ func TestServer_ExchangeClientCredentials(t *testing.T) {
 func TestServer_RevokeToken(t *testing.T) {
 	ctx := context.Background()
 	st := newFakeOAuthStore()
-	c, err := cache.New(cache.Config{Driver: "memory", Logger: slog.Default()})
+	c, err := cache.New(cache.Config{Driver: "memory"})
 	require.NoError(t, err)
 	defer func() { _ = c.Close() }()
 

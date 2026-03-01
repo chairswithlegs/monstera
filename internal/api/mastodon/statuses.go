@@ -22,14 +22,14 @@ const idempotencyTTL = time.Hour
 
 // StatusesHandler handles status-related Mastodon API endpoints.
 type StatusesHandler struct {
-	accounts       *service.AccountService
-	statuses       *service.StatusService
+	accounts       service.AccountService
+	statuses       service.StatusService
 	instanceDomain string
 	cache          cache.Store // optional; when set, Idempotency-Key is honored
 }
 
 // NewStatusesHandler returns a new StatusesHandler. idempotencyCache may be nil to disable idempotency.
-func NewStatusesHandler(accounts *service.AccountService, statuses *service.StatusService, instanceDomain string, idempotencyCache cache.Store) *StatusesHandler {
+func NewStatusesHandler(accounts service.AccountService, statuses service.StatusService, instanceDomain string, idempotencyCache cache.Store) *StatusesHandler {
 	return &StatusesHandler{accounts: accounts, statuses: statuses, instanceDomain: instanceDomain, cache: idempotencyCache}
 }
 

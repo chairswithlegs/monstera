@@ -14,12 +14,12 @@ import (
 
 // SearchHandler handles the Mastodon search API.
 type SearchHandler struct {
-	search         *service.SearchService
+	search         service.SearchService
 	instanceDomain string
 }
 
 // NewSearchHandler returns a new SearchHandler.
-func NewSearchHandler(search *service.SearchService, instanceDomain string) *SearchHandler {
+func NewSearchHandler(search service.SearchService, instanceDomain string) *SearchHandler {
 	return &SearchHandler{search: search, instanceDomain: instanceDomain}
 }
 

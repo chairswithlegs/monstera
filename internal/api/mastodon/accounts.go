@@ -18,14 +18,14 @@ import (
 
 // AccountsHandler handles account-related Mastodon API endpoints.
 type AccountsHandler struct {
-	accounts       *service.AccountService
-	follows        *service.FollowService
-	timeline       *service.TimelineService
+	accounts       service.AccountService
+	follows        service.FollowService
+	timeline       service.TimelineService
 	instanceDomain string
 }
 
 // NewAccountsHandler returns a new AccountsHandler. follows may be nil to disable follow endpoints; timeline is required for GET account statuses.
-func NewAccountsHandler(accounts *service.AccountService, follows *service.FollowService, timeline *service.TimelineService, instanceDomain string) *AccountsHandler {
+func NewAccountsHandler(accounts service.AccountService, follows service.FollowService, timeline service.TimelineService, instanceDomain string) *AccountsHandler {
 	return &AccountsHandler{accounts: accounts, follows: follows, timeline: timeline, instanceDomain: instanceDomain}
 }
 

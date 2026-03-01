@@ -24,13 +24,13 @@ const maxOutboxPageSize = 40
 
 // OutboxHandler serves GET /users/{username}/outbox — paginated OrderedCollectionPage of Create{Note} activities.
 type OutboxHandler struct {
-	accounts  *service.AccountService
-	timelines *service.TimelineService
+	accounts  service.AccountService
+	timelines service.TimelineService
 	config    *config.Config
 }
 
 // NewOutbox returns a new OutboxHandler.
-func NewOutbox(accounts *service.AccountService, timelines *service.TimelineService, config *config.Config) *OutboxHandler {
+func NewOutbox(accounts service.AccountService, timelines service.TimelineService, config *config.Config) *OutboxHandler {
 	return &OutboxHandler{accounts: accounts, timelines: timelines, config: config}
 }
 

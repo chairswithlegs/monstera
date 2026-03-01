@@ -11,7 +11,7 @@ import (
 
 func TestMemoryStore_GetSetDelete(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewMemory(nil)
+	s, err := NewMemory()
 	require.NoError(t, err)
 
 	_, err = s.Get(ctx, "missing")
@@ -39,7 +39,7 @@ func TestMemoryStore_GetSetDelete(t *testing.T) {
 
 func TestMemoryStore_TTL(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewMemory(nil)
+	s, err := NewMemory()
 	require.NoError(t, err)
 
 	err = s.Set(ctx, "ttl-key", []byte("v"), 50*time.Millisecond)
@@ -55,7 +55,7 @@ func TestMemoryStore_TTL(t *testing.T) {
 }
 
 func TestMemoryStore_Ping(t *testing.T) {
-	s, err := NewMemory(nil)
+	s, err := NewMemory()
 	require.NoError(t, err)
 	assert.NoError(t, s.Ping(context.Background()))
 }

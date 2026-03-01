@@ -15,17 +15,21 @@ type NodeInfoStats struct {
 }
 
 // InstanceService provides instance-level discovery data (NodeInfo).
-type InstanceService struct {
+type InstanceService interface {
+	GetNodeInfoStats(ctx context.Context) (*NodeInfoStats, error)
+}
+
+type instanceService struct {
 	store store.Store
 }
 
 // NewInstanceService returns an InstanceService that uses the given store.
-func NewInstanceService(s store.Store) *InstanceService {
-	return &InstanceService{store: s}
+func NewInstanceService(s store.Store) InstanceService {
+	return &instanceService{store: s}
 }
 
 // GetNodeInfoStats returns user count, local post count, and open registrations for NodeInfo 2.0.
-func (svc *InstanceService) GetNodeInfoStats(ctx context.Context) (*NodeInfoStats, error) {
+func (svc *instanceService) GetNodeInfoStats(ctx context.Context) (*NodeInfoStats, error) {
 	userCount, err := svc.store.CountLocalAccounts(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("CountLocalAccounts: %w", err)

@@ -14,12 +14,12 @@ import (
 // CollectionsHandler serves GET /users/{username}/followers, /following, /collections/featured.
 // Returns OrderedCollections with totalItems only (no item enumeration).
 type CollectionsHandler struct {
-	accounts *service.AccountService
+	accounts service.AccountService
 	config   *config.Config
 }
 
 // NewCollectionsHandler returns a new CollectionsHandler.
-func NewCollectionsHandler(accounts *service.AccountService, config *config.Config) *CollectionsHandler {
+func NewCollectionsHandler(accounts service.AccountService, config *config.Config) *CollectionsHandler {
 	return &CollectionsHandler{accounts: accounts, config: config}
 }
 

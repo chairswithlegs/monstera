@@ -14,9 +14,14 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	ap "github.com/chairswithlegs/monstera-fed/internal/activitypub"
 	"github.com/chairswithlegs/monstera-fed/internal/config"
 )
+
+// testMessage is a small payload used only to verify stream publish/consume round-trip.
+type testMessage struct {
+	ID      string `json:"id"`
+	Payload string `json:"payload"`
+}
 
 // TestEnsureStreams_StreamAndConsumerConfig validates that the FEDERATION stream and
 // federation-worker consumer have the expected config.
@@ -51,7 +56,7 @@ func TestEnsureStreams_StreamAndConsumerConfig(t *testing.T) {
 }
 
 // TestEnsureStreams_PublishConsume requires NATS with JetStream running (e.g. docker-compose up nats).
-// It creates a producer and a consumer, and publishes a message to the stream and consumes it.
+// It ensures streams and consumer exist, then publishes a message and consumes it.
 func TestEnsureStreams_PublishConsume(t *testing.T) {
 	client := setupNATSTest(t)
 	defer client.Close()
@@ -59,15 +64,10 @@ func TestEnsureStreams_PublishConsume(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	msg := ap.DeliveryMessage{
-		ActivityID:  "https://test.example/activity/1",
-		Activity:    json.RawMessage(`{"type":"Test"}`),
-		TargetInbox: "https://remote.example/inbox",
-		SenderID:    "01ABC",
-	}
+	msg := testMessage{ID: "test-1", Payload: "hello"}
 	data, err := json.Marshal(msg)
 	require.NoError(t, err)
-	_, err = client.JS.Publish(ctx, "federation.deliver.test", data)
+	_, err = client.JS.Publish(ctx, SubjectPrefixFederationDeliver+"test", data)
 	require.NoError(t, err)
 
 	// Use the existing federation-worker consumer (WorkQueue streams allow only one consumer).
@@ -90,11 +90,11 @@ func TestEnsureStreams_PublishConsume(t *testing.T) {
 
 	first := <-msgCh
 	require.NotNil(t, first, "expected one message from stream")
-	var decoded ap.DeliveryMessage
+	var decoded testMessage
 	err = json.Unmarshal(first.Data(), &decoded)
 	require.NoError(t, err)
-	assert.Equal(t, msg.ActivityID, decoded.ActivityID)
-	assert.Equal(t, msg.TargetInbox, decoded.TargetInbox)
+	assert.Equal(t, msg.ID, decoded.ID)
+	assert.Equal(t, msg.Payload, decoded.Payload)
 	require.NoError(t, first.Ack())
 }
 
@@ -107,12 +107,7 @@ func TestEnsureStreams_SingleMessageNotPulledTwice(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	msg := ap.DeliveryMessage{
-		ActivityID:  "https://test.example/activity/unique",
-		Activity:    json.RawMessage(`{"type":"Test"}`),
-		TargetInbox: "https://remote.example/inbox",
-		SenderID:    "01XYZ",
-	}
+	msg := testMessage{ID: "unique", Payload: "test"}
 	data, err := json.Marshal(msg)
 	require.NoError(t, err)
 
@@ -140,7 +135,7 @@ func TestEnsureStreams_SingleMessageNotPulledTwice(t *testing.T) {
 	defer consCtx2.Stop()
 
 	// Publish the message
-	_, err = client.JS.Publish(ctx, "federation.deliver.test", data)
+	_, err = client.JS.Publish(ctx, SubjectPrefixFederationDeliver+"test", data)
 	require.NoError(t, err)
 
 	// Wait for the message

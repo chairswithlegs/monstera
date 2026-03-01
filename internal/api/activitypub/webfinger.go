@@ -17,12 +17,12 @@ import (
 //
 // Returns a JRD (RFC 7033) document that maps an acct: URI to the AP Actor URL.
 type WebFingerHandler struct {
-	accounts *service.AccountService
+	accounts service.AccountService
 	config   *config.Config
 }
 
 // NewWebFingerHandler returns a new WebFingerHandler.
-func NewWebFingerHandler(accounts *service.AccountService, config *config.Config) *WebFingerHandler {
+func NewWebFingerHandler(accounts service.AccountService, config *config.Config) *WebFingerHandler {
 	return &WebFingerHandler{accounts: accounts, config: config}
 }
 

@@ -25,19 +25,31 @@ type EnrichedStatus struct {
 }
 
 // TimelineService handles timeline queries (home, public).
-type TimelineService struct {
+type TimelineService interface {
+	Home(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error)
+	HomeEnriched(ctx context.Context, accountID string, maxID *string, limit int) ([]EnrichedStatus, error)
+	PublicLocal(ctx context.Context, localOnly bool, maxID *string, limit int) ([]domain.Status, error)
+	PublicLocalEnriched(ctx context.Context, localOnly bool, maxID *string, limit int) ([]EnrichedStatus, error)
+	AccountStatusesEnriched(ctx context.Context, accountID string, viewerAccountID *string, maxID *string, limit int) ([]EnrichedStatus, error)
+	GetAccountPublicStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error)
+	CountAccountPublicStatuses(ctx context.Context, accountID string) (int64, error)
+	HashtagTimeline(ctx context.Context, tagName string, maxID *string, limit int) ([]domain.Status, error)
+	HashtagTimelineEnriched(ctx context.Context, tagName string, maxID *string, limit int) ([]EnrichedStatus, error)
+}
+
+type timelineService struct {
 	store store.Store
 }
 
 // NewTimelineService returns a TimelineService that uses the given store.
-func NewTimelineService(s store.Store) *TimelineService {
-	return &TimelineService{store: s}
+func NewTimelineService(s store.Store) TimelineService {
+	return &timelineService{store: s}
 }
 
 // Home returns the home timeline for the given account (self + accepted follows), ordered by id desc.
 // maxID is optional (cursor); limit defaults to defaultTimelineLimit if <= 0, capped at maxTimelineLimit.
 // TODO: confirm that this function is needed
-func (svc *TimelineService) Home(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error) {
+func (svc *timelineService) Home(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error) {
 	l := limit
 	if l <= 0 {
 		l = defaultTimelineLimit
@@ -54,7 +66,7 @@ func (svc *TimelineService) Home(ctx context.Context, accountID string, maxID *s
 
 // HomeEnriched returns the home timeline with author, mentions, tags, and media loaded for each status.
 // maxID is optional (cursor); limit is clamped to [1, maxTimelineLimit], default defaultTimelineLimit.
-func (svc *TimelineService) HomeEnriched(ctx context.Context, accountID string, maxID *string, limit int) ([]EnrichedStatus, error) {
+func (svc *timelineService) HomeEnriched(ctx context.Context, accountID string, maxID *string, limit int) ([]EnrichedStatus, error) {
 	l := limit
 	if l <= 0 {
 		l = defaultTimelineLimit
@@ -98,7 +110,7 @@ func (svc *TimelineService) HomeEnriched(ctx context.Context, accountID string, 
 
 // PublicLocal returns the public timeline. localOnly true restricts to local statuses.
 // maxID is optional; limit defaults to defaultTimelineLimit if <= 0, capped at maxTimelineLimit.
-func (svc *TimelineService) PublicLocal(ctx context.Context, localOnly bool, maxID *string, limit int) ([]domain.Status, error) {
+func (svc *timelineService) PublicLocal(ctx context.Context, localOnly bool, maxID *string, limit int) ([]domain.Status, error) {
 	l := limit
 	if l <= 0 {
 		l = defaultTimelineLimit
@@ -114,7 +126,7 @@ func (svc *TimelineService) PublicLocal(ctx context.Context, localOnly bool, max
 }
 
 // PublicLocalEnriched returns the public timeline with author, mentions, tags, and media loaded for each status.
-func (svc *TimelineService) PublicLocalEnriched(ctx context.Context, localOnly bool, maxID *string, limit int) ([]EnrichedStatus, error) {
+func (svc *timelineService) PublicLocalEnriched(ctx context.Context, localOnly bool, maxID *string, limit int) ([]EnrichedStatus, error) {
 	l := limit
 	if l <= 0 {
 		l = defaultTimelineLimit
@@ -157,7 +169,7 @@ func (svc *TimelineService) PublicLocalEnriched(ctx context.Context, localOnly b
 }
 
 // AccountStatusesEnriched returns statuses for an account (for GET /accounts/:id/statuses). When viewerAccountID is nil or != accountID, only public statuses are returned.
-func (svc *TimelineService) AccountStatusesEnriched(ctx context.Context, accountID string, viewerAccountID *string, maxID *string, limit int) ([]EnrichedStatus, error) {
+func (svc *timelineService) AccountStatusesEnriched(ctx context.Context, accountID string, viewerAccountID *string, maxID *string, limit int) ([]EnrichedStatus, error) {
 	l := limit
 	if l <= 0 {
 		l = defaultTimelineLimit
@@ -206,7 +218,7 @@ func (svc *TimelineService) AccountStatusesEnriched(ctx context.Context, account
 }
 
 // GetAccountPublicStatuses returns public statuses for an account (for outbox). maxID is optional cursor; limit is clamped.
-func (svc *TimelineService) GetAccountPublicStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error) {
+func (svc *timelineService) GetAccountPublicStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error) {
 	l := limit
 	if l <= 0 {
 		l = defaultTimelineLimit
@@ -222,7 +234,7 @@ func (svc *TimelineService) GetAccountPublicStatuses(ctx context.Context, accoun
 }
 
 // CountAccountPublicStatuses returns the count of public statuses for an account (for outbox totalItems).
-func (svc *TimelineService) CountAccountPublicStatuses(ctx context.Context, accountID string) (int64, error) {
+func (svc *timelineService) CountAccountPublicStatuses(ctx context.Context, accountID string) (int64, error) {
 	n, err := svc.store.CountAccountPublicStatuses(ctx, accountID)
 	if err != nil {
 		return 0, fmt.Errorf("CountAccountPublicStatuses(%s): %w", accountID, err)
@@ -231,7 +243,7 @@ func (svc *TimelineService) CountAccountPublicStatuses(ctx context.Context, acco
 }
 
 // HashtagTimeline returns statuses for the given hashtag (public/unlisted only). Tag name is normalized to lowercase.
-func (svc *TimelineService) HashtagTimeline(ctx context.Context, tagName string, maxID *string, limit int) ([]domain.Status, error) {
+func (svc *timelineService) HashtagTimeline(ctx context.Context, tagName string, maxID *string, limit int) ([]domain.Status, error) {
 	l := limit
 	if l <= 0 {
 		l = defaultTimelineLimit
@@ -247,7 +259,7 @@ func (svc *TimelineService) HashtagTimeline(ctx context.Context, tagName string,
 }
 
 // HashtagTimelineEnriched returns the hashtag timeline with author, mentions, tags, and media for each status.
-func (svc *TimelineService) HashtagTimelineEnriched(ctx context.Context, tagName string, maxID *string, limit int) ([]EnrichedStatus, error) {
+func (svc *timelineService) HashtagTimelineEnriched(ctx context.Context, tagName string, maxID *string, limit int) ([]EnrichedStatus, error) {
 	statuses, err := svc.HashtagTimeline(ctx, tagName, maxID, limit)
 	if err != nil {
 		return nil, err

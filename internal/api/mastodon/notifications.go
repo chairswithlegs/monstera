@@ -15,13 +15,13 @@ import (
 
 // NotificationsHandler handles notification Mastodon API endpoints.
 type NotificationsHandler struct {
-	notifications  *service.NotificationService
-	accounts       *service.AccountService
+	notifications  service.NotificationService
+	accounts       service.AccountService
 	instanceDomain string
 }
 
 // NewNotificationsHandler returns a new NotificationsHandler.
-func NewNotificationsHandler(notifications *service.NotificationService, accounts *service.AccountService, instanceDomain string) *NotificationsHandler {
+func NewNotificationsHandler(notifications service.NotificationService, accounts service.AccountService, instanceDomain string) *NotificationsHandler {
 	return &NotificationsHandler{notifications: notifications, accounts: accounts, instanceDomain: instanceDomain}
 }
 

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/chairswithlegs/monstera-fed/internal/config"
+	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
 	"github.com/chairswithlegs/monstera-fed/internal/testutil"
@@ -58,10 +59,23 @@ func TestActorHandler_GETActor(t *testing.T) {
 
 func TestActorHandler_notFound(t *testing.T) {
 	t.Parallel()
-	h := NewActorHandler(service.NewAccountService(testutil.NewFakeStore(), "https://example.com"), &config.Config{InstanceDomain: "example.com"})
+	h := NewActorHandler(&mockAccountService{
+		GetLocalActorWithMediaFunc: func(ctx context.Context, username string) (*service.LocalActorWithMedia, error) {
+			return nil, domain.ErrNotFound
+		},
+	}, &config.Config{InstanceDomain: "example.com"})
 	r := httptest.NewRequest(http.MethodGet, "/users/nobody", nil)
 	r = testutil.AddChiURLParam(r, "username", "nobody")
 	w := httptest.NewRecorder()
 	h.GETActor(w, r)
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+type mockAccountService struct {
+	service.AccountService
+	GetLocalActorWithMediaFunc func(ctx context.Context, username string) (*service.LocalActorWithMedia, error)
+}
+
+func (m *mockAccountService) GetLocalActorWithMedia(ctx context.Context, username string) (*service.LocalActorWithMedia, error) {
+	return m.GetLocalActorWithMediaFunc(ctx, username)
 }

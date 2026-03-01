@@ -12,7 +12,12 @@ import (
 )
 
 // MediaService orchestrates media upload (storage + DB attachment record).
-type MediaService struct {
+type MediaService interface {
+	Upload(ctx context.Context, accountID string, body io.Reader, contentType string, description *string) (*UploadResult, error)
+	CreateRemote(ctx context.Context, accountID string, remoteURL string) (*domain.MediaAttachment, error)
+}
+
+type mediaService struct {
 	store        store.Store
 	mediaStore   media.MediaStore
 	maxBytes     int64
@@ -20,8 +25,8 @@ type MediaService struct {
 }
 
 // NewMediaService returns a MediaService.
-func NewMediaService(s store.Store, ms media.MediaStore, maxBytes int64) *MediaService {
-	return &MediaService{store: s, mediaStore: ms, maxBytes: maxBytes, allowedTypes: media.AllowedContentTypes}
+func NewMediaService(s store.Store, ms media.MediaStore, maxBytes int64) MediaService {
+	return &mediaService{store: s, mediaStore: ms, maxBytes: maxBytes, allowedTypes: media.AllowedContentTypes}
 }
 
 // UploadResult is the result of a successful upload.
@@ -31,7 +36,7 @@ type UploadResult struct {
 
 // Upload reads the body (up to maxBytes), stores it, and creates a media_attachments row.
 // contentType must be in allowedTypes; description is optional.
-func (svc *MediaService) Upload(ctx context.Context, accountID string, body io.Reader, contentType string, description *string) (*UploadResult, error) {
+func (svc *mediaService) Upload(ctx context.Context, accountID string, body io.Reader, contentType string, description *string) (*UploadResult, error) {
 	typeStr, ok := svc.allowedTypes[contentType]
 	if !ok {
 		return nil, fmt.Errorf("Upload: %w (content type %q not allowed)", domain.ErrValidation, contentType)
@@ -63,4 +68,23 @@ func (svc *MediaService) Upload(ctx context.Context, accountID string, body io.R
 		return nil, fmt.Errorf("CreateMediaAttachment: %w", err)
 	}
 	return &UploadResult{Attachment: att}, nil
+}
+
+// CreateRemote creates a media attachment record for a remote URL (no upload). Used for incoming Note attachments.
+func (svc *mediaService) CreateRemote(ctx context.Context, accountID string, remoteURL string) (*domain.MediaAttachment, error) {
+	if remoteURL == "" {
+		return nil, fmt.Errorf("CreateRemote: %w (empty URL)", domain.ErrValidation)
+	}
+	att, err := svc.store.CreateMediaAttachment(ctx, store.CreateMediaAttachmentInput{
+		ID:         uid.New(),
+		AccountID:  accountID,
+		Type:       "image",
+		StorageKey: "",
+		URL:        remoteURL,
+		RemoteURL:  &remoteURL,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateRemote: %w", err)
+	}
+	return att, nil
 }

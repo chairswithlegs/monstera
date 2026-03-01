@@ -16,12 +16,12 @@ import (
 
 // ActorHandler serves GET /users/{username} — AP Actor document.
 type ActorHandler struct {
-	accounts *service.AccountService
+	accounts service.AccountService
 	config   *config.Config
 }
 
 // NewActorHandler returns a new ActorHandler.
-func NewActorHandler(accounts *service.AccountService, config *config.Config) *ActorHandler {
+func NewActorHandler(accounts service.AccountService, config *config.Config) *ActorHandler {
 	return &ActorHandler{accounts: accounts, config: config}
 }
 

@@ -25,20 +25,36 @@ type BlockPublisher interface {
 }
 
 // FollowService orchestrates follow/unfollow, block/mute, and relationship lookups.
-type FollowService struct {
+type FollowService interface {
+	Follow(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error)
+	Unfollow(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error)
+	Block(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error)
+	Unblock(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error)
+	Mute(ctx context.Context, actorAccountID, targetAccountID string, hideNotifications bool) (*domain.Relationship, error)
+	Unmute(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error)
+	GetFollowByAPID(ctx context.Context, apID string) (*domain.Follow, error)
+	GetFollow(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Follow, error)
+	CreateFollowFromInbox(ctx context.Context, actorAccountID, targetAccountID string, state string, apID *string) (*domain.Follow, error)
+	AcceptFollow(ctx context.Context, followID string) error
+	DeleteFollowFromInbox(ctx context.Context, actorAccountID, targetAccountID string) error
+	GetFollowers(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error)
+	GetFollowing(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error)
+}
+
+type followService struct {
 	store store.Store
 	pub   FollowPublisher
 	block BlockPublisher
 }
 
 // NewFollowService returns a FollowService. pub and block may be nil.
-func NewFollowService(s store.Store, pub FollowPublisher, block BlockPublisher) *FollowService {
-	return &FollowService{store: s, pub: pub, block: block}
+func NewFollowService(s store.Store, pub FollowPublisher, block BlockPublisher) FollowService {
+	return &followService{store: s, pub: pub, block: block}
 }
 
 // Follow creates a follow from actor to target. Returns the relationship after the change.
 // Errors: ErrValidation (self-follow), ErrNotFound (target), ErrForbidden (block in either direction).
-func (svc *FollowService) Follow(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error) {
+func (svc *followService) Follow(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error) {
 	if actorAccountID == targetAccountID {
 		return nil, fmt.Errorf("Follow: %w", domain.ErrValidation)
 	}
@@ -131,7 +147,7 @@ func (svc *FollowService) Follow(ctx context.Context, actorAccountID, targetAcco
 }
 
 // Unfollow removes the follow from actor to target. Returns the relationship after the change.
-func (svc *FollowService) Unfollow(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error) {
+func (svc *followService) Unfollow(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error) {
 	follow, err := svc.store.GetFollow(ctx, actorAccountID, targetAccountID)
 	if err != nil {
 		rel, _ := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
@@ -168,7 +184,7 @@ func (svc *FollowService) Unfollow(ctx context.Context, actorAccountID, targetAc
 }
 
 // Block creates a block from actor to target. Removes follow in either direction and any mute. Returns the relationship.
-func (svc *FollowService) Block(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error) {
+func (svc *followService) Block(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error) {
 	if actorAccountID == targetAccountID {
 		return nil, fmt.Errorf("Block: %w", domain.ErrValidation)
 	}
@@ -218,7 +234,7 @@ func (svc *FollowService) Block(ctx context.Context, actorAccountID, targetAccou
 }
 
 // Unblock removes the block from actor to target. Returns the relationship.
-func (svc *FollowService) Unblock(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error) {
+func (svc *followService) Unblock(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error) {
 	if err := svc.store.DeleteBlock(ctx, actorAccountID, targetAccountID); err != nil {
 		return nil, fmt.Errorf("DeleteBlock: %w", err)
 	}
@@ -237,7 +253,7 @@ func (svc *FollowService) Unblock(ctx context.Context, actorAccountID, targetAcc
 }
 
 // Mute creates or updates a mute from actor to target. notifications controls hide_notifications.
-func (svc *FollowService) Mute(ctx context.Context, actorAccountID, targetAccountID string, hideNotifications bool) (*domain.Relationship, error) {
+func (svc *followService) Mute(ctx context.Context, actorAccountID, targetAccountID string, hideNotifications bool) (*domain.Relationship, error) {
 	if actorAccountID == targetAccountID {
 		return nil, fmt.Errorf("Mute: %w", domain.ErrValidation)
 	}
@@ -264,7 +280,7 @@ func (svc *FollowService) Mute(ctx context.Context, actorAccountID, targetAccoun
 }
 
 // Unmute removes the mute from actor to target. Returns the relationship.
-func (svc *FollowService) Unmute(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error) {
+func (svc *followService) Unmute(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error) {
 	_ = svc.store.DeleteMute(ctx, actorAccountID, targetAccountID)
 	rel, err := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
 	if err != nil {
@@ -273,8 +289,57 @@ func (svc *FollowService) Unmute(ctx context.Context, actorAccountID, targetAcco
 	return rel, nil
 }
 
+// GetFollowByAPID returns the follow by its ActivityPub ID, or ErrNotFound.
+func (svc *followService) GetFollowByAPID(ctx context.Context, apID string) (*domain.Follow, error) {
+	f, err := svc.store.GetFollowByAPID(ctx, apID)
+	if err != nil {
+		return nil, fmt.Errorf("GetFollowByAPID: %w", err)
+	}
+	return f, nil
+}
+
+// GetFollow returns the follow relationship from actor to target, or ErrNotFound.
+func (svc *followService) GetFollow(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Follow, error) {
+	f, err := svc.store.GetFollow(ctx, actorAccountID, targetAccountID)
+	if err != nil {
+		return nil, fmt.Errorf("GetFollow: %w", err)
+	}
+	return f, nil
+}
+
+// CreateFollowFromInbox creates a follow from inbox (remote actor following local target). Does not increment follower/following counts.
+func (svc *followService) CreateFollowFromInbox(ctx context.Context, actorAccountID, targetAccountID string, state string, apID *string) (*domain.Follow, error) {
+	follow, err := svc.store.CreateFollow(ctx, store.CreateFollowInput{
+		ID:        uid.New(),
+		AccountID: actorAccountID,
+		TargetID:  targetAccountID,
+		State:     state,
+		APID:      apID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateFollowFromInbox: %w", err)
+	}
+	return follow, nil
+}
+
+// AcceptFollow marks the follow as accepted (for inbox Accept activity). Does not change counts.
+func (svc *followService) AcceptFollow(ctx context.Context, followID string) error {
+	if err := svc.store.AcceptFollow(ctx, followID); err != nil {
+		return fmt.Errorf("AcceptFollow: %w", err)
+	}
+	return nil
+}
+
+// DeleteFollowFromInbox removes the follow (for inbox Reject/Undo). Does not decrement follower/following counts.
+func (svc *followService) DeleteFollowFromInbox(ctx context.Context, actorAccountID, targetAccountID string) error {
+	if err := svc.store.DeleteFollow(ctx, actorAccountID, targetAccountID); err != nil {
+		return fmt.Errorf("DeleteFollowFromInbox: %w", err)
+	}
+	return nil
+}
+
 // GetFollowers returns the list of followers for the given account (paginated).
-func (svc *FollowService) GetFollowers(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error) {
+func (svc *followService) GetFollowers(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error) {
 	list, err := svc.store.GetFollowers(ctx, accountID, maxID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("GetFollowers: %w", err)
@@ -283,7 +348,7 @@ func (svc *FollowService) GetFollowers(ctx context.Context, accountID string, ma
 }
 
 // GetFollowing returns the list of accounts the given account follows (paginated).
-func (svc *FollowService) GetFollowing(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error) {
+func (svc *followService) GetFollowing(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error) {
 	list, err := svc.store.GetFollowing(ctx, accountID, maxID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("GetFollowing: %w", err)

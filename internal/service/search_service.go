@@ -36,7 +36,11 @@ type WebFingerResolver interface {
 }
 
 // SearchService orchestrates account search, hashtag search, and optional remote account resolution.
-type SearchService struct {
+type SearchService interface {
+	Search(ctx context.Context, viewer *domain.Account, q string, filter SearchType, resolve bool, limit int) (*SearchResult, error)
+}
+
+type searchService struct {
 	store    store.Store
 	resolver WebFingerResolver
 	logger   *slog.Logger
@@ -45,8 +49,8 @@ type SearchService struct {
 // NewSearchService returns a SearchService that uses the given store and optional resolver.
 // resolver may be nil; then resolve=true in Search will not perform remote resolution.
 // logger may be nil; then resolve failures are not logged.
-func NewSearchService(s store.Store, resolver WebFingerResolver, logger *slog.Logger) *SearchService {
-	return &SearchService{store: s, resolver: resolver, logger: logger}
+func NewSearchService(s store.Store, resolver WebFingerResolver, logger *slog.Logger) SearchService {
+	return &searchService{store: s, resolver: resolver, logger: logger}
 }
 
 // acctPattern matches user@domain (username and domain non-empty).
@@ -55,7 +59,7 @@ var acctPattern = regexp.MustCompile(`^[a-zA-Z0-9_]+@[a-zA-Z0-9][a-zA-Z0-9.-]*[a
 
 // Search runs account and/or hashtag search and optionally resolves a remote account by acct.
 // viewer may be nil (unauthenticated). limit is clamped by the handler; Phase 1 statuses are always empty.
-func (svc *SearchService) Search(ctx context.Context, viewer *domain.Account, q string, filter SearchType, resolve bool, limit int) (*SearchResult, error) {
+func (svc *searchService) Search(ctx context.Context, viewer *domain.Account, q string, filter SearchType, resolve bool, limit int) (*SearchResult, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
 		return &SearchResult{

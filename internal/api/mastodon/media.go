@@ -11,11 +11,11 @@ import (
 
 // MediaHandler handles media upload Mastodon API endpoints.
 type MediaHandler struct {
-	media *service.MediaService
+	media service.MediaService
 }
 
 // NewMediaHandler returns a new MediaHandler.
-func NewMediaHandler(media *service.MediaService) *MediaHandler {
+func NewMediaHandler(media service.MediaService) *MediaHandler {
 	return &MediaHandler{media: media}
 }
 

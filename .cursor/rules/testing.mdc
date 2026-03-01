@@ -29,3 +29,14 @@ alwaysApply: true
 
 - Prefer **hand-written fakes** for simple interfaces (`store.Store`, `cache.Store`, etc.).
 - Use testify **mock** when you need to assert call order or arguments (e.g. "Send called once with this subject").
+
+## No Conditional Skips
+
+When `make test` is run, **all** unit tests must execute. Do not add conditional skips.
+
+When `make test-integration` is run, **all** integration tests must execute. Do not add conditional skips.
+
+## Do not
+
+- Use `t.Skip()` or `t.Skipf()` when a dependency (e.g. DB, NATS, MinIO) is unavailable or env vars are unset.
+- Use `t.Skip()` based on environment detection so that CI or local `make test-integration` skips tests.

@@ -2,6 +2,7 @@ package activitypub
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chairswithlegs/monstera-fed/internal/config"
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
 	"github.com/chairswithlegs/monstera-fed/internal/uid"
@@ -34,27 +36,28 @@ type JRD struct {
 // RemoteAccountResolver resolves a remote account by acct (user@domain) via WebFinger and actor fetch.
 // Used by the Mastodon search API when resolve=true.
 type RemoteAccountResolver struct {
-	store           store.Store
-	actorFetch      func(ctx context.Context, actorIRI string) (*Actor, error)
-	instanceDomain  string
-	webfingerClient *http.Client
+	store          store.Store
+	instanceDomain string
+	httpClient     *http.Client
 }
 
 // NewRemoteAccountResolver returns a resolver that uses the given store and actor fetch.
 // instanceDomain is used to skip resolution for local accounts (e.g. "example.com").
 // If client is non-nil, it is used for WebFinger requests (e.g. with InsecureSkipVerify for development).
-func NewRemoteAccountResolver(s store.Store, actorFetch func(context.Context, string) (*Actor, error), instanceDomain string, client *http.Client) *RemoteAccountResolver {
-	if client == nil {
-		client = &http.Client{
-			CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
-			Timeout:       ianaWebFingerTimeout,
+func NewRemoteAccountResolver(s store.Store, instanceDomain string, cfg *config.Config) *RemoteAccountResolver {
+	client := &http.Client{
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
+		Timeout:       ianaWebFingerTimeout,
+	}
+	if cfg.FederationInsecureSkipTLS {
+		client.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // G402: intentional for development federation with self-signed certs
 		}
 	}
 	return &RemoteAccountResolver{
-		store:           s,
-		actorFetch:      actorFetch,
-		instanceDomain:  strings.TrimSpace(strings.ToLower(instanceDomain)),
-		webfingerClient: client,
+		store:          s,
+		instanceDomain: strings.TrimSpace(strings.ToLower(instanceDomain)),
+		httpClient:     client,
 	}
 }
 
@@ -84,14 +87,33 @@ func (r *RemoteAccountResolver) ResolveRemoteAccount(ctx context.Context, acct s
 	if err != nil {
 		return nil, fmt.Errorf("ResolveRemoteAccount webfinger: %w", err)
 	}
-	if r.actorFetch == nil {
-		return nil, errors.New("ResolveRemoteAccount: actor fetch not configured")
-	}
-	actor, err := r.actorFetch(ctx, actorIRI)
+	actor, err := r.FetchActor(ctx, actorIRI)
 	if err != nil {
 		return nil, fmt.Errorf("ResolveRemoteAccount actor fetch: %w", err)
 	}
 	return r.syncActorToStore(ctx, actor)
+}
+
+// ActorFetch fetches an Actor document from the given IRI using HTTP GET.
+func (r *RemoteAccountResolver) FetchActor(ctx context.Context, actorIRI string) (*Actor, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, actorIRI, nil)
+	if err != nil {
+		return nil, fmt.Errorf("actor fetch new request: %w", err)
+	}
+	req.Header.Set("Accept", "application/activity+json")
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("actor fetch request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("actor fetch: status %d", resp.StatusCode)
+	}
+	var actor Actor
+	if err := json.NewDecoder(resp.Body).Decode(&actor); err != nil {
+		return nil, fmt.Errorf("actor fetch decode: %w", err)
+	}
+	return &actor, nil
 }
 
 func (r *RemoteAccountResolver) fetchWebFingerActorIRI(ctx context.Context, acct string) (string, error) {
@@ -106,7 +128,7 @@ func (r *RemoteAccountResolver) fetchWebFingerActorIRI(ctx context.Context, acct
 		return "", fmt.Errorf("webfinger request: %w", err)
 	}
 	req.Header.Set("Accept", "application/jrd+json, application/json")
-	resp, err := r.webfingerClient.Do(req)
+	resp, err := r.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("webfinger do: %w", err)
 	}
@@ -139,8 +161,8 @@ func (r *RemoteAccountResolver) syncActorToStore(ctx context.Context, actor *Act
 			ID:           uid.New(),
 			Username:     username,
 			Domain:       &dom,
-			DisplayName:  strPtr(actor.Name),
-			Note:         strPtr(actor.Summary),
+			DisplayName:  &actor.Name,
+			Note:         &actor.Summary,
 			PublicKey:    actor.PublicKey.PublicKeyPem,
 			InboxURL:     actor.Inbox,
 			OutboxURL:    actor.Outbox,
@@ -160,8 +182,8 @@ func (r *RemoteAccountResolver) syncActorToStore(ctx context.Context, actor *Act
 	apRaw, _ := json.Marshal(actor)
 	_ = r.store.UpdateAccount(ctx, store.UpdateAccountInput{
 		ID:          existing.ID,
-		DisplayName: strPtr(actor.Name),
-		Note:        strPtr(actor.Summary),
+		DisplayName: &actor.Name,
+		Note:        &actor.Summary,
 		APRaw:       apRaw,
 		Bot:         actor.Type == actorTypeService,
 		Locked:      actor.ManuallyApprovesFollowers,

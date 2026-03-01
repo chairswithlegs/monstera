@@ -19,14 +19,13 @@ import (
 // Verifies HTTP Signature, parses the activity, and dispatches to InboxProcessor.
 // Always returns 202 Accepted per ActivityPub spec.
 type InboxHandler struct {
-	inbox    *ap.InboxProcessor
+	inbox    ap.Inbox
 	cache    cache.Store
 	verifier *ap.HTTPSignatureService
 }
 
 // NewInboxHandler returns a new InboxHandler.
-func NewInboxHandler(inbox *ap.InboxProcessor, cache cache.Store, cfg *config.Config, verifier *ap.HTTPSignatureService) *InboxHandler {
-
+func NewInboxHandler(inbox ap.Inbox, cache cache.Store, cfg *config.Config, verifier *ap.HTTPSignatureService) *InboxHandler {
 	return &InboxHandler{inbox: inbox, cache: cache, verifier: verifier}
 }
 

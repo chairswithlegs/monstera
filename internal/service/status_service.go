@@ -11,7 +11,7 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/uid"
 )
 
-// StatusFederationPublisher publishes status create/delete to federation (e.g. ap.OutboxPublisher).
+// StatusFederationPublisher publishes status create/delete to federation (e.g. ap.Outbox).
 type StatusFederationPublisher interface {
 	PublishStatus(ctx context.Context, status *domain.Status) error
 	DeleteStatus(ctx context.Context, status *domain.Status) error
@@ -27,7 +27,36 @@ func (*noopFederationPublisher) PublishStatus(context.Context, *domain.Status) e
 func (*noopFederationPublisher) DeleteStatus(context.Context, *domain.Status) error  { return nil }
 
 // StatusService handles status creation, lookup, and soft delete.
-type StatusService struct {
+type StatusService interface {
+	Create(ctx context.Context, in CreateStatusInput) (*domain.Status, error)
+	GetByID(ctx context.Context, id string) (*domain.Status, error)
+	GetByAPID(ctx context.Context, apID string) (*domain.Status, error)
+	CreateFromInbox(ctx context.Context, in CreateStatusFromInboxInput) (*domain.Status, error)
+	CreateBoostFromInbox(ctx context.Context, accountID string, activityAPID, objectStatusAPID string, apRaw []byte) (*domain.Status, error)
+	UpdateFromInbox(ctx context.Context, statusID string, st *domain.Status, in UpdateStatusFromInboxInput) error
+	SoftDelete(ctx context.Context, statusID string) error
+	DecrementReblogsCount(ctx context.Context, statusID string) error
+	GetReblogByAccountAndTarget(ctx context.Context, accountID, statusID string) (*domain.Status, error)
+	IncrementRepliesCount(ctx context.Context, statusID string) error
+	AttachMediaToStatus(ctx context.Context, mediaID, statusID, accountID string) error
+	GetFavouriteByAPID(ctx context.Context, apID string) (*domain.Favourite, error)
+	GetFavouriteByAccountAndStatus(ctx context.Context, accountID, statusID string) (*domain.Favourite, error)
+	CreateFavouriteFromInbox(ctx context.Context, accountID, statusID string, apID *string) (*domain.Favourite, error)
+	DeleteFavourite(ctx context.Context, accountID, statusID string) error
+	DecrementFavouritesCount(ctx context.Context, statusID string) error
+	GetByIDEnriched(ctx context.Context, id string) (CreateResult, error)
+	CreateWithContent(ctx context.Context, in CreateWithContentInput) (CreateResult, error)
+	Delete(ctx context.Context, id string) error
+	Reblog(ctx context.Context, accountID, username, statusID string) (CreateResult, error)
+	Unreblog(ctx context.Context, accountID, statusID string) (CreateResult, error)
+	Favourite(ctx context.Context, accountID, statusID string) (CreateResult, error)
+	Unfavourite(ctx context.Context, accountID, statusID string) (CreateResult, error)
+	GetContext(ctx context.Context, statusID string, viewerAccountID *string) (ContextResult, error)
+	GetFavouritedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]*domain.Account, error)
+	GetRebloggedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]*domain.Account, error)
+}
+
+type statusService struct {
 	store           store.Store
 	fed             StatusFederationPublisher
 	instanceBaseURL string
@@ -38,12 +67,12 @@ type StatusService struct {
 
 // NewStatusService returns a StatusService that uses the given store and instance URLs.
 // fed must be non-nil; use NoopFederationPublisher when federation is disabled. logger may be nil (federation failures will not be logged).
-func NewStatusService(s store.Store, fed StatusFederationPublisher, instanceBaseURL string, instanceDomain string, maxStatusChars int, logger *slog.Logger) *StatusService {
+func NewStatusService(s store.Store, fed StatusFederationPublisher, instanceBaseURL string, instanceDomain string, maxStatusChars int, logger *slog.Logger) StatusService {
 	if fed == nil {
 		panic("StatusService: fed must be non-nil. Use NoopFederationPublisher when federation is disabled")
 	}
 	base := strings.TrimSuffix(instanceBaseURL, "/")
-	return &StatusService{
+	return &statusService{
 		store:           s,
 		fed:             fed,
 		instanceBaseURL: base,
@@ -90,7 +119,7 @@ type CreateStatusInput struct {
 }
 
 // Create creates a status and increments the account's statuses count atomically.
-func (svc *StatusService) Create(ctx context.Context, in CreateStatusInput) (*domain.Status, error) {
+func (svc *statusService) Create(ctx context.Context, in CreateStatusInput) (*domain.Status, error) {
 	if in.AccountID == "" {
 		return nil, fmt.Errorf("CreateStatus: %w", domain.ErrValidation)
 	}
@@ -139,7 +168,7 @@ func (svc *StatusService) Create(ctx context.Context, in CreateStatusInput) (*do
 }
 
 // GetByID returns the status by ID, or ErrNotFound.
-func (svc *StatusService) GetByID(ctx context.Context, id string) (*domain.Status, error) {
+func (svc *statusService) GetByID(ctx context.Context, id string) (*domain.Status, error) {
 	st, err := svc.store.GetStatusByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("GetStatusByID(%s): %w", id, err)
@@ -147,8 +176,206 @@ func (svc *StatusService) GetByID(ctx context.Context, id string) (*domain.Statu
 	return st, nil
 }
 
+// GetByAPID returns the status by ActivityPub ID (URI), or ErrNotFound.
+func (svc *statusService) GetByAPID(ctx context.Context, apID string) (*domain.Status, error) {
+	st, err := svc.store.GetStatusByAPID(ctx, apID)
+	if err != nil {
+		return nil, fmt.Errorf("GetStatusByAPID(%s): %w", apID, err)
+	}
+	return st, nil
+}
+
+// CreateStatusFromInboxInput is the input for creating a status from an incoming Note (inbox).
+type CreateStatusFromInboxInput struct {
+	AccountID      string
+	URI            string
+	Text           *string
+	Content        *string
+	ContentWarning *string
+	Visibility     string
+	Language       *string
+	InReplyToID    *string
+	APID           string
+	ApRaw          []byte
+	Sensitive      bool
+}
+
+// CreateFromInbox creates a status from an incoming Note. Does not publish to federation or increment account statuses count.
+func (svc *statusService) CreateFromInbox(ctx context.Context, in CreateStatusFromInboxInput) (*domain.Status, error) {
+	st, err := svc.store.CreateStatus(ctx, store.CreateStatusInput{
+		ID:             uid.New(),
+		URI:            in.URI,
+		AccountID:      in.AccountID,
+		Text:           in.Text,
+		Content:        in.Content,
+		ContentWarning: in.ContentWarning,
+		Visibility:     in.Visibility,
+		Language:       in.Language,
+		InReplyToID:    in.InReplyToID,
+		APID:           in.APID,
+		ApRaw:          in.ApRaw,
+		Sensitive:      in.Sensitive,
+		Local:          false,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateFromInbox: %w", err)
+	}
+	return st, nil
+}
+
+// CreateBoostFromInbox creates a reblog status from an incoming Announce. Increments reblogs count on the original. Does not publish to federation.
+func (svc *statusService) CreateBoostFromInbox(ctx context.Context, accountID string, activityAPID, objectStatusAPID string, apRaw []byte) (*domain.Status, error) {
+	original, err := svc.store.GetStatusByAPID(ctx, objectStatusAPID)
+	if err != nil {
+		return nil, fmt.Errorf("CreateBoostFromInbox GetStatusByAPID: %w", err)
+	}
+	reblogOfID := original.ID
+	st, err := svc.store.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         uid.New(),
+		URI:        activityAPID,
+		AccountID:  accountID,
+		Visibility: domain.VisibilityPublic,
+		ReblogOfID: &reblogOfID,
+		APID:       activityAPID,
+		ApRaw:      apRaw,
+		Local:      false,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateBoostFromInbox CreateStatus: %w", err)
+	}
+	if err := svc.store.IncrementReblogsCount(ctx, original.ID); err != nil {
+		return nil, fmt.Errorf("CreateBoostFromInbox IncrementReblogsCount: %w", err)
+	}
+	return st, nil
+}
+
+// UpdateStatusFromInboxInput is the input for updating a status from an incoming Update{Note}.
+type UpdateStatusFromInboxInput struct {
+	Text           *string
+	Content        *string
+	ContentWarning *string
+	Sensitive      bool
+}
+
+// UpdateFromInbox creates a status edit record and updates the status (for incoming Update{Note}).
+func (svc *statusService) UpdateFromInbox(ctx context.Context, statusID string, st *domain.Status, in UpdateStatusFromInboxInput) error {
+	if err := svc.store.CreateStatusEdit(ctx, store.CreateStatusEditInput{
+		ID:             uid.New(),
+		StatusID:       statusID,
+		AccountID:      st.AccountID,
+		Text:           st.Text,
+		Content:        st.Content,
+		ContentWarning: st.ContentWarning,
+		Sensitive:      st.Sensitive,
+	}); err != nil {
+		return fmt.Errorf("UpdateFromInbox CreateStatusEdit: %w", err)
+	}
+	if err := svc.store.UpdateStatus(ctx, store.UpdateStatusInput{
+		ID:             statusID,
+		Text:           in.Text,
+		Content:        in.Content,
+		ContentWarning: in.ContentWarning,
+		Sensitive:      in.Sensitive,
+	}); err != nil {
+		return fmt.Errorf("UpdateFromInbox UpdateStatus: %w", err)
+	}
+	return nil
+}
+
+// SoftDelete soft-deletes the status (for Delete{Note} or Undo Announce). Does not decrement account statuses count or publish.
+func (svc *statusService) SoftDelete(ctx context.Context, statusID string) error {
+	if err := svc.store.SoftDeleteStatus(ctx, statusID); err != nil {
+		return fmt.Errorf("SoftDelete(%s): %w", statusID, err)
+	}
+	return nil
+}
+
+// DecrementReblogsCount decrements the reblogs count on the status (for Undo Announce).
+func (svc *statusService) DecrementReblogsCount(ctx context.Context, statusID string) error {
+	if err := svc.store.DecrementReblogsCount(ctx, statusID); err != nil {
+		return fmt.Errorf("DecrementReblogsCount(%s): %w", statusID, err)
+	}
+	return nil
+}
+
+// GetReblogByAccountAndTarget returns the boost status for the given account and original status (for Undo Announce).
+func (svc *statusService) GetReblogByAccountAndTarget(ctx context.Context, accountID, statusID string) (*domain.Status, error) {
+	st, err := svc.store.GetReblogByAccountAndTarget(ctx, accountID, statusID)
+	if err != nil {
+		return nil, fmt.Errorf("GetReblogByAccountAndTarget: %w", err)
+	}
+	return st, nil
+}
+
+// IncrementRepliesCount increments the replies count on the parent status (for Create note in reply).
+func (svc *statusService) IncrementRepliesCount(ctx context.Context, statusID string) error {
+	if err := svc.store.IncrementRepliesCount(ctx, statusID); err != nil {
+		return fmt.Errorf("IncrementRepliesCount(%s): %w", statusID, err)
+	}
+	return nil
+}
+
+// AttachMediaToStatus attaches a media attachment to a status (for Create note with attachments).
+func (svc *statusService) AttachMediaToStatus(ctx context.Context, mediaID, statusID, accountID string) error {
+	if err := svc.store.AttachMediaToStatus(ctx, mediaID, statusID, accountID); err != nil {
+		return fmt.Errorf("AttachMediaToStatus: %w", err)
+	}
+	return nil
+}
+
+// GetFavouriteByAPID returns the favourite by its ActivityPub ID (for Undo Like).
+func (svc *statusService) GetFavouriteByAPID(ctx context.Context, apID string) (*domain.Favourite, error) {
+	fav, err := svc.store.GetFavouriteByAPID(ctx, apID)
+	if err != nil {
+		return nil, fmt.Errorf("GetFavouriteByAPID: %w", err)
+	}
+	return fav, nil
+}
+
+// GetFavouriteByAccountAndStatus returns the favourite for the given account and status (for Undo Like).
+func (svc *statusService) GetFavouriteByAccountAndStatus(ctx context.Context, accountID, statusID string) (*domain.Favourite, error) {
+	fav, err := svc.store.GetFavouriteByAccountAndStatus(ctx, accountID, statusID)
+	if err != nil {
+		return nil, fmt.Errorf("GetFavouriteByAccountAndStatus: %w", err)
+	}
+	return fav, nil
+}
+
+// CreateFavouriteFromInbox creates a favourite from an incoming Like. Increments favourites count. Does not create notification (caller does).
+func (svc *statusService) CreateFavouriteFromInbox(ctx context.Context, accountID, statusID string, apID *string) (*domain.Favourite, error) {
+	fav, err := svc.store.CreateFavourite(ctx, store.CreateFavouriteInput{
+		ID:        uid.New(),
+		AccountID: accountID,
+		StatusID:  statusID,
+		APID:      apID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateFavouriteFromInbox: %w", err)
+	}
+	if err := svc.store.IncrementFavouritesCount(ctx, statusID); err != nil {
+		return nil, fmt.Errorf("CreateFavouriteFromInbox IncrementFavouritesCount: %w", err)
+	}
+	return fav, nil
+}
+
+// DeleteFavourite removes the favourite (for Undo Like).
+func (svc *statusService) DeleteFavourite(ctx context.Context, accountID, statusID string) error {
+	if err := svc.store.DeleteFavourite(ctx, accountID, statusID); err != nil {
+		return fmt.Errorf("DeleteFavourite: %w", err)
+	}
+	return nil
+}
+
+// DecrementFavouritesCount decrements the favourites count on the status (for Undo Like).
+func (svc *statusService) DecrementFavouritesCount(ctx context.Context, statusID string) error {
+	if err := svc.store.DecrementFavouritesCount(ctx, statusID); err != nil {
+		return fmt.Errorf("DecrementFavouritesCount(%s): %w", statusID, err)
+	}
+	return nil
+}
+
 // GetByIDEnriched returns the status with author, mentions, tags, and media for API response.
-func (svc *StatusService) GetByIDEnriched(ctx context.Context, id string) (CreateResult, error) {
+func (svc *statusService) GetByIDEnriched(ctx context.Context, id string) (CreateResult, error) {
 	st, err := svc.store.GetStatusByID(ctx, id)
 	if err != nil {
 		return CreateResult{}, fmt.Errorf("GetStatusByID(%s): %w", id, err)
@@ -184,7 +411,7 @@ func (svc *StatusService) GetByIDEnriched(ctx context.Context, id string) (Creat
 // CreateWithContent creates a status from plain text: validates, renders content (mentions, hashtags),
 // persists status with mentions, hashtags, and mention notifications in one transaction,
 // then loads author, mentions, tags, and media for the response.
-func (svc *StatusService) CreateWithContent(ctx context.Context, in CreateWithContentInput) (CreateResult, error) {
+func (svc *statusService) CreateWithContent(ctx context.Context, in CreateWithContentInput) (CreateResult, error) {
 	text := strings.TrimSpace(in.Text)
 	if text == "" && len(in.MediaIDs) == 0 {
 		return CreateResult{}, fmt.Errorf("CreateWithContent: %w", domain.ErrValidation)
@@ -297,7 +524,7 @@ func resolveVisibilityService(reqVis, defaultVis string) string {
 	return domain.VisibilityPublic
 }
 
-func (svc *StatusService) mentionResolver(ctx context.Context) MentionResolver {
+func (svc *statusService) mentionResolver(ctx context.Context) MentionResolver {
 	return func(username string, domain *string) *domain.Account {
 		if domain == nil || *domain == "" {
 			a, _ := svc.store.GetLocalAccountByUsername(ctx, username)
@@ -383,7 +610,7 @@ func createStatusWithContentTx(
 }
 
 // Delete soft-deletes the status and decrements the account's statuses count atomically.
-func (svc *StatusService) Delete(ctx context.Context, id string) error {
+func (svc *statusService) Delete(ctx context.Context, id string) error {
 	st, err := svc.store.GetStatusByID(ctx, id)
 	if err != nil {
 		return fmt.Errorf("Delete(%s): %w", id, err)
@@ -404,7 +631,7 @@ func (svc *StatusService) Delete(ctx context.Context, id string) error {
 }
 
 // Reblog creates a boost status for the given status. Returns the new boost status (with nested reblog). Errors: ErrNotFound, ErrForbidden (private/direct), ErrConflict (already reblogged).
-func (svc *StatusService) Reblog(ctx context.Context, accountID, username, statusID string) (CreateResult, error) {
+func (svc *statusService) Reblog(ctx context.Context, accountID, username, statusID string) (CreateResult, error) {
 	orig, err := svc.store.GetStatusByID(ctx, statusID)
 	if err != nil {
 		return CreateResult{}, fmt.Errorf("Reblog GetStatusByID: %w", err)
@@ -462,7 +689,7 @@ func (svc *StatusService) Reblog(ctx context.Context, accountID, username, statu
 }
 
 // Unreblog removes the viewer's reblog of the given status. Returns the original status (no nested reblog).
-func (svc *StatusService) Unreblog(ctx context.Context, accountID, statusID string) (CreateResult, error) {
+func (svc *statusService) Unreblog(ctx context.Context, accountID, statusID string) (CreateResult, error) {
 	boost, err := svc.store.GetReblogByAccountAndTarget(ctx, accountID, statusID)
 	if err != nil || boost == nil {
 		result, getErr := svc.GetByIDEnriched(ctx, statusID)
@@ -486,7 +713,7 @@ func (svc *StatusService) Unreblog(ctx context.Context, accountID, statusID stri
 }
 
 // Favourite adds a favourite for the viewer on the status. Returns the status with favourited true.
-func (svc *StatusService) Favourite(ctx context.Context, accountID, statusID string) (CreateResult, error) {
+func (svc *statusService) Favourite(ctx context.Context, accountID, statusID string) (CreateResult, error) {
 	st, err := svc.store.GetStatusByID(ctx, statusID)
 	if err != nil || st.DeletedAt != nil {
 		return CreateResult{}, fmt.Errorf("Favourite: %w", domain.ErrNotFound)
@@ -517,7 +744,7 @@ func (svc *StatusService) Favourite(ctx context.Context, accountID, statusID str
 }
 
 // Unfavourite removes the viewer's favourite. Returns the status with favourited false.
-func (svc *StatusService) Unfavourite(ctx context.Context, accountID, statusID string) (CreateResult, error) {
+func (svc *statusService) Unfavourite(ctx context.Context, accountID, statusID string) (CreateResult, error) {
 	_ = svc.store.DeleteFavourite(ctx, accountID, statusID)
 	_ = svc.store.DecrementFavouritesCount(ctx, statusID)
 	return svc.GetByIDEnriched(ctx, statusID)
@@ -530,7 +757,7 @@ type ContextResult struct {
 }
 
 // GetContext returns the reply-chain ancestors and descendants for the status. Visibility filtering is applied.
-func (svc *StatusService) GetContext(ctx context.Context, statusID string, viewerAccountID *string) (ContextResult, error) {
+func (svc *statusService) GetContext(ctx context.Context, statusID string, viewerAccountID *string) (ContextResult, error) {
 	ancestors, err := svc.store.GetStatusAncestors(ctx, statusID)
 	if err != nil {
 		return ContextResult{}, fmt.Errorf("GetStatusAncestors: %w", err)
@@ -545,7 +772,7 @@ func (svc *StatusService) GetContext(ctx context.Context, statusID string, viewe
 }
 
 // GetFavouritedBy returns the accounts that favourited the status (paginated).
-func (svc *StatusService) GetFavouritedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]*domain.Account, error) {
+func (svc *statusService) GetFavouritedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]*domain.Account, error) {
 	accounts, err := svc.store.GetStatusFavouritedBy(ctx, statusID, maxID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("GetStatusFavouritedBy: %w", err)
@@ -558,7 +785,7 @@ func (svc *StatusService) GetFavouritedBy(ctx context.Context, statusID string, 
 }
 
 // GetRebloggedBy returns the accounts that reblogged the status (paginated).
-func (svc *StatusService) GetRebloggedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]*domain.Account, error) {
+func (svc *statusService) GetRebloggedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]*domain.Account, error) {
 	accounts, err := svc.store.GetRebloggedBy(ctx, statusID, maxID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("GetRebloggedBy: %w", err)

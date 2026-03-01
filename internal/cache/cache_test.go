@@ -30,12 +30,6 @@ func TestNew_UnknownDriver(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown driver")
 }
 
-func TestNew_RedisRequiresURL(t *testing.T) {
-	_, err := New(Config{Driver: "redis"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "CACHE_REDIS_URL")
-}
-
 func TestGetJSON_SetJSON(t *testing.T) {
 	ctx := context.Background()
 	s, err := New(Config{Driver: "memory"})

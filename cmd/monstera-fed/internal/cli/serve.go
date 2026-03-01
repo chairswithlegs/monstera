@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -30,7 +29,6 @@ import (
 	_ "github.com/chairswithlegs/monstera-fed/internal/media/local"
 	_ "github.com/chairswithlegs/monstera-fed/internal/media/s3"
 	"github.com/chairswithlegs/monstera-fed/internal/nats"
-	"github.com/chairswithlegs/monstera-fed/internal/nats/federation"
 	"github.com/chairswithlegs/monstera-fed/internal/oauth"
 	"github.com/chairswithlegs/monstera-fed/internal/observability"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
@@ -89,9 +87,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	defer natsClient.Close()
 
 	cacheStore, err := cache.New(cache.Config{
-		Driver:   cfg.CacheDriver,
-		RedisURL: cfg.CacheRedisURL,
-		Logger:   logger,
+		Driver: cfg.CacheDriver,
 	})
 	if err != nil {
 		return fmt.Errorf("cache: %w", err)
@@ -129,15 +125,23 @@ func runServe(_ *cobra.Command, _ []string) error {
 
 	instanceBaseURL := "https://" + cfg.InstanceDomain
 	accountSvc := service.NewAccountService(s, instanceBaseURL)
-	fedProducer := federation.NewFederationProducer(natsClient.JS)
-	outboxPublisher := ap.NewOutboxPublisher(s, fedProducer, cfg)
-	statusSvc := service.NewStatusService(s, outboxPublisher, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars, logger)
+	blocklistCache := ap.NewBlocklistCache(s, logger)
+	if err := blocklistCache.Refresh(ctx); err != nil {
+		logger.Warn("blocklist refresh failed", slog.Any("error", err))
+	}
+	if err := nats.EnsureStreams(ctx, natsClient.JS); err != nil {
+		return fmt.Errorf("nats: ensure streams: %w", err)
+	}
+	signatureService := ap.NewHTTPSignatureService(cfg, cacheStore, accountSvc)
+	outboxWorker := ap.NewOutboxWorker(natsClient.JS, blocklistCache, signatureService, cfg)
+	outbox := ap.NewOutbox(s, outboxWorker, cfg)
+	statusSvc := service.NewStatusService(s, outbox, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars, logger)
 	timelineSvc := service.NewTimelineService(s)
 	instanceSvc := service.NewInstanceService(s)
-	followSvc := service.NewFollowService(s, outboxPublisher, nil)
+	followSvc := service.NewFollowService(s, outbox, nil)
 	notificationSvc := service.NewNotificationService(s)
 	mediaSvc := service.NewMediaService(s, mediaStore, cfg.MediaMaxBytes)
-	remoteResolver, actorFetchForInbox := setupFederationResolver(s, cfg)
+	remoteResolver := ap.NewRemoteAccountResolver(s, cfg.InstanceDomain, cfg)
 	searchSvc := service.NewSearchService(s, remoteResolver, logger)
 
 	oauthServer := oauth.NewServer(s, cacheStore, logger)
@@ -150,21 +154,23 @@ func runServe(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("secret key: %w", err)
 	}
 
-	blocklistCache := ap.NewBlocklistCache(s, logger)
-	if err := blocklistCache.Refresh(ctx); err != nil {
-		logger.Warn("blocklist refresh failed", slog.Any("error", err))
-	}
-	if err := nats.EnsureStreams(ctx, natsClient.JS); err != nil {
-		return fmt.Errorf("nats: ensure streams: %w", err)
-	}
-	signatureService := ap.NewHTTPSignatureService(cfg, cacheStore, s)
-	fedWorker := federation.NewFederationWorker(natsClient.JS, fedProducer, blocklistCache, signatureService, cfg)
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	go func() {
-		_ = fedWorker.Start(workerCtx)
+		_ = outboxWorker.Start(workerCtx)
 	}()
 	defer workerCancel()
-	inboxProcessor := ap.NewInboxProcessor(s, cacheStore, blocklistCache, nil, outboxPublisher, cfg, actorFetchForInbox)
+	inboxProcessor := ap.NewInbox(
+		accountSvc,
+		followSvc,
+		notificationSvc,
+		statusSvc,
+		mediaSvc,
+		remoteResolver,
+		cacheStore,
+		blocklistCache,
+		outbox,
+		cfg,
+	)
 
 	// Setup handlers and middleware
 	oauthHandler := oauthhandlers.NewHandler(oauthServer, s, loginTmpl, cfg.InstanceName, secretKey)
@@ -238,24 +244,4 @@ func runServe(_ *cobra.Command, _ []string) error {
 	natsClient.Close()
 	logger.Info("server stopped")
 	return nil
-}
-
-// setupFederationResolver returns the remote resolver and actor fetch for inbox.
-// When FederationInsecureSkipTLS is true, the resolver uses an HTTP client with InsecureSkipVerify for development.
-func setupFederationResolver(s store.Store, cfg *config.Config) (*ap.RemoteAccountResolver, func(context.Context, string) (*ap.Actor, error)) {
-	if !cfg.FederationInsecureSkipTLS {
-		actorFetch := ap.ActorFetch
-		return ap.NewRemoteAccountResolver(s, actorFetch, cfg.InstanceDomain, nil), actorFetch
-	}
-	fedClient := &http.Client{
-		Timeout: 10 * time.Second,
-		Transport: &http.Transport{
-			//nolint:gosec // G402: intentional for development federation with self-signed certs
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
-	}
-	actorFetchForInbox := ap.ActorFetchWithClient(fedClient)
-	remoteResolver := ap.NewRemoteAccountResolver(s, actorFetchForInbox, cfg.InstanceDomain, fedClient)
-	return remoteResolver, actorFetchForInbox
 }

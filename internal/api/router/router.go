@@ -20,7 +20,7 @@ import (
 // Deps holds dependencies required to build the HTTP router.
 type Deps struct {
 	OAuthServer     *oauthpkg.Server
-	AccountsService *service.AccountService
+	AccountsService service.AccountService
 	Health          *api.HealthChecker
 	OAuthHandler    *oauthhandlers.Handler
 	Accounts        *mastodon.AccountsHandler

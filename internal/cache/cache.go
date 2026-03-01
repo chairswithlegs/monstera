@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 )
 
@@ -39,22 +38,15 @@ type Pinger interface {
 
 // Config holds the fields the cache factory needs.
 type Config struct {
-	Driver   string // "memory" | "redis"
-	RedisURL string // required when Driver == "redis"
-	Logger   *slog.Logger
+	Driver string // "memory"
 }
 
 // New returns the Store implementation selected by cfg.Driver.
 func New(cfg Config) (Store, error) {
 	switch cfg.Driver {
 	case "memory", "":
-		return NewMemory(cfg.Logger)
-	case "redis":
-		if cfg.RedisURL == "" {
-			return nil, errors.New("cache: CACHE_REDIS_URL is required when CACHE_DRIVER=redis")
-		}
-		return NewRedis(cfg.RedisURL)
+		return NewMemory()
 	default:
-		return nil, fmt.Errorf("cache: unknown driver %q (valid: memory, redis)", cfg.Driver)
+		return nil, fmt.Errorf("cache: unknown driver %q (valid: memory)", cfg.Driver)
 	}
 }

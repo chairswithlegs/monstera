@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/dgraph-io/ristretto/v2"
@@ -12,12 +11,11 @@ import (
 
 // MemoryStore is the in-memory cache implementation.
 type MemoryStore struct {
-	c      *ristretto.Cache[string, []byte]
-	logger *slog.Logger
+	c *ristretto.Cache[string, []byte]
 }
 
 // NewMemory creates a ristretto-backed in-memory Store.
-func NewMemory(logger *slog.Logger) (*MemoryStore, error) {
+func NewMemory() (*MemoryStore, error) {
 	c, err := ristretto.NewCache(&ristretto.Config[string, []byte]{
 		NumCounters: 1_000_000,
 		MaxCost:     128 << 20,
@@ -26,7 +24,7 @@ func NewMemory(logger *slog.Logger) (*MemoryStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cache/memory: init ristretto: %w", err)
 	}
-	return &MemoryStore{c: c, logger: logger}, nil
+	return &MemoryStore{c: c}, nil
 }
 
 // Get retrieves the value for key. Returns ErrCacheMiss if the key is absent or expired.

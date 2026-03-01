@@ -14,12 +14,12 @@ import (
 
 // TimelinesHandler handles timeline Mastodon API endpoints.
 type TimelinesHandler struct {
-	timeline       *service.TimelineService
+	timeline       service.TimelineService
 	instanceDomain string
 }
 
 // NewTimelinesHandler returns a new TimelinesHandler.
-func NewTimelinesHandler(timeline *service.TimelineService, instanceDomain string) *TimelinesHandler {
+func NewTimelinesHandler(timeline service.TimelineService, instanceDomain string) *TimelinesHandler {
 	return &TimelinesHandler{timeline: timeline, instanceDomain: instanceDomain}
 }
 

@@ -62,7 +62,7 @@ This is the highest-risk stage — schema bugs found later are expensive. Invest
 | `internal/media/s3` | S3-compatible storage |
 | `internal/email/noop` | No-op sender (dev/testing) |
 | `internal/email/smtp` | SMTP sender |
-| `internal/nats/` | Client wrapper, `EnsureStreams`, federation producer |
+| `internal/nats/` | Client wrapper, `EnsureStreams`, stream/consumer definitions |
 
 **Validation:**
 - Media: unit tests with a temp directory (local), integration test with MinIO (S3).
@@ -146,7 +146,7 @@ This is the most important validation milestone in the project. Client compatibi
 
 ## Stage 7 — Federation
 
-**Packages:** `activitypub/inbox.go`, `activitypub/outbox.go`, `nats/federation/` (producer + worker)
+**Packages:** `activitypub/inbox.go`, `activitypub/outbox.go`, `activitypub/outbox_worker.go`, `nats/` (streams)
 
 | Component | Key deliverables |
 |-----------|-----------------|
