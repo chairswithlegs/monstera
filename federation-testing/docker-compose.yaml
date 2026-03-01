@@ -1,20 +1,3 @@
-# Two Monstera-fed instances behind Caddy for local federation testing.
-#
-# Prerequisites:
-#   Add to /etc/hosts:  127.0.0.1  monstera.local monstera2.local
-#
-# Run from this directory:
-#   docker compose up -d
-#
-# Then run migrations and seed for each instance (from repo root):
-#   DATABASE_URL="postgres://monstera:monstera@localhost:5433/monstera_fed?sslmode=disable" ./bin/monstera-fed migrate up
-#   INSTANCE_DOMAIN=monstera.local DATABASE_URL="postgres://monstera:monstera@localhost:5433/monstera_fed?sslmode=disable" make seed
-#
-#   DATABASE_URL="postgres://monstera:monstera@localhost:5434/monstera_fed?sslmode=disable" ./bin/monstera-fed migrate up
-#   INSTANCE_DOMAIN=monstera2.local DATABASE_URL="postgres://monstera:monstera@localhost:5434/monstera_fed?sslmode=disable" make seed
-#
-# Open https://monstera.local and https://monstera2.local (accept self-signed certs).
-
 services:
   caddy:
     image: caddy:2-alpine
