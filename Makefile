@@ -1,44 +1,68 @@
-.PHONY: build build-seed seed test test-integration lint lint-fix
+.PHONY: start stop start-dev stop-dev test test-integration migrate-up migrate-down seed lint lint-fix
 
-build:
-	CGO_ENABLED=0 go build -o bin/monstera-fed ./cmd/monstera-fed
+# Load .env.local if present (KEY=value, one per line; comments on own line)
+ifneq (,$(wildcard .env.local))
+include .env.local
+export
+endif
 
-build-seed:
-	CGO_ENABLED=0 go build -o bin/seed ./cmd/seed
+UI_PID_FILE := .ui-dev.pid
+MONSTERA_PID_FILE := .monstera-dev.pid
 
-# seed runs the seeder against the docker-compose stack (postgres on localhost:5433).
-# Docker stack must be running
-seed: build-seed
-	DATABASE_URL="postgres://monstera:monstera@localhost:5433/monstera_fed?sslmode=disable" \
-	NATS_URL="nats://localhost:4222" \
-	INSTANCE_DOMAIN=localhost:8080 \
-	INSTANCE_NAME="Monstera-fed (local)" \
-	MEDIA_BASE_URL=http://localhost:8080/media \
-	MEDIA_LOCAL_PATH=./data/media \
-	EMAIL_FROM=noreply@localhost \
-	SECRET_KEY_BASE="0000000000000000000000000000000000000000000000000000000000000000" \
-	./bin/seed
+start:
+	docker compose -f docker-compose.yaml --profile app up --build -d --wait
+	sleep 5 # wait for the services to be ready
+	
+	# Run migrations and seed
+	make migrate-down
+	make migrate-up
+	make seed
+
+stop:
+	docker compose -f docker-compose.yaml --profile app down
+
+start-dev:
+	docker compose -f docker-compose.yaml --profile dependencies up --build -d --wait
+	sleep 5 # wait for the services to be ready
+	
+	# Run migrations and seed
+	make migrate-down
+	make migrate-up
+	make seed
+
+	# Run server and UI in parallel
+	@trap 'kill $$MONSTERA_PID $$UI_PID 2>/dev/null; docker compose -f docker-compose.yaml --profile dependencies down; exit 0' INT TERM; \
+	go run ./cmd/server serve & MONSTERA_PID=$$!; \
+	(cd ui && npm run dev) & UI_PID=$$!; \
+	wait
 
 test:
 	go test -race -count=1 ./...
 
-test-integration: build
-	docker compose -f docker-compose.integration-tests.yaml up -d --wait
+test-integration:
+	# Start the dependencies
+	docker compose -f docker-compose.yaml --profile dependencies up -d --wait
 	sleep 5 # wait for the services to be ready
-	DATABASE_URL="postgres://monstera:monstera@localhost:5433/monstera_fed?sslmode=disable" \
-		./bin/monstera-fed migrate down-all || true
-	DATABASE_URL="postgres://monstera:monstera@localhost:5433/monstera_fed?sslmode=disable" \
-		./bin/monstera-fed migrate up
-	DATABASE_URL="postgres://monstera:monstera@localhost:5433/monstera_fed?sslmode=disable" \
-	NATS_URL="nats://localhost:4222" \
-	AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
-	MINIO_ENDPOINT=http://localhost:9000 S3_TEST_BUCKET=test-bucket \
-	go test -race -count=1 -tags=integration -p 1 ./...
-	docker compose -f docker-compose.integration-tests.yaml down
 
-migrate:
-	DATABASE_URL="postgres://monstera:monstera@localhost:5433/monstera_fed?sslmode=disable" \
-	./bin/monstera-fed migrate up
+	# Run migrations and seed
+	make migrate-down
+	make migrate-up
+	make seed
+
+	# Run the tests
+	go test -race -count=1 -tags=integration ./...; \
+	EXIT=$$?; \
+	docker compose -f docker-compose.yaml --profile dependencies down; \
+	exit $$EXIT
+
+migrate-up:
+	go run ./cmd/server migrate up
+
+migrate-down:
+	go run ./cmd/server migrate down-all || true
+
+seed:
+	go run ./cmd/seed
 
 lint:
 	golangci-lint run

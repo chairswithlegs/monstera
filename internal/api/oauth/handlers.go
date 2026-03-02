@@ -1,62 +1,39 @@
 package oauth
 
 import (
-	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/chairswithlegs/monstera-fed/internal/api"
+	"github.com/chairswithlegs/monstera-fed/internal/config"
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	oauthpkg "github.com/chairswithlegs/monstera-fed/internal/oauth"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
 	"golang.org/x/crypto/bcrypt"
 )
 
-//go:embed templates/login.html
-var templatesFS embed.FS
-
 // Handler holds dependencies for the OAuth HTTP endpoints.
 type Handler struct {
-	oauth        *oauthpkg.Server
-	store        store.Store
-	loginTmpl    *template.Template
-	instanceName string
-	secretKey    []byte
-}
-
-// ParseLoginTemplate parses the embedded login template.
-func ParseLoginTemplate() (*template.Template, error) {
-	data, err := templatesFS.ReadFile("templates/login.html")
-	if err != nil {
-		return nil, fmt.Errorf("read login template: %w", err)
-	}
-	tmpl, err := template.New("login").Parse(string(data))
-	if err != nil {
-		return nil, fmt.Errorf("parse login template: %w", err)
-	}
-	return tmpl, nil
+	oauth *oauthpkg.Server
+	store store.Store
+	cfg   *config.Config
 }
 
 // NewHandler constructs an OAuth Handler.
 func NewHandler(
 	oauth *oauthpkg.Server,
 	store store.Store,
-	loginTmpl *template.Template,
-	instanceName string,
-	secretKey []byte,
+	cfg *config.Config,
 ) *Handler {
 	return &Handler{
-		oauth:        oauth,
-		store:        store,
-		loginTmpl:    loginTmpl,
-		instanceName: instanceName,
-		secretKey:    secretKey,
+		oauth: oauth,
+		store: store,
+		cfg:   cfg,
 	}
 }
 
@@ -135,22 +112,8 @@ func (h *Handler) POSTRegisterApp(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusOK, app)
 }
 
-// loginPageData is the template data for login.html.
-type loginPageData struct {
-	InstanceName        string
-	AppName             string
-	Scopes              string
-	ClientID            string
-	RedirectURI         string
-	ResponseType        string
-	Scope               string
-	State               string
-	CodeChallenge       string
-	CodeChallengeMethod string
-	Error               string
-}
-
 // GETAuthorize handles GET /oauth/authorize.
+// Redirects to the UI's login page with all OAuth params.
 func (h *Handler) GETAuthorize(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
@@ -186,48 +149,54 @@ func (h *Handler) GETAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !isValidRedirectURI(redirectURI, app.RedirectURIs) {
+	if !h.isValidRedirectURI(redirectURI, app) {
 		api.HandleError(w, r, api.NewBadRequestError("redirect_uri is not registered"))
 		return
 	}
 
-	data := loginPageData{
-		InstanceName:        h.instanceName,
-		AppName:             app.Name,
-		Scopes:              scope,
-		ClientID:            clientID,
-		RedirectURI:         redirectURI,
-		ResponseType:        responseType,
-		Scope:               scope,
-		State:               state,
-		CodeChallenge:       codeChallenge,
-		CodeChallengeMethod: codeChallengeMethod,
+	// Forward all OAuth params to the Next.js login page
+	loginURL, err := url.Parse(fmt.Sprintf("%s/login", h.cfg.UIDomain))
+	if err != nil {
+		slog.ErrorContext(r.Context(), "failed to parse login URL", slog.Any("error", err))
+		api.HandleError(w, r, api.ErrInternalServerError)
+		return
 	}
+	loginQuery := loginURL.Query()
+	loginQuery.Set("client_id", clientID)
+	loginQuery.Set("redirect_uri", redirectURI)
+	loginQuery.Set("response_type", responseType)
+	loginQuery.Set("scope", scope)
+	loginQuery.Set("code_challenge", codeChallenge)
+	loginQuery.Set("code_challenge_method", codeChallengeMethod)
+	if state != "" {
+		loginQuery.Set("state", state)
+	}
+	loginURL.RawQuery = loginQuery.Encode()
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	if err := h.loginTmpl.Execute(w, data); err != nil {
-		slog.Default().Error("render login template", slog.Any("error", err))
-	}
+	http.Redirect(w, r, loginURL.String(), http.StatusFound)
 }
 
-// POSTAuthorizeSubmit handles POST /oauth/authorize.
-func (h *Handler) POSTAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid form data"))
+type loginRequest struct {
+	Email               string `json:"email"`
+	Password            string `json:"password"`
+	ClientID            string `json:"client_id"`
+	RedirectURI         string `json:"redirect_uri"`
+	Scope               string `json:"scope"`
+	State               string `json:"state"`
+	CodeChallenge       string `json:"code_challenge"`
+	CodeChallengeMethod string `json:"code_challenge_method"`
+}
+
+// POSTLogin handles POST /oauth/login.
+// Validates credentials and authorizes the application.
+func (h *Handler) POSTLogin(w http.ResponseWriter, r *http.Request) {
+	var body loginRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		api.HandleError(w, r, api.NewBadRequestError("invalid request body"))
 		return
 	}
 
-	email := r.FormValue("email")
-	password := r.FormValue("password")
-	clientID := r.FormValue("client_id")
-	redirectURI := r.FormValue("redirect_uri")
-	scope := r.FormValue("scope")
-	state := r.FormValue("state")
-	codeChallenge := r.FormValue("code_challenge")
-	codeChallengeMethod := r.FormValue("code_challenge_method")
-
-	app, err := h.store.GetApplicationByClientID(r.Context(), clientID)
+	app, err := h.store.GetApplicationByClientID(r.Context(), body.ClientID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.NewBadRequestError("invalid client_id"))
@@ -237,50 +206,73 @@ func (h *Handler) POSTAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.store.GetUserByEmail(r.Context(), email)
-	if err != nil {
-		h.renderLoginError(w, "Invalid email or password", app.Name, clientID, redirectURI, scope, state, codeChallenge, codeChallengeMethod)
+	if !h.isValidRedirectURI(body.RedirectURI, app) {
+		api.HandleError(w, r, api.NewBadRequestError("redirect_uri is not registered"))
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		h.renderLoginError(w, "Invalid email or password", app.Name, clientID, redirectURI, scope, state, codeChallenge, codeChallengeMethod)
+	user, err := h.store.GetUserByEmail(r.Context(), body.Email)
+	if err != nil {
+		api.HandleError(w, r, api.NewUnauthorizedError("invalid email or password"))
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(body.Password)); err != nil {
+		api.HandleError(w, r, api.NewUnauthorizedError("invalid email or password"))
 		return
 	}
 
 	if user.ConfirmedAt == nil {
-		h.renderLoginError(w, "Please confirm your email address before signing in", app.Name, clientID, redirectURI, scope, state, codeChallenge, codeChallengeMethod)
+		api.HandleError(w, r, api.NewUnauthorizedError("please confirm your email address before signing in"))
 		return
 	}
 
 	account, err := h.store.GetAccountByID(r.Context(), user.AccountID)
 	if err != nil || account.Suspended {
-		h.renderLoginError(w, "Your account has been suspended", app.Name, clientID, redirectURI, scope, state, codeChallenge, codeChallengeMethod)
+		api.HandleError(w, r, api.NewUnauthorizedError("your account has been suspended"))
 		return
 	}
 
 	code, err := h.oauth.AuthorizeRequest(r.Context(), oauthpkg.AuthorizeRequest{
 		ApplicationID:       app.ID,
 		AccountID:           user.AccountID,
-		RedirectURI:         redirectURI,
-		Scopes:              scope,
-		CodeChallenge:       codeChallenge,
-		CodeChallengeMethod: codeChallengeMethod,
+		RedirectURI:         body.RedirectURI,
+		Scopes:              body.Scope,
+		CodeChallenge:       body.CodeChallenge,
+		CodeChallengeMethod: body.CodeChallengeMethod,
 	})
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
 
-	redirectURL, _ := url.Parse(redirectURI)
+	// Internal dashboard flow — return code as JSON
+	if h.isInternalRedirectURI(body.RedirectURI) {
+		api.WriteJSON(w, http.StatusOK, map[string]string{"code": code})
+		return
+	}
+
+	// Third-party flow — redirect back to the client app
+	redirectURL, err := url.Parse(body.RedirectURI)
+	if err != nil {
+		api.HandleError(w, r, api.NewBadRequestError("invalid redirect_uri"))
+		return
+	}
 	redirectQuery := redirectURL.Query()
 	redirectQuery.Set("code", code)
-	if state != "" {
-		redirectQuery.Set("state", state)
+	if body.State != "" {
+		redirectQuery.Set("state", body.State)
 	}
 	redirectURL.RawQuery = redirectQuery.Encode()
-
 	http.Redirect(w, r, redirectURL.String(), http.StatusFound)
+}
+
+func (h *Handler) isInternalRedirectURI(uri string) bool {
+	parsedURI, err := url.Parse(uri)
+	if err != nil {
+		return false
+	}
+	return parsedURI.Host == h.cfg.UIDomain
 }
 
 // POSTToken handles POST /oauth/token.
@@ -344,35 +336,28 @@ func (h *Handler) POSTRevoke(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusOK, struct{}{})
 }
 
-func isValidRedirectURI(uri, registered string) bool {
+func (h *Handler) isValidRedirectURI(uri string, app *domain.OAuthApplication) bool {
+	if app == nil {
+		return false
+	}
+
 	if uri == "urn:ietf:wg:oauth:2.0:oob" {
 		return true
 	}
-	for _, r := range strings.Split(registered, "\n") {
+
+	parsedURI, err := url.Parse(uri)
+	if err != nil {
+		return false
+	}
+
+	if app.ClientID == "ui-client" && parsedURI.Host == h.cfg.UIDomain {
+		return true
+	}
+
+	for _, r := range strings.Split(app.RedirectURIs, "\n") {
 		if strings.TrimSpace(r) == uri {
 			return true
 		}
 	}
 	return false
-}
-
-func (h *Handler) renderLoginError(w http.ResponseWriter, errMsg, appName, clientID, redirectURI, scope, state, codeChallenge, codeChallengeMethod string) {
-	data := loginPageData{
-		InstanceName:        h.instanceName,
-		AppName:             appName,
-		Scopes:              scope,
-		ClientID:            clientID,
-		RedirectURI:         redirectURI,
-		Scope:               scope,
-		State:               state,
-		CodeChallenge:       codeChallenge,
-		CodeChallengeMethod: codeChallengeMethod,
-		Error:               errMsg,
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusOK)
-	if err := h.loginTmpl.Execute(w, data); err != nil {
-		slog.Default().Error("render login template", slog.Any("error", err))
-	}
 }

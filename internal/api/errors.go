@@ -65,8 +65,11 @@ func HandleError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, domain.ErrForbidden) || errors.Is(err, ErrForbidden):
 		WriteJSON(w, http.StatusForbidden, ErrorResponse{Error: "Forbidden"})
 
-	case errors.Is(err, domain.ErrUnauthorized) || errors.Is(err, ErrUnauthorized):
+	case errors.Is(err, domain.ErrUnauthorized):
 		WriteJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "Unauthorized"})
+
+	case errors.Is(err, ErrUnauthorized):
+		WriteJSON(w, http.StatusUnauthorized, ErrorResponse{Error: unwrapMessage(err)})
 
 	case errors.Is(err, domain.ErrValidation) || errors.Is(err, ErrBadRequest):
 		WriteJSON(w, http.StatusBadRequest, ErrorResponse{Error: unwrapMessage(err)})

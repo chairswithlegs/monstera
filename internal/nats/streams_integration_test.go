@@ -17,17 +17,31 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/config"
 )
 
+// Test-only stream/consumer and subject prefix. Isolated from production FEDERATION stream.
+const (
+	streamTest         = "NATS_INTEGRATION_TEST"
+	consumerTest       = "nats-integration-test-worker"
+	subjectPrefixTest  = "nats.integration.test.deliver."
+	subjectTestDeliver = subjectPrefixTest + ">"
+)
+
 // testMessage is a small payload used only to verify stream publish/consume round-trip.
 type testMessage struct {
 	ID      string `json:"id"`
 	Payload string `json:"payload"`
 }
 
-// TestEnsureStreams_StreamAndConsumerConfig validates that the FEDERATION stream and
-// federation-worker consumer have the expected config.
-// This is used to ensure that EnsureStreams is working correctly.
+// TestEnsureStreams_StreamAndConsumerConfig validates the EnsureStreams function
+// correctly configures NATS
 func TestEnsureStreams_StreamAndConsumerConfig(t *testing.T) {
-	client := setupNATSTest(t)
+	url := os.Getenv("NATS_URL")
+	require.NotEmpty(t, url, "NATS_URL must be set for integration test")
+	ctx := context.Background()
+	cfg := &config.Config{NATSUrl: url}
+	client, err := New(cfg)
+	require.NoError(t, err)
+	require.NoError(t, EnsureStreams(ctx, client.JS))
+
 	defer client.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -56,7 +70,7 @@ func TestEnsureStreams_StreamAndConsumerConfig(t *testing.T) {
 }
 
 // TestEnsureStreams_PublishConsume requires NATS with JetStream running (e.g. docker-compose up nats).
-// It ensures streams and consumer exist, then publishes a message and consumes it.
+// It ensures the test stream and consumer exist, then publishes a message and consumes it.
 func TestEnsureStreams_PublishConsume(t *testing.T) {
 	client := setupNATSTest(t)
 	defer client.Close()
@@ -67,11 +81,10 @@ func TestEnsureStreams_PublishConsume(t *testing.T) {
 	msg := testMessage{ID: "test-1", Payload: "hello"}
 	data, err := json.Marshal(msg)
 	require.NoError(t, err)
-	_, err = client.JS.Publish(ctx, SubjectPrefixFederationDeliver+"test", data)
+	_, err = client.JS.Publish(ctx, subjectPrefixTest+"test", data)
 	require.NoError(t, err)
 
-	// Use the existing federation-worker consumer (WorkQueue streams allow only one consumer).
-	cons, err := client.JS.Consumer(ctx, StreamFederation, ConsumerFederationWorker)
+	cons, err := client.JS.Consumer(ctx, streamTest, consumerTest)
 	require.NoError(t, err)
 
 	msgCh := make(chan jetstream.Msg, 1)
@@ -114,9 +127,9 @@ func TestEnsureStreams_SingleMessageNotPulledTwice(t *testing.T) {
 	// Channel to receive messages
 	msgCh := make(chan jetstream.Msg, 2)
 
-	// Create two consumers
+	// Create two consumers on the test stream
 	runConsumer := func() jetstream.ConsumeContext {
-		cons, err := client.JS.Consumer(ctx, StreamFederation, ConsumerFederationWorker)
+		cons, err := client.JS.Consumer(ctx, streamTest, consumerTest)
 		require.NoError(t, err)
 
 		consCtx, err := cons.Consume(
@@ -135,7 +148,7 @@ func TestEnsureStreams_SingleMessageNotPulledTwice(t *testing.T) {
 	defer consCtx2.Stop()
 
 	// Publish the message
-	_, err = client.JS.Publish(ctx, SubjectPrefixFederationDeliver+"test", data)
+	_, err = client.JS.Publish(ctx, subjectPrefixTest+"test", data)
 	require.NoError(t, err)
 
 	// Wait for the message
@@ -166,12 +179,38 @@ func setupNATSTest(t *testing.T) *Client {
 	client, err := New(cfg)
 	require.NoError(t, err)
 
-	require.NoError(t, EnsureStreams(ctx, client.JS))
+	require.NoError(t, ensureTestStreams(ctx, client.JS))
 
-	stream, err := client.JS.Stream(ctx, StreamFederation)
+	stream, err := client.JS.Stream(ctx, streamTest)
 	require.NoError(t, err)
 	err = stream.Purge(ctx)
 	require.NoError(t, err)
 
 	return client
+}
+
+// ensureTestStreams creates the package test stream and consumer (same shape as FEDERATION).
+// Does not touch the production FEDERATION stream.
+func ensureTestStreams(ctx context.Context, js jetstream.JetStream) error {
+	_, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+		Name:      streamTest,
+		Subjects:  []string{subjectTestDeliver},
+		Retention: jetstream.WorkQueuePolicy,
+		Storage:   jetstream.FileStorage,
+		MaxAge:    72 * time.Hour,
+		MaxBytes:  4 * 1024 * 1024,
+		Discard:   jetstream.DiscardOld,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = js.CreateOrUpdateConsumer(ctx, streamTest, jetstream.ConsumerConfig{
+		Durable:       consumerTest,
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		MaxAckPending: 50,
+		AckWait:       60 * time.Second,
+		MaxDeliver:    MaxDeliverFederation,
+		BackOff:       []time.Duration{30 * time.Second, 5 * time.Minute, 30 * time.Minute},
+	})
+	return err
 }

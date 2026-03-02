@@ -1,1 +1,5 @@
 bin/
+
+# local dev (make start-dev)
+.ui-dev.pid
+ui/.ui-dev.log

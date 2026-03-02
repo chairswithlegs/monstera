@@ -21,6 +21,7 @@ type Config struct {
 	AppEnv         string
 	AppPort        int
 	InstanceDomain string
+	UIDomain       string // UIDomain defaults to InstanceDomain if not set
 	InstanceName   string
 	LogLevel       string
 
@@ -67,6 +68,7 @@ func Load() (*Config, error) {
 		AppEnv:         envString("APP_ENV", appEnvDevelopment),
 		AppPort:        envInt("APP_PORT", 8080),
 		InstanceDomain: envStringRequired("INSTANCE_DOMAIN", &errs),
+		UIDomain:       envString("UI_DOMAIN", ""),
 		InstanceName:   envString("INSTANCE_NAME", "Monstera-fed"),
 		LogLevel:       envString("LOG_LEVEL", "info"),
 
@@ -109,6 +111,10 @@ func Load() (*Config, error) {
 
 	if len(errs) > 0 {
 		return nil, errors.New(strings.Join(errs, "; "))
+	}
+
+	if cfg.UIDomain == "" {
+		cfg.UIDomain = cfg.InstanceDomain
 	}
 
 	if err := cfg.Validate(); err != nil {

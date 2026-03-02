@@ -11,6 +11,7 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/api/activitypub"
 	"github.com/chairswithlegs/monstera-fed/internal/api/mastodon"
 	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
+	"github.com/chairswithlegs/monstera-fed/internal/api/monstera"
 	oauthhandlers "github.com/chairswithlegs/monstera-fed/internal/api/oauth"
 	oauthpkg "github.com/chairswithlegs/monstera-fed/internal/oauth"
 	"github.com/chairswithlegs/monstera-fed/internal/observability"
@@ -21,23 +22,34 @@ import (
 type Deps struct {
 	OAuthServer     *oauthpkg.Server
 	AccountsService service.AccountService
-	Health          *api.HealthChecker
-	OAuthHandler    *oauthhandlers.Handler
-	Accounts        *mastodon.AccountsHandler
-	Statuses        *mastodon.StatusesHandler
-	Timelines       *mastodon.TimelinesHandler
-	Instance        *mastodon.InstanceHandler
-	Notifications   *mastodon.NotificationsHandler
-	Media           *mastodon.MediaHandler
-	Search          *mastodon.SearchHandler
-	Streaming       *mastodon.StreamingHandler
-	WebFinger       *activitypub.WebFingerHandler
-	NodeInfoPtr     *activitypub.NodeInfoPointerHandler
-	NodeInfo        *activitypub.NodeInfoHandler
-	Actor           *activitypub.ActorHandler
-	Collections     *activitypub.CollectionsHandler
-	Outbox          *activitypub.OutboxHandler
-	Inbox           *activitypub.InboxHandler
+
+	// Health check handlers
+	Health *api.HealthChecker
+
+	// OAuth handlers
+	OAuthHandler *oauthhandlers.Handler
+
+	// Mastodon API handlers
+	Accounts      *mastodon.AccountsHandler
+	Statuses      *mastodon.StatusesHandler
+	Timelines     *mastodon.TimelinesHandler
+	Instance      *mastodon.InstanceHandler
+	Notifications *mastodon.NotificationsHandler
+	Media         *mastodon.MediaHandler
+	Search        *mastodon.SearchHandler
+	Streaming     *mastodon.StreamingHandler
+
+	// ActivityPub handlers
+	WebFinger   *activitypub.WebFingerHandler
+	NodeInfoPtr *activitypub.NodeInfoPointerHandler
+	NodeInfo    *activitypub.NodeInfoHandler
+	Actor       *activitypub.ActorHandler
+	Collections *activitypub.CollectionsHandler
+	Outbox      *activitypub.OutboxHandler
+	Inbox       *activitypub.InboxHandler
+
+	// Monstera API handlers
+	User *monstera.UserHandler
 }
 
 // New builds the chi router with global middleware and P1–P2 routes.
@@ -66,6 +78,7 @@ func New(deps Deps) http.Handler {
 	r.Post("/users/{username}/inbox", deps.Inbox.POSTInbox)
 	r.Post("/inbox", deps.Inbox.POSTInbox)
 
+	// Mastodon API routes (v2)
 	r.Route("/api/v2", func(r chi.Router) {
 		r.Get("/instance", deps.Instance.GETInstance)
 		r.Group(func(r chi.Router) {
@@ -78,6 +91,7 @@ func New(deps Deps) http.Handler {
 		})
 	})
 
+	// Mastodon API routes (v1)
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/instance", deps.Instance.GETInstance)
 		r.Post("/apps", deps.OAuthHandler.POSTRegisterApp)
@@ -126,8 +140,15 @@ func New(deps Deps) http.Handler {
 		})
 	})
 
+	// Monstera API routes
+	r.Route("/monstera/api/v1", func(r chi.Router) {
+		r.Use(middleware.RequireAuth(deps.OAuthServer, deps.AccountsService))
+		r.Method("GET", "/user", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.User.GETUser)))
+	})
+
+	// OAuth routes
 	r.Get("/oauth/authorize", deps.OAuthHandler.GETAuthorize)
-	r.Post("/oauth/authorize", deps.OAuthHandler.POSTAuthorizeSubmit)
+	r.Post("/oauth/login", deps.OAuthHandler.POSTLogin)
 	r.Post("/oauth/token", deps.OAuthHandler.POSTToken)
 	r.Post("/oauth/revoke", deps.OAuthHandler.POSTRevoke)
 

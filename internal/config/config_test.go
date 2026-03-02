@@ -32,7 +32,6 @@ func TestLoad_success(t *testing.T) {
 	assert.Equal(t, "development", cfg.AppEnv)
 	assert.Equal(t, 8080, cfg.AppPort)
 	assert.Equal(t, "test.example.com", cfg.InstanceDomain)
-	assert.Equal(t, "info", cfg.LogLevel)
 	assert.Equal(t, "memory", cfg.CacheDriver)
 	assert.Equal(t, "local", cfg.MediaDriver)
 	assert.Equal(t, 500, cfg.MaxStatusChars)

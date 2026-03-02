@@ -1,13 +1,16 @@
 services:
-  app:
+  # Monstera running in production mode
+  monstera:
+    profiles:
+      - app
     build: .
     ports:
       - "8080:8080"
     environment:
-      APP_ENV: development
+      APP_ENV: production
       APP_PORT: "8080"
       INSTANCE_DOMAIN: localhost:8080
-      INSTANCE_NAME: Monstera-fed (local)
+      INSTANCE_NAME: Monstera-fed
       LOG_LEVEL: debug
       DATABASE_URL: postgres://monstera:monstera@postgres:5432/monstera_fed?sslmode=disable
       NATS_URL: nats://nats:4222
@@ -25,8 +28,13 @@ services:
         condition: service_healthy
       nats:
         condition: service_started
+      minio:
+        condition: service_started
 
   postgres:
+    profiles:
+      - dependencies
+      - app
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: monstera
@@ -41,6 +49,9 @@ services:
       retries: 5
 
   nats:
+    profiles:
+      - dependencies
+      - app
     image: nats:2
     command: ["--jetstream", "--store_dir", "/data"]
     ports:
@@ -48,6 +59,9 @@ services:
       - "8222:8222"
 
   minio:
+    profiles:
+      - dependencies
+      - app
     image: minio/minio:latest
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
