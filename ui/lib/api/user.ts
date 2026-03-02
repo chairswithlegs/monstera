@@ -1,7 +1,6 @@
 import { authFetch } from "./client";
-import { getMonsteraServerUrl } from "@/lib/config";
+import { getConfig } from "@/lib/config";
 
-const MONSTERA_SERVER = getMonsteraServerUrl();
 
 export interface User {
   id: string;
@@ -16,7 +15,8 @@ export interface User {
 }
 
 export async function getUser() {
-  const response = await authFetch(`${MONSTERA_SERVER}/monstera/api/v1/user`);
+  const config = await getConfig();
+  const response = await authFetch(`${config.server_url}/monstera/api/v1/user`);
   if (!response.ok) {
     throw new Error('Failed to verify credentials');
   }

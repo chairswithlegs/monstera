@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { generateCodeVerifier, generateCodeChallenge } from '@/lib/auth/pkce';
 import { storeTokens } from '@/lib/auth/tokens';
-import { AUTH_CLIENT_ID, AUTH_SCOPES, getMonsteraServerUrl, getDashboardRedirectUri } from '@/lib/config';
+import { getConfig } from '@/lib/config';
 
 type Stage = 'credentials';
 
@@ -20,8 +20,7 @@ export function useLogin(): LoginState {
   const [stage, setStage] = useState<Stage>('credentials');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const MONSTERA_SERVER = getMonsteraServerUrl();
-  const DASHBOARD_REDIRECT_URI = getDashboardRedirectUri();
+  const DASHBOARD_REDIRECT_URI = `${window.location.origin}/dashboard`;
 
   const params = {
     clientId: searchParams.get('client_id'),
@@ -31,11 +30,10 @@ export function useLogin(): LoginState {
     state: searchParams.get('state'),
   };
 
-  // Check the client ID to determine if we are creating a login request for a third-party client
-  // or for the internal UI client
-  const isThirdParty = params.clientId && params.clientId !== AUTH_CLIENT_ID;
-
   async function handleCode(code: string) {
+    const config = await getConfig();
+    const isThirdParty = params.clientId && params.clientId !== config.auth_client_id;
+
     if (isThirdParty) {
       // Third-party flow: redirect back to the client app with the code
       const redirectParams = new URLSearchParams({ code });
@@ -47,14 +45,14 @@ export function useLogin(): LoginState {
       if (!verifier) throw new Error('Missing PKCE verifier');
       sessionStorage.removeItem('pkce_verifier');
 
-      const response = await fetch(`${MONSTERA_SERVER}/oauth/token`, {
+      const response = await fetch(`${config.server_url}/oauth/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
           grant_type: 'authorization_code',
           code,
           redirect_uri: DASHBOARD_REDIRECT_URI,
-          client_id: AUTH_CLIENT_ID,
+          client_id: config.auth_client_id,
           code_verifier: verifier,
         }),
       });
@@ -67,6 +65,9 @@ export function useLogin(): LoginState {
   }
 
   async function submitCredentials(email: string, password: string) {
+    const config = await getConfig();
+    const isThirdParty = params.clientId && params.clientId !== config.auth_client_id;
+
     setLoading(true);
     setError(null);
 
@@ -80,15 +81,15 @@ export function useLogin(): LoginState {
         sessionStorage.setItem('pkce_verifier', verifier);
       }
 
-      const response = await fetch(`${MONSTERA_SERVER}/oauth/login`, {
+      const response = await fetch(`${config.server_url}/oauth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email,
           password,
-          client_id: params.clientId ?? AUTH_CLIENT_ID,
+          client_id: params.clientId ?? config.auth_client_id,
           redirect_uri: params.redirectUri ?? DASHBOARD_REDIRECT_URI,
-          scope: isThirdParty ? undefined : AUTH_SCOPES,
+          scope: isThirdParty ? undefined : config.auth_scopes,
           code_challenge: codeChallenge,
           code_challenge_method: params.codeChallengeMethod ?? 'S256',
         }),

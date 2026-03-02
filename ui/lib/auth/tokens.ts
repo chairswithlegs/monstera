@@ -1,8 +1,7 @@
-import { getMonsteraServerUrl, AUTH_CLIENT_ID } from '@/lib/config';
+import { getConfig } from '@/lib/config';
 
 const ACCESS_TOKEN_KEY = 'access_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
-const MONSTERA_SERVER = getMonsteraServerUrl();
 
 export function getAccessToken(): string | null {
   return sessionStorage.getItem(ACCESS_TOKEN_KEY);
@@ -26,13 +25,14 @@ export async function refreshAccessToken(): Promise<string> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) throw new Error('No refresh token available');
 
-  const response = await fetch(`${MONSTERA_SERVER}/oauth/token`, {
+  const config = await getConfig();
+  const response = await fetch(`${config.server_url}/oauth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: refreshToken,
-      client_id: AUTH_CLIENT_ID,
+      client_id: config.auth_client_id,
     }),
   });
 

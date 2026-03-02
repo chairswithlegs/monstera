@@ -10,3 +10,8 @@ vendor/
 coverage.*
 .env
 .env.*
+
+# UI build artifacts (image builds from source)
+ui/node_modules
+ui/.next
+ui/out

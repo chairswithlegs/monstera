@@ -1,15 +1,17 @@
 services:
-  # Monstera running in production mode
-  monstera:
+  server:
     profiles:
       - app
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.server
     ports:
       - "8080:8080"
     environment:
       APP_ENV: production
       APP_PORT: "8080"
       INSTANCE_DOMAIN: localhost:8080
+      UI_DOMAIN: localhost:3000
       INSTANCE_NAME: Monstera-fed
       LOG_LEVEL: debug
       DATABASE_URL: postgres://monstera:monstera@postgres:5432/monstera_fed?sslmode=disable
@@ -29,6 +31,21 @@ services:
       nats:
         condition: service_started
       minio:
+        condition: service_started
+
+  ui:
+    profiles:
+      - app
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+    ports:
+      - "3000:3000"
+    configs:
+      - source: ui_config
+        target: /usr/share/nginx/html/config/config.json
+    depends_on:
+      server:
         condition: service_started
 
   postgres:
@@ -73,3 +90,12 @@ services:
 
 volumes:
   app_media: {}
+
+configs:
+  ui_config:
+    content: |
+      {
+        "server_url": "http://localhost:8080",
+        "auth_client_id": "ui-client",
+        "auth_scopes": "admin:read admin:write read:accounts"
+      }
