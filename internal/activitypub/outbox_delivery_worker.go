@@ -20,8 +20,6 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/observability"
 )
 
-var outboxDeliveryNakBackoff = []time.Duration{30 * time.Second, 5 * time.Minute, 30 * time.Minute}
-
 const outboxUserAgent = "Monstera/1.0"
 
 // outboxDeliveryMessage is the payload for outbound ActivityPub delivery (e.g. to NATS ACTIVITYPUB stream).
@@ -212,7 +210,7 @@ func (w *outboxDeliveryWorker) deliverHTTP(ctx context.Context, delivery outboxD
 func (w *outboxDeliveryWorker) handleDeliveryFailure(ctx context.Context, msg jetstream.Msg, delivery outboxDeliveryMessage, activityType string, statusCode int) {
 	meta, err := msg.Metadata()
 	if err != nil {
-		natsutil.NAKWithBackoff(msg, nil, outboxDeliveryNakBackoff)
+		natsutil.NAKWithBackoff(msg, nil, natsutil.OutboxDeliveryRetries)
 		return
 	}
 
@@ -224,7 +222,7 @@ func (w *outboxDeliveryWorker) handleDeliveryFailure(ctx context.Context, msg je
 		return
 	}
 
-	if meta.NumDelivered >= natsutil.MaxDeliverActivityPubOutboundDelivery {
+	if meta.NumDelivered >= uint64(len(natsutil.OutboxDeliveryRetries)) {
 		if err := w.sendToDLQ(ctx, activityType, delivery); err != nil {
 			slog.Warn("activitypub worker: publish DLQ failed", slog.String("activity_id", delivery.ActivityID), slog.Any("error", err))
 		}
@@ -233,7 +231,7 @@ func (w *outboxDeliveryWorker) handleDeliveryFailure(ctx context.Context, msg je
 		return
 	}
 
-	natsutil.NAKWithBackoff(msg, meta, outboxDeliveryNakBackoff)
+	natsutil.NAKWithBackoff(msg, meta, natsutil.OutboxDeliveryRetries)
 }
 
 func (w *outboxDeliveryWorker) termToDLQ(ctx context.Context, msg jetstream.Msg, activityType string, delivery outboxDeliveryMessage) {

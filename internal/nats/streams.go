@@ -17,16 +17,21 @@ const (
 	SubjectPrefixActivityPubOutboundFanoutDLQ  = "activitypub.outbound.fanoutdlq."
 )
 
-// Outbound ActivityPub stream/consumer names and limits (delivery to remote inboxes, fan-out, DLQ).
+// Outbound ActivityPub stream/consumer names.
 const (
-	StreamActivityPubOutboundDelivery     = "ACTIVITYPUB_OUTBOUND_DELIVERY"
-	StreamActivityPubOutboundDeliveryDLQ  = "ACTIVITYPUB_OUTBOUND_DELIVERY_DLQ"
-	StreamActivityPubOutboundFanout       = "ACTIVITYPUB_OUTBOUND_FANOUT"
-	StreamActivityPubOutboundFanoutDLQ    = "ACTIVITYPUB_OUTBOUND_FANOUT_DLQ"
-	ConsumerActivityPubOutboundDelivery   = "activitypub-outbound-delivery"
-	ConsumerActivityPubOutboundFanout     = "activitypub-outbound-fanout"
-	MaxDeliverActivityPubOutboundDelivery = 5
-	MaxDeliverActivityPubOutboundFanout   = 2
+	StreamActivityPubOutboundDelivery    = "ACTIVITYPUB_OUTBOUND_DELIVERY"
+	StreamActivityPubOutboundDeliveryDLQ = "ACTIVITYPUB_OUTBOUND_DELIVERY_DLQ"
+	StreamActivityPubOutboundFanout      = "ACTIVITYPUB_OUTBOUND_FANOUT"
+	StreamActivityPubOutboundFanoutDLQ   = "ACTIVITYPUB_OUTBOUND_FANOUT_DLQ"
+
+	ConsumerActivityPubOutboundDelivery = "activitypub-outbound-delivery"
+	ConsumerActivityPubOutboundFanout   = "activitypub-outbound-fanout"
+)
+
+// Outbox delivery and fanout retry backoff durations.
+var (
+	OutboxDeliveryRetries = []time.Duration{30 * time.Second, 5 * time.Minute, time.Hour}
+	OutboxFanoutRetries   = []time.Duration{5 * time.Minute}
 )
 
 // EnsureStreams creates or updates the JetStream streams and durable consumers.
@@ -86,7 +91,8 @@ func EnsureStreams(ctx context.Context, js jetstream.JetStream) error {
 		AckPolicy:     jetstream.AckExplicitPolicy,
 		MaxAckPending: 50,
 		AckWait:       60 * time.Second,
-		MaxDeliver:    MaxDeliverActivityPubOutboundDelivery,
+		MaxDeliver:    len(OutboxDeliveryRetries),
+		BackOff:       OutboxDeliveryRetries,
 	})
 	if err != nil {
 		return fmt.Errorf("nats: create consumer %s: %w", ConsumerActivityPubOutboundDelivery, err)
@@ -97,7 +103,8 @@ func EnsureStreams(ctx context.Context, js jetstream.JetStream) error {
 		AckPolicy:     jetstream.AckExplicitPolicy,
 		MaxAckPending: 20,
 		AckWait:       120 * time.Second,
-		MaxDeliver:    MaxDeliverActivityPubOutboundFanout,
+		MaxDeliver:    len(OutboxFanoutRetries),
+		BackOff:       OutboxFanoutRetries,
 	})
 	if err != nil {
 		return fmt.Errorf("nats: create consumer %s: %w", ConsumerActivityPubOutboundFanout, err)

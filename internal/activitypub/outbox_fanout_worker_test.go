@@ -220,7 +220,7 @@ func TestFanoutWorker_ProcessMessage_DBError_RetryExhausted_SendsToDLQ(t *testin
 	acked := false
 	mockMsg := &mockJetstreamMsg{
 		data:         mustMarshal(t, outboxFanoutMessage{ActivityID: "https://example.com/01act", Activity: json.RawMessage(`{}`), ActivityType: "create", SenderID: acc.ID}),
-		numDelivered: natsutil.MaxDeliverActivityPubOutboundFanout,
+		numDelivered: uint64(len(natsutil.OutboxFanoutRetries)),
 		ackFn:        func() { acked = true },
 	}
 	deliveryMock := &mockDeliveryPublisher{publishFn: func(context.Context, string, outboxDeliveryMessage) error { return nil }}
@@ -303,7 +303,7 @@ func TestFanoutWorker_ProcessMessage_PublishError_RetryExhausted_SendsToDLQ(t *t
 	acked := false
 	mockMsg := &mockJetstreamMsg{
 		data:         mustMarshal(t, outboxFanoutMessage{ActivityID: "https://example.com/01act", Activity: json.RawMessage(`{}`), ActivityType: "delete", SenderID: acc.ID}),
-		numDelivered: natsutil.MaxDeliverActivityPubOutboundFanout,
+		numDelivered: uint64(len(natsutil.OutboxFanoutRetries)),
 		ackFn:        func() { acked = true },
 	}
 	deliveryMock := &mockDeliveryPublisher{
