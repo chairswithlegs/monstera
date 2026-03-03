@@ -15,6 +15,8 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/store"
 )
 
+var outboxFanoutNakBackoff = []time.Duration{5 * time.Minute}
+
 const fanoutPageSize = 500
 
 // outboxFanoutMessage is the payload for async fan-out: one message per activity to be delivered to all followers.
@@ -190,7 +192,7 @@ func (w *outboxFanoutWorker) handleFanoutFailure(ctx context.Context, msg jetstr
 		var err error
 		meta, err = msg.Metadata()
 		if err != nil {
-			_ = msg.NakWithDelay(nakBackoffDelay(0))
+			natsutil.NAKWithBackoff(msg, nil, outboxFanoutNakBackoff)
 			return
 		}
 	}
@@ -201,7 +203,7 @@ func (w *outboxFanoutWorker) handleFanoutFailure(ctx context.Context, msg jetstr
 		_ = msg.Ack()
 		return
 	}
-	_ = msg.NakWithDelay(nakBackoffDelay(meta.NumDelivered))
+	natsutil.NAKWithBackoff(msg, meta, outboxFanoutNakBackoff)
 }
 
 // sendToFanoutDLQ copies a failed fanout message to the fanout DLQ stream.

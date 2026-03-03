@@ -20,6 +20,8 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/observability"
 )
 
+var outboxDeliveryNakBackoff = []time.Duration{30 * time.Second, 5 * time.Minute, 30 * time.Minute}
+
 const outboxUserAgent = "Monstera/1.0"
 
 // outboxDeliveryMessage is the payload for outbound ActivityPub delivery (e.g. to NATS ACTIVITYPUB stream).
@@ -210,7 +212,7 @@ func (w *outboxDeliveryWorker) deliverHTTP(ctx context.Context, delivery outboxD
 func (w *outboxDeliveryWorker) handleDeliveryFailure(ctx context.Context, msg jetstream.Msg, delivery outboxDeliveryMessage, activityType string, statusCode int) {
 	meta, err := msg.Metadata()
 	if err != nil {
-		w.nakWithBackoff(msg, nil)
+		natsutil.NAKWithBackoff(msg, nil, outboxDeliveryNakBackoff)
 		return
 	}
 
@@ -231,7 +233,7 @@ func (w *outboxDeliveryWorker) handleDeliveryFailure(ctx context.Context, msg je
 		return
 	}
 
-	w.nakWithBackoff(msg, meta)
+	natsutil.NAKWithBackoff(msg, meta, outboxDeliveryNakBackoff)
 }
 
 func (w *outboxDeliveryWorker) termToDLQ(ctx context.Context, msg jetstream.Msg, activityType string, delivery outboxDeliveryMessage) {
@@ -239,31 +241,6 @@ func (w *outboxDeliveryWorker) termToDLQ(ctx context.Context, msg jetstream.Msg,
 		slog.Warn("activitypub worker: publish DLQ failed", slog.String("activity_id", delivery.ActivityID), slog.Any("error", err))
 	}
 	_ = msg.Term()
-}
-
-var nakBackoff = []time.Duration{30 * time.Second, 5 * time.Minute, 30 * time.Minute}
-
-// nakWithBackoff naks the message with a delay from nakBackoff based on meta.NumDelivered.
-// If meta is nil, the first backoff duration is used.
-func (w *outboxDeliveryWorker) nakWithBackoff(msg jetstream.Msg, meta *jetstream.MsgMetadata) {
-	numDelivered := uint64(0)
-	if meta != nil {
-		numDelivered = meta.NumDelivered
-	}
-	_ = msg.NakWithDelay(nakBackoffDelay(numDelivered))
-}
-
-// nakBackoffDelay returns the NAK delay for the given delivery count (0 = first attempt).
-// Used so backoff logic can be unit-tested without a real jetstream.Msg.
-func nakBackoffDelay(numDelivered uint64) time.Duration {
-	if numDelivered == 0 {
-		return nakBackoff[0]
-	}
-	idx := len(nakBackoff) - 1
-	if numDelivered <= uint64(len(nakBackoff)) {
-		idx = int(numDelivered - 1) //nolint:gosec // G115: bounded by len(nakBackoff), small in practice
-	}
-	return nakBackoff[idx]
 }
 
 // sendToDLQ moves a failed delivery message to the dead-letter queue.
