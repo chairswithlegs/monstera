@@ -32,6 +32,11 @@ type FakeStore struct {
 	notificationsByAccount map[string][]*domain.Notification
 	hashtagsByName         map[string]*domain.Hashtag
 	Settings               map[string]string // optional; GetSetting reads from here
+
+	applications     map[string]*domain.OAuthApplication
+	applicationsByID map[string]*domain.OAuthApplication
+	authCodes        map[string]*domain.OAuthAuthorizationCode
+	tokens           map[string]*domain.OAuthAccessToken
 }
 
 // NewFakeStore returns a new FakeStore for use in tests.
@@ -50,6 +55,10 @@ func NewFakeStore() *FakeStore {
 		mediaByID:              make(map[string]*domain.MediaAttachment),
 		notificationsByAccount: make(map[string][]*domain.Notification),
 		hashtagsByName:         make(map[string]*domain.Hashtag),
+		applications:           make(map[string]*domain.OAuthApplication),
+		applicationsByID:       make(map[string]*domain.OAuthApplication),
+		authCodes:              make(map[string]*domain.OAuthAuthorizationCode),
+		tokens:                 make(map[string]*domain.OAuthAccessToken),
 	}
 }
 
@@ -506,27 +515,99 @@ func (f *FakeStore) GetRebloggedBy(ctx context.Context, statusID string, maxID *
 }
 
 func (f *FakeStore) CreateApplication(ctx context.Context, in store.CreateApplicationInput) (*domain.OAuthApplication, error) {
-	return nil, domain.ErrNotFound
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	app := &domain.OAuthApplication{
+		ID:           in.ID,
+		Name:         in.Name,
+		ClientID:     in.ClientID,
+		ClientSecret: in.ClientSecret,
+		RedirectURIs: in.RedirectURIs,
+		Scopes:       in.Scopes,
+		Website:      in.Website,
+		CreatedAt:    time.Now(),
+	}
+	f.applications[in.ClientID] = app
+	f.applicationsByID[in.ID] = app
+	return app, nil
 }
+
 func (f *FakeStore) GetApplicationByClientID(ctx context.Context, clientID string) (*domain.OAuthApplication, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if app, ok := f.applications[clientID]; ok {
+		return app, nil
+	}
 	return nil, domain.ErrNotFound
 }
+
 func (f *FakeStore) CreateAuthorizationCode(ctx context.Context, in store.CreateAuthorizationCodeInput) (*domain.OAuthAuthorizationCode, error) {
-	return nil, domain.ErrNotFound
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ac := &domain.OAuthAuthorizationCode{
+		ID:                  in.ID,
+		Code:                in.Code,
+		ApplicationID:       in.ApplicationID,
+		AccountID:           in.AccountID,
+		RedirectURI:         in.RedirectURI,
+		Scopes:              in.Scopes,
+		CodeChallenge:       in.CodeChallenge,
+		CodeChallengeMethod: in.CodeChallengeMethod,
+		ExpiresAt:           in.ExpiresAt,
+		CreatedAt:           time.Now(),
+	}
+	f.authCodes[in.Code] = ac
+	return ac, nil
 }
+
 func (f *FakeStore) GetAuthorizationCode(ctx context.Context, code string) (*domain.OAuthAuthorizationCode, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if ac, ok := f.authCodes[code]; ok && ac.ExpiresAt.After(time.Now()) {
+		return ac, nil
+	}
 	return nil, domain.ErrNotFound
 }
+
 func (f *FakeStore) DeleteAuthorizationCode(ctx context.Context, code string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.authCodes, code)
 	return nil
 }
+
 func (f *FakeStore) CreateAccessToken(ctx context.Context, in store.CreateAccessTokenInput) (*domain.OAuthAccessToken, error) {
-	return nil, domain.ErrNotFound
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	tok := &domain.OAuthAccessToken{
+		ID:            in.ID,
+		ApplicationID: in.ApplicationID,
+		AccountID:     in.AccountID,
+		Token:         in.Token,
+		Scopes:        in.Scopes,
+		ExpiresAt:     in.ExpiresAt,
+		CreatedAt:     time.Now(),
+	}
+	f.tokens[in.Token] = tok
+	return tok, nil
 }
+
 func (f *FakeStore) GetAccessToken(ctx context.Context, token string) (*domain.OAuthAccessToken, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if tok, ok := f.tokens[token]; ok && tok.RevokedAt == nil {
+		return tok, nil
+	}
 	return nil, domain.ErrNotFound
 }
+
 func (f *FakeStore) RevokeAccessToken(ctx context.Context, token string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if tok, ok := f.tokens[token]; ok {
+		now := time.Now()
+		tok.RevokedAt = &now
+	}
 	return nil
 }
 func (f *FakeStore) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
@@ -568,6 +649,11 @@ func (f *FakeStore) CreateStatusMention(ctx context.Context, statusID, accountID
 func (f *FakeStore) GetStatusMentions(ctx context.Context, statusID string) ([]*domain.Account, error) {
 	return nil, nil
 }
+
+func (f *FakeStore) GetStatusMentionAccountIDs(ctx context.Context, statusID string) ([]string, error) {
+	return nil, nil
+}
+
 func (f *FakeStore) GetOrCreateHashtag(ctx context.Context, name string) (*domain.Hashtag, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -899,6 +985,36 @@ func (f *FakeStore) GetFollowerInboxURLs(ctx context.Context, accountID string) 
 
 func (f *FakeStore) GetDistinctFollowerInboxURLsPaginated(ctx context.Context, accountID string, cursor string, limit int) ([]string, error) {
 	return f.getDistinctFollowerInboxURLsPaginated(ctx, accountID, cursor, limit)
+}
+
+func (f *FakeStore) GetLocalFollowerAccountIDs(ctx context.Context, targetID string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var ids []string
+	seen := make(map[string]bool)
+	for key, follow := range f.followsByKey {
+		if follow.TargetID != targetID || follow.State != domain.FollowStateAccepted {
+			continue
+		}
+		parts := strings.SplitN(key, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		followerID := parts[0]
+		if seen[followerID] {
+			continue
+		}
+		acc, ok := f.accountsByID[followerID]
+		if !ok || acc.Domain != nil && *acc.Domain != "" {
+			continue
+		}
+		if _, suspended := f.suspendedAccountIDs[followerID]; suspended {
+			continue
+		}
+		seen[followerID] = true
+		ids = append(ids, followerID)
+	}
+	return ids, nil
 }
 
 func (f *FakeStore) getDistinctFollowerInboxURLsPaginated(_ context.Context, accountID string, cursor string, limit int) ([]string, error) {

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera-fed/internal/events"
 	"github.com/chairswithlegs/monstera-fed/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,7 +17,7 @@ func TestStatusService_Create(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -41,7 +42,7 @@ func TestStatusService_Create_nil_text_returns_validation(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -60,7 +61,7 @@ func TestStatusService_Create_invalid_visibility_returns_validation(t *testing.T
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -80,7 +81,7 @@ func TestStatusService_GetByID(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -102,7 +103,7 @@ func TestStatusService_GetByID_not_found(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
 
 	_, err := statusSvc.GetByID(ctx, "01nonexistent")
 	require.Error(t, err)
@@ -114,7 +115,7 @@ func TestStatusService_Delete(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -139,7 +140,7 @@ func TestStatusService_CreateWithContent_empty_text_returns_validation(t *testin
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -159,7 +160,7 @@ func TestStatusService_CreateWithContent_over_char_limit_returns_validation(t *t
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, "https://example.com", "example.com", 10, slog.Default())
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 10, slog.Default())
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -179,7 +180,7 @@ func TestStatusService_CreateWithContent_success_returns_result_with_author(t *t
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)

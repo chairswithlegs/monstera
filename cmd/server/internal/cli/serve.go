@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cobra"
 
@@ -26,10 +27,12 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/email"
 	_ "github.com/chairswithlegs/monstera-fed/internal/email/noop"
 	_ "github.com/chairswithlegs/monstera-fed/internal/email/smtp"
+	"github.com/chairswithlegs/monstera-fed/internal/events/sse"
+	sseMastodon "github.com/chairswithlegs/monstera-fed/internal/events/sse/mastodon"
 	"github.com/chairswithlegs/monstera-fed/internal/media"
 	_ "github.com/chairswithlegs/monstera-fed/internal/media/local"
 	_ "github.com/chairswithlegs/monstera-fed/internal/media/s3"
-	"github.com/chairswithlegs/monstera-fed/internal/nats"
+	natsinternal "github.com/chairswithlegs/monstera-fed/internal/nats"
 	"github.com/chairswithlegs/monstera-fed/internal/oauth"
 	"github.com/chairswithlegs/monstera-fed/internal/observability"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
@@ -81,7 +84,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	// Setup services and other dependencies
 	s := postgres.New(pool)
 
-	natsClient, err := nats.New(cfg)
+	natsClient, err := natsinternal.New(cfg)
 	if err != nil {
 		return fmt.Errorf("nats: %w", err)
 	}
@@ -126,16 +129,19 @@ func runServe(_ *cobra.Command, _ []string) error {
 
 	instanceBaseURL := "https://" + cfg.InstanceDomain
 	accountSvc := service.NewAccountService(s, instanceBaseURL)
-	blocklistCache := ap.NewBlocklistCache(s, logger)
+	blocklistCache := ap.NewBlocklistCache(s)
 	if err := blocklistCache.Refresh(ctx); err != nil {
 		logger.Warn("blocklist refresh failed", slog.Any("error", err))
 	}
-	if err := nats.EnsureStreams(ctx, natsClient.JS); err != nil {
-		return fmt.Errorf("nats: ensure streams: %w", err)
+	if err := ap.CreateOrUpdateStreams(ctx, natsClient.JS); err != nil {
+		return fmt.Errorf("activitypub: create or update streams: %w", err)
 	}
+
+	hub := sse.NewHub(&natsConnAdapter{nc: natsClient.Conn}, metrics)
+	eventBus := sseMastodon.NewPublisher(natsClient.Conn, s, metrics, logger, cfg.InstanceDomain)
 	signatureService := ap.NewHTTPSignatureService(cfg, cacheStore, accountSvc)
 	outbox := ap.NewOutbox(s, natsClient.JS, blocklistCache, signatureService, cfg)
-	statusSvc := service.NewStatusService(s, outbox, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars, logger)
+	statusSvc := service.NewStatusService(s, outbox, eventBus, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars, logger)
 	timelineSvc := service.NewTimelineService(s)
 	instanceSvc := service.NewInstanceService(s)
 	followSvc := service.NewFollowService(s, outbox, nil)
@@ -146,6 +152,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	go func() { _ = outbox.Start(workerCtx) }()
+	go func() { _ = hub.Start(workerCtx) }()
 	defer workerCancel()
 	inboxProcessor := ap.NewInbox(
 		accountSvc,
@@ -157,6 +164,8 @@ func runServe(_ *cobra.Command, _ []string) error {
 		cacheStore,
 		blocklistCache,
 		outbox,
+		eventBus,
+		eventBus,
 		cfg,
 	)
 
@@ -171,7 +180,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	notificationsHandler := mastodon.NewNotificationsHandler(notificationSvc, accountSvc, cfg.InstanceDomain)
 	mediaHandler := mastodon.NewMediaHandler(mediaSvc)
 	searchHandler := mastodon.NewSearchHandler(searchSvc, cfg.InstanceDomain)
-	streamingHandler := mastodon.NewStreamingHandler()
+	streamingHandler := mastodon.NewStreamingHandler(hub)
 	webFingerHandler := activitypub.NewWebFingerHandler(accountSvc, cfg)
 	nodeInfoPtrHandler := activitypub.NewNodeInfoPointerHandler(cfg)
 	nodeInfoHandler := activitypub.NewNodeInfoHandler(instanceSvc, cfg)
@@ -235,4 +244,17 @@ func runServe(_ *cobra.Command, _ []string) error {
 	natsClient.Close()
 	logger.Info("server stopped")
 	return nil
+}
+
+// natsConnAdapter adapts *nats.Conn to sse's natsConn interface (Subscribe return type).
+type natsConnAdapter struct {
+	nc *nats.Conn
+}
+
+func (a *natsConnAdapter) Subscribe(subject string, handler nats.MsgHandler) (interface{ Unsubscribe() error }, error) {
+	sub, err := a.nc.Subscribe(subject, handler)
+	if err != nil {
+		return nil, fmt.Errorf("nats subscribe %s: %w", subject, err)
+	}
+	return sub, nil
 }

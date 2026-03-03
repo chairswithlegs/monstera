@@ -66,3 +66,11 @@ SELECT COUNT(*) FROM follows WHERE target_id = $1 AND state = 'accepted';
 
 -- name: CountFollowing :one
 SELECT COUNT(*) FROM follows WHERE account_id = $1 AND state = 'accepted';
+
+-- name: GetLocalFollowerAccountIDs :many
+SELECT f.account_id FROM follows f
+INNER JOIN accounts a ON a.id = f.account_id
+WHERE f.target_id = $1
+  AND f.state = 'accepted'
+  AND a.domain IS NULL
+  AND a.suspended = FALSE;

@@ -79,7 +79,7 @@ type outboxDeliveryWorker struct {
 // The server has one logical consumer; work is distributed across replicas with no
 // duplicate delivery.
 func (w *outboxDeliveryWorker) start(ctx context.Context) error {
-	consumer, err := w.js.Consumer(ctx, natsutil.StreamActivityPubOutboundDelivery, natsutil.ConsumerActivityPubOutboundDelivery)
+	consumer, err := w.js.Consumer(ctx, streamDelivery, consumerDelivery)
 	if err != nil {
 		return fmt.Errorf("activitypub worker: get consumer: %w", err)
 	}
@@ -91,7 +91,7 @@ func (w *outboxDeliveryWorker) start(ctx context.Context) error {
 
 	slog.Info("activitypub worker started",
 		slog.Int("concurrency", concurrency),
-		slog.String("consumer", natsutil.ConsumerActivityPubOutboundDelivery),
+		slog.String("consumer", consumerDelivery),
 	)
 
 	consCtx, err := consumer.Consume(
@@ -119,18 +119,25 @@ func (w *outboxDeliveryWorker) start(ctx context.Context) error {
 
 // publish sends a delivery message to the stream for processing.
 // activityType is used as the subject suffix (e.g. "create" -> "federation.deliver.create").
-func (w *outboxDeliveryWorker) publish(ctx context.Context, activityType string, msg outboxDeliveryMessage) error {
+func (w *outboxDeliveryWorker) publish(ctx context.Context, activityType string, msg outboxDeliveryMessage) (err error) {
+	subject := subjectPrefixDeliver + strings.ToLower(activityType)
+
+	defer func() {
+		if err != nil {
+			observability.IncNATSPublish(subject, "error")
+		} else {
+			observability.IncNATSPublish(subject, "ok")
+		}
+	}()
+
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("activitypub: marshal delivery message: %w", err)
 	}
-	subject := natsutil.SubjectPrefixActivityPubOutboundDeliver + strings.ToLower(activityType)
 	_, err = w.js.Publish(ctx, subject, data)
 	if err != nil {
-		observability.IncNATSPublish(subject, "error")
 		return fmt.Errorf("activitypub: publish to %s: %w", subject, err)
 	}
-	observability.IncNATSPublish(subject, "ok")
 	return nil
 }
 
@@ -142,7 +149,7 @@ func (w *outboxDeliveryWorker) processMessage(ctx context.Context, msg jetstream
 		return
 	}
 
-	activityType := subjectToActivityType(msg.Subject())
+	activityType := w.getActivityType(msg.Subject())
 
 	targetDomain := domainFromURL(delivery.TargetInbox)
 	if targetDomain != "" && w.blocklist != nil && w.blocklist.IsSuspended(ctx, targetDomain) {
@@ -164,7 +171,6 @@ func (w *outboxDeliveryWorker) processMessage(ctx context.Context, msg jetstream
 
 	if statusCode >= 200 && statusCode < 300 {
 		_ = msg.Ack()
-		observability.IncNATSPublish(natsutil.SubjectPrefixActivityPubOutboundDeliver+activityType, "ok")
 		return
 	}
 
@@ -210,7 +216,7 @@ func (w *outboxDeliveryWorker) deliverHTTP(ctx context.Context, delivery outboxD
 func (w *outboxDeliveryWorker) handleDeliveryFailure(ctx context.Context, msg jetstream.Msg, delivery outboxDeliveryMessage, activityType string, statusCode int) {
 	meta, err := msg.Metadata()
 	if err != nil {
-		natsutil.NAKWithBackoff(msg, nil, natsutil.OutboxDeliveryRetries)
+		natsutil.NAKWithBackoff(msg, nil, deliveryRetries)
 		return
 	}
 
@@ -222,16 +228,15 @@ func (w *outboxDeliveryWorker) handleDeliveryFailure(ctx context.Context, msg je
 		return
 	}
 
-	if meta.NumDelivered >= uint64(len(natsutil.OutboxDeliveryRetries)) {
+	if meta.NumDelivered >= uint64(len(deliveryRetries)) {
 		if err := w.sendToDLQ(ctx, activityType, delivery); err != nil {
 			slog.Warn("activitypub worker: publish DLQ failed", slog.String("activity_id", delivery.ActivityID), slog.Any("error", err))
 		}
 		_ = msg.Ack()
-		observability.IncNATSPublish(natsutil.SubjectPrefixActivityPubOutboundDeliverDLQ+activityType, "ok")
 		return
 	}
 
-	natsutil.NAKWithBackoff(msg, meta, natsutil.OutboxDeliveryRetries)
+	natsutil.NAKWithBackoff(msg, meta, deliveryRetries)
 }
 
 func (w *outboxDeliveryWorker) termToDLQ(ctx context.Context, msg jetstream.Msg, activityType string, delivery outboxDeliveryMessage) {
@@ -242,15 +247,30 @@ func (w *outboxDeliveryWorker) termToDLQ(ctx context.Context, msg jetstream.Msg,
 }
 
 // sendToDLQ moves a failed delivery message to the dead-letter queue.
-func (w *outboxDeliveryWorker) sendToDLQ(ctx context.Context, activityType string, msg outboxDeliveryMessage) error {
+func (w *outboxDeliveryWorker) sendToDLQ(ctx context.Context, activityType string, msg outboxDeliveryMessage) (err error) {
+	subject := subjectPrefixDeliverDLQ + strings.ToLower(activityType)
+	defer func() {
+		if err != nil {
+			observability.IncNATSPublish(subject, "error")
+		} else {
+			observability.IncNATSPublish(subject, "ok")
+		}
+	}()
+
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("activitypub: marshal DLQ message: %w", err)
 	}
-	subject := natsutil.SubjectPrefixActivityPubOutboundDeliverDLQ + strings.ToLower(activityType)
 	_, err = w.js.Publish(ctx, subject, data)
 	if err != nil {
 		return fmt.Errorf("activitypub: publish DLQ to %s: %w", subject, err)
 	}
 	return nil
+}
+
+func (w *outboxDeliveryWorker) getActivityType(subject string) string {
+	if strings.HasPrefix(subject, subjectPrefixDeliver) {
+		return strings.TrimPrefix(subject, subjectPrefixDeliver)
+	}
+	return "unknown"
 }

@@ -12,27 +12,38 @@ import (
 
 	"github.com/chairswithlegs/monstera-fed/internal/config"
 	natsutil "github.com/chairswithlegs/monstera-fed/internal/nats"
+	"github.com/chairswithlegs/monstera-fed/internal/observability"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
 )
+
+// jsDLQPublisher adapts jetstream.JetStream to the outboxFanoutDLQPublisher interface.
+type jsDLQPublisher struct {
+	js jetstream.JetStream
+}
+
+func (p *jsDLQPublisher) Publish(ctx context.Context, subject string, payload []byte) error {
+	_, err := p.js.Publish(ctx, subject, payload)
+	return err
+}
 
 const fanoutPageSize = 500
 
 // outboxFanoutMessage is the payload for async fan-out: one message per activity to be delivered to all followers.
 type outboxFanoutMessage struct {
-	ActivityID   string          `json:"activity_id"`
-	Activity     json.RawMessage `json:"activity"`
-	ActivityType string          `json:"activity_type"`
-	SenderID     string          `json:"sender_id"`
+	ActivityID string          `json:"activity_id"`
+	Activity   json.RawMessage `json:"activity"`
+
+	SenderID string `json:"sender_id"`
 }
 
 // outboxFanoutPublisher enqueues fan-out messages; the worker consumes and fans out to follower inboxes.
 type outboxFanoutPublisher interface {
-	publish(ctx context.Context, msg outboxFanoutMessage) error
+	publish(ctx context.Context, activityType string, msg outboxFanoutMessage) error
 }
 
-// outboxFanoutDLQPublisher publishes messages to the fanout DLQ stream (used for testing with a simple mock).
+// outboxFanoutDLQPublisher publishes messages to the fanout DLQ stream.
 type outboxFanoutDLQPublisher interface {
-	Publish(ctx context.Context, subject string, payload []byte, opts ...jetstream.PublishOpt) (*jetstream.PubAck, error)
+	Publish(ctx context.Context, subject string, payload []byte) error
 }
 
 // newOutboxFanoutWorker constructs an outbox fan-out worker. Call start to begin consuming from ACTIVITYPUB_FANOUT.
@@ -46,7 +57,7 @@ func newOutboxFanoutWorker(
 		js:           js,
 		store:        s,
 		delivery:     delivery,
-		dlqPublisher: js,
+		dlqPublisher: &jsDLQPublisher{js: js},
 		cfg:          cfg,
 	}
 }
@@ -61,7 +72,7 @@ type outboxFanoutWorker struct {
 
 // start consumes from the ACTIVITYPUB_FANOUT stream and processes each message with paginated fan-out.
 func (w *outboxFanoutWorker) start(ctx context.Context) error {
-	consumer, err := w.js.Consumer(ctx, natsutil.StreamActivityPubOutboundFanout, natsutil.ConsumerActivityPubOutboundFanout)
+	consumer, err := w.js.Consumer(ctx, streamFanout, consumerFanout)
 	if err != nil {
 		return fmt.Errorf("activitypub fanout worker: get consumer: %w", err)
 	}
@@ -76,7 +87,7 @@ func (w *outboxFanoutWorker) start(ctx context.Context) error {
 
 	slog.Info("activitypub fanout worker started",
 		slog.Int("concurrency", concurrency),
-		slog.String("consumer", natsutil.ConsumerActivityPubOutboundFanout),
+		slog.String("consumer", consumerFanout),
 	)
 
 	consCtx, err := consumer.Consume(
@@ -103,16 +114,21 @@ func (w *outboxFanoutWorker) start(ctx context.Context) error {
 }
 
 // publish publishes a fan-out message to the stream. The worker will later consume it and fan out to follower inboxes.
-func (w *outboxFanoutWorker) publish(ctx context.Context, msg outboxFanoutMessage) error {
+func (w *outboxFanoutWorker) publish(ctx context.Context, activityType string, msg outboxFanoutMessage) (err error) {
+	subject := subjectPrefixFanout + strings.ToLower(activityType)
+	defer func() {
+		if err != nil {
+			observability.IncNATSPublish(subject, "error")
+		} else {
+			observability.IncNATSPublish(subject, "ok")
+		}
+	}()
+
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("activitypub: marshal fanout message: %w", err)
 	}
-	activityType := strings.ToLower(msg.ActivityType)
-	if activityType == "" {
-		activityType = "create"
-	}
-	subject := natsutil.SubjectPrefixActivityPubOutboundFanout + activityType
+
 	_, err = w.js.Publish(ctx, subject, data)
 	if err != nil {
 		return fmt.Errorf("activitypub: publish fanout to %s: %w", subject, err)
@@ -128,10 +144,7 @@ func (w *outboxFanoutWorker) processMessage(ctx context.Context, msg jetstream.M
 		return
 	}
 
-	activityType := strings.ToLower(fanout.ActivityType)
-	if activityType == "" {
-		activityType = "create"
-	}
+	activityType := w.getActivityType(msg.Subject())
 
 	cursor := ""
 	delivered := 0
@@ -190,30 +203,45 @@ func (w *outboxFanoutWorker) handleFanoutFailure(ctx context.Context, msg jetstr
 		var err error
 		meta, err = msg.Metadata()
 		if err != nil {
-			natsutil.NAKWithBackoff(msg, nil, natsutil.OutboxFanoutRetries)
+			natsutil.NAKWithBackoff(msg, nil, fanoutRetries)
 			return
 		}
 	}
-	if meta.NumDelivered >= uint64(len(natsutil.OutboxFanoutRetries)) {
+	if meta.NumDelivered >= uint64(len(fanoutRetries)) {
 		if err := w.sendToFanoutDLQ(ctx, activityType, fanout); err != nil {
 			slog.Warn("fanout worker: publish DLQ failed", slog.String("activity_id", fanout.ActivityID), slog.Any("error", err))
 		}
 		_ = msg.Ack()
 		return
 	}
-	natsutil.NAKWithBackoff(msg, meta, natsutil.OutboxFanoutRetries)
+	natsutil.NAKWithBackoff(msg, meta, fanoutRetries)
 }
 
 // sendToFanoutDLQ copies a failed fanout message to the fanout DLQ stream.
-func (w *outboxFanoutWorker) sendToFanoutDLQ(ctx context.Context, activityType string, fanout *outboxFanoutMessage) error {
+func (w *outboxFanoutWorker) sendToFanoutDLQ(ctx context.Context, activityType string, fanout *outboxFanoutMessage) (err error) {
+	subject := subjectPrefixFanoutDLQ + strings.ToLower(activityType)
+	defer func() {
+		if err != nil {
+			observability.IncNATSPublish(subject, "error")
+		} else {
+			observability.IncNATSPublish(subject, "ok")
+		}
+	}()
+
 	data, err := json.Marshal(fanout)
 	if err != nil {
 		return fmt.Errorf("activitypub: marshal fanout DLQ message: %w", err)
 	}
-	subject := natsutil.SubjectPrefixActivityPubOutboundFanoutDLQ + strings.ToLower(activityType)
-	_, err = w.dlqPublisher.Publish(ctx, subject, data)
-	if err != nil {
+
+	if err = w.dlqPublisher.Publish(ctx, subject, data); err != nil {
 		return fmt.Errorf("activitypub: publish fanout DLQ to %s: %w", subject, err)
 	}
 	return nil
+}
+
+func (w *outboxFanoutWorker) getActivityType(subject string) string {
+	if strings.HasPrefix(subject, subjectPrefixFanout) {
+		return strings.TrimPrefix(subject, subjectPrefixFanout)
+	}
+	return "unknown"
 }

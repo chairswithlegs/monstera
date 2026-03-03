@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera-fed/internal/events"
 	"github.com/chairswithlegs/monstera-fed/internal/store/postgres"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +28,7 @@ func TestIntegration_RegisterUser_CreateStatus_HomeTimeline(t *testing.T) {
 	s := postgres.New(pool)
 	instanceBaseURL := "https://test.example.com"
 	accountSvc := NewAccountService(s, instanceBaseURL)
-	statusSvc := NewStatusService(s, NoopFederationPublisher, instanceBaseURL, "test.example.com", 500, slog.Default())
+	statusSvc := NewStatusService(s, NoopFederationPublisher, events.NoopEventBus, instanceBaseURL, "test.example.com", 500, slog.Default())
 	timelineSvc := NewTimelineService(s)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera-fed/internal/events"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
 	"github.com/chairswithlegs/monstera-fed/internal/uid"
 )
@@ -59,6 +60,7 @@ type StatusService interface {
 type statusService struct {
 	store           store.Store
 	fed             StatusFederationPublisher
+	eventBus        events.EventBus
 	instanceBaseURL string
 	instanceDomain  string
 	maxStatusChars  int
@@ -66,8 +68,9 @@ type statusService struct {
 }
 
 // NewStatusService returns a StatusService that uses the given store and instance URLs.
-// fed must be non-nil; use NoopFederationPublisher when federation is disabled. logger may be nil (federation failures will not be logged).
-func NewStatusService(s store.Store, fed StatusFederationPublisher, instanceBaseURL string, instanceDomain string, maxStatusChars int, logger *slog.Logger) StatusService {
+// fed must be non-nil; use NoopFederationPublisher when federation is disabled.
+// eventBus must be non-nil; use events.NoopEventBus in tests or when SSE is disabled. logger may be nil (federation failures will not be logged).
+func NewStatusService(s store.Store, fed StatusFederationPublisher, eventBus events.EventBus, instanceBaseURL, instanceDomain string, maxStatusChars int, logger *slog.Logger) StatusService {
 	if fed == nil {
 		panic("StatusService: fed must be non-nil. Use NoopFederationPublisher when federation is disabled")
 	}
@@ -75,6 +78,7 @@ func NewStatusService(s store.Store, fed StatusFederationPublisher, instanceBase
 	return &statusService{
 		store:           s,
 		fed:             fed,
+		eventBus:        eventBus,
 		instanceBaseURL: base,
 		instanceDomain:  instanceDomain,
 		maxStatusChars:  maxStatusChars,
@@ -499,6 +503,20 @@ func (svc *statusService) CreateWithContent(ctx context.Context, in CreateWithCo
 	if err := svc.fed.PublishStatus(ctx, created); err != nil && svc.logger != nil {
 		svc.logger.WarnContext(ctx, "federation publish failed after CreateWithContent", slog.Any("error", err), slog.String("status_id", created.ID))
 	}
+	mentionedAccountIDs := make([]string, 0, len(mentions))
+	for _, m := range mentions {
+		if m != nil {
+			mentionedAccountIDs = append(mentionedAccountIDs, m.ID)
+		}
+	}
+	svc.eventBus.PublishStatusCreated(ctx, events.StatusCreatedEvent{
+		Status:              created,
+		Author:              author,
+		Mentions:            mentions,
+		Tags:                tags,
+		Media:               media,
+		MentionedAccountIDs: mentionedAccountIDs,
+	})
 	return CreateResult{
 		Status:   created,
 		Author:   author,
@@ -615,6 +633,15 @@ func (svc *statusService) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return fmt.Errorf("Delete(%s): %w", id, err)
 	}
+	var hashtagNames []string
+	tags, _ := svc.store.GetStatusHashtags(ctx, id)
+	for _, t := range tags {
+		hashtagNames = append(hashtagNames, t.Name)
+	}
+	var mentionedAccountIDs []string
+	if st.Visibility == domain.VisibilityDirect {
+		mentionedAccountIDs, _ = svc.store.GetStatusMentionAccountIDs(ctx, id)
+	}
 	err = svc.store.WithTx(ctx, func(tx store.Store) error {
 		if err := tx.DeleteStatus(ctx, id); err != nil {
 			return fmt.Errorf("DeleteStatus: %w", err)
@@ -627,6 +654,14 @@ func (svc *statusService) Delete(ctx context.Context, id string) error {
 	if err := svc.fed.DeleteStatus(ctx, st); err != nil && svc.logger != nil {
 		svc.logger.WarnContext(ctx, "federation publish failed after status delete", slog.Any("error", err), slog.String("status_id", st.ID))
 	}
+	svc.eventBus.PublishStatusDeleted(ctx, events.StatusDeletedEvent{
+		StatusID:            st.ID,
+		AccountID:           st.AccountID,
+		Visibility:          st.Visibility,
+		Local:               st.Local,
+		HashtagNames:        hashtagNames,
+		MentionedAccountIDs: mentionedAccountIDs,
+	})
 	return nil
 }
 
@@ -685,6 +720,19 @@ func (svc *statusService) Reblog(ctx context.Context, accountID, username, statu
 	if err != nil {
 		return CreateResult{}, fmt.Errorf("Reblog tx: %w", err)
 	}
+	origAuthor, _ := svc.store.GetAccountByID(ctx, orig.AccountID)
+	rebloggerAccount, _ := svc.store.GetAccountByID(ctx, accountID)
+	if origAuthor != nil && (origAuthor.Domain == nil || *origAuthor.Domain == "") && rebloggerAccount != nil {
+		notifs, _ := svc.store.ListNotifications(ctx, orig.AccountID, nil, 1)
+		if len(notifs) > 0 && notifs[0].FromID == accountID && notifs[0].Type == domain.NotificationTypeReblog && notifs[0].StatusID != nil && *notifs[0].StatusID == statusID {
+			svc.eventBus.PublishNotificationCreated(ctx, events.NotificationCreatedEvent{
+				RecipientAccountID: orig.AccountID,
+				Notification:       &notifs[0],
+				FromAccount:        rebloggerAccount,
+				StatusID:           &statusID,
+			})
+		}
+	}
 	return svc.GetByIDEnriched(ctx, boostID)
 }
 
@@ -731,14 +779,26 @@ func (svc *statusService) Favourite(ctx context.Context, accountID, statusID str
 		return CreateResult{}, fmt.Errorf("IncrementFavouritesCount: %w", err)
 	}
 	author, _ := svc.store.GetAccountByID(ctx, st.AccountID)
+	var createdNotif *domain.Notification
 	if author != nil && (author.Domain == nil || *author.Domain == "") {
-		_, _ = svc.store.CreateNotification(ctx, store.CreateNotificationInput{
+		createdNotif, _ = svc.store.CreateNotification(ctx, store.CreateNotificationInput{
 			ID:        uid.New(),
 			AccountID: st.AccountID,
 			FromID:    accountID,
 			Type:      domain.NotificationTypeFavourite,
 			StatusID:  &statusID,
 		})
+	}
+	if createdNotif != nil {
+		favouriterAccount, _ := svc.store.GetAccountByID(ctx, accountID)
+		if favouriterAccount != nil {
+			svc.eventBus.PublishNotificationCreated(ctx, events.NotificationCreatedEvent{
+				RecipientAccountID: st.AccountID,
+				Notification:       createdNotif,
+				FromAccount:        favouriterAccount,
+				StatusID:           &statusID,
+			})
+		}
 	}
 	return svc.GetByIDEnriched(ctx, statusID)
 }

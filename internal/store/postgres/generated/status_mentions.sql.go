@@ -25,6 +25,33 @@ func (q *Queries) CreateStatusMention(ctx context.Context, arg CreateStatusMenti
 	return err
 }
 
+const getStatusMentionAccountIDs = `-- name: GetStatusMentionAccountIDs :many
+SELECT sm.account_id FROM status_mentions sm
+INNER JOIN accounts a ON a.id = sm.account_id
+WHERE sm.status_id = $1
+  AND a.domain IS NULL
+`
+
+func (q *Queries) GetStatusMentionAccountIDs(ctx context.Context, statusID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, getStatusMentionAccountIDs, statusID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var account_id string
+		if err := rows.Scan(&account_id); err != nil {
+			return nil, err
+		}
+		items = append(items, account_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getStatusMentions = `-- name: GetStatusMentions :many
 SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.ap_raw, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields FROM accounts a
 INNER JOIN status_mentions sm ON sm.account_id = a.id

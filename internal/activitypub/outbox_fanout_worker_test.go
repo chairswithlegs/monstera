@@ -13,12 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/chairswithlegs/monstera-fed/internal/config"
-	natsutil "github.com/chairswithlegs/monstera-fed/internal/nats"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
 	"github.com/chairswithlegs/monstera-fed/internal/testutil"
 )
 
-func TestFanoutWorker_ProcessMessage_PublishesDeliveryPerInbox(t *testing.T) {
+func TestOutboxFanoutWorker_ProcessMessage_PublishesDeliveryPerInbox(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
@@ -48,10 +47,9 @@ func TestFanoutWorker_ProcessMessage_PublishesDeliveryPerInbox(t *testing.T) {
 	}
 
 	fanoutMsg := outboxFanoutMessage{
-		ActivityID:   "https://example.com/activities/01act",
-		Activity:     json.RawMessage(`{"type":"Create","object":{"type":"Note"}}`),
-		ActivityType: "create",
-		SenderID:     acc.ID,
+		ActivityID: "https://example.com/activities/01act",
+		Activity:   json.RawMessage(`{"type":"Create","object":{"type":"Note"}}`),
+		SenderID:   acc.ID,
 	}
 	data, err := json.Marshal(fanoutMsg)
 	require.NoError(t, err)
@@ -66,7 +64,7 @@ func TestFanoutWorker_ProcessMessage_PublishesDeliveryPerInbox(t *testing.T) {
 	assert.Equal(t, string(fanoutMsg.Activity), string(delivered[0].Activity))
 }
 
-func TestFanoutWorker_ProcessMessage_Pagination(t *testing.T) {
+func TestOutboxFanoutWorker_ProcessMessage_Pagination(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
@@ -98,10 +96,9 @@ func TestFanoutWorker_ProcessMessage_Pagination(t *testing.T) {
 	}
 
 	fanoutMsg := outboxFanoutMessage{
-		ActivityID:   "https://example.com/activities/01act",
-		Activity:     json.RawMessage(`{"type":"Create"}`),
-		ActivityType: "create",
-		SenderID:     acc.ID,
+		ActivityID: "https://example.com/activities/01act",
+		Activity:   json.RawMessage(`{"type":"Create"}`),
+		SenderID:   acc.ID,
 	}
 	data, err := json.Marshal(fanoutMsg)
 	require.NoError(t, err)
@@ -117,7 +114,7 @@ func TestFanoutWorker_ProcessMessage_Pagination(t *testing.T) {
 	assert.Len(t, inboxes, 3, "each follower inbox should appear exactly once")
 }
 
-func TestFanoutWorker_ProcessMessage_EmptyFollowers_Acks(t *testing.T) {
+func TestOutboxFanoutWorker_ProcessMessage_EmptyFollowers_Acks(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
@@ -137,10 +134,9 @@ func TestFanoutWorker_ProcessMessage_EmptyFollowers_Acks(t *testing.T) {
 	}
 
 	fanoutMsg := outboxFanoutMessage{
-		ActivityID:   "https://example.com/activities/01act",
-		Activity:     json.RawMessage(`{"type":"Delete"}`),
-		ActivityType: "delete",
-		SenderID:     acc.ID,
+		ActivityID: "https://example.com/activities/01act",
+		Activity:   json.RawMessage(`{"type":"Delete"}`),
+		SenderID:   acc.ID,
 	}
 	data, err := json.Marshal(fanoutMsg)
 	require.NoError(t, err)
@@ -165,7 +161,7 @@ func (f *failingFanoutStore) GetDistinctFollowerInboxURLsPaginated(_ context.Con
 	return nil, f.err
 }
 
-func TestFanoutWorker_ProcessMessage_DBError_RetriesRemaining_NakWithDelay(t *testing.T) {
+func TestOutboxFanoutWorker_ProcessMessage_DBError_RetriesRemaining_NakWithDelay(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
@@ -180,8 +176,8 @@ func TestFanoutWorker_ProcessMessage_DBError_RetriesRemaining_NakWithDelay(t *te
 	nakWithDelayCalled := false
 	var nakDelay time.Duration
 	mockMsg := &mockJetstreamMsg{
-		data:         mustMarshal(t, outboxFanoutMessage{ActivityID: "https://example.com/01act", Activity: json.RawMessage(`{}`), ActivityType: "create", SenderID: acc.ID}),
-		numDelivered: 1,
+		data:         mustMarshal(t, outboxFanoutMessage{ActivityID: "https://example.com/01act", Activity: json.RawMessage(`{}`), SenderID: acc.ID}),
+		numDelivered: 0,
 		nakWithDelayFn: func(d time.Duration) {
 			nakWithDelayCalled = true
 			nakDelay = d
@@ -193,10 +189,10 @@ func TestFanoutWorker_ProcessMessage_DBError_RetriesRemaining_NakWithDelay(t *te
 	w.processMessage(ctx, mockMsg)
 
 	assert.True(t, nakWithDelayCalled)
-	assert.Equal(t, 30*time.Second, nakDelay)
+	assert.Equal(t, fanoutRetries[0], nakDelay)
 }
 
-func TestFanoutWorker_ProcessMessage_DBError_RetryExhausted_SendsToDLQ(t *testing.T) {
+func TestOutboxFanoutWorker_ProcessMessage_DBError_RetryExhausted_SendsToDLQ(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
@@ -211,16 +207,17 @@ func TestFanoutWorker_ProcessMessage_DBError_RetryExhausted_SendsToDLQ(t *testin
 	var dlqSubject string
 	var dlqPayload []byte
 	dlqMock := &mockFanoutDLQPublisher{
-		publishFn: func(_ context.Context, subject string, payload []byte, _ ...jetstream.PublishOpt) (*jetstream.PubAck, error) {
+		publishFn: func(_ context.Context, subject string, payload []byte) error {
 			dlqSubject = subject
 			dlqPayload = payload
-			return nil, nil
+			return nil
 		},
 	}
 	acked := false
 	mockMsg := &mockJetstreamMsg{
-		data:         mustMarshal(t, outboxFanoutMessage{ActivityID: "https://example.com/01act", Activity: json.RawMessage(`{}`), ActivityType: "create", SenderID: acc.ID}),
-		numDelivered: uint64(len(natsutil.OutboxFanoutRetries)),
+		data:         mustMarshal(t, outboxFanoutMessage{ActivityID: "https://example.com/01act", Activity: json.RawMessage(`{}`), SenderID: acc.ID}),
+		subject:      subjectPrefixFanout + "create",
+		numDelivered: uint64(len(fanoutRetries)),
 		ackFn:        func() { acked = true },
 	}
 	deliveryMock := &mockDeliveryPublisher{publishFn: func(context.Context, string, outboxDeliveryMessage) error { return nil }}
@@ -229,11 +226,11 @@ func TestFanoutWorker_ProcessMessage_DBError_RetryExhausted_SendsToDLQ(t *testin
 	w.processMessage(ctx, mockMsg)
 
 	assert.True(t, acked)
-	assert.Equal(t, natsutil.SubjectPrefixActivityPubOutboundFanoutDLQ+"create", dlqSubject)
+	assert.Equal(t, subjectPrefixFanoutDLQ+"create", dlqSubject)
 	assert.NotEmpty(t, dlqPayload)
 }
 
-func TestFanoutWorker_ProcessMessage_PublishError_RetriesRemaining_NakWithDelay(t *testing.T) {
+func TestOutboxFanoutWorker_ProcessMessage_PublishError_RetriesRemaining_NakWithDelay(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
@@ -257,9 +254,9 @@ func TestFanoutWorker_ProcessMessage_PublishError_RetriesRemaining_NakWithDelay(
 	nakWithDelayCalled := false
 	mockMsg := &mockJetstreamMsg{
 		data: mustMarshal(t, outboxFanoutMessage{
-			ActivityID: "https://example.com/01act", Activity: json.RawMessage(`{}`), ActivityType: "create", SenderID: acc.ID,
+			ActivityID: "https://example.com/01act", Activity: json.RawMessage(`{}`), SenderID: acc.ID,
 		}),
-		numDelivered:   1,
+		numDelivered:   0,
 		nakWithDelayFn: func(time.Duration) { nakWithDelayCalled = true },
 	}
 	deliveryMock := &mockDeliveryPublisher{
@@ -272,7 +269,7 @@ func TestFanoutWorker_ProcessMessage_PublishError_RetriesRemaining_NakWithDelay(
 	assert.True(t, nakWithDelayCalled)
 }
 
-func TestFanoutWorker_ProcessMessage_PublishError_RetryExhausted_SendsToDLQ(t *testing.T) {
+func TestOutboxFanoutWorker_ProcessMessage_PublishError_RetryExhausted_SendsToDLQ(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
@@ -295,15 +292,16 @@ func TestFanoutWorker_ProcessMessage_PublishError_RetryExhausted_SendsToDLQ(t *t
 
 	var dlqSubject string
 	dlqMock := &mockFanoutDLQPublisher{
-		publishFn: func(_ context.Context, subject string, payload []byte, _ ...jetstream.PublishOpt) (*jetstream.PubAck, error) {
+		publishFn: func(_ context.Context, subject string, _ []byte) error {
 			dlqSubject = subject
-			return nil, nil
+			return nil
 		},
 	}
 	acked := false
 	mockMsg := &mockJetstreamMsg{
-		data:         mustMarshal(t, outboxFanoutMessage{ActivityID: "https://example.com/01act", Activity: json.RawMessage(`{}`), ActivityType: "delete", SenderID: acc.ID}),
-		numDelivered: uint64(len(natsutil.OutboxFanoutRetries)),
+		data:         mustMarshal(t, outboxFanoutMessage{ActivityID: "https://example.com/01act", Activity: json.RawMessage(`{}`), SenderID: acc.ID}),
+		subject:      subjectPrefixFanout + "delete",
+		numDelivered: uint64(len(fanoutRetries)),
 		ackFn:        func() { acked = true },
 	}
 	deliveryMock := &mockDeliveryPublisher{
@@ -314,7 +312,15 @@ func TestFanoutWorker_ProcessMessage_PublishError_RetryExhausted_SendsToDLQ(t *t
 	w.processMessage(ctx, mockMsg)
 
 	assert.True(t, acked)
-	assert.Equal(t, natsutil.SubjectPrefixActivityPubOutboundFanoutDLQ+"delete", dlqSubject)
+	assert.Equal(t, subjectPrefixFanoutDLQ+"delete", dlqSubject)
+}
+
+func TestOutboxFanoutWorker_getActivityType(t *testing.T) {
+	t.Parallel()
+	w := &outboxFanoutWorker{}
+	assert.Equal(t, "create", w.getActivityType(subjectPrefixFanout+"create"))
+	assert.Equal(t, "delete", w.getActivityType(subjectPrefixFanout+"delete"))
+	assert.Equal(t, "unknown", w.getActivityType("unknown"))
 }
 
 func mustMarshal(t *testing.T, v any) []byte {
@@ -325,18 +331,19 @@ func mustMarshal(t *testing.T, v any) []byte {
 }
 
 type mockFanoutDLQPublisher struct {
-	publishFn func(ctx context.Context, subject string, payload []byte, opts ...jetstream.PublishOpt) (*jetstream.PubAck, error)
+	publishFn func(ctx context.Context, subject string, payload []byte) error
 }
 
-func (m *mockFanoutDLQPublisher) Publish(ctx context.Context, subject string, payload []byte, opts ...jetstream.PublishOpt) (*jetstream.PubAck, error) {
+func (m *mockFanoutDLQPublisher) Publish(ctx context.Context, subject string, payload []byte) error {
 	if m.publishFn != nil {
-		return m.publishFn(ctx, subject, payload, opts...)
+		return m.publishFn(ctx, subject, payload)
 	}
-	return nil, nil
+	return nil
 }
 
 type mockJetstreamMsg struct {
 	data           []byte
+	subject        string
 	ackFn          func()
 	nakFn          func()
 	numDelivered   uint64
@@ -345,7 +352,7 @@ type mockJetstreamMsg struct {
 
 func (m *mockJetstreamMsg) Data() []byte         { return m.data }
 func (m *mockJetstreamMsg) Headers() nats.Header { return nil }
-func (m *mockJetstreamMsg) Subject() string      { return "" }
+func (m *mockJetstreamMsg) Subject() string      { return m.subject }
 func (m *mockJetstreamMsg) Reply() string        { return "" }
 func (m *mockJetstreamMsg) Ack() error {
 	if m.ackFn != nil {

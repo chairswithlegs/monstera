@@ -504,6 +504,14 @@ func (s *PostgresStore) GetStatusMentions(ctx context.Context, statusID string) 
 	return out, nil
 }
 
+func (s *PostgresStore) GetStatusMentionAccountIDs(ctx context.Context, statusID string) ([]string, error) {
+	ids, err := s.q.GetStatusMentionAccountIDs(ctx, statusID)
+	if err != nil {
+		return nil, fmt.Errorf("GetStatusMentionAccountIDs: %w", mapErr(err))
+	}
+	return ids, nil
+}
+
 func (s *PostgresStore) GetOrCreateHashtag(ctx context.Context, name string) (*domain.Hashtag, error) {
 	h, err := s.q.GetOrCreateHashtag(ctx, db.GetOrCreateHashtagParams{
 		ID:    uid.New(),
@@ -1022,4 +1030,12 @@ func (s *PostgresStore) GetDistinctFollowerInboxURLsPaginated(ctx context.Contex
 		return nil, fmt.Errorf("GetDistinctFollowerInboxURLsPaginated: %w", mapErr(err))
 	}
 	return urls, nil
+}
+
+func (s *PostgresStore) GetLocalFollowerAccountIDs(ctx context.Context, targetID string) ([]string, error) {
+	ids, err := s.q.GetLocalFollowerAccountIDs(ctx, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("GetLocalFollowerAccountIDs: %w", mapErr(err))
+	}
+	return ids, nil
 }

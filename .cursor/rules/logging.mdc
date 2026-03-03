@@ -1,6 +1,6 @@
 ---
 description: Logging with slog — use package-level functions, no passed loggers, prefer Context methods
-globs: "**/*.go"
+globs: **/*.go
 alwaysApply: false
 ---
 

@@ -17,16 +17,14 @@ import (
 // from the store once to repopulate the map.
 type BlocklistCache struct {
 	store    store.Store
-	logger   *slog.Logger
 	mu       sync.RWMutex
 	byDomain map[string]domain.DomainBlock
 }
 
 // NewBlocklistCache constructs a BlocklistCache.
-func NewBlocklistCache(store store.Store, logger *slog.Logger) *BlocklistCache {
+func NewBlocklistCache(store store.Store) *BlocklistCache {
 	return &BlocklistCache{
 		store:    store,
-		logger:   logger,
 		byDomain: make(map[string]domain.DomainBlock),
 	}
 }
@@ -49,8 +47,8 @@ func (b *BlocklistCache) Refresh(ctx context.Context) error {
 
 // loadFromStore repopulates byDomain from the store (e.g. on first use or after in-memory miss).
 func (b *BlocklistCache) loadFromStore(ctx context.Context) {
-	if err := b.Refresh(ctx); err != nil && b.logger != nil {
-		b.logger.Warn("blocklist: refresh failed", slog.Any("err", err))
+	if err := b.Refresh(ctx); err != nil {
+		slog.WarnContext(ctx, "blocklist: refresh failed", slog.Any("err", err))
 	}
 }
 

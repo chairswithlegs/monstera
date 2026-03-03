@@ -76,12 +76,11 @@ func (p *Outbox) PublishStatus(ctx context.Context, status *domain.Status) error
 		return fmt.Errorf("outbox: marshal create: %w", err)
 	}
 	msg := outboxFanoutMessage{
-		ActivityID:   activityID,
-		Activity:     raw,
-		ActivityType: "create",
-		SenderID:     account.ID,
+		ActivityID: activityID,
+		Activity:   raw,
+		SenderID:   account.ID,
 	}
-	if err := p.fanout.publish(ctx, msg); err != nil {
+	if err := p.fanout.publish(ctx, "create", msg); err != nil {
 		return fmt.Errorf("outbox: enqueue fanout: %w", err)
 	}
 	slog.DebugContext(ctx, "outbox: PublishStatus enqueued fanout", slog.String("status_id", status.ID), slog.String("activity_id", activityID))
@@ -114,12 +113,11 @@ func (p *Outbox) DeleteStatus(ctx context.Context, status *domain.Status) error 
 		return fmt.Errorf("outbox: marshal delete: %w", err)
 	}
 	msg := outboxFanoutMessage{
-		ActivityID:   objectID + "#delete",
-		Activity:     raw,
-		ActivityType: "delete",
-		SenderID:     account.ID,
+		ActivityID: objectID + "#delete",
+		Activity:   raw,
+		SenderID:   account.ID,
 	}
-	if err := p.fanout.publish(ctx, msg); err != nil {
+	if err := p.fanout.publish(ctx, "delete", msg); err != nil {
 		return fmt.Errorf("outbox: enqueue fanout: %w", err)
 	}
 	slog.DebugContext(ctx, "outbox: DeleteStatus enqueued fanout", slog.String("status_id", status.ID))

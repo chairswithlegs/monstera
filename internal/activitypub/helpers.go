@@ -3,15 +3,13 @@ package activitypub
 import (
 	"net/url"
 	"strings"
-
-	natsutil "github.com/chairswithlegs/monstera-fed/internal/nats"
 )
 
 // subjectToActivityType returns the activity type from a federation subject
-// (e.g. "federation.deliver.create" -> "create"), or "unknown" if not matched.
+// (e.g. "activitypub.outbound.deliver.create" -> "create"), or "unknown" if not matched.
 func subjectToActivityType(subject string) string {
-	if strings.HasPrefix(subject, natsutil.SubjectPrefixActivityPubOutboundDeliver) {
-		return strings.TrimPrefix(subject, natsutil.SubjectPrefixActivityPubOutboundDeliver)
+	if strings.HasPrefix(subject, subjectPrefixDeliver) {
+		return strings.TrimPrefix(subject, subjectPrefixDeliver)
 	}
 	return "unknown"
 }

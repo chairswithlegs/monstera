@@ -59,8 +59,8 @@ func TestDeliveryWorker_PullDeliverAndNoDuplicate(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	require.NoError(t, natsutil.EnsureStreams(ctx, client.JS))
-	stream, err := client.JS.Stream(ctx, natsutil.StreamActivityPubOutboundDelivery)
+	require.NoError(t, CreateOrUpdateStreams(ctx, client.JS))
+	stream, err := client.JS.Stream(ctx, streamDelivery)
 	require.NoError(t, err)
 	require.NoError(t, stream.Purge(ctx), "purge stream so test starts with no messages")
 
@@ -107,7 +107,7 @@ func TestDeliveryWorker_PullDeliverAndNoDuplicate(t *testing.T) {
 	require.NoError(t, err)
 
 	activityBody := json.RawMessage(`{"type":"Create","object":{"type":"Note","content":"hello"}}`)
-	delivery := deliveryMessage{
+	delivery := outboxDeliveryMessage{
 		ActivityID:  "https://test.example/activity/1",
 		Activity:    activityBody,
 		TargetInbox: inboxURL,
@@ -164,8 +164,8 @@ func TestOutboxFanoutWorker_Integration(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	require.NoError(t, natsutil.EnsureStreams(ctx, client.JS))
-	for _, streamName := range []string{natsutil.StreamActivityPubOutboundDelivery, natsutil.StreamActivityPubOutboundFanout} {
+	require.NoError(t, CreateOrUpdateStreams(ctx, client.JS))
+	for _, streamName := range []string{streamDelivery, streamFanout} {
 		stream, err := client.JS.Stream(ctx, streamName)
 		require.NoError(t, err)
 		require.NoError(t, stream.Purge(ctx), "purge stream %s", streamName)
@@ -233,12 +233,11 @@ func TestOutboxFanoutWorker_Integration(t *testing.T) {
 	fanoutWorker := newOutboxFanoutWorker(client.JS, fake, outboxDeliveryWorker, cfg)
 
 	fanoutMsg := outboxFanoutMessage{
-		ActivityID:   "https://test.example/activities/01act",
-		Activity:     json.RawMessage(`{"type":"Create","object":{"type":"Note","content":"hello"}}`),
-		ActivityType: "create",
-		SenderID:     senderID,
+		ActivityID: "https://test.example/activities/01act",
+		Activity:   json.RawMessage(`{"type":"Create","object":{"type":"Note","content":"hello"}}`),
+		SenderID:   senderID,
 	}
-	require.NoError(t, fanoutWorker.publish(ctx, fanoutMsg))
+	require.NoError(t, fanoutWorker.publish(ctx, "create", fanoutMsg))
 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	go func() { _ = outboxDeliveryWorker.start(workerCtx) }()

@@ -11,6 +11,7 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/cache"
 	"github.com/chairswithlegs/monstera-fed/internal/config"
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera-fed/internal/events"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
 )
 
@@ -29,6 +30,7 @@ type Inbox interface {
 }
 
 // NewInbox constructs an Inbox.
+// sseEvents and eventBus must be non-nil; pass the same publisher for both when SSE is enabled.
 func NewInbox(
 	accounts service.AccountService,
 	follows service.FollowService,
@@ -39,6 +41,8 @@ func NewInbox(
 	c cache.Store,
 	bl *BlocklistCache,
 	outbox *Outbox,
+	sseEvents InboxEventPublisher,
+	eventBus events.EventBus,
 	cfg *config.Config,
 ) Inbox {
 	return &inbox{
@@ -51,6 +55,8 @@ func NewInbox(
 		cache:          c,
 		blocklist:      bl,
 		outbox:         outbox,
+		sseEvents:      sseEvents,
+		eventBus:       eventBus,
 		cfg:            cfg,
 	}
 }
@@ -67,6 +73,8 @@ type inbox struct {
 	cache          cache.Store
 	blocklist      *BlocklistCache
 	outbox         *Outbox
+	sseEvents      InboxEventPublisher
+	eventBus       events.EventBus
 	cfg            *config.Config
 }
 
@@ -204,6 +212,30 @@ func (p *inbox) createNotification(ctx context.Context, accountID, fromID, notif
 	_ = p.notifications.Create(ctx, accountID, fromID, notifType, statusID)
 }
 
+func (p *inbox) createNotificationAndPublish(ctx context.Context, recipientID string, fromAccount *domain.Account, notifType string, statusID *string) {
+	p.createNotification(ctx, recipientID, fromAccount.ID, notifType, statusID)
+	list, _ := p.notifications.List(ctx, recipientID, nil, 1)
+	if len(list) == 0 {
+		return
+	}
+	n := &list[0]
+	if n.FromID != fromAccount.ID || n.Type != notifType {
+		return
+	}
+	if statusID != nil && (n.StatusID == nil || *n.StatusID != *statusID) {
+		return
+	}
+	if statusID == nil && n.StatusID != nil {
+		return
+	}
+	p.eventBus.PublishNotificationCreated(ctx, events.NotificationCreatedEvent{
+		RecipientAccountID: recipientID,
+		Notification:       n,
+		FromAccount:        fromAccount,
+		StatusID:           statusID,
+	})
+}
+
 func (p *inbox) handleFollow(ctx context.Context, activity *Activity) error {
 	targetID, ok := activity.ObjectID()
 	if !ok {
@@ -245,7 +277,7 @@ func (p *inbox) handleFollow(ctx context.Context, activity *Activity) error {
 		}
 		return fmt.Errorf("inbox: create follow: %w", err)
 	}
-	p.createNotification(ctx, target.ID, actor.ID, notifType, nil)
+	p.createNotificationAndPublish(ctx, target.ID, actor, notifType, nil)
 	if state == domain.FollowStateAccepted {
 		_ = p.outbox.SendAcceptFollow(ctx, target, actor, follow.ID)
 	}
@@ -528,7 +560,7 @@ func (p *inbox) storeRemoteMedia(ctx context.Context, attachments []Attachment, 
 	return ids
 }
 
-func (p *inbox) processMentionNotifications(ctx context.Context, tags []Tag, statusID, fromID string) {
+func (p *inbox) processMentionNotifications(ctx context.Context, tags []Tag, statusID string, fromAccount *domain.Account) {
 	for _, tag := range tags {
 		if tag.Type != "Mention" || tag.Href == "" {
 			continue
@@ -541,7 +573,8 @@ func (p *inbox) processMentionNotifications(ctx context.Context, tags []Tag, sta
 		if err != nil {
 			continue
 		}
-		p.createNotification(ctx, acc.ID, fromID, "mention", &statusID)
+		sid := statusID
+		p.createNotificationAndPublish(ctx, acc.ID, fromAccount, "mention", &sid)
 	}
 }
 
@@ -616,7 +649,24 @@ func (p *inbox) handleCreate(ctx context.Context, activity *Activity, _ string) 
 	if inReplyToID != nil {
 		_ = p.statuses.IncrementRepliesCount(ctx, *inReplyToID)
 	}
-	p.processMentionNotifications(ctx, note.Tag, status.ID, author.ID)
+	p.processMentionNotifications(ctx, note.Tag, status.ID, author)
+	enriched, err := p.statuses.GetByIDEnriched(ctx, status.ID)
+	if err == nil {
+		mentionedIDs := make([]string, 0, len(enriched.Mentions))
+		for _, m := range enriched.Mentions {
+			if m != nil {
+				mentionedIDs = append(mentionedIDs, m.ID)
+			}
+		}
+		p.eventBus.PublishStatusCreated(ctx, events.StatusCreatedEvent{
+			Status:              enriched.Status,
+			Author:              enriched.Author,
+			Mentions:            enriched.Mentions,
+			Tags:                enriched.Tags,
+			Media:               enriched.Media,
+			MentionedAccountIDs: mentionedIDs,
+		})
+	}
 	return nil
 }
 
@@ -648,7 +698,8 @@ func (p *inbox) handleAnnounce(ctx context.Context, activity *Activity, _ string
 		return fmt.Errorf("inbox: create boost: %w", err)
 	}
 	if original.Local {
-		p.createNotification(ctx, original.AccountID, actor.ID, "reblog", &original.ID)
+		origID := original.ID
+		p.createNotificationAndPublish(ctx, original.AccountID, actor, "reblog", &origID)
 	}
 	return nil
 }
@@ -679,7 +730,8 @@ func (p *inbox) handleLike(ctx context.Context, activity *Activity) error {
 		return fmt.Errorf("inbox: create favourite: %w", err)
 	}
 	if status.Local {
-		p.createNotification(ctx, status.AccountID, actor.ID, "favourite", &status.ID)
+		statusID := status.ID
+		p.createNotificationAndPublish(ctx, status.AccountID, actor, "favourite", &statusID)
 	}
 	return nil
 }
@@ -708,6 +760,26 @@ func (p *inbox) handleDelete(ctx context.Context, activity *Activity) error {
 		statusAuthor, _ := p.accounts.GetByID(ctx, status.AccountID)
 		if statusAuthor != nil && statusAuthor.APID != activity.Actor {
 			return fmt.Errorf("%w: delete: actor %q is not the author", ErrFatal, activity.Actor)
+		}
+		enriched, _ := p.statuses.GetByIDEnriched(ctx, status.ID)
+		if enriched.Status != nil {
+			hashtagNames := make([]string, 0, len(enriched.Tags))
+			for _, t := range enriched.Tags {
+				hashtagNames = append(hashtagNames, t.Name)
+			}
+			mentionedIDs := make([]string, 0, len(enriched.Mentions))
+			for _, m := range enriched.Mentions {
+				if m != nil {
+					mentionedIDs = append(mentionedIDs, m.ID)
+				}
+			}
+			p.sseEvents.PublishStatusDeletedRaw(ctx, status.ID, StatusEventOpts{
+				AccountID:           status.AccountID,
+				Visibility:          status.Visibility,
+				Local:               status.Local,
+				HashtagNames:        hashtagNames,
+				MentionedAccountIDs: mentionedIDs,
+			})
 		}
 		if delErr := p.statuses.SoftDelete(ctx, status.ID); delErr != nil {
 			return fmt.Errorf("inbox: SoftDelete (Delete): %w", delErr)

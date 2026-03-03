@@ -2,6 +2,8 @@
 
 This document describes the desired SSE streaming hub, NATS client/streams, and event publisher. Build order is in [roadmap.md](../roadmap.md).
 
+**Layer overview:** For a concise diagram of how **events**, **sse**, **NATS**, and **SSE** fit together, see [09b-sse-events-streaming-layers.md](09b-sse-events-streaming-layers.md).
+
 ---
 
 ## Design decisions
@@ -130,7 +132,7 @@ The `Data` field is a **pre-serialized JSON string**, not a nested object. The p
 
 ---
 
-## 4. `internal/nats/streaming/publisher.go` — SSE Event Publisher
+## 4. `internal/events/sse/mastodon/publisher.go` — SSE Event Publisher
 
 The Publisher is called by service-layer code (via the `EventBus` interface — see §5) after committing database writes. It determines which NATS subjects to publish to based on the event type and post visibility, serializes the payload, and fires NATS core pub/sub messages.
 
@@ -201,7 +203,7 @@ The service layer publishes events through an `EventBus` interface. This keeps s
 IMPLEMENTATION 07 defined a separate `EventPublisher` interface in `internal/ap/inbox.go`:
 This is a **lower-level** interface used by the `InboxProcessor` when processing incoming federation activities. It takes pre-serialized JSON payloads because the inbox already has the raw AP JSON and converts it to Mastodon-format JSON internally.
 
-Both interfaces coexist. The `streaming.Publisher` implements both:
+Both interfaces coexist. The `sse/mastodon.Publisher` implements both:
 
 | Interface | Used by | Input format |
 |-----------|---------|-------------|
@@ -224,7 +226,7 @@ If step 4 fails (NATS down), the status is still created. Connected SSE clients 
 
 ---
 
-## 6. `internal/nats/streaming/hub.go` — SSE Hub
+## 6. `internal/events/sse/hub.go` — SSE Hub
 
 The Hub runs as a long-lived goroutine on each replica. It subscribes to NATS core pub/sub subjects, maintains a registry of connected SSE clients, and fans out incoming events to the appropriate per-connection channels.
 
@@ -431,12 +433,12 @@ No new environment variables are needed. The NATS connection is configured via t
 
 After the existing NATS connection and `EnsureStreams` call, add:
 
-1. **Create Publisher:** `streaming.NewPublisher(natsClient.Conn, store, metrics, logger, cfg.InstanceDomain)`
-2. **Create Hub:** `streaming.NewHub(natsClient.Conn, metrics, logger)`
+1. **Create Publisher:** `sse/mastodon.NewPublisher(natsClient.Conn, store, metrics, logger, cfg.InstanceDomain)`
+2. **Create Hub:** `sse.NewHub(natsClient.Conn, metrics, logger)`
 3. **Start Hub:** `go hub.Start(ctx)` — runs until shutdown context is cancelled.
 4. **Wire EventBus:** Pass the Publisher as the `service.EventBus` implementation to all services that need it (`StatusService`, `AccountService`, etc.).
 5. **Wire ap.EventPublisher:** Pass the same Publisher to `ap.NewInboxProcessor` (it satisfies both interfaces).
-6. **Create StreamingHandler:** `mastodon.NewStreamingHandler(hub, logger, cfg.InstanceDomain)`
+6. **Create StreamingHandler:** `mastodon.NewStreamingHandler(hub)`
 
 ### Shutdown Sequence Update
 

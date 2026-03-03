@@ -7,3 +7,9 @@ ON CONFLICT DO NOTHING;
 SELECT a.* FROM accounts a
 INNER JOIN status_mentions sm ON sm.account_id = a.id
 WHERE sm.status_id = $1;
+
+-- name: GetStatusMentionAccountIDs :many
+SELECT sm.account_id FROM status_mentions sm
+INNER JOIN accounts a ON a.id = sm.account_id
+WHERE sm.status_id = $1
+  AND a.domain IS NULL;

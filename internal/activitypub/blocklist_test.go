@@ -2,7 +2,6 @@ package activitypub
 
 import (
 	"context"
-	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,7 +14,7 @@ func TestBlocklistCache_RefreshAndIsBlocked(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	bl := NewBlocklistCache(fake, slog.Default())
+	bl := NewBlocklistCache(fake)
 	err := bl.Refresh(ctx)
 	require.NoError(t, err)
 	assert.False(t, bl.IsBlocked(ctx, "evil.example"))

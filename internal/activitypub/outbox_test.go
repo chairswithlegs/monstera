@@ -33,7 +33,7 @@ func TestOutbox_SendAcceptFollow(t *testing.T) {
 			return nil
 		},
 	}
-	fanout := &mockOutboxFanoutPublisher{publishFn: func(_ context.Context, _ outboxFanoutMessage) error { return nil }}
+	fanout := &mockOutboxFanoutPublisher{publishFn: func(_ context.Context, _ string, _ outboxFanoutMessage) error { return nil }}
 	outbox := &Outbox{store: fake, delivery: delivery, fanout: fanout, cfg: cfg}
 
 	target, err := fake.CreateAccount(ctx, store.CreateAccountInput{
@@ -68,7 +68,7 @@ func TestOutbox_PublishStatus_EnqueuesFanoutMessage(t *testing.T) {
 	cfg := &config.Config{InstanceDomain: "example.com"}
 	var fanoutMsgs []outboxFanoutMessage
 	fanout := &mockOutboxFanoutPublisher{
-		publishFn: func(_ context.Context, msg outboxFanoutMessage) error {
+		publishFn: func(_ context.Context, _ string, msg outboxFanoutMessage) error {
 			fanoutMsgs = append(fanoutMsgs, msg)
 			return nil
 		},
@@ -89,7 +89,6 @@ func TestOutbox_PublishStatus_EnqueuesFanoutMessage(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, fanoutMsgs, 1)
-	assert.Equal(t, "create", fanoutMsgs[0].ActivityType)
 	assert.Equal(t, acc.ID, fanoutMsgs[0].SenderID)
 	assert.NotEmpty(t, fanoutMsgs[0].ActivityID)
 	assert.NotEmpty(t, fanoutMsgs[0].Activity)
@@ -105,7 +104,7 @@ func TestOutbox_DeleteStatus_EnqueuesFanoutMessage(t *testing.T) {
 	cfg := &config.Config{InstanceDomain: "example.com"}
 	var fanoutMsgs []outboxFanoutMessage
 	fanout := &mockOutboxFanoutPublisher{
-		publishFn: func(_ context.Context, msg outboxFanoutMessage) error {
+		publishFn: func(_ context.Context, _ string, msg outboxFanoutMessage) error {
 			fanoutMsgs = append(fanoutMsgs, msg)
 			return nil
 		},
@@ -126,7 +125,6 @@ func TestOutbox_DeleteStatus_EnqueuesFanoutMessage(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, fanoutMsgs, 1)
-	assert.Equal(t, "delete", fanoutMsgs[0].ActivityType)
 	assert.Equal(t, acc.ID, fanoutMsgs[0].SenderID)
 	assert.Contains(t, fanoutMsgs[0].ActivityID, "#delete")
 	assert.NotEmpty(t, fanoutMsgs[0].Activity)
@@ -153,7 +151,7 @@ func TestOutbox_PublishFollow(t *testing.T) {
 			return nil
 		},
 	}
-	fanout := &mockOutboxFanoutPublisher{publishFn: func(_ context.Context, _ outboxFanoutMessage) error { return nil }}
+	fanout := &mockOutboxFanoutPublisher{publishFn: func(_ context.Context, _ string, _ outboxFanoutMessage) error { return nil }}
 	outbox := &Outbox{store: fake, delivery: delivery, fanout: fanout, cfg: cfg}
 
 	actor, err := fake.CreateAccount(ctx, store.CreateAccountInput{
@@ -191,7 +189,7 @@ func TestOutbox_PublishFollow_EmptyInbox(t *testing.T) {
 		t.Error("publish should not be called when target has no inbox")
 		return nil
 	}}
-	fanout := &mockOutboxFanoutPublisher{publishFn: func(context.Context, outboxFanoutMessage) error { return nil }}
+	fanout := &mockOutboxFanoutPublisher{publishFn: func(context.Context, string, outboxFanoutMessage) error { return nil }}
 	outbox := &Outbox{store: fake, delivery: delivery, fanout: fanout, cfg: cfg}
 
 	actor, _ := fake.CreateAccount(ctx, store.CreateAccountInput{
@@ -224,7 +222,7 @@ func TestOutbox_PublishUndoFollow(t *testing.T) {
 			return nil
 		},
 	}
-	fanout := &mockOutboxFanoutPublisher{publishFn: func(_ context.Context, _ outboxFanoutMessage) error { return nil }}
+	fanout := &mockOutboxFanoutPublisher{publishFn: func(_ context.Context, _ string, _ outboxFanoutMessage) error { return nil }}
 	outbox := &Outbox{store: fake, delivery: delivery, fanout: fanout, cfg: cfg}
 
 	actor, err := fake.CreateAccount(ctx, store.CreateAccountInput{
@@ -262,7 +260,7 @@ func TestOutbox_PublishUndoFollow_EmptyInbox(t *testing.T) {
 		t.Error("publish should not be called when target has no inbox")
 		return nil
 	}}
-	fanout := &mockOutboxFanoutPublisher{publishFn: func(context.Context, outboxFanoutMessage) error { return nil }}
+	fanout := &mockOutboxFanoutPublisher{publishFn: func(context.Context, string, outboxFanoutMessage) error { return nil }}
 	outbox := &Outbox{store: fake, delivery: delivery, fanout: fanout, cfg: cfg}
 
 	actor, _ := fake.CreateAccount(ctx, store.CreateAccountInput{
@@ -286,7 +284,7 @@ func TestOutbox_SendAcceptFollow_EmptyInbox(t *testing.T) {
 		t.Error("publish should not be called when actor has no inbox")
 		return nil
 	}}
-	fanout := &mockOutboxFanoutPublisher{publishFn: func(context.Context, outboxFanoutMessage) error { return nil }}
+	fanout := &mockOutboxFanoutPublisher{publishFn: func(context.Context, string, outboxFanoutMessage) error { return nil }}
 	outbox := &Outbox{store: fake, delivery: delivery, fanout: fanout, cfg: cfg}
 
 	target, _ := fake.CreateAccount(ctx, store.CreateAccountInput{
@@ -315,12 +313,12 @@ func (m *mockDeliveryPublisher) publish(ctx context.Context, activityType string
 }
 
 type mockOutboxFanoutPublisher struct {
-	publishFn func(context.Context, outboxFanoutMessage) error
+	publishFn func(context.Context, string, outboxFanoutMessage) error
 }
 
-func (m *mockOutboxFanoutPublisher) publish(ctx context.Context, msg outboxFanoutMessage) error {
+func (m *mockOutboxFanoutPublisher) publish(ctx context.Context, activityType string, msg outboxFanoutMessage) error {
 	if m.publishFn != nil {
-		return m.publishFn(ctx, msg)
+		return m.publishFn(ctx, activityType, msg)
 	}
 	return nil
 }

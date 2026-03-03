@@ -340,6 +340,35 @@ func (q *Queries) GetFollowing(ctx context.Context, arg GetFollowingParams) ([]A
 	return items, nil
 }
 
+const getLocalFollowerAccountIDs = `-- name: GetLocalFollowerAccountIDs :many
+SELECT f.account_id FROM follows f
+INNER JOIN accounts a ON a.id = f.account_id
+WHERE f.target_id = $1
+  AND f.state = 'accepted'
+  AND a.domain IS NULL
+  AND a.suspended = FALSE
+`
+
+func (q *Queries) GetLocalFollowerAccountIDs(ctx context.Context, targetID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, getLocalFollowerAccountIDs, targetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var account_id string
+		if err := rows.Scan(&account_id); err != nil {
+			return nil, err
+		}
+		items = append(items, account_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getPendingFollowRequests = `-- name: GetPendingFollowRequests :many
 SELECT f.id, f.account_id, f.target_id, f.state, f.ap_id, f.created_at, a.username, a.display_name, a.ap_id FROM follows f
 INNER JOIN accounts a ON a.id = f.account_id

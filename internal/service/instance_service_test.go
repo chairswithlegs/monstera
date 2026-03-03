@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera-fed/internal/events"
 	"github.com/chairswithlegs/monstera-fed/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,7 +49,7 @@ func TestInstanceService_GetNodeInfoStats_local_post_count(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
 	instanceSvc := NewInstanceService(fake)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})

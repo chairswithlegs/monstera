@@ -115,4 +115,6 @@ type Store interface {
 
 	GetFollowerInboxURLs(ctx context.Context, accountID string) ([]string, error)
 	GetDistinctFollowerInboxURLsPaginated(ctx context.Context, accountID string, cursor string, limit int) ([]string, error)
+	GetLocalFollowerAccountIDs(ctx context.Context, targetID string) ([]string, error)
+	GetStatusMentionAccountIDs(ctx context.Context, statusID string) ([]string, error)
 }

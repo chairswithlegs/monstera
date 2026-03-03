@@ -2,8 +2,8 @@ package activitypub
 
 import (
 	"context"
+	"encoding/json"
 	"io"
-	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,6 +11,7 @@ import (
 
 	"github.com/chairswithlegs/monstera-fed/internal/cache"
 	"github.com/chairswithlegs/monstera-fed/internal/config"
+	"github.com/chairswithlegs/monstera-fed/internal/events"
 	"github.com/chairswithlegs/monstera-fed/internal/media"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
 	"github.com/chairswithlegs/monstera-fed/internal/testutil"
@@ -50,11 +51,21 @@ func (testMediaStore) URL(ctx context.Context, key string) (string, error) {
 	return "https://example.com/" + key, nil
 }
 
+// noopInboxEvents is a test double that implements both InboxEventPublisher and events.EventBus with no-op methods.
+type noopInboxEvents struct{}
+
+func (noopInboxEvents) PublishStatusCreatedRaw(context.Context, json.RawMessage, StatusEventOpts)   {}
+func (noopInboxEvents) PublishStatusDeletedRaw(context.Context, string, StatusEventOpts)            {}
+func (noopInboxEvents) PublishNotificationCreatedRaw(context.Context, string, json.RawMessage)      {}
+func (noopInboxEvents) PublishStatusCreated(context.Context, events.StatusCreatedEvent)             {}
+func (noopInboxEvents) PublishStatusDeleted(context.Context, events.StatusDeletedEvent)             {}
+func (noopInboxEvents) PublishNotificationCreated(context.Context, events.NotificationCreatedEvent) {}
+
 func newInboxProcessorForTest(t *testing.T, fake *testutil.FakeStore, cfg *config.Config) Inbox {
 	t.Helper()
 	cacheStore, err := cache.New(cache.Config{Driver: "memory"})
 	require.NoError(t, err)
-	bl := NewBlocklistCache(fake, slog.Default())
+	bl := NewBlocklistCache(fake)
 	_ = bl.Refresh(context.Background())
 	instanceBaseURL := "https://example.com"
 	if cfg != nil && cfg.InstanceDomain != "" {
@@ -63,7 +74,8 @@ func newInboxProcessorForTest(t *testing.T, fake *testutil.FakeStore, cfg *confi
 	accountSvc := service.NewAccountService(fake, instanceBaseURL)
 	followSvc := service.NewFollowService(fake, nil, nil)
 	notificationSvc := service.NewNotificationService(fake)
-	statusSvc := service.NewStatusService(fake, service.NoopFederationPublisher, instanceBaseURL, "example.com", 5000, nil)
+	statusSvc := service.NewStatusService(fake, service.NoopFederationPublisher, events.NoopEventBus, instanceBaseURL, "example.com", 5000, nil)
 	mediaSvc := service.NewMediaService(fake, &testMediaStore{}, 1<<20)
-	return NewInbox(accountSvc, followSvc, notificationSvc, statusSvc, mediaSvc, nil, cacheStore, bl, nil, cfg)
+	noopEvents := &noopInboxEvents{}
+	return NewInbox(accountSvc, followSvc, notificationSvc, statusSvc, mediaSvc, nil, cacheStore, bl, nil, noopEvents, noopEvents, cfg)
 }
