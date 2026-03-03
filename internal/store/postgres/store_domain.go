@@ -1007,3 +1007,19 @@ func (s *PostgresStore) GetFollowerInboxURLs(ctx context.Context, accountID stri
 	}
 	return urls, nil
 }
+
+func (s *PostgresStore) GetDistinctFollowerInboxURLsPaginated(ctx context.Context, accountID string, cursor string, limit int) ([]string, error) {
+	pageLimit := limit
+	if pageLimit <= 0 || pageLimit > 10000 {
+		pageLimit = 10000
+	}
+	urls, err := s.q.GetDistinctFollowerInboxURLsPaginated(ctx, db.GetDistinctFollowerInboxURLsPaginatedParams{
+		TargetID: accountID,
+		Column2:  cursor,
+		Limit:    int32(pageLimit), //nolint:gosec // G115: capped at 10000
+	})
+	if err != nil {
+		return nil, fmt.Errorf("GetDistinctFollowerInboxURLsPaginated: %w", mapErr(err))
+	}
+	return urls, nil
+}

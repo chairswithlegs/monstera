@@ -47,26 +47,26 @@ func TestEnsureStreams_StreamAndConsumerConfig(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	stream, err := client.JS.Stream(ctx, StreamActivityPub)
+	stream, err := client.JS.Stream(ctx, StreamActivityPubOutboundDelivery)
 	require.NoError(t, err)
 	streamInfo, err := stream.Info(ctx)
 	require.NoError(t, err)
 
-	assert.Equal(t, StreamActivityPub, streamInfo.Config.Name, "stream name")
+	assert.Equal(t, StreamActivityPubOutboundDelivery, streamInfo.Config.Name, "stream name")
 	assert.Equal(t, jetstream.WorkQueuePolicy, streamInfo.Config.Retention,
 		"stream retention must be WorkQueue so each message is delivered to only one consumer")
-	assert.Equal(t, []string{SubjectPrefixActivityPubDeliver + ">"}, streamInfo.Config.Subjects, "stream subjects")
+	assert.Equal(t, []string{SubjectPrefixActivityPubOutboundDeliver + ">"}, streamInfo.Config.Subjects, "stream subjects")
 
-	cons, err := client.JS.Consumer(ctx, StreamActivityPub, ConsumerActivityPubWorker)
+	cons, err := client.JS.Consumer(ctx, StreamActivityPubOutboundDelivery, ConsumerActivityPubOutboundDelivery)
 	require.NoError(t, err)
 	consInfo, err := cons.Info(ctx)
 	require.NoError(t, err)
 
-	assert.Equal(t, ConsumerActivityPubWorker, consInfo.Config.Durable, "consumer durable name")
+	assert.Equal(t, ConsumerActivityPubOutboundDelivery, consInfo.Config.Durable, "consumer durable name")
 	assert.Equal(t, jetstream.AckExplicitPolicy, consInfo.Config.AckPolicy, "consumer ack policy")
 	assert.Empty(t, consInfo.Config.DeliverSubject,
 		"consumer must be pull (no DeliverSubject); DeliverSubject is for push only")
-	assert.Equal(t, MaxDeliverActivityPub, consInfo.Config.MaxDeliver, "consumer max deliver")
+	assert.Equal(t, MaxDeliverActivityPubOutboundDelivery, consInfo.Config.MaxDeliver, "consumer max deliver")
 }
 
 // TestEnsureStreams_PublishConsume requires NATS with JetStream running (e.g. docker-compose up nats).

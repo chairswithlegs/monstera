@@ -9,17 +9,24 @@ import (
 )
 
 // Subject prefixes for the activitypub streams. Used by streams (with ">").
+// DLQ subjects use sibling *dlq. prefix to avoid overlap with parent stream wildcards.
 const (
-	SubjectPrefixActivityPubDeliver = "activitypub.deliver."
-	SubjectPrefixActivityPubDLQ     = "activitypub.dlq."
+	SubjectPrefixActivityPubOutboundDeliver    = "activitypub.outbound.deliver."
+	SubjectPrefixActivityPubOutboundDeliverDLQ = "activitypub.outbound.deliverdlq."
+	SubjectPrefixActivityPubOutboundFanout     = "activitypub.outbound.fanout."
+	SubjectPrefixActivityPubOutboundFanoutDLQ  = "activitypub.outbound.fanoutdlq."
 )
 
-// ActivityPub stream/consumer names and limits for use by the activitypub worker and tests.
+// Outbound ActivityPub stream/consumer names and limits (delivery to remote inboxes, fan-out, DLQ).
 const (
-	StreamActivityPub         = "ACTIVITYPUB"
-	StreamActivityPubDLQ      = "ACTIVITYPUB_DLQ"
-	ConsumerActivityPubWorker = "activitypub-worker"
-	MaxDeliverActivityPub     = 5
+	StreamActivityPubOutboundDelivery     = "ACTIVITYPUB_OUTBOUND_DELIVERY"
+	StreamActivityPubOutboundDeliveryDLQ  = "ACTIVITYPUB_OUTBOUND_DELIVERY_DLQ"
+	StreamActivityPubOutboundFanout       = "ACTIVITYPUB_OUTBOUND_FANOUT"
+	StreamActivityPubOutboundFanoutDLQ    = "ACTIVITYPUB_OUTBOUND_FANOUT_DLQ"
+	ConsumerActivityPubOutboundDelivery   = "activitypub-outbound-delivery"
+	ConsumerActivityPubOutboundFanout     = "activitypub-outbound-fanout"
+	MaxDeliverActivityPubOutboundDelivery = 5
+	MaxDeliverActivityPubOutboundFanout   = 2
 )
 
 // EnsureStreams creates or updates the JetStream streams and durable consumers.
@@ -27,8 +34,8 @@ const (
 // The purpose of this function is to ensure NATS is properly configured at application start.
 func EnsureStreams(ctx context.Context, js jetstream.JetStream) error {
 	_, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
-		Name:      StreamActivityPub,
-		Subjects:  []string{SubjectPrefixActivityPubDeliver + ">"},
+		Name:      StreamActivityPubOutboundDelivery,
+		Subjects:  []string{SubjectPrefixActivityPubOutboundDeliver + ">"},
 		Retention: jetstream.WorkQueuePolicy,
 		Storage:   jetstream.FileStorage,
 		MaxAge:    72 * time.Hour,
@@ -36,36 +43,64 @@ func EnsureStreams(ctx context.Context, js jetstream.JetStream) error {
 		Discard:   jetstream.DiscardOld,
 	})
 	if err != nil {
-		return fmt.Errorf("nats: create stream %s: %w", StreamActivityPub, err)
+		return fmt.Errorf("nats: create stream %s: %w", StreamActivityPubOutboundDelivery, err)
 	}
 
 	_, err = js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
-		Name:      StreamActivityPubDLQ,
-		Subjects:  []string{SubjectPrefixActivityPubDLQ + ">"},
+		Name:      StreamActivityPubOutboundDeliveryDLQ,
+		Subjects:  []string{SubjectPrefixActivityPubOutboundDeliverDLQ + ">"},
 		Retention: jetstream.LimitsPolicy,
 		Storage:   jetstream.FileStorage,
 		MaxAge:    30 * 24 * time.Hour,
 	})
 	if err != nil {
-		return fmt.Errorf("nats: create stream %s: %w", StreamActivityPubDLQ, err)
+		return fmt.Errorf("nats: create stream %s: %w", StreamActivityPubOutboundDeliveryDLQ, err)
 	}
 
-	// Scaling: WorkQueue allows only one consumer *definition* per stream (hence one
-	// durable name, "activitypub-worker"). Each process runs a single pull loop that
-	// does Fetch(batch) so only one Fetch is in flight at a time; messages are
-	// processed concurrently within the batch. Multiple processes can run the same
-	// consumer; NATS distributes work. Each delivery job is processed exactly once.
-	_, err = js.CreateOrUpdateConsumer(ctx, StreamActivityPub, jetstream.ConsumerConfig{
-		Durable:       ConsumerActivityPubWorker,
+	_, err = js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+		Name:      StreamActivityPubOutboundFanout,
+		Subjects:  []string{SubjectPrefixActivityPubOutboundFanout + ">"},
+		Retention: jetstream.WorkQueuePolicy,
+		Storage:   jetstream.FileStorage,
+		MaxAge:    72 * time.Hour,
+		MaxBytes:  4 * 1024 * 1024,
+		Discard:   jetstream.DiscardOld,
+	})
+	if err != nil {
+		return fmt.Errorf("nats: create stream %s: %w", StreamActivityPubOutboundFanout, err)
+	}
+
+	_, err = js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+		Name:      StreamActivityPubOutboundFanoutDLQ,
+		Subjects:  []string{SubjectPrefixActivityPubOutboundFanoutDLQ + ">"},
+		Retention: jetstream.LimitsPolicy,
+		Storage:   jetstream.FileStorage,
+		MaxAge:    30 * 24 * time.Hour,
+	})
+	if err != nil {
+		return fmt.Errorf("nats: create stream %s: %w", StreamActivityPubOutboundFanoutDLQ, err)
+	}
+
+	_, err = js.CreateOrUpdateConsumer(ctx, StreamActivityPubOutboundDelivery, jetstream.ConsumerConfig{
+		Durable:       ConsumerActivityPubOutboundDelivery,
 		AckPolicy:     jetstream.AckExplicitPolicy,
 		MaxAckPending: 50,
 		AckWait:       60 * time.Second,
-		MaxDeliver:    MaxDeliverActivityPub,
-		// These can be overridden by the worker.
-		BackOff: []time.Duration{30 * time.Second, 5 * time.Minute, 30 * time.Minute},
+		MaxDeliver:    MaxDeliverActivityPubOutboundDelivery,
 	})
 	if err != nil {
-		return fmt.Errorf("nats: create consumer %s: %w", ConsumerActivityPubWorker, err)
+		return fmt.Errorf("nats: create consumer %s: %w", ConsumerActivityPubOutboundDelivery, err)
+	}
+
+	_, err = js.CreateOrUpdateConsumer(ctx, StreamActivityPubOutboundFanout, jetstream.ConsumerConfig{
+		Durable:       ConsumerActivityPubOutboundFanout,
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		MaxAckPending: 20,
+		AckWait:       120 * time.Second,
+		MaxDeliver:    MaxDeliverActivityPubOutboundFanout,
+	})
+	if err != nil {
+		return fmt.Errorf("nats: create consumer %s: %w", ConsumerActivityPubOutboundFanout, err)
 	}
 
 	return nil

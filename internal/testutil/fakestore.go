@@ -3,6 +3,7 @@ package testutil
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -893,5 +894,49 @@ func (f *FakeStore) UpdateStatus(ctx context.Context, in store.UpdateStatusInput
 	return nil
 }
 func (f *FakeStore) GetFollowerInboxURLs(ctx context.Context, accountID string) ([]string, error) {
-	return nil, nil
+	return f.getDistinctFollowerInboxURLsPaginated(ctx, accountID, "", 0)
+}
+
+func (f *FakeStore) GetDistinctFollowerInboxURLsPaginated(ctx context.Context, accountID string, cursor string, limit int) ([]string, error) {
+	return f.getDistinctFollowerInboxURLsPaginated(ctx, accountID, cursor, limit)
+}
+
+func (f *FakeStore) getDistinctFollowerInboxURLsPaginated(_ context.Context, accountID string, cursor string, limit int) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var inboxURLs []string
+	seen := make(map[string]bool)
+	for key, follow := range f.followsByKey {
+		if follow.TargetID != accountID || follow.State != domain.FollowStateAccepted {
+			continue
+		}
+		parts := strings.SplitN(key, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		followerID := parts[0]
+		acc, ok := f.accountsByID[followerID]
+		if !ok || acc.InboxURL == "" || acc.Domain == nil {
+			continue
+		}
+		if _, suspended := f.suspendedAccountIDs[followerID]; suspended {
+			continue
+		}
+		if !seen[acc.InboxURL] {
+			seen[acc.InboxURL] = true
+			inboxURLs = append(inboxURLs, acc.InboxURL)
+		}
+	}
+	// Sort for stable pagination
+	sort.Strings(inboxURLs)
+	var result []string
+	for _, u := range inboxURLs {
+		if u > cursor {
+			result = append(result, u)
+			if limit > 0 && len(result) >= limit {
+				break
+			}
+		}
+	}
+	return result, nil
 }

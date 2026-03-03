@@ -44,6 +44,17 @@ WHERE f.target_id = $1
   AND a.domain IS NOT NULL
   AND a.suspended = FALSE;
 
+-- name: GetDistinctFollowerInboxURLsPaginated :many
+SELECT DISTINCT a.inbox_url FROM accounts a
+INNER JOIN follows f ON f.account_id = a.id
+WHERE f.target_id = $1
+  AND f.state = 'accepted'
+  AND a.domain IS NOT NULL
+  AND a.suspended = FALSE
+  AND ($2::text IS NULL OR a.inbox_url > $2)
+ORDER BY a.inbox_url
+LIMIT $3;
+
 -- name: GetPendingFollowRequests :many
 SELECT f.*, a.username, a.display_name, a.ap_id FROM follows f
 INNER JOIN accounts a ON a.id = f.account_id

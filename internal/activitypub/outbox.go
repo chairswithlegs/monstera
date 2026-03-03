@@ -7,25 +7,53 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/nats-io/nats.go/jetstream"
+
 	"github.com/chairswithlegs/monstera-fed/internal/config"
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
 	"github.com/chairswithlegs/monstera-fed/internal/uid"
 )
 
-// Outbox builds ActivityPub activities and sends them to the OutboxWorker for delivery.
+// Outbox builds ActivityPub activities and sends them for delivery. Fan-out (status create/delete to followers) is asynchronous; single-target deliveries (follow, undo, accept) are enqueued for delivery. Call Start to run the internal workers.
 type Outbox struct {
-	store  store.Store
-	worker OutboxWorker
-	cfg    *config.Config
+	store                store.Store
+	delivery             outboxDeliveryPublisher
+	fanout               outboxFanoutPublisher
+	outboxDeliveryWorker *outboxDeliveryWorker
+	outboxFanoutWorker   *outboxFanoutWorker
+	cfg                  *config.Config
 }
 
-// NewOutbox constructs an Outbox.
-func NewOutbox(s store.Store, worker OutboxWorker, cfg *config.Config) *Outbox {
-	return &Outbox{store: s, worker: worker, cfg: cfg}
+// NewOutbox constructs an Outbox. Call Start to begin consuming delivery and fan-out messages.
+func NewOutbox(
+	s store.Store,
+	js jetstream.JetStream,
+	bl *BlocklistCache,
+	signer *HTTPSignatureService,
+	cfg *config.Config,
+) *Outbox {
+	dw := newOutboxDeliveryWorker(js, bl, signer, cfg)
+	fw := newOutboxFanoutWorker(js, s, dw, cfg)
+	return &Outbox{
+		store:                s,
+		delivery:             dw,
+		fanout:               fw,
+		outboxDeliveryWorker: dw,
+		outboxFanoutWorker:   fw,
+		cfg:                  cfg,
+	}
 }
 
-// PublishStatus delivers a Create{Note} activity to the author's followers' inboxes.
+// Start runs the delivery and fan-out workers until ctx is cancelled. It blocks until both have stopped.
+func (o *Outbox) Start(ctx context.Context) error {
+	errc := make(chan error, 2)
+	go func() { errc <- o.outboxDeliveryWorker.start(ctx) }()
+	go func() { errc <- o.outboxFanoutWorker.start(ctx) }()
+	return <-errc
+}
+
+// PublishStatus enqueues a Create{Note} activity for async fan-out to the author's followers' inboxes.
 func (p *Outbox) PublishStatus(ctx context.Context, status *domain.Status) error {
 	account, err := p.store.GetAccountByID(ctx, status.AccountID)
 	if err != nil {
@@ -47,43 +75,20 @@ func (p *Outbox) PublishStatus(ctx context.Context, status *domain.Status) error
 	if err != nil {
 		return fmt.Errorf("outbox: marshal create: %w", err)
 	}
-	// TODO: this isn't super scalable, while fine for 99% of users, we should consider
-	// moving this to the worker for high-volume users.
-	inboxURLs, err := p.store.GetFollowerInboxURLs(ctx, account.ID)
-	if err != nil {
-		return fmt.Errorf("outbox: get follower inboxes: %w", err)
+	msg := outboxFanoutMessage{
+		ActivityID:   activityID,
+		Activity:     raw,
+		ActivityType: "create",
+		SenderID:     account.ID,
 	}
-	seen := make(map[string]bool)
-
-	// Deduplicate the inboxes, just in case there are somehow duplicates
-	var uniqueInboxes []string
-	for _, inbox := range inboxURLs {
-		if inbox == "" || seen[inbox] {
-			continue
-		}
-		seen[inbox] = true
-		uniqueInboxes = append(uniqueInboxes, inbox)
+	if err := p.fanout.publish(ctx, msg); err != nil {
+		return fmt.Errorf("outbox: enqueue fanout: %w", err)
 	}
-
-	slog.DebugContext(ctx, "outbox: PublishStatus",
-		slog.String("status_id", status.ID), slog.String("activity_id", activityID), slog.Int("follower_inboxes", len(uniqueInboxes)))
-	for _, inbox := range uniqueInboxes {
-		msg := DeliveryMessage{
-			ActivityID:  activityID,
-			Activity:    raw,
-			TargetInbox: inbox,
-			SenderID:    account.ID,
-		}
-		if err := p.worker.Process(ctx, "create", msg); err != nil {
-			slog.Warn("outbox: enqueue create failed", slog.String("inbox", inbox), slog.Any("error", err))
-		} else {
-			slog.DebugContext(ctx, "outbox: enqueued create", slog.String("activity_id", activityID), slog.String("target_inbox", inbox))
-		}
-	}
+	slog.DebugContext(ctx, "outbox: PublishStatus enqueued fanout", slog.String("status_id", status.ID), slog.String("activity_id", activityID))
 	return nil
 }
 
-// DeleteStatus delivers a Delete{Tombstone} activity to the author's followers' inboxes.
+// DeleteStatus enqueues a Delete{Tombstone} activity for async fan-out to the author's followers' inboxes.
 func (p *Outbox) DeleteStatus(ctx context.Context, status *domain.Status) error {
 	account, err := p.store.GetAccountByID(ctx, status.AccountID)
 	if err != nil {
@@ -108,26 +113,16 @@ func (p *Outbox) DeleteStatus(ctx context.Context, status *domain.Status) error 
 	if err != nil {
 		return fmt.Errorf("outbox: marshal delete: %w", err)
 	}
-	inboxURLs, err := p.store.GetFollowerInboxURLs(ctx, account.ID)
-	if err != nil {
-		return fmt.Errorf("outbox: get follower inboxes: %w", err)
+	msg := outboxFanoutMessage{
+		ActivityID:   objectID + "#delete",
+		Activity:     raw,
+		ActivityType: "delete",
+		SenderID:     account.ID,
 	}
-	seen := make(map[string]bool)
-	for _, inbox := range inboxURLs {
-		if inbox == "" || seen[inbox] {
-			continue
-		}
-		seen[inbox] = true
-		msg := DeliveryMessage{
-			ActivityID:  objectID + "#delete",
-			Activity:    raw,
-			TargetInbox: inbox,
-			SenderID:    account.ID,
-		}
-		if err := p.worker.Process(ctx, "delete", msg); err != nil {
-			slog.Warn("outbox: enqueue delete failed", slog.String("inbox", inbox), slog.Any("error", err))
-		}
+	if err := p.fanout.publish(ctx, msg); err != nil {
+		return fmt.Errorf("outbox: enqueue fanout: %w", err)
 	}
+	slog.DebugContext(ctx, "outbox: DeleteStatus enqueued fanout", slog.String("status_id", status.ID))
 	return nil
 }
 
@@ -153,13 +148,13 @@ func (p *Outbox) PublishFollow(ctx context.Context, actor, target *domain.Accoun
 	if err != nil {
 		return fmt.Errorf("outbox: marshal follow: %w", err)
 	}
-	msg := DeliveryMessage{
+	msg := outboxDeliveryMessage{
 		ActivityID:  activityID,
 		Activity:    raw,
 		TargetInbox: target.InboxURL,
 		SenderID:    actor.ID,
 	}
-	if err := p.worker.Process(ctx, "follow", msg); err != nil {
+	if err := p.delivery.publish(ctx, "follow", msg); err != nil {
 		slog.Warn("outbox: enqueue follow failed", slog.String("target", target.InboxURL), slog.Any("error", err))
 	}
 	return nil
@@ -192,13 +187,13 @@ func (p *Outbox) PublishUndoFollow(ctx context.Context, actor, target *domain.Ac
 	if err != nil {
 		return fmt.Errorf("outbox: marshal undo follow: %w", err)
 	}
-	msg := DeliveryMessage{
+	msg := outboxDeliveryMessage{
 		ActivityID:  undoID,
 		Activity:    raw,
 		TargetInbox: target.InboxURL,
 		SenderID:    actor.ID,
 	}
-	if err := p.worker.Process(ctx, "undo", msg); err != nil {
+	if err := p.delivery.publish(ctx, "undo", msg); err != nil {
 		slog.Warn("outbox: enqueue undo follow failed", slog.String("target", target.InboxURL), slog.Any("error", err))
 	}
 	return nil
@@ -232,13 +227,13 @@ func (p *Outbox) SendAcceptFollow(ctx context.Context, target, actor *domain.Acc
 	if err != nil {
 		return fmt.Errorf("outbox: marshal accept: %w", err)
 	}
-	msg := DeliveryMessage{
+	msg := outboxDeliveryMessage{
 		ActivityID:  acceptID,
 		Activity:    raw,
 		TargetInbox: actor.InboxURL,
 		SenderID:    target.ID,
 	}
-	if err := p.worker.Process(ctx, "accept", msg); err != nil {
+	if err := p.delivery.publish(ctx, "accept", msg); err != nil {
 		slog.Warn("outbox: enqueue accept follow failed", slog.String("target", actor.InboxURL), slog.Any("error", err))
 	}
 	return nil

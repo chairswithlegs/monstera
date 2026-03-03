@@ -380,6 +380,9 @@ func (f *fakeOAuthStore) UpdateStatus(ctx context.Context, in store.UpdateStatus
 func (f *fakeOAuthStore) GetFollowerInboxURLs(ctx context.Context, accountID string) ([]string, error) {
 	return nil, nil
 }
+func (f *fakeOAuthStore) GetDistinctFollowerInboxURLsPaginated(ctx context.Context, accountID string, cursor string, limit int) ([]string, error) {
+	return nil, nil
+}
 
 var _ store.Store = (*fakeOAuthStore)(nil)
 

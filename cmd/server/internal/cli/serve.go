@@ -134,8 +134,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("nats: ensure streams: %w", err)
 	}
 	signatureService := ap.NewHTTPSignatureService(cfg, cacheStore, accountSvc)
-	outboxWorker := ap.NewOutboxWorker(natsClient.JS, blocklistCache, signatureService, cfg)
-	outbox := ap.NewOutbox(s, outboxWorker, cfg)
+	outbox := ap.NewOutbox(s, natsClient.JS, blocklistCache, signatureService, cfg)
 	statusSvc := service.NewStatusService(s, outbox, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars, logger)
 	timelineSvc := service.NewTimelineService(s)
 	instanceSvc := service.NewInstanceService(s)
@@ -146,9 +145,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	searchSvc := service.NewSearchService(s, remoteResolver, logger)
 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
-	go func() {
-		_ = outboxWorker.Start(workerCtx)
-	}()
+	go func() { _ = outbox.Start(workerCtx) }()
 	defer workerCancel()
 	inboxProcessor := ap.NewInbox(
 		accountSvc,

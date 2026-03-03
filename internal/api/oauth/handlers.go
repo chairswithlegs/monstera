@@ -3,7 +3,6 @@ package oauth
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -155,7 +154,7 @@ func (h *Handler) GETAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Forward all OAuth params to the Next.js login page
-	loginURL, err := url.Parse(fmt.Sprintf("%s/login", h.cfg.UIDomain))
+	loginURL, err := url.Parse(h.cfg.UIDomain + "/login")
 	if err != nil {
 		slog.ErrorContext(r.Context(), "failed to parse login URL", slog.Any("error", err))
 		api.HandleError(w, r, api.ErrInternalServerError)

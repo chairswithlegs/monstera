@@ -14,6 +14,10 @@ export interface User {
   created_at: string;
 }
 
+export function isAdminOrModerator(user: User): boolean {
+  return user.role === 'admin' || user.role === 'moderator';
+}
+
 export async function getUser() {
   const config = await getConfig();
   const response = await authFetch(`${config.server_url}/monstera/api/v1/user`);

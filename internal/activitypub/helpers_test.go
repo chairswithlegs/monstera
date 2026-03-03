@@ -8,8 +8,8 @@ import (
 
 func TestSubjectToActivityType(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "create", subjectToActivityType("activitypub.deliver.create"))
-	assert.Equal(t, "accept", subjectToActivityType("activitypub.deliver.accept"))
+	assert.Equal(t, "create", subjectToActivityType("activitypub.outbound.deliver.create"))
+	assert.Equal(t, "accept", subjectToActivityType("activitypub.outbound.deliver.accept"))
 	assert.Equal(t, "unknown", subjectToActivityType("other.subject"))
 }
 

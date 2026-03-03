@@ -90,6 +90,44 @@ func (q *Queries) DeleteFollow(ctx context.Context, arg DeleteFollowParams) erro
 	return err
 }
 
+const getDistinctFollowerInboxURLsPaginated = `-- name: GetDistinctFollowerInboxURLsPaginated :many
+SELECT DISTINCT a.inbox_url FROM accounts a
+INNER JOIN follows f ON f.account_id = a.id
+WHERE f.target_id = $1
+  AND f.state = 'accepted'
+  AND a.domain IS NOT NULL
+  AND a.suspended = FALSE
+  AND ($2::text IS NULL OR a.inbox_url > $2)
+ORDER BY a.inbox_url
+LIMIT $3
+`
+
+type GetDistinctFollowerInboxURLsPaginatedParams struct {
+	TargetID string `json:"target_id"`
+	Column2  string `json:"column_2"`
+	Limit    int32  `json:"limit"`
+}
+
+func (q *Queries) GetDistinctFollowerInboxURLsPaginated(ctx context.Context, arg GetDistinctFollowerInboxURLsPaginatedParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, getDistinctFollowerInboxURLsPaginated, arg.TargetID, arg.Column2, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var inbox_url string
+		if err := rows.Scan(&inbox_url); err != nil {
+			return nil, err
+		}
+		items = append(items, inbox_url)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getFollow = `-- name: GetFollow :one
 SELECT id, account_id, target_id, state, ap_id, created_at FROM follows WHERE account_id = $1 AND target_id = $2
 `

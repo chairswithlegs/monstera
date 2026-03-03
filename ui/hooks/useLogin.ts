@@ -20,7 +20,7 @@ export function useLogin(): LoginState {
   const [stage, setStage] = useState<Stage>('credentials');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const DASHBOARD_REDIRECT_URI = `${window.location.origin}/dashboard`;
+  const AUTH_REDIRECT_URI = `${window.location.origin}/home`;
 
   const params = {
     clientId: searchParams.get('client_id'),
@@ -51,7 +51,7 @@ export function useLogin(): LoginState {
         body: new URLSearchParams({
           grant_type: 'authorization_code',
           code,
-          redirect_uri: DASHBOARD_REDIRECT_URI,
+          redirect_uri: AUTH_REDIRECT_URI,
           client_id: config.auth_client_id,
           code_verifier: verifier,
         }),
@@ -60,7 +60,7 @@ export function useLogin(): LoginState {
       if (!response.ok) throw new Error('Token exchange failed');
       const { access_token, refresh_token } = await response.json();
       storeTokens(access_token, refresh_token);
-      router.replace('/');
+      router.replace('/home');
     }
   }
 
@@ -88,7 +88,7 @@ export function useLogin(): LoginState {
           email,
           password,
           client_id: params.clientId ?? config.auth_client_id,
-          redirect_uri: params.redirectUri ?? DASHBOARD_REDIRECT_URI,
+          redirect_uri: params.redirectUri ?? AUTH_REDIRECT_URI,
           scope: isThirdParty ? undefined : config.auth_scopes,
           code_challenge: codeChallenge,
           code_challenge_method: params.codeChallengeMethod ?? 'S256',

@@ -13,22 +13,20 @@ export async function getConfig(): Promise<Config> {
         return config;
     }
 
-    // Attempt to load config.json from the server
-    const response = await fetch('/config.json');
-    const data = await response.json();
-    
-    // Merge the data with the default config
-    const newConfig = defaultConfig;
-    for (const key in data) {
-        if (key in newConfig) {
-            newConfig[key as keyof Config] = data[key as keyof Config];
+    // In development, config.json is not served; use defaults from env.
+    // In production, config is loaded from /config.json (e.g. nginx).
+    const response = await fetch('/config.json', { cache: 'no-store' });
+    let newConfig: Config = { ...defaultConfig };
+    if (response.ok) {
+        const data = (await response.json()) as Partial<Config>;
+        for (const key of Object.keys(data) as (keyof Config)[]) {
+            if (key in newConfig && data[key] !== undefined) {
+                newConfig[key] = data[key] as Config[keyof Config];
+            }
         }
     }
 
-    // Ensure the config is valid
     validateConfig(newConfig);
-
-    // Cache and return
     config = newConfig;
     return config;
 }

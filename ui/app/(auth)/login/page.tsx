@@ -1,5 +1,6 @@
 'use client';
 import { Suspense, useState } from 'react';
+import Link from 'next/link';
 import { useLogin } from '@/hooks/useLogin';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -22,6 +23,18 @@ function LoginContent() {
         )}
 
         <CredentialsForm onSubmit={submitCredentials} loading={loading} />
+
+        <p className="mt-6 text-center text-sm text-gray-500">
+          Don&apos;t have an account?{' '}
+          <Link href="/register" className="text-blue-600 hover:underline">
+            Register
+          </Link>
+        </p>
+        <p className="mt-2 text-center text-sm text-gray-500">
+          <Link href="/" className="text-blue-600 hover:underline">
+            Back to home
+          </Link>
+        </p>
       </div>
     </div>
   );
