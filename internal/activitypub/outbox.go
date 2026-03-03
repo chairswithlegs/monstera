@@ -47,6 +47,8 @@ func (p *Outbox) PublishStatus(ctx context.Context, status *domain.Status) error
 	if err != nil {
 		return fmt.Errorf("outbox: marshal create: %w", err)
 	}
+	// TODO: this isn't super scalable, while fine for 99% of users, we should consider
+	// moving this to the worker for high-volume users.
 	inboxURLs, err := p.store.GetFollowerInboxURLs(ctx, account.ID)
 	if err != nil {
 		return fmt.Errorf("outbox: get follower inboxes: %w", err)

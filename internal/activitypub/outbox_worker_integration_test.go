@@ -40,7 +40,7 @@ type receivedRequest struct {
 }
 
 // TestOutboxWorker_PullDeliverAndNoDuplicate validates that the worker:
-// - pulls messages from the FEDERATION stream,
+// - pulls messages from the ACTIVITYPUB stream,
 // - makes an outgoing HTTP POST to the target inbox (via httptest server),
 // - delivers each message exactly once (no duplicate POSTs).
 func TestOutboxWorker_PullDeliverAndNoDuplicate(t *testing.T) {
@@ -60,7 +60,7 @@ func TestOutboxWorker_PullDeliverAndNoDuplicate(t *testing.T) {
 	defer client.Close()
 
 	require.NoError(t, natsutil.EnsureStreams(ctx, client.JS))
-	stream, err := client.JS.Stream(ctx, natsutil.StreamFederation)
+	stream, err := client.JS.Stream(ctx, natsutil.StreamActivityPub)
 	require.NoError(t, err)
 	require.NoError(t, stream.Purge(ctx), "purge stream so test starts with no messages")
 

@@ -17,7 +17,7 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/config"
 )
 
-// Test-only stream/consumer and subject prefix. Isolated from production FEDERATION stream.
+// Test-only stream/consumer and subject prefix.
 const (
 	streamTest         = "NATS_INTEGRATION_TEST"
 	consumerTest       = "nats-integration-test-worker"
@@ -47,26 +47,26 @@ func TestEnsureStreams_StreamAndConsumerConfig(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	stream, err := client.JS.Stream(ctx, StreamFederation)
+	stream, err := client.JS.Stream(ctx, StreamActivityPub)
 	require.NoError(t, err)
 	streamInfo, err := stream.Info(ctx)
 	require.NoError(t, err)
 
-	assert.Equal(t, StreamFederation, streamInfo.Config.Name, "stream name")
+	assert.Equal(t, StreamActivityPub, streamInfo.Config.Name, "stream name")
 	assert.Equal(t, jetstream.WorkQueuePolicy, streamInfo.Config.Retention,
 		"stream retention must be WorkQueue so each message is delivered to only one consumer")
-	assert.Equal(t, []string{subjectDeliver}, streamInfo.Config.Subjects, "stream subjects")
+	assert.Equal(t, []string{SubjectPrefixActivityPubDeliver + ">"}, streamInfo.Config.Subjects, "stream subjects")
 
-	cons, err := client.JS.Consumer(ctx, StreamFederation, ConsumerFederationWorker)
+	cons, err := client.JS.Consumer(ctx, StreamActivityPub, ConsumerActivityPubWorker)
 	require.NoError(t, err)
 	consInfo, err := cons.Info(ctx)
 	require.NoError(t, err)
 
-	assert.Equal(t, ConsumerFederationWorker, consInfo.Config.Durable, "consumer durable name")
+	assert.Equal(t, ConsumerActivityPubWorker, consInfo.Config.Durable, "consumer durable name")
 	assert.Equal(t, jetstream.AckExplicitPolicy, consInfo.Config.AckPolicy, "consumer ack policy")
 	assert.Empty(t, consInfo.Config.DeliverSubject,
 		"consumer must be pull (no DeliverSubject); DeliverSubject is for push only")
-	assert.Equal(t, MaxDeliverFederation, consInfo.Config.MaxDeliver, "consumer max deliver")
+	assert.Equal(t, MaxDeliverActivityPub, consInfo.Config.MaxDeliver, "consumer max deliver")
 }
 
 // TestEnsureStreams_PublishConsume requires NATS with JetStream running (e.g. docker-compose up nats).
@@ -209,7 +209,7 @@ func ensureTestStreams(ctx context.Context, js jetstream.JetStream) error {
 		AckPolicy:     jetstream.AckExplicitPolicy,
 		MaxAckPending: 50,
 		AckWait:       60 * time.Second,
-		MaxDeliver:    MaxDeliverFederation,
+		MaxDeliver:    3,
 		BackOff:       []time.Duration{30 * time.Second, 5 * time.Minute, 30 * time.Minute},
 	})
 	return err

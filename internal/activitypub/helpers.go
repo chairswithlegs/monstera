@@ -10,8 +10,8 @@ import (
 // subjectToActivityType returns the activity type from a federation subject
 // (e.g. "federation.deliver.create" -> "create"), or "unknown" if not matched.
 func subjectToActivityType(subject string) string {
-	if strings.HasPrefix(subject, natsutil.SubjectPrefixFederationDeliver) {
-		return strings.TrimPrefix(subject, natsutil.SubjectPrefixFederationDeliver)
+	if strings.HasPrefix(subject, natsutil.SubjectPrefixActivityPubDeliver) {
+		return strings.TrimPrefix(subject, natsutil.SubjectPrefixActivityPubDeliver)
 	}
 	return "unknown"
 }

@@ -20,9 +20,9 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/observability"
 )
 
-const outboxUserAgent = "Monstera-fed/1.0"
+const outboxUserAgent = "Monstera/1.0"
 
-// DeliveryMessage is the payload for outbound ActivityPub delivery (e.g. to NATS FEDERATION stream).
+// DeliveryMessage is the payload for outbound ActivityPub delivery (e.g. to NATS ACTIVITYPUB stream).
 type DeliveryMessage struct {
 	ActivityID  string          `json:"activity_id"`
 	Activity    json.RawMessage `json:"activity"`
@@ -76,13 +76,13 @@ type outboxWorker struct {
 
 // Start obtains the durable consumer and runs Consume to process messages concurrently.
 //
-// Multiple replicas: every replica uses the same consumer name (federation-worker).
+// Multiple replicas: every replica uses the same consumer name (activitypub-worker).
 // The server has one logical consumer; work is distributed across replicas with no
 // duplicate delivery.
 func (w *outboxWorker) Start(ctx context.Context) error {
-	consumer, err := w.js.Consumer(ctx, natsutil.StreamFederation, natsutil.ConsumerFederationWorker)
+	consumer, err := w.js.Consumer(ctx, natsutil.StreamActivityPub, natsutil.ConsumerActivityPubWorker)
 	if err != nil {
-		return fmt.Errorf("federation worker: get consumer: %w", err)
+		return fmt.Errorf("activitypub worker: get consumer: %w", err)
 	}
 
 	concurrency := w.cfg.FederationWorkerConcurrency
@@ -90,9 +90,9 @@ func (w *outboxWorker) Start(ctx context.Context) error {
 		concurrency = 5
 	}
 
-	slog.Info("federation worker started",
+	slog.Info("activitypub worker started",
 		slog.Int("concurrency", concurrency),
-		slog.String("consumer", natsutil.ConsumerFederationWorker),
+		slog.String("consumer", natsutil.ConsumerActivityPubWorker),
 	)
 
 	consCtx, err := consumer.Consume(
@@ -108,11 +108,11 @@ func (w *outboxWorker) Start(ctx context.Context) error {
 		}),
 	)
 	if err != nil {
-		return fmt.Errorf("federation worker: consume: %w", err)
+		return fmt.Errorf("activitypub worker: consume: %w", err)
 	}
 
 	<-ctx.Done()
-	slog.Info("federation worker stopping")
+	slog.Info("activitypub worker stopping")
 	consCtx.Stop()
 	<-consCtx.Closed()
 	return nil
@@ -123,13 +123,13 @@ func (w *outboxWorker) Start(ctx context.Context) error {
 func (w *outboxWorker) Process(ctx context.Context, activityType string, msg DeliveryMessage) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
-		return fmt.Errorf("federation: marshal delivery message: %w", err)
+		return fmt.Errorf("activitypub: marshal delivery message: %w", err)
 	}
-	subject := natsutil.SubjectPrefixFederationDeliver + strings.ToLower(activityType)
+	subject := natsutil.SubjectPrefixActivityPubDeliver + strings.ToLower(activityType)
 	_, err = w.js.Publish(ctx, subject, data)
 	if err != nil {
 		observability.IncNATSPublish(subject, "error")
-		return fmt.Errorf("federation: publish to %s: %w", subject, err)
+		return fmt.Errorf("activitypub: publish to %s: %w", subject, err)
 	}
 	observability.IncNATSPublish(subject, "ok")
 	return nil
@@ -138,7 +138,7 @@ func (w *outboxWorker) Process(ctx context.Context, activityType string, msg Del
 func (w *outboxWorker) processMessage(ctx context.Context, msg jetstream.Msg) {
 	var delivery DeliveryMessage
 	if err := json.Unmarshal(msg.Data(), &delivery); err != nil {
-		slog.Warn("federation worker: invalid payload", slog.Any("error", err))
+		slog.Warn("activitypub worker: invalid payload", slog.Any("error", err))
 		_ = msg.Ack()
 		return
 	}
@@ -153,7 +153,7 @@ func (w *outboxWorker) processMessage(ctx context.Context, msg jetstream.Msg) {
 
 	statusCode, err := w.deliverHTTP(ctx, delivery)
 	if err != nil {
-		slog.Warn("federation worker: delivery failed",
+		slog.Warn("activitypub worker: delivery failed",
 			slog.String("activity_id", delivery.ActivityID),
 			slog.String("target", delivery.TargetInbox),
 			slog.String("sender_id", delivery.SenderID),
@@ -165,7 +165,7 @@ func (w *outboxWorker) processMessage(ctx context.Context, msg jetstream.Msg) {
 
 	if statusCode >= 200 && statusCode < 300 {
 		_ = msg.Ack()
-		observability.IncNATSPublish(natsutil.SubjectPrefixFederationDeliver+activityType, "ok")
+		observability.IncNATSPublish(natsutil.SubjectPrefixActivityPubDeliver+activityType, "ok")
 		return
 	}
 
@@ -199,7 +199,7 @@ func (w *outboxWorker) deliverHTTP(ctx context.Context, delivery DeliveryMessage
 		if len(bodySnippet) > 512 {
 			bodySnippet = bodySnippet[:512] + "..."
 		}
-		slog.WarnContext(ctx, "federation worker: inbox returned error",
+		slog.WarnContext(ctx, "activitypub worker: inbox returned error",
 			slog.Int("status", resp.StatusCode),
 			slog.String("target", delivery.TargetInbox),
 			slog.String("activity_id", delivery.ActivityID),
@@ -217,18 +217,18 @@ func (w *outboxWorker) handleDeliveryFailure(ctx context.Context, msg jetstream.
 
 	if statusCode >= 400 && statusCode < 500 {
 		if err := w.sendToDLQ(ctx, activityType, delivery); err != nil {
-			slog.Warn("federation worker: publish DLQ failed", slog.String("activity_id", delivery.ActivityID), slog.Any("error", err))
+			slog.Warn("activitypub worker: publish DLQ failed", slog.String("activity_id", delivery.ActivityID), slog.Any("error", err))
 		}
 		_ = msg.Term()
 		return
 	}
 
-	if meta.NumDelivered >= natsutil.MaxDeliverFederation {
+	if meta.NumDelivered >= natsutil.MaxDeliverActivityPub {
 		if err := w.sendToDLQ(ctx, activityType, delivery); err != nil {
-			slog.Warn("federation worker: publish DLQ failed", slog.String("activity_id", delivery.ActivityID), slog.Any("error", err))
+			slog.Warn("activitypub worker: publish DLQ failed", slog.String("activity_id", delivery.ActivityID), slog.Any("error", err))
 		}
 		_ = msg.Ack()
-		observability.IncNATSPublish(natsutil.SubjectPrefixFederationDLQ+activityType, "ok")
+		observability.IncNATSPublish(natsutil.SubjectPrefixActivityPubDLQ+activityType, "ok")
 		return
 	}
 
@@ -237,7 +237,7 @@ func (w *outboxWorker) handleDeliveryFailure(ctx context.Context, msg jetstream.
 
 func (w *outboxWorker) termToDLQ(ctx context.Context, msg jetstream.Msg, activityType string, delivery DeliveryMessage) {
 	if err := w.sendToDLQ(ctx, activityType, delivery); err != nil {
-		slog.Warn("federation worker: publish DLQ failed", slog.String("activity_id", delivery.ActivityID), slog.Any("error", err))
+		slog.Warn("activitypub worker: publish DLQ failed", slog.String("activity_id", delivery.ActivityID), slog.Any("error", err))
 	}
 	_ = msg.Term()
 }
@@ -271,12 +271,12 @@ func nakBackoffDelay(numDelivered uint64) time.Duration {
 func (w *outboxWorker) sendToDLQ(ctx context.Context, activityType string, msg DeliveryMessage) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
-		return fmt.Errorf("federation: marshal DLQ message: %w", err)
+		return fmt.Errorf("activitypub: marshal DLQ message: %w", err)
 	}
-	subject := natsutil.SubjectPrefixFederationDLQ + strings.ToLower(activityType)
+	subject := natsutil.SubjectPrefixActivityPubDLQ + strings.ToLower(activityType)
 	_, err = w.js.Publish(ctx, subject, data)
 	if err != nil {
-		return fmt.Errorf("federation: publish DLQ to %s: %w", subject, err)
+		return fmt.Errorf("activitypub: publish DLQ to %s: %w", subject, err)
 	}
 	return nil
 }
