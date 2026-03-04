@@ -1,19 +1,12 @@
 'use client';
 
-import { getUser, isAdminOrModerator } from '@/lib/api/user';
+import { getUser, isAdmin } from '@/lib/api/user';
 import type { User } from '@/lib/api/user';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 const navItems = [
-  { href: '/admin/dashboard', label: 'Dashboard' },
-  { href: '/admin/users', label: 'Users' },
-  { href: '/admin/registrations', label: 'Registrations' },
-  { href: '/admin/invites', label: 'Invites' },
-  { href: '/admin/reports', label: 'Reports' },
-  { href: '/admin/federation', label: 'Federation' },
-  { href: '/admin/content', label: 'Content' },
   { href: '/admin/settings', label: 'Settings' },
 ];
 
@@ -36,12 +29,12 @@ export default function AdminLayout({
 
   useEffect(() => {
     if (loading) return;
-    if (!user || !isAdminOrModerator(user)) {
+    if (!user || !isAdmin(user)) {
       router.replace('/home');
     }
   }, [loading, user, router]);
 
-  if (loading || !user || !isAdminOrModerator(user)) {
+  if (loading || !user || !isAdmin(user)) {
     return null;
   }
 

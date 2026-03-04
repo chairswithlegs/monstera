@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/empty-state';
 
-export default function AdminInvitesPage() {
+export default function ModeratorInvitesPage() {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);

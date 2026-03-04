@@ -63,7 +63,7 @@ function UsersList() {
                 <TableRow key={u.id}>
                   <TableCell>
                     <Button variant="link" size="sm" className="h-auto p-0 font-medium" asChild>
-                      <Link href={`/admin/users?id=${encodeURIComponent(u.account_id)}`}>
+                      <Link href={`/moderator/users?id=${encodeURIComponent(u.account_id)}`}>
                         @{u.username}
                       </Link>
                     </Button>
@@ -77,7 +77,7 @@ function UsersList() {
                   </TableCell>
                   <TableCell className="text-right">
                     <Button variant="link" size="sm" asChild>
-                      <Link href={`/admin/users?id=${encodeURIComponent(u.account_id)}`}>
+                      <Link href={`/moderator/users?id=${encodeURIComponent(u.account_id)}`}>
                         View
                       </Link>
                     </Button>
@@ -93,7 +93,7 @@ function UsersList() {
   );
 }
 
-export default function AdminUsersPage() {
+export default function ModeratorUsersPage() {
   const searchParams = useSearchParams();
   const id = searchParams.get('id');
 

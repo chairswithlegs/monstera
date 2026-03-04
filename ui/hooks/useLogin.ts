@@ -5,10 +5,7 @@ import { generateCodeVerifier, generateCodeChallenge } from '@/lib/auth/pkce';
 import { storeTokens } from '@/lib/auth/tokens';
 import { getConfig } from '@/lib/config';
 
-type Stage = 'credentials';
-
 interface LoginState {
-  stage: Stage;
   loading: boolean;
   error: string | null;
   submitCredentials: (username: string, password: string) => Promise<void>;
@@ -22,7 +19,6 @@ function getAuthRedirectUri(): string {
 export function useLogin(): LoginState {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [stage, setStage] = useState<Stage>('credentials');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -106,12 +102,12 @@ export function useLogin(): LoginState {
 
       const data = await response.json();
       await handleCode(data.code);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
   }
 
-  return { stage, loading, error, submitCredentials };
+  return { loading, error, submitCredentials };
 }

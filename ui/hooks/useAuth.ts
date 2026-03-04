@@ -12,9 +12,12 @@ export function useAuth(): AuthState {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // sessionStorage is only available client-side
-    setToken(getAccessToken());
-    setLoading(false);
+    // sessionStorage is only available client-side; defer setState to avoid synchronous cascading renders
+    const token = getAccessToken();
+    queueMicrotask(() => {
+      setToken(token);
+      setLoading(false);
+    });
   }, []);
 
   return { token, loading };

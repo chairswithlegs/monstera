@@ -64,7 +64,7 @@ export default function ReportDetailView({ id }: Props) {
     <div>
       <p className="mb-4">
         <Button variant="link" size="sm" className="h-auto p-0" asChild>
-          <Link href="/admin/reports">← Back to reports</Link>
+          <Link href="/moderator/reports">← Back to reports</Link>
         </Button>
       </p>
       <h1 className="text-2xl font-semibold text-foreground">Report {report.id.slice(0, 8)}…</h1>

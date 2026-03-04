@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/empty-state';
 
-export default function AdminContentPage() {
+export default function ModeratorContentPage() {
   const [filters, setFilters] = useState<ServerFilter[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [newPhrase, setNewPhrase] = useState('');

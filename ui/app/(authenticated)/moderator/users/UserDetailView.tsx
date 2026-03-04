@@ -10,6 +10,8 @@ import {
   deleteUser,
   type AdminUser,
 } from '@/lib/api/admin';
+import { useModeratorUser } from '@/contexts/moderator-user';
+import { isAdmin } from '@/lib/api/user';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -42,6 +44,7 @@ type Props = { id: string };
 
 export default function UserDetailView({ id }: Props) {
   const router = useRouter();
+  const currentUser = useModeratorUser();
   const [user, setUser] = useState<AdminUser | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
@@ -81,7 +84,7 @@ export default function UserDetailView({ id }: Props) {
   const handleDelete = async () => {
     if (!user) return;
     await act(() => deleteUser(user.account_id));
-    router.push('/admin/users');
+    router.push('/moderator/users');
   };
 
   if (error && !user) {
@@ -93,11 +96,13 @@ export default function UserDetailView({ id }: Props) {
   }
   if (!user) return <p className="text-muted-foreground">Loading…</p>;
 
+  const showAdminActions = currentUser && isAdmin(currentUser);
+
   return (
     <div>
       <p className="mb-4">
         <Button variant="link" size="sm" className="h-auto p-0" asChild>
-          <Link href="/admin/users">← Back to users</Link>
+          <Link href="/moderator/users">← Back to users</Link>
         </Button>
       </p>
       <h1 className="text-2xl font-semibold text-foreground">@{user.username}</h1>
@@ -130,57 +135,61 @@ export default function UserDetailView({ id }: Props) {
             Silence
           </Button>
         )}
-        <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
-          <DialogTrigger asChild>
-            <Button type="button" variant="secondary" disabled={acting}>
-              Set role
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Set role</DialogTitle>
-              <DialogDescription>Enter the new role (user, moderator, admin).</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-2 py-4">
-              <Label htmlFor="new-role">New role</Label>
-              <Input
-                id="new-role"
-                value={newRole}
-                onChange={(e) => setNewRole(e.target.value)}
-                placeholder={user.role}
-              />
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setRoleDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleSetRole} disabled={acting || !newRole.trim()}>
-                {acting ? 'Saving…' : 'Save'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button type="button" variant="destructive" disabled={acting} className="bg-red-800 hover:bg-red-900">
-              Delete account
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete account?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This action cannot be undone. This will permanently delete the account and all associated data.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                Delete
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        {showAdminActions && (
+          <>
+            <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
+              <DialogTrigger asChild>
+                <Button type="button" variant="secondary" disabled={acting}>
+                  Set role
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Set role</DialogTitle>
+                  <DialogDescription>Enter the new role (user, moderator, admin).</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-2 py-4">
+                  <Label htmlFor="new-role">New role</Label>
+                  <Input
+                    id="new-role"
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value)}
+                    placeholder={user.role}
+                  />
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setRoleDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleSetRole} disabled={acting || !newRole.trim()}>
+                    {acting ? 'Saving…' : 'Save'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button type="button" variant="destructive" disabled={acting} className="bg-red-800 hover:bg-red-900">
+                  Delete account
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete account?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete the account and all associated data.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </>
+        )}
       </div>
     </div>
   );

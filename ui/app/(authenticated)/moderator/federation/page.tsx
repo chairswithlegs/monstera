@@ -1,6 +1,8 @@
 'use client';
 
 import { getInstances, getDomainBlocks, createDomainBlock, deleteDomainBlock, type KnownInstance, type DomainBlock } from '@/lib/api/admin';
+import { useModeratorUser } from '@/contexts/moderator-user';
+import { isAdmin } from '@/lib/api/user';
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,7 +22,8 @@ import {
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/empty-state';
 
-export default function AdminFederationPage() {
+export default function ModeratorFederationPage() {
+  const currentUser = useModeratorUser();
   const [instances, setInstances] = useState<KnownInstance[]>([]);
   const [blocks, setBlocks] = useState<DomainBlock[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +77,8 @@ export default function AdminFederationPage() {
     );
   }
 
+  const showAdminActions = currentUser && isAdmin(currentUser);
+
   return (
     <div>
       <h1 className="text-2xl font-semibold text-foreground">Federation</h1>
@@ -108,33 +113,35 @@ export default function AdminFederationPage() {
 
       <section className="mt-8">
         <h2 className="text-lg font-medium text-foreground">Domain blocks</h2>
-        <form onSubmit={addBlock} className="mt-4 flex flex-wrap items-end gap-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="domain-block-domain">Domain</Label>
-            <Input
-              id="domain-block-domain"
-              type="text"
-              value={newDomain}
-              onChange={(e) => setNewDomain(e.target.value)}
-              placeholder="domain.example.com"
-              className="min-w-[200px]"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="domain-block-reason">Reason (optional)</Label>
-            <Input
-              id="domain-block-reason"
-              type="text"
-              value={newReason}
-              onChange={(e) => setNewReason(e.target.value)}
-              placeholder="Reason (optional)"
-              className="min-w-[200px]"
-            />
-          </div>
-          <Button type="submit" disabled={submitting}>
-            Add block
-          </Button>
-        </form>
+        {showAdminActions && (
+          <form onSubmit={addBlock} className="mt-4 flex flex-wrap items-end gap-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="domain-block-domain">Domain</Label>
+              <Input
+                id="domain-block-domain"
+                type="text"
+                value={newDomain}
+                onChange={(e) => setNewDomain(e.target.value)}
+                placeholder="domain.example.com"
+                className="min-w-[200px]"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="domain-block-reason">Reason (optional)</Label>
+              <Input
+                id="domain-block-reason"
+                type="text"
+                value={newReason}
+                onChange={(e) => setNewReason(e.target.value)}
+                placeholder="Reason (optional)"
+                className="min-w-[200px]"
+              />
+            </div>
+            <Button type="submit" disabled={submitting}>
+              Add block
+            </Button>
+          </form>
+        )}
         <Card className="mt-4">
           <CardContent className="p-0">
             {blocks.length === 0 ? (
@@ -145,7 +152,7 @@ export default function AdminFederationPage() {
                   <TableRow>
                     <TableHead>Domain</TableHead>
                     <TableHead>Severity</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    {showAdminActions && <TableHead className="text-right">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -153,11 +160,13 @@ export default function AdminFederationPage() {
                     <TableRow key={b.id}>
                       <TableCell>{b.domain}</TableCell>
                       <TableCell className="text-muted-foreground">{b.severity}</TableCell>
-                      <TableCell className="text-right">
-                        <Button type="button" variant="ghost" size="sm" onClick={() => removeBlock(b.domain)} className="text-destructive hover:text-destructive">
-                          Remove
-                        </Button>
-                      </TableCell>
+                      {showAdminActions && (
+                        <TableCell className="text-right">
+                          <Button type="button" variant="ghost" size="sm" onClick={() => removeBlock(b.domain)} className="text-destructive hover:text-destructive">
+                            Remove
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>

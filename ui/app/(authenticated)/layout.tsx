@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '@/hooks/useAuth';
-import { getUser, isAdminOrModerator } from '@/lib/api/user';
+import { getUser, isAdmin, isAdminOrModerator } from '@/lib/api/user';
 import type { User } from '@/lib/api/user';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -29,7 +29,8 @@ export default function AuthenticatedLayout({
 
   if (loading || !token) return null;
 
-  const showServerSettings = user && isAdminOrModerator(user);
+  const showModeration = user && isAdminOrModerator(user);
+  const showAdmin = user && isAdmin(user);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -47,7 +48,15 @@ export default function AuthenticatedLayout({
           >
             Account settings
           </Link>
-          {showServerSettings && (
+          {showModeration && (
+            <Link
+              href="/moderator"
+              className="font-medium text-gray-700 hover:text-gray-900"
+            >
+              Moderation
+            </Link>
+          )}
+          {showAdmin && (
             <Link
               href="/admin"
               className="font-medium text-gray-700 hover:text-gray-900"

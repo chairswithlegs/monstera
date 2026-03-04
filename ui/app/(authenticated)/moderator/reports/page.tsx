@@ -23,7 +23,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EmptyState } from '@/components/empty-state';
 
-export default function AdminReportsPage() {
+export default function ModeratorReportsPage() {
   const searchParams = useSearchParams();
   const detailId = searchParams.get('id');
 
@@ -95,7 +95,7 @@ function ReportsList() {
                     <TableCell className="text-muted-foreground">{new Date(r.created_at).toLocaleString()}</TableCell>
                     <TableCell className="text-right">
                       <Button variant="link" size="sm" asChild>
-                        <Link href={`/admin/reports?id=${encodeURIComponent(r.id)}`}>
+                        <Link href={`/moderator/reports?id=${encodeURIComponent(r.id)}`}>
                           View
                         </Link>
                       </Button>

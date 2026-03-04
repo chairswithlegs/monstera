@@ -28,7 +28,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
-export default function AdminRegistrationsPage() {
+export default function ModeratorRegistrationsPage() {
   const [pending, setPending] = useState<PendingRegistration[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);

@@ -14,6 +14,10 @@ export interface User {
   created_at: string;
 }
 
+export function isAdmin(user: User): boolean {
+  return user.role === 'admin';
+}
+
 export function isAdminOrModerator(user: User): boolean {
   return user.role === 'admin' || user.role === 'moderator';
 }

@@ -16,7 +16,7 @@ export async function getConfig(): Promise<Config> {
     // In development, config.json is not served; use defaults from env.
     // In production, config is loaded from /config.json (e.g. nginx).
     const response = await fetch('/config.json', { cache: 'no-store' });
-    let newConfig: Config = { ...defaultConfig };
+    const newConfig: Config = { ...defaultConfig };
     if (response.ok) {
         const data = (await response.json()) as Partial<Config>;
         for (const key of Object.keys(data) as (keyof Config)[]) {

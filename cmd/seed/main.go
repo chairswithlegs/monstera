@@ -28,6 +28,7 @@ type seedUser struct {
 
 var seedUsers = []seedUser{
 	{Username: "admin", Email: "admin@example.com", Password: "password", DisplayName: "Admin", Role: domain.RoleAdmin},
+	{Username: "moderator", Email: "mod@example.com", Password: "password", DisplayName: "Moderator", Role: domain.RoleModerator},
 	{Username: "alice", Email: "alice@example.com", Password: "password", DisplayName: "Alice", Role: domain.RoleUser},
 }
 

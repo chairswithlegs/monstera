@@ -9,7 +9,7 @@ import {
   CardHeader,
 } from '@/components/ui/card';
 
-export default function AdminDashboardPage() {
+export default function ModeratorDashboardPage() {
   const [data, setData] = useState<Awaited<ReturnType<typeof getDashboard>> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
