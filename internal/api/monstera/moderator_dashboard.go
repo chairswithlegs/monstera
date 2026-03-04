@@ -8,19 +8,19 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/service"
 )
 
-// AdminDashboardHandler serves admin dashboard stats.
-type AdminDashboardHandler struct {
+// ModeratorDashboardHandler serves moderator dashboard stats.
+type ModeratorDashboardHandler struct {
 	instance   service.InstanceService
 	moderation service.ModerationService
 }
 
-// NewAdminDashboardHandler returns a new AdminDashboardHandler.
-func NewAdminDashboardHandler(instance service.InstanceService, moderation service.ModerationService) *AdminDashboardHandler {
-	return &AdminDashboardHandler{instance: instance, moderation: moderation}
+// NewModeratorDashboardHandler returns a new ModeratorDashboardHandler.
+func NewModeratorDashboardHandler(instance service.InstanceService, moderation service.ModerationService) *ModeratorDashboardHandler {
+	return &ModeratorDashboardHandler{instance: instance, moderation: moderation}
 }
 
 // GETDashboard returns dashboard stats.
-func (h *AdminDashboardHandler) GETDashboard(w http.ResponseWriter, r *http.Request) {
+func (h *ModeratorDashboardHandler) GETDashboard(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	stats, err := h.instance.GetNodeInfoStats(ctx)
 	if err != nil {

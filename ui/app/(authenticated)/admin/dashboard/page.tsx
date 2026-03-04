@@ -2,6 +2,12 @@
 
 import { getDashboard } from '@/lib/api/admin';
 import { useEffect, useState } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+} from '@/components/ui/card';
 
 export default function AdminDashboardPage() {
   const [data, setData] = useState<Awaited<ReturnType<typeof getDashboard>> | null>(null);
@@ -13,25 +19,43 @@ export default function AdminDashboardPage() {
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
   }, []);
 
-  if (error) return <p className="text-red-600">{error}</p>;
-  if (!data) return <p className="text-gray-500">Loading…</p>;
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
+  }
+  if (!data) return <p className="text-muted-foreground">Loading…</p>;
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
+      <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <p className="text-sm font-medium text-gray-500">Local users</p>
-          <p className="mt-1 text-2xl font-semibold text-gray-900">{data.local_users_count}</p>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <p className="text-sm font-medium text-gray-500">Local posts</p>
-          <p className="mt-1 text-2xl font-semibold text-gray-900">{data.local_statuses_count}</p>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <p className="text-sm font-medium text-gray-500">Open reports</p>
-          <p className="mt-1 text-2xl font-semibold text-gray-900">{data.open_reports_count}</p>
-        </div>
+        <Card>
+          <CardHeader className="pb-2">
+            <p className="text-sm font-medium text-muted-foreground">Local users</p>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-semibold text-foreground">{data.local_users_count}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <p className="text-sm font-medium text-muted-foreground">Local posts</p>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-semibold text-foreground">{data.local_statuses_count}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <p className="text-sm font-medium text-muted-foreground">Open reports</p>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-semibold text-foreground">{data.open_reports_count}</p>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

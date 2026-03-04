@@ -1,49 +1,27 @@
 package monstera
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/chairswithlegs/monstera-fed/internal/api"
-	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
 	"github.com/chairswithlegs/monstera-fed/internal/api/monstera/apimodel"
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
-// AdminContentHandler handles server filters.
-type AdminContentHandler struct {
-	accounts service.AccountService
-	filters  service.ServerFilterService
+// ModeratorContentHandler handles server filters.
+type ModeratorContentHandler struct {
+	filters service.ServerFilterService
 }
 
-// NewAdminContentHandler returns a new AdminContentHandler.
-func NewAdminContentHandler(accounts service.AccountService, filters service.ServerFilterService) *AdminContentHandler {
-	return &AdminContentHandler{accounts: accounts, filters: filters}
-}
-
-func (h *AdminContentHandler) moderatorUserID(r *http.Request) error {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		return api.ErrForbidden
-	}
-	_, user, err := h.accounts.GetAccountWithUser(r.Context(), account.ID)
-	if err != nil {
-		return fmt.Errorf("GetAccountWithUser: %w", err)
-	}
-	if user.Role != domain.RoleAdmin && user.Role != domain.RoleModerator {
-		return api.ErrForbidden
-	}
-	return nil
+// NewModeratorContentHandler returns a new ModeratorContentHandler.
+func NewModeratorContentHandler(filters service.ServerFilterService) *ModeratorContentHandler {
+	return &ModeratorContentHandler{filters: filters}
 }
 
 // GETFilters returns server filters.
-func (h *AdminContentHandler) GETFilters(w http.ResponseWriter, r *http.Request) {
-	if err := h.moderatorUserID(r); err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
+func (h *ModeratorContentHandler) GETFilters(w http.ResponseWriter, r *http.Request) {
 	filters, err := h.filters.ListServerFilters(r.Context())
 	if err != nil {
 		api.HandleError(w, r, err)
@@ -57,11 +35,7 @@ func (h *AdminContentHandler) GETFilters(w http.ResponseWriter, r *http.Request)
 }
 
 // POSTFilters creates a server filter.
-func (h *AdminContentHandler) POSTFilters(w http.ResponseWriter, r *http.Request) {
-	if err := h.moderatorUserID(r); err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
+func (h *ModeratorContentHandler) POSTFilters(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Phrase    string `json:"phrase"`
 		Scope     string `json:"scope"`
@@ -91,11 +65,7 @@ func (h *AdminContentHandler) POSTFilters(w http.ResponseWriter, r *http.Request
 }
 
 // PUTFilter updates a server filter.
-func (h *AdminContentHandler) PUTFilter(w http.ResponseWriter, r *http.Request) {
-	if err := h.moderatorUserID(r); err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
+func (h *ModeratorContentHandler) PUTFilter(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
@@ -120,11 +90,7 @@ func (h *AdminContentHandler) PUTFilter(w http.ResponseWriter, r *http.Request) 
 }
 
 // DELETEFilter deletes a server filter.
-func (h *AdminContentHandler) DELETEFilter(w http.ResponseWriter, r *http.Request) {
-	if err := h.moderatorUserID(r); err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
+func (h *ModeratorContentHandler) DELETEFilter(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		api.HandleError(w, r, api.NewBadRequestError("id required"))

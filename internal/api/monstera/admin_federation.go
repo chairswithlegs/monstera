@@ -1,7 +1,6 @@
 package monstera
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -15,49 +14,17 @@ import (
 
 // AdminFederationHandler handles known instances and domain blocks.
 type AdminFederationHandler struct {
-	accounts   service.AccountService
 	instance   service.InstanceService
 	moderation service.ModerationService
 }
 
 // NewAdminFederationHandler returns a new AdminFederationHandler.
-func NewAdminFederationHandler(accounts service.AccountService, instance service.InstanceService, moderation service.ModerationService) *AdminFederationHandler {
-	return &AdminFederationHandler{accounts: accounts, instance: instance, moderation: moderation}
-}
-
-func (h *AdminFederationHandler) requireAdmin(r *http.Request) bool {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		return false
-	}
-	_, user, err := h.accounts.GetAccountWithUser(r.Context(), account.ID)
-	if err != nil {
-		return false
-	}
-	return user.Role == domain.RoleAdmin
-}
-
-func (h *AdminFederationHandler) moderatorUserID(r *http.Request) (string, error) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		return "", api.ErrForbidden
-	}
-	_, user, err := h.accounts.GetAccountWithUser(r.Context(), account.ID)
-	if err != nil {
-		return "", fmt.Errorf("GetAccountWithUser: %w", err)
-	}
-	if user.Role != domain.RoleAdmin && user.Role != domain.RoleModerator {
-		return "", api.ErrForbidden
-	}
-	return user.ID, nil
+func NewAdminFederationHandler(instance service.InstanceService, moderation service.ModerationService) *AdminFederationHandler {
+	return &AdminFederationHandler{instance: instance, moderation: moderation}
 }
 
 // GETInstances returns known federated instances.
 func (h *AdminFederationHandler) GETInstances(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.moderatorUserID(r); err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
 	limit := 50
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if n, _ := strconv.Atoi(l); n > 0 && n <= 100 {
@@ -84,10 +51,6 @@ func (h *AdminFederationHandler) GETInstances(w http.ResponseWriter, r *http.Req
 
 // GETDomainBlocks returns domain blocks.
 func (h *AdminFederationHandler) GETDomainBlocks(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.moderatorUserID(r); err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
 	blocks, err := h.moderation.ListDomainBlocks(r.Context())
 	if err != nil {
 		api.HandleError(w, r, err)
@@ -100,15 +63,11 @@ func (h *AdminFederationHandler) GETDomainBlocks(w http.ResponseWriter, r *http.
 	api.WriteJSON(w, http.StatusOK, apimodel.AdminDomainBlockList{DomainBlocks: out})
 }
 
-// POSTDomainBlocks creates a domain block (admin only).
+// POSTDomainBlocks creates a domain block (admin only; route protected by RequireAdmin).
 func (h *AdminFederationHandler) POSTDomainBlocks(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(r) {
+	user := middleware.UserFromContext(r.Context())
+	if user == nil {
 		api.HandleError(w, r, api.ErrForbidden)
-		return
-	}
-	modID, err := h.moderatorUserID(r)
-	if err != nil {
-		api.HandleError(w, r, err)
 		return
 	}
 	var body struct {
@@ -127,7 +86,7 @@ func (h *AdminFederationHandler) POSTDomainBlocks(w http.ResponseWriter, r *http
 	if body.Severity != domain.DomainBlockSeveritySilence && body.Severity != domain.DomainBlockSeveritySuspend {
 		body.Severity = domain.DomainBlockSeveritySilence
 	}
-	_, err = h.moderation.CreateDomainBlock(r.Context(), modID, service.CreateDomainBlockInput{
+	_, err := h.moderation.CreateDomainBlock(r.Context(), user.ID, service.CreateDomainBlockInput{
 		Domain:   body.Domain,
 		Severity: body.Severity,
 		Reason:   body.Reason,
@@ -139,15 +98,11 @@ func (h *AdminFederationHandler) POSTDomainBlocks(w http.ResponseWriter, r *http
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// DELETEDomainBlock removes a domain block (admin only).
+// DELETEDomainBlock removes a domain block (admin only; route protected by RequireAdmin).
 func (h *AdminFederationHandler) DELETEDomainBlock(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(r) {
+	user := middleware.UserFromContext(r.Context())
+	if user == nil {
 		api.HandleError(w, r, api.ErrForbidden)
-		return
-	}
-	modID, err := h.moderatorUserID(r)
-	if err != nil {
-		api.HandleError(w, r, err)
 		return
 	}
 	domainName := chi.URLParam(r, "domain")
@@ -155,7 +110,7 @@ func (h *AdminFederationHandler) DELETEDomainBlock(w http.ResponseWriter, r *htt
 		api.HandleError(w, r, api.NewBadRequestError("domain required"))
 		return
 	}
-	if err := h.moderation.DeleteDomainBlock(r.Context(), modID, domainName); err != nil {
+	if err := h.moderation.DeleteDomainBlock(r.Context(), user.ID, domainName); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}

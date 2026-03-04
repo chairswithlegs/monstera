@@ -16,24 +16,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAdminInvitesHandler_GETInvites(t *testing.T) {
+func TestModeratorInvitesHandler_GETInvites(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
-	accountSvc := service.NewAccountService(st, "https://example.com")
 	regSvc := service.NewRegistrationService(st, nil, nil, "https://example.com", "Example")
-	handler := NewAdminInvitesHandler(accountSvc, regSvc)
+	handler := NewModeratorInvitesHandler(regSvc)
 
-	t.Run("no account returns 403", func(t *testing.T) {
+	t.Run("no user returns 403", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/admin/invites", nil)
 		rec := httptest.NewRecorder()
 		handler.GETInvites(rec, req)
 		assert.Equal(t, http.StatusForbidden, rec.Code)
 	})
 
-	t.Run("admin returns 200 and invite list", func(t *testing.T) {
+	t.Run("with user returns 200 and invite list", func(t *testing.T) {
 		adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
+		adminUser := getUserByAccountID(t, st, adminAcc.ID)
 		req := httptest.NewRequest(http.MethodGet, "/admin/invites", nil)
-		req = req.WithContext(middleware.WithAccount(req.Context(), adminAcc))
+		req = req.WithContext(middleware.WithUser(req.Context(), adminUser))
 		rec := httptest.NewRecorder()
 		handler.GETInvites(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
@@ -43,25 +43,25 @@ func TestAdminInvitesHandler_GETInvites(t *testing.T) {
 	})
 }
 
-func TestAdminInvitesHandler_POSTInvites(t *testing.T) {
+func TestModeratorInvitesHandler_POSTInvites(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
-	accountSvc := service.NewAccountService(st, "https://example.com")
 	regSvc := service.NewRegistrationService(st, nil, nil, "https://example.com", "Example")
-	handler := NewAdminInvitesHandler(accountSvc, regSvc)
+	handler := NewModeratorInvitesHandler(regSvc)
 	adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
+	adminUser := getUserByAccountID(t, st, adminAcc.ID)
 
-	t.Run("no account returns 403", func(t *testing.T) {
+	t.Run("no user returns 403", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/admin/invites", nil)
 		rec := httptest.NewRecorder()
 		handler.POSTInvites(rec, req)
 		assert.Equal(t, http.StatusForbidden, rec.Code)
 	})
 
-	t.Run("admin returns 201 and created invite", func(t *testing.T) {
+	t.Run("with user returns 201 and created invite", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/admin/invites", bytes.NewReader([]byte("{}")))
 		req.Header.Set("Content-Type", "application/json")
-		req = req.WithContext(middleware.WithAccount(req.Context(), adminAcc))
+		req = req.WithContext(middleware.WithUser(req.Context(), adminUser))
 		rec := httptest.NewRecorder()
 		handler.POSTInvites(rec, req)
 		assert.Equal(t, http.StatusCreated, rec.Code)
@@ -72,25 +72,14 @@ func TestAdminInvitesHandler_POSTInvites(t *testing.T) {
 	})
 }
 
-func TestAdminInvitesHandler_DELETEInvite(t *testing.T) {
+func TestModeratorInvitesHandler_DELETEInvite(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
-	accountSvc := service.NewAccountService(st, "https://example.com")
 	regSvc := service.NewRegistrationService(st, nil, nil, "https://example.com", "Example")
-	handler := NewAdminInvitesHandler(accountSvc, regSvc)
-	adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
+	handler := NewModeratorInvitesHandler(regSvc)
 
-	t.Run("no account returns 403", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodDelete, "/admin/invites/01someid", nil)
-		req = testutil.AddChiURLParam(req, "id", "01someid")
-		rec := httptest.NewRecorder()
-		handler.DELETEInvite(rec, req)
-		assert.Equal(t, http.StatusForbidden, rec.Code)
-	})
-
-	t.Run("admin with valid id returns 204", func(t *testing.T) {
+	t.Run("with valid id returns 204", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodDelete, "/admin/invites/01inviteid", nil)
-		req = req.WithContext(middleware.WithAccount(req.Context(), adminAcc))
 		req = testutil.AddChiURLParam(req, "id", "01inviteid")
 		rec := httptest.NewRecorder()
 		handler.DELETEInvite(rec, req)

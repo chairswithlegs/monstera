@@ -2,11 +2,38 @@
 
 import { getRegistrations, approveRegistration, rejectRegistration, type PendingRegistration } from '@/lib/api/admin';
 import { useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Card,
+  CardContent,
+} from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { EmptyState } from '@/components/empty-state';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 export default function AdminRegistrationsPage() {
   const [pending, setPending] = useState<PendingRegistration[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
+  const [rejectUserId, setRejectUserId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   const load = () => {
     getRegistrations()
@@ -30,11 +57,17 @@ export default function AdminRegistrationsPage() {
     }
   };
 
-  const reject = async (id: string) => {
-    const reason = prompt('Rejection reason (optional):') ?? '';
+  const openRejectDialog = (userId: string) => {
+    setRejectUserId(userId);
+    setRejectReason('');
+  };
+
+  const reject = async () => {
+    if (!rejectUserId) return;
     setActing(true);
     try {
-      await rejectRegistration(id, reason);
+      await rejectRegistration(rejectUserId, rejectReason);
+      setRejectUserId(null);
       load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed');
@@ -43,54 +76,91 @@ export default function AdminRegistrationsPage() {
     }
   };
 
-  if (error) return <p className="text-red-600">{error}</p>;
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
+  }
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-gray-900">Pending registrations</h1>
-      <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
-        {pending.length === 0 ? (
-          <p className="p-6 text-gray-500">No pending registrations.</p>
-        ) : (
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">Username</th>
-                <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">Email</th>
-                <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">Reason</th>
-                <th className="px-4 py-2 text-right text-xs font-medium uppercase text-gray-500">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
-              {pending.map((p) => (
-                <tr key={p.user_id}>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">@{p.username}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{p.email}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{p.registration_reason ?? '—'}</td>
-                  <td className="px-4 py-3 text-right text-sm">
-                    <button
-                      type="button"
-                      disabled={acting}
-                      onClick={() => approve(p.user_id)}
-                      className="mr-2 text-green-600 hover:text-green-800 disabled:opacity-50"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      disabled={acting}
-                      onClick={() => reject(p.user_id)}
-                      className="text-red-600 hover:text-red-800 disabled:opacity-50"
-                    >
-                      Reject
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <h1 className="text-2xl font-semibold text-foreground">Pending registrations</h1>
+      <Card className="mt-6">
+        <CardContent className="p-0">
+          {pending.length === 0 ? (
+            <EmptyState message="No pending registrations." />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Username</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Reason</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pending.map((p) => (
+                  <TableRow key={p.user_id}>
+                    <TableCell className="font-medium">@{p.username}</TableCell>
+                    <TableCell className="text-muted-foreground">{p.email}</TableCell>
+                    <TableCell className="text-muted-foreground">{p.registration_reason ?? '—'}</TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="sm"
+                        disabled={acting}
+                        onClick={() => approve(p.user_id)}
+                        className="mr-2"
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        disabled={acting}
+                        onClick={() => openRejectDialog(p.user_id)}
+                      >
+                        Reject
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={rejectUserId !== null} onOpenChange={(open) => !open && setRejectUserId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject registration</DialogTitle>
+            <DialogDescription>Optionally provide a reason for the rejection.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2 py-4">
+            <Label htmlFor="reject-reason">Reason (optional)</Label>
+            <Input
+              id="reject-reason"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Reason for rejection"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejectUserId(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={reject} disabled={acting}>
+              {acting ? 'Rejecting…' : 'Reject'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

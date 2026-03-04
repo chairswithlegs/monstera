@@ -1,50 +1,28 @@
 package monstera
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/chairswithlegs/monstera-fed/internal/api"
 	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
 	"github.com/chairswithlegs/monstera-fed/internal/api/monstera/apimodel"
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
-// AdminReportsHandler handles report queue and actions.
-type AdminReportsHandler struct {
-	accounts   service.AccountService
+// ModeratorReportsHandler handles report queue and actions.
+type ModeratorReportsHandler struct {
 	moderation service.ModerationService
 }
 
-// NewAdminReportsHandler returns a new AdminReportsHandler.
-func NewAdminReportsHandler(accounts service.AccountService, moderation service.ModerationService) *AdminReportsHandler {
-	return &AdminReportsHandler{accounts: accounts, moderation: moderation}
-}
-
-func (h *AdminReportsHandler) moderatorUserID(r *http.Request) (string, error) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		return "", api.ErrForbidden
-	}
-	_, user, err := h.accounts.GetAccountWithUser(r.Context(), account.ID)
-	if err != nil {
-		return "", fmt.Errorf("GetAccountWithUser: %w", err)
-	}
-	if user.Role != domain.RoleAdmin && user.Role != domain.RoleModerator {
-		return "", api.ErrForbidden
-	}
-	return user.ID, nil
+// NewModeratorReportsHandler returns a new ModeratorReportsHandler.
+func NewModeratorReportsHandler(moderation service.ModerationService) *ModeratorReportsHandler {
+	return &ModeratorReportsHandler{moderation: moderation}
 }
 
 // GETReports returns a paginated list of reports.
-func (h *AdminReportsHandler) GETReports(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.moderatorUserID(r); err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
+func (h *ModeratorReportsHandler) GETReports(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	limit := 20
 	if l := r.URL.Query().Get("limit"); l != "" {
@@ -71,11 +49,7 @@ func (h *AdminReportsHandler) GETReports(w http.ResponseWriter, r *http.Request)
 }
 
 // GETReport returns a single report.
-func (h *AdminReportsHandler) GETReport(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.moderatorUserID(r); err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
+func (h *ModeratorReportsHandler) GETReport(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
@@ -90,10 +64,10 @@ func (h *AdminReportsHandler) GETReport(w http.ResponseWriter, r *http.Request) 
 }
 
 // POSTAssign assigns a report to a user.
-func (h *AdminReportsHandler) POSTAssign(w http.ResponseWriter, r *http.Request) {
-	modID, err := h.moderatorUserID(r)
-	if err != nil {
-		api.HandleError(w, r, err)
+func (h *ModeratorReportsHandler) POSTAssign(w http.ResponseWriter, r *http.Request) {
+	user := middleware.UserFromContext(r.Context())
+	if user == nil {
+		api.HandleError(w, r, api.ErrForbidden)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -108,7 +82,7 @@ func (h *AdminReportsHandler) POSTAssign(w http.ResponseWriter, r *http.Request)
 		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
 		return
 	}
-	if err := h.moderation.AssignReport(r.Context(), modID, id, body.AssigneeID); err != nil {
+	if err := h.moderation.AssignReport(r.Context(), user.ID, id, body.AssigneeID); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
@@ -116,10 +90,10 @@ func (h *AdminReportsHandler) POSTAssign(w http.ResponseWriter, r *http.Request)
 }
 
 // POSTResolve resolves a report.
-func (h *AdminReportsHandler) POSTResolve(w http.ResponseWriter, r *http.Request) {
-	modID, err := h.moderatorUserID(r)
-	if err != nil {
-		api.HandleError(w, r, err)
+func (h *ModeratorReportsHandler) POSTResolve(w http.ResponseWriter, r *http.Request) {
+	user := middleware.UserFromContext(r.Context())
+	if user == nil {
+		api.HandleError(w, r, api.ErrForbidden)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -134,7 +108,7 @@ func (h *AdminReportsHandler) POSTResolve(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
 		return
 	}
-	if err := h.moderation.ResolveReport(r.Context(), modID, id, body.Resolution); err != nil {
+	if err := h.moderation.ResolveReport(r.Context(), user.ID, id, body.Resolution); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}

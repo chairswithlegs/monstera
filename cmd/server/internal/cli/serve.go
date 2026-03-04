@@ -197,44 +197,44 @@ func runServe(_ *cobra.Command, _ []string) error {
 	moderationSvc := service.NewModerationService(s)
 	registrationSvc := service.NewRegistrationService(s, registrationMailer, registrationMailer, instanceBaseURL, cfg.InstanceName)
 	serverFilterSvc := service.NewServerFilterService(s)
-	adminDashboard := monstera.NewAdminDashboardHandler(instanceSvc, moderationSvc)
+	moderatorDashboard := monstera.NewModeratorDashboardHandler(instanceSvc, moderationSvc)
 	adminUsers := monstera.NewAdminUsersHandler(accountSvc, moderationSvc)
-	adminRegistrations := monstera.NewAdminRegistrationsHandler(accountSvc, registrationSvc)
-	adminInvites := monstera.NewAdminInvitesHandler(accountSvc, registrationSvc)
-	adminReports := monstera.NewAdminReportsHandler(accountSvc, moderationSvc)
-	adminFederation := monstera.NewAdminFederationHandler(accountSvc, instanceSvc, moderationSvc)
-	adminContent := monstera.NewAdminContentHandler(accountSvc, serverFilterSvc)
-	adminSettings := monstera.NewAdminSettingsHandler(accountSvc, instanceSvc)
+	moderatorRegistrations := monstera.NewModeratorRegistrationsHandler(registrationSvc)
+	moderatorInvites := monstera.NewModeratorInvitesHandler(registrationSvc)
+	moderatorReports := monstera.NewModeratorReportsHandler(moderationSvc)
+	adminFederation := monstera.NewAdminFederationHandler(instanceSvc, moderationSvc)
+	moderatorContent := monstera.NewModeratorContentHandler(serverFilterSvc)
+	adminSettings := monstera.NewAdminSettingsHandler(instanceSvc)
 
 	handler := router.New(router.Deps{
-		AccountsService:    accountSvc,
-		Health:             health,
-		OAuthHandler:       oauthHandler,
-		OAuthServer:        oauthServer,
-		Accounts:           accountsHandler,
-		Statuses:           statusesHandler,
-		Timelines:          timelinesHandler,
-		Instance:           instanceHandler,
-		Notifications:      notificationsHandler,
-		Media:              mediaHandler,
-		Search:             searchHandler,
-		Streaming:          streamingHandler,
-		WebFinger:          webFingerHandler,
-		NodeInfoPtr:        nodeInfoPtrHandler,
-		NodeInfo:           nodeInfoHandler,
-		Actor:              actorHandler,
-		Collections:        collectionsHandler,
-		Outbox:             outboxHandler,
-		Inbox:              inboxHandler,
-		User:               userHandler,
-		AdminDashboard:     adminDashboard,
-		AdminUsers:         adminUsers,
-		AdminRegistrations: adminRegistrations,
-		AdminInvites:       adminInvites,
-		AdminReports:       adminReports,
-		AdminFederation:    adminFederation,
-		AdminContent:       adminContent,
-		AdminSettings:      adminSettings,
+		AccountsService:        accountSvc,
+		Health:                 health,
+		OAuthHandler:           oauthHandler,
+		OAuthServer:            oauthServer,
+		Accounts:               accountsHandler,
+		Statuses:               statusesHandler,
+		Timelines:              timelinesHandler,
+		Instance:               instanceHandler,
+		Notifications:          notificationsHandler,
+		Media:                  mediaHandler,
+		Search:                 searchHandler,
+		Streaming:              streamingHandler,
+		WebFinger:              webFingerHandler,
+		NodeInfoPtr:            nodeInfoPtrHandler,
+		NodeInfo:               nodeInfoHandler,
+		Actor:                  actorHandler,
+		Collections:            collectionsHandler,
+		Outbox:                 outboxHandler,
+		Inbox:                  inboxHandler,
+		User:                   userHandler,
+		ModeratorDashboard:     moderatorDashboard,
+		AdminUsers:             adminUsers,
+		ModeratorRegistrations: moderatorRegistrations,
+		ModeratorInvites:       moderatorInvites,
+		ModeratorReports:       moderatorReports,
+		AdminFederation:        adminFederation,
+		ModeratorContent:       moderatorContent,
+		AdminSettings:          adminSettings,
 	})
 
 	// Start HTTP server

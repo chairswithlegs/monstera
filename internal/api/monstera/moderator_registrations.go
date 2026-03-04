@@ -1,49 +1,27 @@
 package monstera
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/chairswithlegs/monstera-fed/internal/api"
 	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
 	"github.com/chairswithlegs/monstera-fed/internal/api/monstera/apimodel"
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
-// AdminRegistrationsHandler handles pending registration approval/rejection.
-type AdminRegistrationsHandler struct {
-	accounts     service.AccountService
+// ModeratorRegistrationsHandler handles pending registration approval/rejection.
+type ModeratorRegistrationsHandler struct {
 	registration service.RegistrationService
 }
 
-// NewAdminRegistrationsHandler returns a new AdminRegistrationsHandler.
-func NewAdminRegistrationsHandler(accounts service.AccountService, registration service.RegistrationService) *AdminRegistrationsHandler {
-	return &AdminRegistrationsHandler{accounts: accounts, registration: registration}
-}
-
-func (h *AdminRegistrationsHandler) moderatorUserID(r *http.Request) (string, error) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		return "", api.ErrForbidden
-	}
-	_, user, err := h.accounts.GetAccountWithUser(r.Context(), account.ID)
-	if err != nil {
-		return "", fmt.Errorf("GetAccountWithUser: %w", err)
-	}
-	if user.Role != domain.RoleAdmin && user.Role != domain.RoleModerator {
-		return "", api.ErrForbidden
-	}
-	return user.ID, nil
+// NewModeratorRegistrationsHandler returns a new ModeratorRegistrationsHandler.
+func NewModeratorRegistrationsHandler(registration service.RegistrationService) *ModeratorRegistrationsHandler {
+	return &ModeratorRegistrationsHandler{registration: registration}
 }
 
 // GETRegistrations returns the list of pending registrations.
-func (h *AdminRegistrationsHandler) GETRegistrations(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.moderatorUserID(r); err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
+func (h *ModeratorRegistrationsHandler) GETRegistrations(w http.ResponseWriter, r *http.Request) {
 	pending, err := h.registration.ListPending(r.Context())
 	if err != nil {
 		api.HandleError(w, r, err)
@@ -63,10 +41,10 @@ func (h *AdminRegistrationsHandler) GETRegistrations(w http.ResponseWriter, r *h
 }
 
 // POSTApprove approves a pending registration.
-func (h *AdminRegistrationsHandler) POSTApprove(w http.ResponseWriter, r *http.Request) {
-	modID, err := h.moderatorUserID(r)
-	if err != nil {
-		api.HandleError(w, r, err)
+func (h *ModeratorRegistrationsHandler) POSTApprove(w http.ResponseWriter, r *http.Request) {
+	user := middleware.UserFromContext(r.Context())
+	if user == nil {
+		api.HandleError(w, r, api.ErrForbidden)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -74,7 +52,7 @@ func (h *AdminRegistrationsHandler) POSTApprove(w http.ResponseWriter, r *http.R
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
 		return
 	}
-	if err := h.registration.Approve(r.Context(), modID, id); err != nil {
+	if err := h.registration.Approve(r.Context(), user.ID, id); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
@@ -82,10 +60,10 @@ func (h *AdminRegistrationsHandler) POSTApprove(w http.ResponseWriter, r *http.R
 }
 
 // POSTReject rejects a pending registration.
-func (h *AdminRegistrationsHandler) POSTReject(w http.ResponseWriter, r *http.Request) {
-	modID, err := h.moderatorUserID(r)
-	if err != nil {
-		api.HandleError(w, r, err)
+func (h *ModeratorRegistrationsHandler) POSTReject(w http.ResponseWriter, r *http.Request) {
+	user := middleware.UserFromContext(r.Context())
+	if user == nil {
+		api.HandleError(w, r, api.ErrForbidden)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -100,7 +78,7 @@ func (h *AdminRegistrationsHandler) POSTReject(w http.ResponseWriter, r *http.Re
 		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
 		return
 	}
-	if err := h.registration.Reject(r.Context(), modID, id, body.Reason); err != nil {
+	if err := h.registration.Reject(r.Context(), user.ID, id, body.Reason); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}

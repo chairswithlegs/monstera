@@ -16,24 +16,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAdminReportsHandler_GETReports(t *testing.T) {
+func TestModeratorReportsHandler_GETReports(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
-	accountSvc := service.NewAccountService(st, "https://example.com")
 	modSvc := service.NewModerationService(st)
-	handler := NewAdminReportsHandler(accountSvc, modSvc)
+	handler := NewModeratorReportsHandler(modSvc)
 
-	t.Run("no account returns 403", func(t *testing.T) {
+	t.Run("returns 200 and report list", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/admin/reports", nil)
-		rec := httptest.NewRecorder()
-		handler.GETReports(rec, req)
-		assert.Equal(t, http.StatusForbidden, rec.Code)
-	})
-
-	t.Run("admin returns 200 and report list", func(t *testing.T) {
-		adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
-		req := httptest.NewRequest(http.MethodGet, "/admin/reports", nil)
-		req = req.WithContext(middleware.WithAccount(req.Context(), adminAcc))
 		rec := httptest.NewRecorder()
 		handler.GETReports(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
@@ -43,25 +33,14 @@ func TestAdminReportsHandler_GETReports(t *testing.T) {
 	})
 }
 
-func TestAdminReportsHandler_GETReport(t *testing.T) {
+func TestModeratorReportsHandler_GETReport(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
-	accountSvc := service.NewAccountService(st, "https://example.com")
 	modSvc := service.NewModerationService(st)
-	handler := NewAdminReportsHandler(accountSvc, modSvc)
-	adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
+	handler := NewModeratorReportsHandler(modSvc)
 
-	t.Run("no account returns 403", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/admin/reports/01reportid", nil)
-		req = testutil.AddChiURLParam(req, "id", "01reportid")
-		rec := httptest.NewRecorder()
-		handler.GETReport(rec, req)
-		assert.Equal(t, http.StatusForbidden, rec.Code)
-	})
-
-	t.Run("admin with nonexistent id returns 404", func(t *testing.T) {
+	t.Run("with nonexistent id returns 404", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/admin/reports/01nonexistent", nil)
-		req = req.WithContext(middleware.WithAccount(req.Context(), adminAcc))
 		req = testutil.AddChiURLParam(req, "id", "01nonexistent")
 		rec := httptest.NewRecorder()
 		handler.GETReport(rec, req)
@@ -69,15 +48,15 @@ func TestAdminReportsHandler_GETReport(t *testing.T) {
 	})
 }
 
-func TestAdminReportsHandler_POSTAssign(t *testing.T) {
+func TestModeratorReportsHandler_POSTAssign(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
-	accountSvc := service.NewAccountService(st, "https://example.com")
 	modSvc := service.NewModerationService(st)
-	handler := NewAdminReportsHandler(accountSvc, modSvc)
+	handler := NewModeratorReportsHandler(modSvc)
 	adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
+	adminUser := getUserByAccountID(t, st, adminAcc.ID)
 
-	t.Run("no account returns 403", func(t *testing.T) {
+	t.Run("no user returns 403", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/admin/reports/01reportid/assign", nil)
 		req = testutil.AddChiURLParam(req, "id", "01reportid")
 		rec := httptest.NewRecorder()
@@ -85,10 +64,10 @@ func TestAdminReportsHandler_POSTAssign(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, rec.Code)
 	})
 
-	t.Run("admin returns 204", func(t *testing.T) {
+	t.Run("with user returns 204", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/admin/reports/01reportid/assign", bytes.NewReader([]byte("{}")))
 		req.Header.Set("Content-Type", "application/json")
-		req = req.WithContext(middleware.WithAccount(req.Context(), adminAcc))
+		req = req.WithContext(middleware.WithUser(req.Context(), adminUser))
 		req = testutil.AddChiURLParam(req, "id", "01reportid")
 		rec := httptest.NewRecorder()
 		handler.POSTAssign(rec, req)
@@ -96,15 +75,15 @@ func TestAdminReportsHandler_POSTAssign(t *testing.T) {
 	})
 }
 
-func TestAdminReportsHandler_POSTResolve(t *testing.T) {
+func TestModeratorReportsHandler_POSTResolve(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
-	accountSvc := service.NewAccountService(st, "https://example.com")
 	modSvc := service.NewModerationService(st)
-	handler := NewAdminReportsHandler(accountSvc, modSvc)
+	handler := NewModeratorReportsHandler(modSvc)
 	adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
+	adminUser := getUserByAccountID(t, st, adminAcc.ID)
 
-	t.Run("no account returns 403", func(t *testing.T) {
+	t.Run("no user returns 403", func(t *testing.T) {
 		body := map[string]string{"resolution": "resolved"}
 		b, _ := json.Marshal(body)
 		req := httptest.NewRequest(http.MethodPost, "/admin/reports/01reportid/resolve", bytes.NewReader(b))
@@ -115,12 +94,12 @@ func TestAdminReportsHandler_POSTResolve(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, rec.Code)
 	})
 
-	t.Run("admin returns 204", func(t *testing.T) {
+	t.Run("with user returns 204", func(t *testing.T) {
 		body := map[string]string{"resolution": "resolved"}
 		b, _ := json.Marshal(body)
 		req := httptest.NewRequest(http.MethodPost, "/admin/reports/01reportid/resolve", bytes.NewReader(b))
 		req.Header.Set("Content-Type", "application/json")
-		req = req.WithContext(middleware.WithAccount(req.Context(), adminAcc))
+		req = req.WithContext(middleware.WithUser(req.Context(), adminUser))
 		req = testutil.AddChiURLParam(req, "id", "01reportid")
 		rec := httptest.NewRecorder()
 		handler.POSTResolve(rec, req)

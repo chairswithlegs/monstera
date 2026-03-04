@@ -5,6 +5,22 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import UserDetailView from './UserDetailView';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+} from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { EmptyState } from '@/components/empty-state';
 
 function UsersList() {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -16,47 +32,63 @@ function UsersList() {
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
   }, []);
 
-  if (error) return <p className="text-red-600">{error}</p>;
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
+  }
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-gray-900">Users</h1>
-      <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">Username</th>
-              <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">Email</th>
-              <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">Role</th>
-              <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">Status</th>
-              <th className="px-4 py-2 text-right text-xs font-medium uppercase text-gray-500">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td className="px-4 py-3 text-sm text-gray-900">
-                  <Link href={`/admin/users?id=${encodeURIComponent(u.account_id)}`} className="font-medium text-indigo-600 hover:text-indigo-800">
-                    @{u.username}
-                  </Link>
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-600">{u.email}</td>
-                <td className="px-4 py-3 text-sm text-gray-600">{u.role}</td>
-                <td className="px-4 py-3 text-sm">
-                  {u.suspended && <span className="rounded bg-red-100 px-2 py-0.5 text-red-800">Suspended</span>}
-                  {u.silenced && !u.suspended && <span className="rounded bg-amber-100 px-2 py-0.5 text-amber-800">Silenced</span>}
-                  {!u.suspended && !u.silenced && <span className="text-gray-500">—</span>}
-                </td>
-                <td className="px-4 py-3 text-right text-sm">
-                  <Link href={`/admin/users?id=${encodeURIComponent(u.account_id)}`} className="text-indigo-600 hover:text-indigo-800">
-                    View
-                  </Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <h1 className="text-2xl font-semibold text-foreground">Users</h1>
+      <Card className="mt-6">
+        <CardContent className="p-0">
+          {users.length === 0 ? (
+            <EmptyState message="No users." />
+          ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Username</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {users.map((u) => (
+                <TableRow key={u.id}>
+                  <TableCell>
+                    <Button variant="link" size="sm" className="h-auto p-0 font-medium" asChild>
+                      <Link href={`/admin/users?id=${encodeURIComponent(u.account_id)}`}>
+                        @{u.username}
+                      </Link>
+                    </Button>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{u.email}</TableCell>
+                  <TableCell className="text-muted-foreground">{u.role}</TableCell>
+                  <TableCell>
+                    {u.suspended && <Badge variant="destructive">Suspended</Badge>}
+                    {u.silenced && !u.suspended && <Badge variant="secondary">Silenced</Badge>}
+                    {!u.suspended && !u.silenced && <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="link" size="sm" asChild>
+                      <Link href={`/admin/users?id=${encodeURIComponent(u.account_id)}`}>
+                        View
+                      </Link>
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -70,7 +102,7 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <Suspense fallback={<p className="text-gray-500">Loading…</p>}>
+    <Suspense fallback={<p className="text-muted-foreground">Loading…</p>}>
       <UsersList />
     </Suspense>
   );

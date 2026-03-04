@@ -4,41 +4,22 @@ import (
 	"net/http"
 
 	"github.com/chairswithlegs/monstera-fed/internal/api"
-	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
 	"github.com/chairswithlegs/monstera-fed/internal/api/monstera/apimodel"
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
 )
 
-// AdminSettingsHandler handles instance settings (admin only).
+// AdminSettingsHandler handles instance settings (admin only; route protected by RequireAdmin).
 type AdminSettingsHandler struct {
-	accounts service.AccountService
 	instance service.InstanceService
 }
 
 // NewAdminSettingsHandler returns a new AdminSettingsHandler.
-func NewAdminSettingsHandler(accounts service.AccountService, instance service.InstanceService) *AdminSettingsHandler {
-	return &AdminSettingsHandler{accounts: accounts, instance: instance}
-}
-
-func (h *AdminSettingsHandler) requireAdmin(r *http.Request) bool {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		return false
-	}
-	_, user, err := h.accounts.GetAccountWithUser(r.Context(), account.ID)
-	if err != nil {
-		return false
-	}
-	return user.Role == domain.RoleAdmin
+func NewAdminSettingsHandler(instance service.InstanceService) *AdminSettingsHandler {
+	return &AdminSettingsHandler{instance: instance}
 }
 
 // GETSettings returns all instance settings.
 func (h *AdminSettingsHandler) GETSettings(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(r) {
-		api.HandleError(w, r, api.ErrForbidden)
-		return
-	}
 	settings, err := h.instance.GetAllSettings(r.Context())
 	if err != nil {
 		api.HandleError(w, r, err)
@@ -49,10 +30,6 @@ func (h *AdminSettingsHandler) GETSettings(w http.ResponseWriter, r *http.Reques
 
 // PUTSettings updates instance settings (merge with existing).
 func (h *AdminSettingsHandler) PUTSettings(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(r) {
-		api.HandleError(w, r, api.ErrForbidden)
-		return
-	}
 	var body struct {
 		Settings map[string]string `json:"settings"`
 	}

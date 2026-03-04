@@ -19,6 +19,7 @@ type contextKey int
 const (
 	accountKey contextKey = iota
 	tokenClaimsKey
+	userKey
 )
 
 // RequireAuth extracts the Bearer token from the Authorization header,
@@ -48,17 +49,22 @@ func RequireAuth(oauth *oauthpkg.Server, accounts service.AccountService) func(h
 			ctx := WithTokenClaims(r.Context(), claims)
 
 			if claims.AccountID != "" {
-				account, err := accounts.GetByID(r.Context(), claims.AccountID)
-				if errors.Is(err, domain.ErrNotFound) || account.Suspended {
+				account, user, err := accounts.GetAccountWithUser(r.Context(), claims.AccountID)
+				if errors.Is(err, domain.ErrNotFound) {
 					api.HandleError(w, r, api.ErrUnauthorized)
 					return
 				}
 				if err != nil {
-					slog.ErrorContext(r.Context(), "get account by id failed", slog.Any("error", err))
+					slog.ErrorContext(r.Context(), "get account with user failed", slog.Any("error", err))
 					api.HandleError(w, r, err)
 					return
 				}
+				if account.Suspended {
+					api.HandleError(w, r, api.ErrUnauthorized)
+					return
+				}
 				ctx = WithAccount(ctx, account)
+				ctx = WithUser(ctx, user)
 				ctx = observability.WithAccountID(ctx, account.ID)
 			}
 
@@ -89,9 +95,10 @@ func OptionalAuth(oauth *oauthpkg.Server, accounts service.AccountService) func(
 			ctx := WithTokenClaims(r.Context(), claims)
 
 			if claims.AccountID != "" {
-				account, err := accounts.GetByID(r.Context(), claims.AccountID)
-				if err == nil && !account.Suspended {
+				account, user, err := accounts.GetAccountWithUser(r.Context(), claims.AccountID)
+				if err == nil && account != nil && !account.Suspended {
 					ctx = WithAccount(ctx, account)
+					ctx = WithUser(ctx, user)
 					ctx = observability.WithAccountID(ctx, account.ID)
 				}
 			}
@@ -101,33 +108,31 @@ func OptionalAuth(oauth *oauthpkg.Server, accounts service.AccountService) func(
 	}
 }
 
-// RequireAdmin checks that the authenticated account has role "admin" or
-// "moderator". Must be chained after RequireAuth.
-func RequireAdmin(accounts service.AccountService) func(http.Handler) http.Handler {
+// RequireModerator checks that the authenticated user has role "admin" or
+// "moderator". Must be chained after RequireAuth (which sets the user in context).
+func RequireModerator() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			account := AccountFromContext(r.Context())
-			if account == nil {
+			user := UserFromContext(r.Context())
+			if user == nil || (user.Role != domain.RoleAdmin && user.Role != domain.RoleModerator) {
 				api.HandleError(w, r, api.ErrForbidden)
 				return
 			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
 
-			_, user, err := accounts.GetAccountWithUser(r.Context(), account.ID)
-			if errors.Is(err, domain.ErrNotFound) {
+// RequireAdmin checks that the authenticated user has role "admin".
+// Must be chained after RequireModerator (or after RequireAuth on routes that require moderator+admin).
+func RequireAdmin() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user := UserFromContext(r.Context())
+			if user == nil || user.Role != domain.RoleAdmin {
 				api.HandleError(w, r, api.ErrForbidden)
 				return
 			}
-			if err != nil {
-				slog.ErrorContext(r.Context(), "get user by account id failed", slog.Any("error", err))
-				api.HandleError(w, r, err)
-				return
-			}
-
-			if user.Role != domain.RoleAdmin && user.Role != domain.RoleModerator {
-				api.HandleError(w, r, api.ErrForbidden)
-				return
-			}
-
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -176,6 +181,17 @@ func TokenClaimsFromContext(ctx context.Context) *oauthpkg.TokenClaims {
 // WithTokenClaims stores token claims in the context.
 func WithTokenClaims(ctx context.Context, c *oauthpkg.TokenClaims) context.Context {
 	return context.WithValue(ctx, tokenClaimsKey, c)
+}
+
+// WithUser stores the authenticated user in the context.
+func WithUser(ctx context.Context, u *domain.User) context.Context {
+	return context.WithValue(ctx, userKey, u)
+}
+
+// UserFromContext retrieves the authenticated user from the context.
+func UserFromContext(ctx context.Context) *domain.User {
+	v, _ := ctx.Value(userKey).(*domain.User)
+	return v
 }
 
 func extractBearerToken(r *http.Request) string {

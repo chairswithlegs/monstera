@@ -13,6 +13,30 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 type Props = { id: string };
 
@@ -21,6 +45,8 @@ export default function UserDetailView({ id }: Props) {
   const [user, setUser] = useState<AdminUser | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
+  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+  const [newRole, setNewRole] = useState('');
 
   const load = useCallback(() => {
     if (!id) return;
@@ -45,84 +71,116 @@ export default function UserDetailView({ id }: Props) {
     }
   };
 
-  if (error && !user) return <p className="text-red-600">{error}</p>;
-  if (!user) return <p className="text-gray-500">Loading…</p>;
+  const handleSetRole = async () => {
+    if (!user || !newRole.trim()) return;
+    await act(() => setUserRole(user.account_id, newRole.trim()));
+    setRoleDialogOpen(false);
+    setNewRole('');
+  };
+
+  const handleDelete = async () => {
+    if (!user) return;
+    await act(() => deleteUser(user.account_id));
+    router.push('/admin/users');
+  };
+
+  if (error && !user) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
+  }
+  if (!user) return <p className="text-muted-foreground">Loading…</p>;
 
   return (
     <div>
       <p className="mb-4">
-        <Link href="/admin/users" className="text-indigo-600 hover:text-indigo-800">
-          ← Back to users
-        </Link>
+        <Button variant="link" size="sm" className="h-auto p-0" asChild>
+          <Link href="/admin/users">← Back to users</Link>
+        </Button>
       </p>
-      <h1 className="text-2xl font-semibold text-gray-900">@{user.username}</h1>
-      <p className="mt-1 text-gray-600">{user.email}</p>
-      <p className="mt-1 text-sm text-gray-500">Account ID: {user.account_id}</p>
-      <p className="mt-1 text-sm text-gray-500">Role: {user.role}</p>
-      {user.suspended && <p className="mt-2 text-red-600">Suspended</p>}
-      {user.silenced && !user.suspended && <p className="mt-2 text-amber-600">Silenced</p>}
-      {error && <p className="mt-2 text-red-600">{error}</p>}
+      <h1 className="text-2xl font-semibold text-foreground">@{user.username}</h1>
+      <p className="mt-1 text-muted-foreground">{user.email}</p>
+      <p className="mt-1 text-sm text-muted-foreground">Account ID: {user.account_id}</p>
+      <p className="mt-1 text-sm text-muted-foreground">Role: {user.role}</p>
+      {user.suspended && <p className="mt-2 text-destructive">Suspended</p>}
+      {user.silenced && !user.suspended && <p className="mt-2 text-amber-600 dark:text-amber-500">Silenced</p>}
+      {error && (
+        <Alert variant="destructive" className="mt-2">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
       <div className="mt-6 flex flex-wrap gap-2">
         {user.suspended ? (
-          <button
-            type="button"
-            disabled={acting}
-            onClick={() => act(() => unsuspendUser(user.account_id))}
-            className="rounded bg-gray-800 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:opacity-50"
-          >
+          <Button type="button" disabled={acting} onClick={() => act(() => unsuspendUser(user.account_id))}>
             Unsuspend
-          </button>
+          </Button>
         ) : (
-          <button
-            type="button"
-            disabled={acting}
-            onClick={() => act(() => suspendUser(user.account_id))}
-            className="rounded bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-500 disabled:opacity-50"
-          >
+          <Button type="button" variant="destructive" disabled={acting} onClick={() => act(() => suspendUser(user.account_id))}>
             Suspend
-          </button>
+          </Button>
         )}
         {user.silenced ? (
-          <button
-            type="button"
-            disabled={acting}
-            onClick={() => act(() => unsilenceUser(user.account_id))}
-            className="rounded bg-gray-800 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:opacity-50"
-          >
+          <Button type="button" disabled={acting} onClick={() => act(() => unsilenceUser(user.account_id))}>
             Unsilence
-          </button>
+          </Button>
         ) : (
-          <button
-            type="button"
-            disabled={acting}
-            onClick={() => act(() => silenceUser(user.account_id))}
-            className="rounded bg-amber-600 px-3 py-1.5 text-sm text-white hover:bg-amber-500 disabled:opacity-50"
-          >
+          <Button type="button" variant="secondary" disabled={acting} onClick={() => act(() => silenceUser(user.account_id))} className="bg-amber-600 text-white hover:bg-amber-700 hover:text-white">
             Silence
-          </button>
+          </Button>
         )}
-        <button
-          type="button"
-          disabled={acting}
-          onClick={() => {
-            const role = prompt('New role (user, moderator, admin):', user.role);
-            if (role) act(() => setUserRole(user.account_id, role));
-          }}
-          className="rounded bg-gray-600 px-3 py-1.5 text-sm text-white hover:bg-gray-500 disabled:opacity-50"
-        >
-          Set role
-        </button>
-        <button
-          type="button"
-          disabled={acting}
-          onClick={() => {
-            if (confirm('Permanently delete this account?'))
-              act(() => deleteUser(user.account_id)).then(() => router.push('/admin/users'));
-          }}
-          className="rounded bg-red-800 px-3 py-1.5 text-sm text-white hover:bg-red-700 disabled:opacity-50"
-        >
-          Delete account
-        </button>
+        <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
+          <DialogTrigger asChild>
+            <Button type="button" variant="secondary" disabled={acting}>
+              Set role
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Set role</DialogTitle>
+              <DialogDescription>Enter the new role (user, moderator, admin).</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-2 py-4">
+              <Label htmlFor="new-role">New role</Label>
+              <Input
+                id="new-role"
+                value={newRole}
+                onChange={(e) => setNewRole(e.target.value)}
+                placeholder={user.role}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRoleDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSetRole} disabled={acting || !newRole.trim()}>
+                {acting ? 'Saving…' : 'Save'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button type="button" variant="destructive" disabled={acting} className="bg-red-800 hover:bg-red-900">
+              Delete account
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete account?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete the account and all associated data.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );

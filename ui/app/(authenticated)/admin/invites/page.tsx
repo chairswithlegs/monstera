@@ -2,6 +2,21 @@
 
 import { getInvites, createInvite, deleteInvite, type Invite } from '@/lib/api/admin';
 import { useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Card,
+  CardContent,
+} from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { EmptyState } from '@/components/empty-state';
 
 export default function AdminInvitesPage() {
   const [invites, setInvites] = useState<Invite[]>([]);
@@ -39,58 +54,57 @@ export default function AdminInvitesPage() {
     }
   };
 
-  if (error) return <p className="text-red-600">{error}</p>;
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
+  }
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-gray-900">Invites</h1>
+      <h1 className="text-2xl font-semibold text-foreground">Invites</h1>
       <div className="mt-4">
-        <button
-          type="button"
-          disabled={creating}
-          onClick={create}
-          className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
+        <Button type="button" disabled={creating} onClick={create}>
           Create invite
-        </button>
+        </Button>
       </div>
-      <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
-        {invites.length === 0 ? (
-          <p className="p-6 text-gray-500">No invites yet.</p>
-        ) : (
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">Code</th>
-                <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">Uses</th>
-                <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">Created</th>
-                <th className="px-4 py-2 text-right text-xs font-medium uppercase text-gray-500">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
-              {invites.map((inv) => (
-                <tr key={inv.id}>
-                  <td className="px-4 py-3 font-mono text-sm text-gray-900">{inv.code}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {inv.uses}
-                    {inv.max_uses != null ? ` / ${inv.max_uses}` : ''}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{new Date(inv.created_at).toLocaleString()}</td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => remove(inv.id)}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      Revoke
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <Card className="mt-6">
+        <CardContent className="p-0">
+          {invites.length === 0 ? (
+            <EmptyState message="No invites yet." />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Uses</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {invites.map((inv) => (
+                  <TableRow key={inv.id}>
+                    <TableCell className="font-mono">{inv.code}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {inv.uses}
+                      {inv.max_uses != null ? ` / ${inv.max_uses}` : ''}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{new Date(inv.created_at).toLocaleString()}</TableCell>
+                    <TableCell className="text-right">
+                      <Button type="button" variant="ghost" size="sm" onClick={() => remove(inv.id)} className="text-destructive hover:text-destructive">
+                        Revoke
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

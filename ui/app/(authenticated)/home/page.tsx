@@ -3,6 +3,8 @@
 import { getUser } from '@/lib/api/user';
 import { useEffect, useState } from 'react';
 import type { User } from '@/lib/api/user';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Card, CardContent } from '@/components/ui/card';
 
 export default function HomePage() {
   const [user, setUser] = useState<User | null>(null);
@@ -16,17 +18,27 @@ export default function HomePage() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div className="text-red-600">{error}</div>;
-  if (!user) return <div>Loading...</div>;
+  if (loading) return <div className="text-muted-foreground">Loading...</div>;
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
+  }
+  if (!user) return <div className="text-muted-foreground">Loading...</div>;
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-gray-900">Home</h1>
-      <p className="mt-2 text-gray-500">Welcome. Here is your account info.</p>
-      <pre className="mt-4 rounded-lg bg-gray-100 p-4">
-        <code className="text-sm">{JSON.stringify(user, null, 2)}</code>
-      </pre>
+      <h1 className="text-2xl font-semibold text-foreground">Home</h1>
+      <p className="mt-2 text-muted-foreground">Welcome. Here is your account info.</p>
+      <Card className="mt-4">
+        <CardContent className="p-4">
+          <pre className="overflow-auto">
+            <code className="text-sm">{JSON.stringify(user, null, 2)}</code>
+          </pre>
+        </CardContent>
+      </Card>
     </div>
   );
 }

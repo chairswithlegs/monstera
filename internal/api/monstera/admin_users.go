@@ -1,7 +1,6 @@
 package monstera
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -24,39 +23,8 @@ func NewAdminUsersHandler(accounts service.AccountService, moderation service.Mo
 	return &AdminUsersHandler{accounts: accounts, moderation: moderation}
 }
 
-func (h *AdminUsersHandler) moderatorUserID(r *http.Request) (string, error) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		return "", api.ErrForbidden
-	}
-	_, user, err := h.accounts.GetAccountWithUser(r.Context(), account.ID)
-	if err != nil {
-		return "", fmt.Errorf("GetAccountWithUser: %w", err)
-	}
-	if user.Role != domain.RoleAdmin && user.Role != domain.RoleModerator {
-		return "", api.ErrForbidden
-	}
-	return user.ID, nil
-}
-
-func (h *AdminUsersHandler) requireAdmin(r *http.Request) bool {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		return false
-	}
-	_, user, err := h.accounts.GetAccountWithUser(r.Context(), account.ID)
-	if err != nil {
-		return false
-	}
-	return user.Role == domain.RoleAdmin
-}
-
 // GETUsers returns a paginated list of local users.
 func (h *AdminUsersHandler) GETUsers(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.moderatorUserID(r); err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
 	limit := 20
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if n, _ := strconv.Atoi(l); n > 0 && n <= 100 {
@@ -90,10 +58,6 @@ func (h *AdminUsersHandler) GETUsers(w http.ResponseWriter, r *http.Request) {
 
 // GETUser returns a single user by account ID.
 func (h *AdminUsersHandler) GETUser(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.moderatorUserID(r); err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
@@ -114,9 +78,9 @@ func (h *AdminUsersHandler) GETUser(w http.ResponseWriter, r *http.Request) {
 
 // POSTSuspend suspends an account (moderator or admin).
 func (h *AdminUsersHandler) POSTSuspend(w http.ResponseWriter, r *http.Request) {
-	modID, err := h.moderatorUserID(r)
-	if err != nil {
-		api.HandleError(w, r, err)
+	user := middleware.UserFromContext(r.Context())
+	if user == nil {
+		api.HandleError(w, r, api.ErrForbidden)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -124,7 +88,7 @@ func (h *AdminUsersHandler) POSTSuspend(w http.ResponseWriter, r *http.Request) 
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
 		return
 	}
-	if err := h.moderation.SuspendAccount(r.Context(), modID, id); err != nil {
+	if err := h.moderation.SuspendAccount(r.Context(), user.ID, id); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
@@ -133,9 +97,9 @@ func (h *AdminUsersHandler) POSTSuspend(w http.ResponseWriter, r *http.Request) 
 
 // POSTUnsuspend unsuspends an account.
 func (h *AdminUsersHandler) POSTUnsuspend(w http.ResponseWriter, r *http.Request) {
-	modID, err := h.moderatorUserID(r)
-	if err != nil {
-		api.HandleError(w, r, err)
+	user := middleware.UserFromContext(r.Context())
+	if user == nil {
+		api.HandleError(w, r, api.ErrForbidden)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -143,7 +107,7 @@ func (h *AdminUsersHandler) POSTUnsuspend(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
 		return
 	}
-	if err := h.moderation.UnsuspendAccount(r.Context(), modID, id); err != nil {
+	if err := h.moderation.UnsuspendAccount(r.Context(), user.ID, id); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
@@ -152,9 +116,9 @@ func (h *AdminUsersHandler) POSTUnsuspend(w http.ResponseWriter, r *http.Request
 
 // POSTSilence silences an account.
 func (h *AdminUsersHandler) POSTSilence(w http.ResponseWriter, r *http.Request) {
-	modID, err := h.moderatorUserID(r)
-	if err != nil {
-		api.HandleError(w, r, err)
+	user := middleware.UserFromContext(r.Context())
+	if user == nil {
+		api.HandleError(w, r, api.ErrForbidden)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -162,7 +126,7 @@ func (h *AdminUsersHandler) POSTSilence(w http.ResponseWriter, r *http.Request) 
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
 		return
 	}
-	if err := h.moderation.SilenceAccount(r.Context(), modID, id); err != nil {
+	if err := h.moderation.SilenceAccount(r.Context(), user.ID, id); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
@@ -171,9 +135,9 @@ func (h *AdminUsersHandler) POSTSilence(w http.ResponseWriter, r *http.Request) 
 
 // POSTUnsilence unsilences an account.
 func (h *AdminUsersHandler) POSTUnsilence(w http.ResponseWriter, r *http.Request) {
-	modID, err := h.moderatorUserID(r)
-	if err != nil {
-		api.HandleError(w, r, err)
+	user := middleware.UserFromContext(r.Context())
+	if user == nil {
+		api.HandleError(w, r, api.ErrForbidden)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -181,22 +145,18 @@ func (h *AdminUsersHandler) POSTUnsilence(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
 		return
 	}
-	if err := h.moderation.UnsilenceAccount(r.Context(), modID, id); err != nil {
+	if err := h.moderation.UnsilenceAccount(r.Context(), user.ID, id); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// PUTRole sets a user's role (admin only).
+// PUTRole sets a user's role (admin only; route protected by RequireAdmin).
 func (h *AdminUsersHandler) PUTRole(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(r) {
+	user := middleware.UserFromContext(r.Context())
+	if user == nil {
 		api.HandleError(w, r, api.ErrForbidden)
-		return
-	}
-	modID, err := h.moderatorUserID(r)
-	if err != nil {
-		api.HandleError(w, r, err)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -215,27 +175,23 @@ func (h *AdminUsersHandler) PUTRole(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.NewBadRequestError("invalid role"))
 		return
 	}
-	user, err := h.accounts.GetUserByID(r.Context(), id)
+	targetUser, err := h.accounts.GetUserByID(r.Context(), id)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
-	if err := h.moderation.SetUserRole(r.Context(), modID, user.ID, body.Role); err != nil {
+	if err := h.moderation.SetUserRole(r.Context(), user.ID, targetUser.ID, body.Role); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// DELETEUser deletes an account and user (admin only).
+// DELETEUser deletes an account and user (admin only; route protected by RequireAdmin).
 func (h *AdminUsersHandler) DELETEUser(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(r) {
+	user := middleware.UserFromContext(r.Context())
+	if user == nil {
 		api.HandleError(w, r, api.ErrForbidden)
-		return
-	}
-	modID, err := h.moderatorUserID(r)
-	if err != nil {
-		api.HandleError(w, r, err)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -253,10 +209,9 @@ func (h *AdminUsersHandler) DELETEUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Error is ignored since the user may not exist and we want the endpoint to be idempotent.
-	_, user, _ := h.accounts.GetAccountWithUser(r.Context(), id)
-	if user != nil {
-		if err := h.moderation.DeleteAccount(r.Context(), modID, id); err != nil {
+	_, targetUser, _ := h.accounts.GetAccountWithUser(r.Context(), id)
+	if targetUser != nil {
+		if err := h.moderation.DeleteAccount(r.Context(), user.ID, id); err != nil {
 			api.HandleError(w, r, err)
 			return
 		}

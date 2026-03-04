@@ -5,37 +5,45 @@ import { useLogin } from '@/hooks/useLogin';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 
 function LoginContent() {
   const { loading, error, submitCredentials } = useLogin();
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="w-full max-w-sm rounded-xl border bg-white p-8 shadow-sm">
-        <h1 className="mb-6 text-xl font-semibold text-gray-900">
-          Sign in
-        </h1>
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle>Sign in</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
-        {error && (
-          <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
-            {error}
+          <CredentialsForm onSubmit={submitCredentials} loading={loading} />
+
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            Don&apos;t have an account?{' '}
+            <Button variant="link" size="sm" className="h-auto p-0" asChild>
+              <Link href="/register">Register</Link>
+            </Button>
           </p>
-        )}
-
-        <CredentialsForm onSubmit={submitCredentials} loading={loading} />
-
-        <p className="mt-6 text-center text-sm text-gray-500">
-          Don&apos;t have an account?{' '}
-          <Link href="/register" className="text-blue-600 hover:underline">
-            Register
-          </Link>
-        </p>
-        <p className="mt-2 text-center text-sm text-gray-500">
-          <Link href="/" className="text-blue-600 hover:underline">
-            Back to home
-          </Link>
-        </p>
-      </div>
+          <p className="mt-2 text-center text-sm text-muted-foreground">
+            <Button variant="link" size="sm" className="h-auto p-0" asChild>
+              <Link href="/">Back to home</Link>
+            </Button>
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -43,10 +51,12 @@ function LoginContent() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="w-full max-w-sm rounded-xl border bg-white p-8 shadow-sm">
-          <p className="text-gray-500">Loading...</p>
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Card className="w-full max-w-sm">
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">Loading...</p>
+          </CardContent>
+        </Card>
       </div>
     }>
       <LoginContent />

@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
 	"github.com/chairswithlegs/monstera-fed/internal/api/monstera/apimodel"
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
@@ -46,17 +45,24 @@ func createAccountWithRole(t *testing.T, st store.Store, username, role string) 
 	return acc
 }
 
-func TestAdminDashboardHandler_GETDashboard(t *testing.T) {
+func getUserByAccountID(t *testing.T, st store.Store, accountID string) *domain.User {
+	t.Helper()
+	ctx := context.Background()
+	user, err := st.GetUserByAccountID(ctx, accountID)
+	require.NoError(t, err)
+	return user
+}
+
+func TestModeratorDashboardHandler_GETDashboard(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
 	instanceSvc := service.NewInstanceService(st)
 	modSvc := service.NewModerationService(st)
-	handler := NewAdminDashboardHandler(instanceSvc, modSvc)
+	handler := NewModeratorDashboardHandler(instanceSvc, modSvc)
 
-	t.Run("with admin account returns 200 and dashboard body", func(t *testing.T) {
-		adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
+	t.Run("returns 200 and dashboard body", func(t *testing.T) {
+		_ = createAccountWithRole(t, st, "admin", domain.RoleAdmin)
 		req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
-		req = req.WithContext(middleware.WithAccount(req.Context(), adminAcc))
 		rec := httptest.NewRecorder()
 		handler.GETDashboard(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)

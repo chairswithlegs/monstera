@@ -5,6 +5,10 @@ import { getUser, isAdminOrModerator } from '@/lib/api/user';
 import type { User } from '@/lib/api/user';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export default function ServerSettingsPage() {
   const router = useRouter();
@@ -62,30 +66,30 @@ export default function ServerSettingsPage() {
     <div>
       <h1 className="text-2xl font-semibold text-gray-900">Server settings</h1>
       <p className="mt-2 text-gray-500">Instance configuration (admin only).</p>
-      {error && <p className="mt-2 text-red-600">{error}</p>}
+      {error && (
+        <Alert variant="destructive" className="mt-2">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
       <form onSubmit={save} className="mt-6 max-w-2xl space-y-4">
         {keys.length === 0 ? (
-          <p className="text-gray-500">No settings yet.</p>
+          <p className="text-muted-foreground">No settings yet.</p>
         ) : (
           keys.map((key) => (
-            <div key={key}>
-              <label className="block text-sm font-medium text-gray-700">{key}</label>
-              <input
+            <div key={key} className="flex flex-col gap-1.5">
+              <Label htmlFor={`setting-${key}`}>{key}</Label>
+              <Input
+                id={`setting-${key}`}
                 type="text"
                 value={editable[key] ?? ''}
                 onChange={(e) => setSettings((s) => ({ ...s, [key]: e.target.value }))}
-                className="mt-1 w-full rounded border border-gray-300 px-3 py-1.5 text-sm"
               />
             </div>
           ))
         )}
-        <button
-          type="submit"
-          disabled={saving || keys.length === 0}
-          className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
+        <Button type="submit" disabled={saving || keys.length === 0}>
           {saving ? 'Saving…' : 'Save'}
-        </button>
+        </Button>
       </form>
     </div>
   );

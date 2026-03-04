@@ -5,6 +5,23 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import ReportDetailView from './ReportDetailView';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+} from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { EmptyState } from '@/components/empty-state';
 
 export default function AdminReportsPage() {
   const searchParams = useSearchParams();
@@ -17,79 +34,79 @@ export default function AdminReportsPage() {
   return <ReportsList />;
 }
 
+type ReportState = 'open' | 'resolved' | 'all';
+
 function ReportsList() {
   const [reports, setReports] = useState<Report[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [state, setState] = useState('open');
+  const [state, setState] = useState<ReportState>('open');
+
+  const apiState = state === 'all' ? '' : state;
 
   useEffect(() => {
-    getReports({ state, limit: 50 })
+    getReports({ state: apiState, limit: 50 })
       .then((r) => setReports(r.reports))
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
-  }, [state]);
+  }, [apiState]);
 
-  if (error) return <p className="text-red-600">{error}</p>;
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
+  }
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-gray-900">Reports</h1>
-      <div className="mt-4 flex gap-2">
-        <button
-          type="button"
-          onClick={() => setState('open')}
-          className={`rounded px-3 py-1.5 text-sm ${state === 'open' ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-700'}`}
-        >
-          Open
-        </button>
-        <button
-          type="button"
-          onClick={() => setState('resolved')}
-          className={`rounded px-3 py-1.5 text-sm ${state === 'resolved' ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-700'}`}
-        >
-          Resolved
-        </button>
-        <button
-          type="button"
-          onClick={() => setState('')}
-          className={`rounded px-3 py-1.5 text-sm ${state === '' ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-700'}`}
-        >
-          All
-        </button>
-      </div>
-      <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
-        {reports.length === 0 ? (
-          <p className="p-6 text-gray-500">No reports.</p>
-        ) : (
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">ID</th>
-                <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">Category</th>
-                <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">State</th>
-                <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">Created</th>
-                <th className="px-4 py-2 text-right text-xs font-medium uppercase text-gray-500">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
-              {reports.map((r) => (
-                <tr key={r.id}>
-                  <td className="px-4 py-3 font-mono text-sm text-gray-900">{r.id.slice(0, 8)}…</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{r.category}</td>
-                  <td className="px-4 py-3 text-sm">
-                    <span className={r.state === 'open' ? 'text-amber-600' : 'text-gray-600'}>{r.state}</span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{new Date(r.created_at).toLocaleString()}</td>
-                  <td className="px-4 py-3 text-right">
-                    <Link href={`/admin/reports?id=${encodeURIComponent(r.id)}`} className="text-indigo-600 hover:text-indigo-800">
-                      View
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <h1 className="text-2xl font-semibold text-foreground">Reports</h1>
+      <Tabs value={state} onValueChange={(v) => setState(v as ReportState)} className="mt-4">
+        <TabsList>
+          <TabsTrigger value="open">Open</TabsTrigger>
+          <TabsTrigger value="resolved">Resolved</TabsTrigger>
+          <TabsTrigger value="all">All</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      <Card className="mt-6">
+        <CardContent className="p-0">
+              {reports.length === 0 ? (
+                <EmptyState message="No reports." />
+              ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>State</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {reports.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-mono">{r.id.slice(0, 8)}…</TableCell>
+                    <TableCell className="text-muted-foreground">{r.category}</TableCell>
+                    <TableCell>
+                      <Badge variant={r.state === 'open' ? 'secondary' : 'outline'}>
+                        {r.state}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{new Date(r.created_at).toLocaleString()}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="link" size="sm" asChild>
+                        <Link href={`/admin/reports?id=${encodeURIComponent(r.id)}`}>
+                          View
+                        </Link>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

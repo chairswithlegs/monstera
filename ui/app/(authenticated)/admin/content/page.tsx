@@ -2,6 +2,24 @@
 
 import { getFilters, createFilter, deleteFilter, type ServerFilter } from '@/lib/api/admin';
 import { useCallback, useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { EmptyState } from '@/components/empty-state';
 
 export default function AdminContentPage() {
   const [filters, setFilters] = useState<ServerFilter[]>([]);
@@ -43,57 +61,68 @@ export default function AdminContentPage() {
     }
   };
 
-  if (error) return <p className="text-red-600">{error}</p>;
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
+  }
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-gray-900">Content</h1>
-      <p className="mt-1 text-sm text-gray-500">Server-side keyword filters.</p>
+      <h1 className="text-2xl font-semibold text-foreground">Content</h1>
+      <p className="mt-1 text-sm text-muted-foreground">Server-side keyword filters.</p>
 
       <section className="mt-8">
-        <h2 className="text-lg font-medium text-gray-900">Server filters</h2>
+        <h2 className="text-lg font-medium text-foreground">Server filters</h2>
         <form onSubmit={addFilter} className="mt-4 flex gap-2">
-          <input
+          <Input
             type="text"
             value={newPhrase}
             onChange={(e) => setNewPhrase(e.target.value)}
             placeholder="Keyword or phrase"
-            className="rounded border border-gray-300 px-3 py-1.5 text-sm"
+            className="min-w-[200px]"
           />
-          <button type="submit" disabled={submitting} className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-500 disabled:opacity-50">
+          <Button type="submit" disabled={submitting}>
             Add filter
-          </button>
+          </Button>
         </form>
-        <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
-          {filters.length === 0 ? (
-            <p className="p-6 text-gray-500">No filters.</p>
-          ) : (
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">Phrase</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">Scope</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">Action</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium uppercase text-gray-500">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
-                {filters.map((f) => (
-                  <tr key={f.id}>
-                    <td className="px-4 py-3 text-sm text-gray-900">{f.phrase}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{f.scope}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{f.action}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button type="button" onClick={() => removeFilter(f.id)} className="text-red-600 hover:text-red-800">
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <Card className="mt-4">
+          <CardHeader className="py-4">
+            <CardTitle className="text-base">Filters</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {filters.length === 0 ? (
+              <EmptyState message="No filters." />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Phrase</TableHead>
+                    <TableHead>Scope</TableHead>
+                    <TableHead>Action</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filters.map((f) => (
+                    <TableRow key={f.id}>
+                      <TableCell>{f.phrase}</TableCell>
+                      <TableCell className="text-muted-foreground">{f.scope}</TableCell>
+                      <TableCell className="text-muted-foreground">{f.action}</TableCell>
+                      <TableCell className="text-right">
+                        <Button type="button" variant="ghost" size="sm" onClick={() => removeFilter(f.id)} className="text-destructive hover:text-destructive">
+                          Delete
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
       </section>
     </div>
   );

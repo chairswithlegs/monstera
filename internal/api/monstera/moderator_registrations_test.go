@@ -21,24 +21,14 @@ import (
 
 const testInstanceURL = "https://example.com"
 
-func TestAdminRegistrationsHandler_GETRegistrations(t *testing.T) {
+func TestModeratorRegistrationsHandler_GETRegistrations(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
-	accountSvc := service.NewAccountService(st, testInstanceURL)
 	regSvc := service.NewRegistrationService(st, nil, nil, testInstanceURL, "Example")
-	handler := NewAdminRegistrationsHandler(accountSvc, regSvc)
+	handler := NewModeratorRegistrationsHandler(regSvc)
 
-	t.Run("no account returns 403", func(t *testing.T) {
+	t.Run("returns 200 and pending list", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/admin/registrations", nil)
-		rec := httptest.NewRecorder()
-		handler.GETRegistrations(rec, req)
-		assert.Equal(t, http.StatusForbidden, rec.Code)
-	})
-
-	t.Run("admin returns 200 and pending list", func(t *testing.T) {
-		adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
-		req := httptest.NewRequest(http.MethodGet, "/admin/registrations", nil)
-		req = req.WithContext(middleware.WithAccount(req.Context(), adminAcc))
 		rec := httptest.NewRecorder()
 		handler.GETRegistrations(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
@@ -48,14 +38,14 @@ func TestAdminRegistrationsHandler_GETRegistrations(t *testing.T) {
 	})
 }
 
-func TestAdminRegistrationsHandler_POSTApprove(t *testing.T) {
+func TestModeratorRegistrationsHandler_POSTApprove(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
-	accountSvc := service.NewAccountService(st, testInstanceURL)
 	regSvc := service.NewRegistrationService(st, nil, nil, testInstanceURL, "Example")
-	handler := NewAdminRegistrationsHandler(accountSvc, regSvc)
+	handler := NewModeratorRegistrationsHandler(regSvc)
 	adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
+	adminUser := getUserByAccountID(t, st, adminAcc.ID)
 
 	accID := uid.New()
 	_, err := st.CreateAccount(ctx, store.CreateAccountInput{
@@ -80,7 +70,7 @@ func TestAdminRegistrationsHandler_POSTApprove(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	t.Run("no account returns 403", func(t *testing.T) {
+	t.Run("no user returns 403", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/admin/registrations/"+userID+"/approve", nil)
 		req = testutil.AddChiURLParam(req, "id", userID)
 		rec := httptest.NewRecorder()
@@ -88,9 +78,9 @@ func TestAdminRegistrationsHandler_POSTApprove(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, rec.Code)
 	})
 
-	t.Run("admin with valid user id returns 204", func(t *testing.T) {
+	t.Run("with user returns 204", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/admin/registrations/"+userID+"/approve", nil)
-		req = req.WithContext(middleware.WithAccount(req.Context(), adminAcc))
+		req = req.WithContext(middleware.WithUser(req.Context(), adminUser))
 		req = testutil.AddChiURLParam(req, "id", userID)
 		rec := httptest.NewRecorder()
 		handler.POSTApprove(rec, req)
@@ -98,14 +88,14 @@ func TestAdminRegistrationsHandler_POSTApprove(t *testing.T) {
 	})
 }
 
-func TestAdminRegistrationsHandler_POSTReject(t *testing.T) {
+func TestModeratorRegistrationsHandler_POSTReject(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
-	accountSvc := service.NewAccountService(st, testInstanceURL)
 	regSvc := service.NewRegistrationService(st, nil, nil, testInstanceURL, "Example")
-	handler := NewAdminRegistrationsHandler(accountSvc, regSvc)
+	handler := NewModeratorRegistrationsHandler(regSvc)
 	adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
+	adminUser := getUserByAccountID(t, st, adminAcc.ID)
 
 	accID := uid.New()
 	_, err := st.CreateAccount(ctx, store.CreateAccountInput{
@@ -130,12 +120,12 @@ func TestAdminRegistrationsHandler_POSTReject(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	t.Run("admin with valid user id returns 204", func(t *testing.T) {
+	t.Run("with user returns 204", func(t *testing.T) {
 		body := map[string]string{"reason": "not allowed"}
 		b, _ := json.Marshal(body)
 		req := httptest.NewRequest(http.MethodPost, "/admin/registrations/"+userID+"/reject", bytes.NewReader(b))
 		req.Header.Set("Content-Type", "application/json")
-		req = req.WithContext(middleware.WithAccount(req.Context(), adminAcc))
+		req = req.WithContext(middleware.WithUser(req.Context(), adminUser))
 		req = testutil.AddChiURLParam(req, "id", userID)
 		rec := httptest.NewRecorder()
 		handler.POSTReject(rec, req)
