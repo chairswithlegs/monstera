@@ -117,4 +117,50 @@ type Store interface {
 	GetDistinctFollowerInboxURLsPaginated(ctx context.Context, accountID string, cursor string, limit int) ([]string, error)
 	GetLocalFollowerAccountIDs(ctx context.Context, targetID string) ([]string, error)
 	GetStatusMentionAccountIDs(ctx context.Context, statusID string) ([]string, error)
+
+	CreateReport(ctx context.Context, in CreateReportInput) (*domain.Report, error)
+	GetReportByID(ctx context.Context, id string) (*domain.Report, error)
+	ListReports(ctx context.Context, state string, limit, offset int) ([]domain.Report, error)
+	AssignReport(ctx context.Context, reportID string, assigneeID *string) error
+	ResolveReport(ctx context.Context, reportID string, actionTaken *string) error
+
+	CreateDomainBlock(ctx context.Context, in CreateDomainBlockInput) (*domain.DomainBlock, error)
+	GetDomainBlock(ctx context.Context, domain string) (*domain.DomainBlock, error)
+	UpdateDomainBlock(ctx context.Context, domain string, severity string, reason *string) (*domain.DomainBlock, error)
+	DeleteDomainBlock(ctx context.Context, domain string) error
+
+	CreateAdminAction(ctx context.Context, in CreateAdminActionInput) error
+	ListAdminActionsByTarget(ctx context.Context, targetAccountID string) ([]domain.AdminAction, error)
+
+	CreateInvite(ctx context.Context, in CreateInviteInput) (*domain.Invite, error)
+	GetInviteByCode(ctx context.Context, code string) (*domain.Invite, error)
+	ListInvitesByCreator(ctx context.Context, createdByUserID string) ([]domain.Invite, error)
+	DeleteInvite(ctx context.Context, id string) error
+	IncrementInviteUses(ctx context.Context, code string) error
+
+	SetSetting(ctx context.Context, key, value string) error
+	ListSettings(ctx context.Context) (map[string]string, error)
+
+	UpsertKnownInstance(ctx context.Context, id, domain string) error
+	ListKnownInstances(ctx context.Context, limit, offset int) ([]domain.KnownInstance, error)
+
+	CreateServerFilter(ctx context.Context, in CreateServerFilterInput) (*domain.ServerFilter, error)
+	GetServerFilter(ctx context.Context, id string) (*domain.ServerFilter, error)
+	ListServerFilters(ctx context.Context) ([]domain.ServerFilter, error)
+	UpdateServerFilter(ctx context.Context, in UpdateServerFilterInput) (*domain.ServerFilter, error)
+	DeleteServerFilter(ctx context.Context, id string) error
+
+	ListLocalUsers(ctx context.Context, limit, offset int) ([]domain.User, error)
+	GetUserByID(ctx context.Context, id string) (*domain.User, error)
+	UpdateUserRole(ctx context.Context, userID string, role string) error
+	GetPendingRegistrations(ctx context.Context) ([]domain.User, error)
+	DeleteUser(ctx context.Context, id string) error
+
+	SilenceAccount(ctx context.Context, id string) error
+	UnsuspendAccount(ctx context.Context, id string) error
+	UnsilenceAccount(ctx context.Context, id string) error
+	DeleteAccount(ctx context.Context, id string) error
+	ListLocalAccounts(ctx context.Context, limit, offset int) ([]domain.Account, error)
+
+	DeleteFollowsByDomain(ctx context.Context, domain string) error
 }

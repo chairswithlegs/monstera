@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/chairswithlegs/monstera-fed/internal/config"
+	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
 	"github.com/chairswithlegs/monstera-fed/internal/testutil"
@@ -20,9 +21,15 @@ func TestCollectionsHandler_GETFollowers(t *testing.T) {
 	t.Parallel()
 	fake := testutil.NewFakeStore()
 	ctx := context.Background()
-	_, _ = fake.CreateAccount(ctx, store.CreateAccountInput{
+	_, err := fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID: "01HXXX", Username: "alice", APID: "https://example.com/users/alice",
 	})
+	require.NoError(t, err)
+	_, err = fake.CreateUser(ctx, store.CreateUserInput{
+		ID: "01USERALICE", AccountID: "01HXXX", Email: "alice@example.com", PasswordHash: "hash", Role: domain.RoleUser,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.ConfirmUser(ctx, "01USERALICE"))
 	cfg := &config.Config{InstanceDomain: "example.com"}
 	h := NewCollectionsHandler(service.NewAccountService(fake, "https://"+cfg.InstanceDomain), cfg)
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/followers", nil)
@@ -44,9 +51,15 @@ func TestCollectionsHandler_GETFeatured(t *testing.T) {
 	t.Parallel()
 	fake := testutil.NewFakeStore()
 	ctx := context.Background()
-	_, _ = fake.CreateAccount(ctx, store.CreateAccountInput{
+	_, err := fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID: "01HXXX", Username: "alice", APID: "https://example.com/users/alice",
 	})
+	require.NoError(t, err)
+	_, err = fake.CreateUser(ctx, store.CreateUserInput{
+		ID: "01USERALICE", AccountID: "01HXXX", Email: "alice@example.com", PasswordHash: "hash", Role: domain.RoleUser,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.ConfirmUser(ctx, "01USERALICE"))
 	cfg := &config.Config{InstanceDomain: "example.com"}
 	h := NewCollectionsHandler(service.NewAccountService(fake, "https://"+cfg.InstanceDomain), cfg)
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/collections/featured", nil)

@@ -29,7 +29,6 @@ type Querier interface {
 	CreateApplication(ctx context.Context, arg CreateApplicationParams) (OauthApplication, error)
 	CreateAuthorizationCode(ctx context.Context, arg CreateAuthorizationCodeParams) (OauthAuthorizationCode, error)
 	CreateBlock(ctx context.Context, arg CreateBlockParams) (Block, error)
-	CreateCustomEmoji(ctx context.Context, arg CreateCustomEmojiParams) (CustomEmoji, error)
 	CreateDomainBlock(ctx context.Context, arg CreateDomainBlockParams) (DomainBlock, error)
 	CreateEmailToken(ctx context.Context, arg CreateEmailTokenParams) (EmailToken, error)
 	CreateFavourite(ctx context.Context, arg CreateFavouriteParams) (Favourite, error)
@@ -50,17 +49,19 @@ type Querier interface {
 	DecrementReblogsCount(ctx context.Context, id string) error
 	DecrementRepliesCount(ctx context.Context, id string) error
 	DecrementStatusesCount(ctx context.Context, id string) error
+	DeleteAccount(ctx context.Context, id string) error
 	DeleteAuthorizationCode(ctx context.Context, code string) error
 	DeleteBlock(ctx context.Context, arg DeleteBlockParams) error
-	DeleteCustomEmoji(ctx context.Context, shortcode string) error
 	DeleteDomainBlock(ctx context.Context, domain string) error
 	DeleteEmailTokensForUser(ctx context.Context, userID string) error
 	DeleteExpiredEmailTokens(ctx context.Context) error
 	DeleteFavourite(ctx context.Context, arg DeleteFavouriteParams) error
 	DeleteFollow(ctx context.Context, arg DeleteFollowParams) error
+	DeleteFollowsByDomain(ctx context.Context, domain *string) error
 	DeleteInvite(ctx context.Context, id string) error
 	DeleteMute(ctx context.Context, arg DeleteMuteParams) error
 	DeleteServerFilter(ctx context.Context, id string) error
+	DeleteUser(ctx context.Context, id string) error
 	DismissNotification(ctx context.Context, arg DismissNotificationParams) error
 	GetAccessToken(ctx context.Context, token string) (OauthAccessToken, error)
 	GetAccountByAPID(ctx context.Context, apID string) (Account, error)
@@ -71,7 +72,6 @@ type Querier interface {
 	GetApplicationByClientID(ctx context.Context, clientID string) (OauthApplication, error)
 	GetAuthorizationCode(ctx context.Context, code string) (OauthAuthorizationCode, error)
 	GetBlock(ctx context.Context, arg GetBlockParams) (Block, error)
-	GetCustomEmojiByShortcode(ctx context.Context, shortcode string) (CustomEmoji, error)
 	GetDistinctFollowerInboxURLsPaginated(ctx context.Context, arg GetDistinctFollowerInboxURLsPaginatedParams) ([]string, error)
 	GetDomainBlock(ctx context.Context, domain string) (DomainBlock, error)
 	GetEmailToken(ctx context.Context, tokenHash string) (EmailToken, error)
@@ -94,6 +94,7 @@ type Querier interface {
 	GetNotification(ctx context.Context, arg GetNotificationParams) (Notification, error)
 	GetOrCreateHashtag(ctx context.Context, arg GetOrCreateHashtagParams) (Hashtag, error)
 	GetPendingFollowRequests(ctx context.Context, targetID string) ([]GetPendingFollowRequestsRow, error)
+	GetPendingRegistrations(ctx context.Context) ([]User, error)
 	GetPublicTimeline(ctx context.Context, arg GetPublicTimelineParams) ([]Status, error)
 	GetReblogByAccountAndTarget(ctx context.Context, arg GetReblogByAccountAndTargetParams) (Status, error)
 	GetRebloggedBy(ctx context.Context, arg GetRebloggedByParams) ([]Account, error)
@@ -126,13 +127,12 @@ type Querier interface {
 	ListAdminActions(ctx context.Context, arg ListAdminActionsParams) ([]AdminAction, error)
 	ListAdminActionsByModerator(ctx context.Context, arg ListAdminActionsByModeratorParams) ([]AdminAction, error)
 	ListAdminActionsByTarget(ctx context.Context, targetAccountID *string) ([]AdminAction, error)
-	ListAllCustomEmojis(ctx context.Context, arg ListAllCustomEmojisParams) ([]CustomEmoji, error)
 	ListBlockedAccounts(ctx context.Context, arg ListBlockedAccountsParams) ([]Account, error)
 	ListDomainBlocks(ctx context.Context) ([]DomainBlock, error)
 	ListInvitesByCreator(ctx context.Context, createdBy string) ([]Invite, error)
 	ListKnownInstances(ctx context.Context, arg ListKnownInstancesParams) ([]ListKnownInstancesRow, error)
 	ListLocalAccounts(ctx context.Context, arg ListLocalAccountsParams) ([]Account, error)
-	ListLocalCustomEmojis(ctx context.Context) ([]CustomEmoji, error)
+	ListLocalUsers(ctx context.Context, arg ListLocalUsersParams) ([]User, error)
 	ListMutes(ctx context.Context, arg ListMutesParams) ([]Mute, error)
 	ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]Notification, error)
 	ListReports(ctx context.Context, arg ListReportsParams) ([]Report, error)

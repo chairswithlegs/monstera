@@ -88,3 +88,6 @@ WHERE suspended = FALSE
   )
 ORDER BY (domain IS NOT NULL), username
 LIMIT $2;
+
+-- name: DeleteAccount :exec
+DELETE FROM accounts WHERE id = $1;

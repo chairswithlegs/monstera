@@ -19,17 +19,18 @@ func (q *Queries) ConfirmUser(ctx context.Context, id string) error {
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (id, account_id, email, password_hash, role)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO users (id, account_id, email, password_hash, role, registration_reason)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, account_id, email, password_hash, confirmed_at, role, registration_reason, created_at, default_privacy, default_sensitive, default_language
 `
 
 type CreateUserParams struct {
-	ID           string `json:"id"`
-	AccountID    string `json:"account_id"`
-	Email        string `json:"email"`
-	PasswordHash string `json:"password_hash"`
-	Role         string `json:"role"`
+	ID                 string  `json:"id"`
+	AccountID          string  `json:"account_id"`
+	Email              string  `json:"email"`
+	PasswordHash       string  `json:"password_hash"`
+	Role               string  `json:"role"`
+	RegistrationReason *string `json:"registration_reason"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
@@ -39,6 +40,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		arg.Email,
 		arg.PasswordHash,
 		arg.Role,
+		arg.RegistrationReason,
 	)
 	var i User
 	err := row.Scan(
@@ -55,6 +57,54 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.DefaultLanguage,
 	)
 	return i, err
+}
+
+const deleteUser = `-- name: DeleteUser :exec
+DELETE FROM users WHERE id = $1
+`
+
+func (q *Queries) DeleteUser(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, deleteUser, id)
+	return err
+}
+
+const getPendingRegistrations = `-- name: GetPendingRegistrations :many
+SELECT u.id, u.account_id, u.email, u.password_hash, u.confirmed_at, u.role, u.registration_reason, u.created_at, u.default_privacy, u.default_sensitive, u.default_language FROM users u
+INNER JOIN accounts a ON a.id = u.account_id
+WHERE u.confirmed_at IS NULL AND a.domain IS NULL
+ORDER BY u.created_at ASC
+`
+
+func (q *Queries) GetPendingRegistrations(ctx context.Context) ([]User, error) {
+	rows, err := q.db.Query(ctx, getPendingRegistrations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.Email,
+			&i.PasswordHash,
+			&i.ConfirmedAt,
+			&i.Role,
+			&i.RegistrationReason,
+			&i.CreatedAt,
+			&i.DefaultPrivacy,
+			&i.DefaultSensitive,
+			&i.DefaultLanguage,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getUserByAccountID = `-- name: GetUserByAccountID :one
@@ -124,6 +174,51 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.DefaultLanguage,
 	)
 	return i, err
+}
+
+const listLocalUsers = `-- name: ListLocalUsers :many
+SELECT u.id, u.account_id, u.email, u.password_hash, u.confirmed_at, u.role, u.registration_reason, u.created_at, u.default_privacy, u.default_sensitive, u.default_language FROM users u
+INNER JOIN accounts a ON a.id = u.account_id
+WHERE a.domain IS NULL
+ORDER BY u.created_at DESC
+LIMIT $1 OFFSET $2
+`
+
+type ListLocalUsersParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+func (q *Queries) ListLocalUsers(ctx context.Context, arg ListLocalUsersParams) ([]User, error) {
+	rows, err := q.db.Query(ctx, listLocalUsers, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.Email,
+			&i.PasswordHash,
+			&i.ConfirmedAt,
+			&i.Role,
+			&i.RegistrationReason,
+			&i.CreatedAt,
+			&i.DefaultPrivacy,
+			&i.DefaultSensitive,
+			&i.DefaultLanguage,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateUserPassword = `-- name: UpdateUserPassword :exec

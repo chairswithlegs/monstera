@@ -49,7 +49,15 @@ type Deps struct {
 	Inbox       *activitypub.InboxHandler
 
 	// Monstera API handlers
-	User *monstera.UserHandler
+	User               *monstera.UserHandler
+	AdminDashboard     *monstera.AdminDashboardHandler
+	AdminUsers         *monstera.AdminUsersHandler
+	AdminRegistrations *monstera.AdminRegistrationsHandler
+	AdminInvites       *monstera.AdminInvitesHandler
+	AdminReports       *monstera.AdminReportsHandler
+	AdminFederation    *monstera.AdminFederationHandler
+	AdminContent       *monstera.AdminContentHandler
+	AdminSettings      *monstera.AdminSettingsHandler
 }
 
 // New builds the chi router with global middleware and P1–P2 routes.
@@ -163,6 +171,40 @@ func New(deps Deps) http.Handler {
 		r.Use(chimw.Timeout(30 * time.Second))
 		r.Use(middleware.RequireAuth(deps.OAuthServer, deps.AccountsService))
 		r.Method("GET", "/user", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.User.GETUser)))
+
+		// Admin API (requires admin or moderator role)
+		r.Route("/admin", func(r chi.Router) {
+			r.Use(middleware.RequireAdmin(deps.AccountsService))
+			r.Get("/dashboard", deps.AdminDashboard.GETDashboard)
+			r.Get("/users", deps.AdminUsers.GETUsers)
+			r.Get("/users/{id}", deps.AdminUsers.GETUser)
+			r.Post("/users/{id}/suspend", deps.AdminUsers.POSTSuspend)
+			r.Post("/users/{id}/unsuspend", deps.AdminUsers.POSTUnsuspend)
+			r.Post("/users/{id}/silence", deps.AdminUsers.POSTSilence)
+			r.Post("/users/{id}/unsilence", deps.AdminUsers.POSTUnsilence)
+			r.Put("/users/{id}/role", deps.AdminUsers.PUTRole)
+			r.Delete("/users/{id}", deps.AdminUsers.DELETEUser)
+			r.Get("/registrations", deps.AdminRegistrations.GETRegistrations)
+			r.Post("/registrations/{id}/approve", deps.AdminRegistrations.POSTApprove)
+			r.Post("/registrations/{id}/reject", deps.AdminRegistrations.POSTReject)
+			r.Get("/invites", deps.AdminInvites.GETInvites)
+			r.Post("/invites", deps.AdminInvites.POSTInvites)
+			r.Delete("/invites/{id}", deps.AdminInvites.DELETEInvite)
+			r.Get("/reports", deps.AdminReports.GETReports)
+			r.Get("/reports/{id}", deps.AdminReports.GETReport)
+			r.Post("/reports/{id}/assign", deps.AdminReports.POSTAssign)
+			r.Post("/reports/{id}/resolve", deps.AdminReports.POSTResolve)
+			r.Get("/federation/instances", deps.AdminFederation.GETInstances)
+			r.Get("/federation/domain-blocks", deps.AdminFederation.GETDomainBlocks)
+			r.Post("/federation/domain-blocks", deps.AdminFederation.POSTDomainBlocks)
+			r.Delete("/federation/domain-blocks/{domain}", deps.AdminFederation.DELETEDomainBlock)
+			r.Get("/content/filters", deps.AdminContent.GETFilters)
+			r.Post("/content/filters", deps.AdminContent.POSTFilters)
+			r.Put("/content/filters/{id}", deps.AdminContent.PUTFilter)
+			r.Delete("/content/filters/{id}", deps.AdminContent.DELETEFilter)
+			r.Get("/settings", deps.AdminSettings.GETSettings)
+			r.Put("/settings", deps.AdminSettings.PUTSettings)
+		})
 	})
 
 	// OAuth routes

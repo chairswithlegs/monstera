@@ -74,3 +74,8 @@ WHERE f.target_id = $1
   AND f.state = 'accepted'
   AND a.domain IS NULL
   AND a.suspended = FALSE;
+
+-- name: DeleteFollowsByDomain :exec
+DELETE FROM follows
+WHERE account_id IN (SELECT a.id FROM accounts a WHERE a.domain = $1)
+   OR target_id IN (SELECT a.id FROM accounts a WHERE a.domain = $1);

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
@@ -27,6 +28,8 @@ type AccountService interface {
 	GetAccountWithUser(ctx context.Context, accountID string) (*domain.Account, *domain.User, error)
 	UpdateCredentials(ctx context.Context, in UpdateCredentialsInput) (*domain.Account, *domain.User, error)
 	Register(ctx context.Context, in RegisterInput) (*domain.Account, error)
+	ListLocalUsers(ctx context.Context, limit, offset int) ([]domain.User, error)
+	GetUserByID(ctx context.Context, userID string) (*domain.User, error)
 }
 
 // AccountService handles account creation and lookup.
@@ -97,20 +100,23 @@ func (svc *accountService) createAccountWithStore(ctx context.Context, s store.S
 
 // RegisterInput is the input for registering a user (account + user in one transaction).
 type RegisterInput struct {
-	Username     string
-	DisplayName  *string
-	Note         *string
-	Email        string
-	PasswordHash string
-	Role         string
+	Username           string
+	DisplayName        *string
+	Note               *string
+	Email              string
+	PasswordHash       string
+	Role               string
+	RegistrationReason *string // optional; used when registration_mode is approval
+	InviteCode         *string // required when registration_mode is invite
 }
 
 // Register creates an account and a linked user in one transaction.
+// Behaviour depends on instance setting registration_mode: "open" (or unset) confirms immediately;
+// "approval" leaves user unconfirmed and stores RegistrationReason; "invite" requires a valid InviteCode and confirms on success.
 func (svc *accountService) Register(ctx context.Context, in RegisterInput) (*domain.Account, error) {
 	if in.Username == "" || in.Email == "" || in.PasswordHash == "" {
 		return nil, fmt.Errorf("Register: %w", domain.ErrValidation)
 	}
-	// TODO: ensure this is a safe assumption
 	if in.Role == "" {
 		in.Role = domain.RoleUser
 	}
@@ -118,6 +124,23 @@ func (svc *accountService) Register(ctx context.Context, in RegisterInput) (*dom
 	case domain.RoleUser, domain.RoleModerator, domain.RoleAdmin:
 	default:
 		return nil, fmt.Errorf("Register: %w", domain.ErrValidation)
+	}
+	regMode, _ := svc.store.GetSetting(ctx, "registration_mode")
+	confirm := regMode != "approval"
+	if regMode == "invite" {
+		if in.InviteCode == nil || *in.InviteCode == "" {
+			return nil, fmt.Errorf("Register: invite code required: %w", domain.ErrValidation)
+		}
+		inv, err := svc.store.GetInviteByCode(ctx, *in.InviteCode)
+		if err != nil {
+			return nil, fmt.Errorf("Register: invalid invite code: %w", err)
+		}
+		if inv.ExpiresAt != nil && inv.ExpiresAt.Before(time.Now()) {
+			return nil, fmt.Errorf("Register: invite code expired: %w", domain.ErrValidation)
+		}
+		if inv.MaxUses != nil && inv.Uses >= *inv.MaxUses {
+			return nil, fmt.Errorf("Register: invite code exhausted: %w", domain.ErrValidation)
+		}
 	}
 	var created *domain.Account
 	err := svc.store.WithTx(ctx, func(tx store.Store) error {
@@ -133,14 +156,25 @@ func (svc *accountService) Register(ctx context.Context, in RegisterInput) (*dom
 		}
 		userID := uid.New()
 		_, err = tx.CreateUser(ctx, store.CreateUserInput{
-			ID:           userID,
-			AccountID:    acc.ID,
-			Email:        in.Email,
-			PasswordHash: in.PasswordHash,
-			Role:         in.Role,
+			ID:                 userID,
+			AccountID:          acc.ID,
+			Email:              in.Email,
+			PasswordHash:       in.PasswordHash,
+			Role:               in.Role,
+			RegistrationReason: in.RegistrationReason,
 		})
 		if err != nil {
 			return fmt.Errorf("CreateUser: %w", err)
+		}
+		if confirm {
+			if err := tx.ConfirmUser(ctx, userID); err != nil {
+				return fmt.Errorf("ConfirmUser: %w", err)
+			}
+		}
+		if regMode == "invite" && in.InviteCode != nil {
+			if err := tx.IncrementInviteUses(ctx, *in.InviteCode); err != nil {
+				return fmt.Errorf("IncrementInviteUses: %w", err)
+			}
 		}
 		created = acc
 		return nil
@@ -268,13 +302,17 @@ func (svc *accountService) GetByUsername(ctx context.Context, username string, a
 }
 
 // GetLocalActorForFederation returns the local account by username for federation (WebFinger, Actor, collections).
-// Returns ErrNotFound if the account does not exist or is suspended (callers treat as 404).
+// Returns ErrNotFound if the account does not exist, is suspended, or the user is pending (unconfirmed).
 func (svc *accountService) GetLocalActorForFederation(ctx context.Context, username string) (*domain.Account, error) {
 	acc, err := svc.store.GetLocalAccountByUsername(ctx, username)
 	if err != nil {
 		return nil, fmt.Errorf("GetLocalActorForFederation(%s): %w", username, err)
 	}
 	if acc.Suspended {
+		return nil, fmt.Errorf("GetLocalActorForFederation(%s): %w", username, domain.ErrNotFound)
+	}
+	user, err := svc.store.GetUserByAccountID(ctx, acc.ID)
+	if err != nil || user == nil || user.ConfirmedAt == nil {
 		return nil, fmt.Errorf("GetLocalActorForFederation(%s): %w", username, domain.ErrNotFound)
 	}
 	return acc, nil
@@ -288,7 +326,7 @@ type LocalActorWithMedia struct {
 }
 
 // GetLocalActorWithMedia returns the local account and resolved avatar/header URLs for federation (Actor document).
-// Returns ErrNotFound if the account does not exist or is suspended.
+// Returns ErrNotFound if the account does not exist, is suspended, or the user is pending (unconfirmed).
 func (svc *accountService) GetLocalActorWithMedia(ctx context.Context, username string) (*LocalActorWithMedia, error) {
 	acc, err := svc.GetLocalActorForFederation(ctx, username)
 	if err != nil {
@@ -390,4 +428,22 @@ func (svc *accountService) UpdateCredentials(ctx context.Context, in UpdateCrede
 	}
 	user, _ := svc.store.GetUserByAccountID(ctx, in.AccountID)
 	return updated, user, nil
+}
+
+// ListLocalUsers returns local users for admin listing.
+func (svc *accountService) ListLocalUsers(ctx context.Context, limit, offset int) ([]domain.User, error) {
+	users, err := svc.store.ListLocalUsers(ctx, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("ListLocalUsers: %w", err)
+	}
+	return users, nil
+}
+
+// GetUserByID returns a user by ID for admin operations.
+func (svc *accountService) GetUserByID(ctx context.Context, userID string) (*domain.User, error) {
+	u, err := svc.store.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("GetUserByID(%s): %w", userID, err)
+	}
+	return u, nil
 }

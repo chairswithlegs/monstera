@@ -90,6 +90,17 @@ func (q *Queries) DeleteFollow(ctx context.Context, arg DeleteFollowParams) erro
 	return err
 }
 
+const deleteFollowsByDomain = `-- name: DeleteFollowsByDomain :exec
+DELETE FROM follows
+WHERE account_id IN (SELECT a.id FROM accounts a WHERE a.domain = $1)
+   OR target_id IN (SELECT a.id FROM accounts a WHERE a.domain = $1)
+`
+
+func (q *Queries) DeleteFollowsByDomain(ctx context.Context, domain *string) error {
+	_, err := q.db.Exec(ctx, deleteFollowsByDomain, domain)
+	return err
+}
+
 const getDistinctFollowerInboxURLsPaginated = `-- name: GetDistinctFollowerInboxURLsPaginated :many
 SELECT DISTINCT a.inbox_url FROM accounts a
 INNER JOIN follows f ON f.account_id = a.id

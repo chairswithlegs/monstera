@@ -26,11 +26,12 @@ type CreateAccountInput struct {
 
 // CreateUserInput is the input for creating a user.
 type CreateUserInput struct {
-	ID           string
-	AccountID    string
-	Email        string
-	PasswordHash string
-	Role         string
+	ID                 string
+	AccountID          string
+	Email              string
+	PasswordHash       string
+	Role               string
+	RegistrationReason *string
 }
 
 // CreateStatusInput is the input for creating a status.
@@ -172,4 +173,59 @@ type UpdateStatusInput struct {
 	Content        *string
 	ContentWarning *string
 	Sensitive      bool
+}
+
+// CreateReportInput is the input for creating a report.
+type CreateReportInput struct {
+	ID        string
+	AccountID string
+	TargetID  string
+	StatusIDs []string
+	Comment   *string
+	Category  string
+}
+
+// CreateDomainBlockInput is the input for creating a domain block.
+type CreateDomainBlockInput struct {
+	ID       string
+	Domain   string
+	Severity string
+	Reason   *string
+}
+
+// CreateAdminActionInput is the input for creating an admin action audit log entry.
+type CreateAdminActionInput struct {
+	ID              string
+	ModeratorID     string
+	TargetAccountID *string
+	Action          string
+	Comment         *string
+	Metadata        []byte
+}
+
+// CreateInviteInput is the input for creating an invite.
+type CreateInviteInput struct {
+	ID        string
+	Code      string
+	CreatedBy string
+	MaxUses   *int
+	ExpiresAt *time.Time
+}
+
+// CreateServerFilterInput is the input for creating a server filter.
+type CreateServerFilterInput struct {
+	ID        string
+	Phrase    string
+	Scope     string
+	Action    string
+	WholeWord bool
+}
+
+// UpdateServerFilterInput is the input for updating a server filter.
+type UpdateServerFilterInput struct {
+	ID        string
+	Phrase    string
+	Scope     string
+	Action    string
+	WholeWord bool
 }

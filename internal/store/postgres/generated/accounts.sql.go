@@ -139,6 +139,15 @@ func (q *Queries) DecrementStatusesCount(ctx context.Context, id string) error {
 	return err
 }
 
+const deleteAccount = `-- name: DeleteAccount :exec
+DELETE FROM accounts WHERE id = $1
+`
+
+func (q *Queries) DeleteAccount(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, deleteAccount, id)
+	return err
+}
+
 const getAccountByAPID = `-- name: GetAccountByAPID :one
 SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, ap_raw, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields FROM accounts WHERE ap_id = $1
 `

@@ -56,6 +56,7 @@ type ServerFilter struct {
 	Phrase    string
 	Scope     string
 	Action    string
+	WholeWord bool
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -69,3 +70,23 @@ const (
 	ServerFilterActionWarn = "warn"
 	ServerFilterActionHide = "hide"
 )
+
+type AdminAction struct {
+	ID              string
+	ModeratorID     string
+	TargetAccountID *string
+	Action          string
+	Comment         *string
+	Metadata        []byte
+	CreatedAt       time.Time
+}
+
+type KnownInstance struct {
+	ID              string
+	Domain          string
+	Software        *string
+	SoftwareVersion *string
+	FirstSeenAt     time.Time
+	LastSeenAt      time.Time
+	AccountsCount   int64
+}

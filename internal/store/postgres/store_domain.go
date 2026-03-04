@@ -41,11 +41,12 @@ func toDbCreateAccountParams(in store.CreateAccountInput) db.CreateAccountParams
 
 func toDbCreateUserParams(in store.CreateUserInput) db.CreateUserParams {
 	return db.CreateUserParams{
-		ID:           in.ID,
-		AccountID:    in.AccountID,
-		Email:        in.Email,
-		PasswordHash: in.PasswordHash,
-		Role:         in.Role,
+		ID:                 in.ID,
+		AccountID:          in.AccountID,
+		Email:              in.Email,
+		PasswordHash:       in.PasswordHash,
+		Role:               in.Role,
+		RegistrationReason: in.RegistrationReason,
 	}
 }
 
@@ -1038,4 +1039,322 @@ func (s *PostgresStore) GetLocalFollowerAccountIDs(ctx context.Context, targetID
 		return nil, fmt.Errorf("GetLocalFollowerAccountIDs: %w", mapErr(err))
 	}
 	return ids, nil
+}
+
+func (s *PostgresStore) CreateReport(ctx context.Context, in store.CreateReportInput) (*domain.Report, error) {
+	r, err := s.q.CreateReport(ctx, db.CreateReportParams{
+		ID:        in.ID,
+		AccountID: in.AccountID,
+		TargetID:  in.TargetID,
+		StatusIds: in.StatusIDs,
+		Comment:   in.Comment,
+		Category:  in.Category,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainReport(r)
+	return &d, nil
+}
+
+func (s *PostgresStore) GetReportByID(ctx context.Context, id string) (*domain.Report, error) {
+	r, err := s.q.GetReport(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainReport(r)
+	return &d, nil
+}
+
+func (s *PostgresStore) ListReports(ctx context.Context, state string, limit, offset int) ([]domain.Report, error) {
+	rows, err := s.q.ListReports(ctx, db.ListReportsParams{
+		Column1: state,
+		Limit:   int32(limit),  //nolint:gosec // G115: limit/offset clamped by caller
+		Offset:  int32(offset), //nolint:gosec // G115: limit/offset clamped by caller
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.Report, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainReport(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) AssignReport(ctx context.Context, reportID string, assigneeID *string) error {
+	return mapErr(s.q.AssignReport(ctx, db.AssignReportParams{ID: reportID, AssignedToID: assigneeID}))
+}
+
+func (s *PostgresStore) ResolveReport(ctx context.Context, reportID string, actionTaken *string) error {
+	return mapErr(s.q.ResolveReport(ctx, db.ResolveReportParams{ID: reportID, ActionTaken: actionTaken}))
+}
+
+func (s *PostgresStore) CreateDomainBlock(ctx context.Context, in store.CreateDomainBlockInput) (*domain.DomainBlock, error) {
+	b, err := s.q.CreateDomainBlock(ctx, db.CreateDomainBlockParams{
+		ID:       in.ID,
+		Domain:   in.Domain,
+		Severity: in.Severity,
+		Reason:   in.Reason,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainDomainBlock(b)
+	return &d, nil
+}
+
+func (s *PostgresStore) GetDomainBlock(ctx context.Context, domain string) (*domain.DomainBlock, error) {
+	b, err := s.q.GetDomainBlock(ctx, domain)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainDomainBlock(b)
+	return &d, nil
+}
+
+func (s *PostgresStore) UpdateDomainBlock(ctx context.Context, domain string, severity string, reason *string) (*domain.DomainBlock, error) {
+	b, err := s.q.UpdateDomainBlock(ctx, db.UpdateDomainBlockParams{Domain: domain, Severity: severity, Reason: reason})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainDomainBlock(b)
+	return &d, nil
+}
+
+func (s *PostgresStore) DeleteDomainBlock(ctx context.Context, domain string) error {
+	return mapErr(s.q.DeleteDomainBlock(ctx, domain))
+}
+
+func (s *PostgresStore) CreateAdminAction(ctx context.Context, in store.CreateAdminActionInput) error {
+	_, err := s.q.CreateAdminAction(ctx, db.CreateAdminActionParams{
+		ID:              in.ID,
+		ModeratorID:     in.ModeratorID,
+		TargetAccountID: in.TargetAccountID,
+		Action:          in.Action,
+		Comment:         in.Comment,
+		Metadata:        in.Metadata,
+	})
+	return mapErr(err)
+}
+
+func (s *PostgresStore) ListAdminActionsByTarget(ctx context.Context, targetAccountID string) ([]domain.AdminAction, error) {
+	rows, err := s.q.ListAdminActionsByTarget(ctx, &targetAccountID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.AdminAction, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainAdminAction(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) CreateInvite(ctx context.Context, in store.CreateInviteInput) (*domain.Invite, error) {
+	var maxUses *int32
+	if in.MaxUses != nil {
+		m := int32(*in.MaxUses) //nolint:gosec // G115: admin input
+		maxUses = &m
+	}
+	inv, err := s.q.CreateInvite(ctx, db.CreateInviteParams{
+		ID:        in.ID,
+		Code:      in.Code,
+		CreatedBy: in.CreatedBy,
+		MaxUses:   maxUses,
+		ExpiresAt: timePtrToPg(in.ExpiresAt),
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainInvite(inv)
+	return &d, nil
+}
+
+func (s *PostgresStore) GetInviteByCode(ctx context.Context, code string) (*domain.Invite, error) {
+	inv, err := s.q.GetInviteByCode(ctx, code)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainInvite(inv)
+	return &d, nil
+}
+
+func (s *PostgresStore) ListInvitesByCreator(ctx context.Context, createdByUserID string) ([]domain.Invite, error) {
+	rows, err := s.q.ListInvitesByCreator(ctx, createdByUserID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.Invite, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainInvite(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) DeleteInvite(ctx context.Context, id string) error {
+	return mapErr(s.q.DeleteInvite(ctx, id))
+}
+
+func (s *PostgresStore) IncrementInviteUses(ctx context.Context, code string) error {
+	return mapErr(s.q.IncrementInviteUses(ctx, code))
+}
+
+func (s *PostgresStore) SetSetting(ctx context.Context, key, value string) error {
+	return mapErr(s.q.SetSetting(ctx, db.SetSettingParams{Key: key, Value: value}))
+}
+
+func (s *PostgresStore) ListSettings(ctx context.Context) (map[string]string, error) {
+	rows, err := s.q.ListSettings(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make(map[string]string, len(rows))
+	for _, r := range rows {
+		out[r.Key] = r.Value
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) UpsertKnownInstance(ctx context.Context, id, domain string) error {
+	return mapErr(s.q.UpsertKnownInstance(ctx, db.UpsertKnownInstanceParams{ID: id, Domain: domain}))
+}
+
+func (s *PostgresStore) ListKnownInstances(ctx context.Context, limit, offset int) ([]domain.KnownInstance, error) {
+	rows, err := s.q.ListKnownInstances(ctx, db.ListKnownInstancesParams{Limit: int32(limit), Offset: int32(offset)}) //nolint:gosec // G115: limit/offset clamped by caller
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.KnownInstance, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ListKnownInstancesRowToDomain(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) CreateServerFilter(ctx context.Context, in store.CreateServerFilterInput) (*domain.ServerFilter, error) {
+	f, err := s.q.CreateServerFilter(ctx, db.CreateServerFilterParams{
+		ID:     in.ID,
+		Phrase: in.Phrase,
+		Scope:  in.Scope,
+		Action: in.Action,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainServerFilter(f)
+	return &d, nil
+}
+
+func (s *PostgresStore) GetServerFilter(ctx context.Context, id string) (*domain.ServerFilter, error) {
+	f, err := s.q.GetServerFilter(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainServerFilter(f)
+	return &d, nil
+}
+
+func (s *PostgresStore) ListServerFilters(ctx context.Context) ([]domain.ServerFilter, error) {
+	rows, err := s.q.ListServerFilters(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.ServerFilter, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainServerFilter(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) UpdateServerFilter(ctx context.Context, in store.UpdateServerFilterInput) (*domain.ServerFilter, error) {
+	f, err := s.q.UpdateServerFilter(ctx, db.UpdateServerFilterParams{
+		ID:        in.ID,
+		Phrase:    in.Phrase,
+		Scope:     in.Scope,
+		Action:    in.Action,
+		WholeWord: in.WholeWord,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainServerFilter(f)
+	return &d, nil
+}
+
+func (s *PostgresStore) DeleteServerFilter(ctx context.Context, id string) error {
+	return mapErr(s.q.DeleteServerFilter(ctx, id))
+}
+
+func (s *PostgresStore) ListLocalUsers(ctx context.Context, limit, offset int) ([]domain.User, error) {
+	rows, err := s.q.ListLocalUsers(ctx, db.ListLocalUsersParams{Limit: int32(limit), Offset: int32(offset)}) //nolint:gosec // G115: limit/offset clamped by caller
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.User, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainUser(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetUserByID(ctx context.Context, id string) (*domain.User, error) {
+	u, err := s.q.GetUserByID(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainUser(u)
+	return &d, nil
+}
+
+func (s *PostgresStore) UpdateUserRole(ctx context.Context, userID string, role string) error {
+	return mapErr(s.q.UpdateUserRole(ctx, db.UpdateUserRoleParams{ID: userID, Role: role}))
+}
+
+func (s *PostgresStore) GetPendingRegistrations(ctx context.Context) ([]domain.User, error) {
+	rows, err := s.q.GetPendingRegistrations(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.User, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainUser(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) DeleteUser(ctx context.Context, id string) error {
+	return mapErr(s.q.DeleteUser(ctx, id))
+}
+
+func (s *PostgresStore) SilenceAccount(ctx context.Context, id string) error {
+	return mapErr(s.q.SilenceAccount(ctx, id))
+}
+
+func (s *PostgresStore) UnsuspendAccount(ctx context.Context, id string) error {
+	return mapErr(s.q.UnsuspendAccount(ctx, id))
+}
+
+func (s *PostgresStore) UnsilenceAccount(ctx context.Context, id string) error {
+	return mapErr(s.q.UnsilenceAccount(ctx, id))
+}
+
+func (s *PostgresStore) DeleteAccount(ctx context.Context, id string) error {
+	return mapErr(s.q.DeleteAccount(ctx, id))
+}
+
+func (s *PostgresStore) ListLocalAccounts(ctx context.Context, limit, offset int) ([]domain.Account, error) {
+	rows, err := s.q.ListLocalAccounts(ctx, db.ListLocalAccountsParams{Limit: int32(limit), Offset: int32(offset)}) //nolint:gosec // G115: limit/offset clamped by caller
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.Account, 0, len(rows))
+	for _, r := range rows {
+		acc := ToDomainAccount(r)
+		out = append(out, acc)
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) DeleteFollowsByDomain(ctx context.Context, domain string) error {
+	return mapErr(s.q.DeleteFollowsByDomain(ctx, &domain))
 }

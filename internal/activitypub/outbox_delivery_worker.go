@@ -272,5 +272,5 @@ func (w *outboxDeliveryWorker) getActivityType(subject string) string {
 	if strings.HasPrefix(subject, subjectPrefixDeliver) {
 		return strings.TrimPrefix(subject, subjectPrefixDeliver)
 	}
-	return "unknown"
+	return activityTypeUnknown
 }

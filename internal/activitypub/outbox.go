@@ -15,6 +15,8 @@ import (
 	"github.com/chairswithlegs/monstera-fed/internal/uid"
 )
 
+const activityTypeUnknown = "unknown"
+
 // Outbox builds ActivityPub activities and sends them for delivery. Fan-out (status create/delete to followers) is asynchronous; single-target deliveries (follow, undo, accept) are enqueued for delivery. Call Start to run the internal workers.
 type Outbox struct {
 	store                store.Store

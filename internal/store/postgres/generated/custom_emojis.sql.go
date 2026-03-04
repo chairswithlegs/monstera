@@ -60,6 +60,37 @@ func (q *Queries) DeleteCustomEmoji(ctx context.Context, shortcode string) error
 	return err
 }
 
+const deleteCustomEmojiByID = `-- name: DeleteCustomEmojiByID :exec
+DELETE FROM custom_emojis WHERE id = $1
+`
+
+func (q *Queries) DeleteCustomEmojiByID(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, deleteCustomEmojiByID, id)
+	return err
+}
+
+const getCustomEmojiByID = `-- name: GetCustomEmojiByID :one
+SELECT id, shortcode, domain, storage_key, url, static_url, visible_in_picker, disabled, created_at, updated_at FROM custom_emojis WHERE id = $1
+`
+
+func (q *Queries) GetCustomEmojiByID(ctx context.Context, id string) (CustomEmoji, error) {
+	row := q.db.QueryRow(ctx, getCustomEmojiByID, id)
+	var i CustomEmoji
+	err := row.Scan(
+		&i.ID,
+		&i.Shortcode,
+		&i.Domain,
+		&i.StorageKey,
+		&i.Url,
+		&i.StaticUrl,
+		&i.VisibleInPicker,
+		&i.Disabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getCustomEmojiByShortcode = `-- name: GetCustomEmojiByShortcode :one
 SELECT id, shortcode, domain, storage_key, url, static_url, visible_in_picker, disabled, created_at, updated_at FROM custom_emojis WHERE shortcode = $1 AND domain IS NULL
 `
@@ -159,4 +190,34 @@ func (q *Queries) ListLocalCustomEmojis(ctx context.Context) ([]CustomEmoji, err
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateCustomEmoji = `-- name: UpdateCustomEmoji :one
+UPDATE custom_emojis SET visible_in_picker = $2, disabled = $3, updated_at = NOW()
+WHERE id = $1
+RETURNING id, shortcode, domain, storage_key, url, static_url, visible_in_picker, disabled, created_at, updated_at
+`
+
+type UpdateCustomEmojiParams struct {
+	ID              string `json:"id"`
+	VisibleInPicker bool   `json:"visible_in_picker"`
+	Disabled        bool   `json:"disabled"`
+}
+
+func (q *Queries) UpdateCustomEmoji(ctx context.Context, arg UpdateCustomEmojiParams) (CustomEmoji, error) {
+	row := q.db.QueryRow(ctx, updateCustomEmoji, arg.ID, arg.VisibleInPicker, arg.Disabled)
+	var i CustomEmoji
+	err := row.Scan(
+		&i.ID,
+		&i.Shortcode,
+		&i.Domain,
+		&i.StorageKey,
+		&i.Url,
+		&i.StaticUrl,
+		&i.VisibleInPicker,
+		&i.Disabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

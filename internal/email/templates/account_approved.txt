@@ -1,0 +1,5 @@
+Welcome to {{.InstanceName}}, @{{.Username}}!
+
+Your registration has been approved. You can now log in using any Mastodon-compatible client.
+
+Instance URL: {{.InstanceURL}}

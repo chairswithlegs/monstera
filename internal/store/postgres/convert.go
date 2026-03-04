@@ -155,15 +155,16 @@ func DescendantRowToDomain(r db.GetStatusDescendantsRow) domain.Status {
 // ToDomainUser converts a sqlc db.User to a domain.User.
 func ToDomainUser(u db.User) domain.User {
 	d := domain.User{
-		ID:               u.ID,
-		AccountID:        u.AccountID,
-		Email:            u.Email,
-		PasswordHash:     u.PasswordHash,
-		Role:             u.Role,
-		DefaultPrivacy:   u.DefaultPrivacy,
-		DefaultSensitive: u.DefaultSensitive,
-		DefaultLanguage:  u.DefaultLanguage,
-		CreatedAt:        pgTime(u.CreatedAt),
+		ID:                 u.ID,
+		AccountID:          u.AccountID,
+		Email:              u.Email,
+		PasswordHash:       u.PasswordHash,
+		Role:               u.Role,
+		RegistrationReason: u.RegistrationReason,
+		DefaultPrivacy:     u.DefaultPrivacy,
+		DefaultSensitive:   u.DefaultSensitive,
+		DefaultLanguage:    u.DefaultLanguage,
+		CreatedAt:          pgTime(u.CreatedAt),
 	}
 	d.ConfirmedAt = pgTimePtr(u.ConfirmedAt)
 	return d
@@ -292,4 +293,79 @@ func ToDomainMediaAttachment(m db.MediaAttachment) domain.MediaAttachment {
 		d.Meta = json.RawMessage(m.Meta)
 	}
 	return d
+}
+
+// ToDomainReport converts a sqlc db.Report to a domain.Report.
+func ToDomainReport(r db.Report) domain.Report {
+	d := domain.Report{
+		ID:           r.ID,
+		AccountID:    r.AccountID,
+		TargetID:     r.TargetID,
+		StatusIDs:    r.StatusIds,
+		Comment:      r.Comment,
+		Category:     r.Category,
+		State:        r.State,
+		AssignedToID: r.AssignedToID,
+		ActionTaken:  r.ActionTaken,
+		CreatedAt:    pgTime(r.CreatedAt),
+	}
+	d.ResolvedAt = pgTimePtr(r.ResolvedAt)
+	return d
+}
+
+// ToDomainInvite converts a sqlc db.Invite to a domain.Invite.
+func ToDomainInvite(i db.Invite) domain.Invite {
+	d := domain.Invite{
+		ID:        i.ID,
+		Code:      i.Code,
+		CreatedBy: i.CreatedBy,
+		Uses:      int(i.Uses),
+		CreatedAt: pgTime(i.CreatedAt),
+	}
+	if i.MaxUses != nil {
+		m := int(*i.MaxUses)
+		d.MaxUses = &m
+	}
+	d.ExpiresAt = pgTimePtr(i.ExpiresAt)
+	return d
+}
+
+// ToDomainAdminAction converts a sqlc db.AdminAction to a domain.AdminAction.
+func ToDomainAdminAction(a db.AdminAction) domain.AdminAction {
+	return domain.AdminAction{
+		ID:              a.ID,
+		ModeratorID:     a.ModeratorID,
+		TargetAccountID: a.TargetAccountID,
+		Action:          a.Action,
+		Comment:         a.Comment,
+		Metadata:        a.Metadata,
+		CreatedAt:       pgTime(a.CreatedAt),
+	}
+}
+
+// ListKnownInstancesRowToDomain converts a sqlc ListKnownInstancesRow to a domain.KnownInstance.
+func ListKnownInstancesRowToDomain(r db.ListKnownInstancesRow) domain.KnownInstance {
+	d := domain.KnownInstance{
+		ID:              r.ID,
+		Domain:          r.Domain,
+		Software:        r.Software,
+		SoftwareVersion: r.SoftwareVersion,
+		AccountsCount:   r.AccountsCount,
+	}
+	d.FirstSeenAt = pgTime(r.FirstSeenAt)
+	d.LastSeenAt = pgTime(r.LastSeenAt)
+	return d
+}
+
+// ToDomainServerFilter converts a sqlc db.ServerFilter to a domain.ServerFilter.
+func ToDomainServerFilter(s db.ServerFilter) domain.ServerFilter {
+	return domain.ServerFilter{
+		ID:        s.ID,
+		Phrase:    s.Phrase,
+		Scope:     s.Scope,
+		Action:    s.Action,
+		WholeWord: s.WholeWord,
+		CreatedAt: pgTime(s.CreatedAt),
+		UpdatedAt: pgTime(s.UpdatedAt),
+	}
 }

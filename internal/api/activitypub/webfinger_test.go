@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/chairswithlegs/monstera-fed/internal/config"
+	"github.com/chairswithlegs/monstera-fed/internal/domain"
 	"github.com/chairswithlegs/monstera-fed/internal/service"
 	"github.com/chairswithlegs/monstera-fed/internal/store"
 	"github.com/chairswithlegs/monstera-fed/internal/testutil"
@@ -33,6 +34,15 @@ func TestWebFingerHandler_GETWebFinger(t *testing.T) {
 		APID:         "https://example.com/users/alice",
 	})
 	require.NoError(t, err)
+	_, err = fake.CreateUser(ctx, store.CreateUserInput{
+		ID:           "01USERALICE",
+		AccountID:    "01HXXX",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.ConfirmUser(ctx, "01USERALICE"))
 
 	cfg := &config.Config{InstanceDomain: "example.com"}
 	h := NewWebFingerHandler(service.NewAccountService(fake, "https://"+cfg.InstanceDomain), cfg)
@@ -80,6 +90,33 @@ func TestWebFingerHandler_wrongDomain(t *testing.T) {
 	cfg := &config.Config{InstanceDomain: "example.com"}
 	h := NewWebFingerHandler(service.NewAccountService(fake, "https://"+cfg.InstanceDomain), cfg)
 	r := httptest.NewRequest(http.MethodGet, "/.well-known/webfinger?resource=acct:alice@other.com", nil)
+	r = r.WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.GETWebFinger(w, r)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestWebFingerHandler_pendingUser_returnsNotFound(t *testing.T) {
+	t.Parallel()
+	fake := testutil.NewFakeStore()
+	ctx := context.Background()
+	_, err := fake.CreateAccount(ctx, store.CreateAccountInput{
+		ID: "01HPENDING", Username: "pending", APID: "https://example.com/users/pending",
+	})
+	require.NoError(t, err)
+	_, err = fake.CreateUser(ctx, store.CreateUserInput{
+		ID:           "01USERPENDING",
+		AccountID:    "01HPENDING",
+		Email:        "pending@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	// Do not call ConfirmUser — user remains pending.
+
+	cfg := &config.Config{InstanceDomain: "example.com"}
+	h := NewWebFingerHandler(service.NewAccountService(fake, "https://"+cfg.InstanceDomain), cfg)
+	r := httptest.NewRequest(http.MethodGet, "/.well-known/webfinger?resource=acct:pending@example.com", nil)
 	r = r.WithContext(ctx)
 	w := httptest.NewRecorder()
 	h.GETWebFinger(w, r)

@@ -1056,3 +1056,221 @@ func (f *FakeStore) getDistinctFollowerInboxURLsPaginated(_ context.Context, acc
 	}
 	return result, nil
 }
+
+func (f *FakeStore) CreateReport(ctx context.Context, in store.CreateReportInput) (*domain.Report, error) {
+	return &domain.Report{
+		ID:        in.ID,
+		AccountID: in.AccountID,
+		TargetID:  in.TargetID,
+		StatusIDs: in.StatusIDs,
+		Comment:   in.Comment,
+		Category:  in.Category,
+		State:     domain.ReportStateOpen,
+		CreatedAt: time.Now(),
+	}, nil
+}
+func (f *FakeStore) GetReportByID(ctx context.Context, id string) (*domain.Report, error) {
+	_ = id
+	return nil, domain.ErrNotFound
+}
+func (f *FakeStore) ListReports(ctx context.Context, state string, limit, offset int) ([]domain.Report, error) {
+	return nil, nil
+}
+func (f *FakeStore) AssignReport(ctx context.Context, reportID string, assigneeID *string) error {
+	return nil
+}
+func (f *FakeStore) ResolveReport(ctx context.Context, reportID string, actionTaken *string) error {
+	return nil
+}
+func (f *FakeStore) CreateDomainBlock(ctx context.Context, in store.CreateDomainBlockInput) (*domain.DomainBlock, error) {
+	return &domain.DomainBlock{ID: in.ID, Domain: in.Domain, Severity: in.Severity, Reason: in.Reason, CreatedAt: time.Now()}, nil
+}
+func (f *FakeStore) GetDomainBlock(ctx context.Context, domainName string) (*domain.DomainBlock, error) {
+	_ = domainName
+	return nil, domain.ErrNotFound
+}
+func (f *FakeStore) UpdateDomainBlock(ctx context.Context, domainName string, severity string, reason *string) (*domain.DomainBlock, error) {
+	_ = domainName
+	_ = severity
+	_ = reason
+	return nil, domain.ErrNotFound
+}
+func (f *FakeStore) DeleteDomainBlock(ctx context.Context, domain string) error {
+	return nil
+}
+func (f *FakeStore) CreateAdminAction(ctx context.Context, in store.CreateAdminActionInput) error {
+	return nil
+}
+func (f *FakeStore) ListAdminActionsByTarget(ctx context.Context, targetAccountID string) ([]domain.AdminAction, error) {
+	return nil, nil
+}
+func (f *FakeStore) CreateInvite(ctx context.Context, in store.CreateInviteInput) (*domain.Invite, error) {
+	return &domain.Invite{ID: in.ID, Code: in.Code, CreatedBy: in.CreatedBy, MaxUses: in.MaxUses, Uses: 0, ExpiresAt: in.ExpiresAt, CreatedAt: time.Now()}, nil
+}
+func (f *FakeStore) GetInviteByCode(ctx context.Context, code string) (*domain.Invite, error) {
+	_ = code
+	return nil, domain.ErrNotFound
+}
+func (f *FakeStore) ListInvitesByCreator(ctx context.Context, createdByUserID string) ([]domain.Invite, error) {
+	return nil, nil
+}
+func (f *FakeStore) DeleteInvite(ctx context.Context, id string) error {
+	return nil
+}
+func (f *FakeStore) IncrementInviteUses(ctx context.Context, code string) error {
+	return nil
+}
+func (f *FakeStore) SetSetting(ctx context.Context, key, value string) error {
+	return nil
+}
+func (f *FakeStore) ListSettings(ctx context.Context) (map[string]string, error) {
+	return nil, nil
+}
+func (f *FakeStore) UpsertKnownInstance(ctx context.Context, id, domain string) error {
+	return nil
+}
+func (f *FakeStore) ListKnownInstances(ctx context.Context, limit, offset int) ([]domain.KnownInstance, error) {
+	return nil, nil
+}
+func (f *FakeStore) CreateServerFilter(ctx context.Context, in store.CreateServerFilterInput) (*domain.ServerFilter, error) {
+	return &domain.ServerFilter{ID: in.ID, Phrase: in.Phrase, Scope: in.Scope, Action: in.Action, CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil
+}
+func (f *FakeStore) GetServerFilter(ctx context.Context, id string) (*domain.ServerFilter, error) {
+	_ = id
+	return nil, domain.ErrNotFound
+}
+func (f *FakeStore) ListServerFilters(ctx context.Context) ([]domain.ServerFilter, error) {
+	return nil, nil
+}
+func (f *FakeStore) UpdateServerFilter(ctx context.Context, in store.UpdateServerFilterInput) (*domain.ServerFilter, error) {
+	_ = in
+	return nil, domain.ErrNotFound
+}
+func (f *FakeStore) DeleteServerFilter(ctx context.Context, id string) error {
+	return nil
+}
+func (f *FakeStore) ListLocalUsers(ctx context.Context, limit, offset int) ([]domain.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.User
+	for _, u := range f.usersByAccountID {
+		acc, ok := f.accountsByID[u.AccountID]
+		if !ok || acc.Domain != nil && *acc.Domain != "" {
+			continue
+		}
+		out = append(out, *u)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	if offset > len(out) {
+		return nil, nil
+	}
+	out = out[offset:]
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+func (f *FakeStore) GetUserByID(ctx context.Context, id string) (*domain.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, u := range f.usersByAccountID {
+		if u.ID == id {
+			u2 := *u
+			return &u2, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+func (f *FakeStore) UpdateUserRole(ctx context.Context, userID string, role string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, u := range f.usersByAccountID {
+		if u.ID == userID {
+			u.Role = role
+			return nil
+		}
+	}
+	return domain.ErrNotFound
+}
+func (f *FakeStore) GetPendingRegistrations(ctx context.Context) ([]domain.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.User
+	for _, u := range f.usersByAccountID {
+		if u.ConfirmedAt != nil {
+			continue
+		}
+		acc, ok := f.accountsByID[u.AccountID]
+		if !ok || acc.Domain != nil && *acc.Domain != "" {
+			continue
+		}
+		out = append(out, *u)
+	}
+	return out, nil
+}
+func (f *FakeStore) DeleteUser(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for accountID, u := range f.usersByAccountID {
+		if u.ID == id {
+			delete(f.usersByAccountID, accountID)
+			return nil
+		}
+	}
+	return nil
+}
+func (f *FakeStore) SilenceAccount(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if acc, ok := f.accountsByID[id]; ok {
+		acc.Silenced = true
+	}
+	return nil
+}
+func (f *FakeStore) UnsuspendAccount(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.suspendedAccountIDs, id)
+	if acc, ok := f.accountsByID[id]; ok {
+		acc.Suspended = false
+	}
+	return nil
+}
+func (f *FakeStore) UnsilenceAccount(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if acc, ok := f.accountsByID[id]; ok {
+		acc.Silenced = false
+	}
+	return nil
+}
+func (f *FakeStore) DeleteAccount(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.accountsByID, id)
+	delete(f.suspendedAccountIDs, id)
+	return nil
+}
+func (f *FakeStore) ListLocalAccounts(ctx context.Context, limit, offset int) ([]domain.Account, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.Account
+	for _, acc := range f.accountsByID {
+		if acc.Domain != nil && *acc.Domain != "" {
+			continue
+		}
+		out = append(out, *acc)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
+	if offset > len(out) {
+		return nil, nil
+	}
+	out = out[offset:]
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+func (f *FakeStore) DeleteFollowsByDomain(ctx context.Context, domain string) error {
+	return nil
+}

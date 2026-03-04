@@ -69,7 +69,8 @@ r.Get("/accounts/{id}", deps.Accounts.GETAccounts)
 - Handler tests live in the same package, e.g. `internal/api/mastodon/accounts_test.go`.
 - Use `net/http/httptest`: `httptest.NewRequest`, `httptest.NewRecorder`, call the handler method directly.
 - For authenticated tests, inject the account with `req = req.WithContext(middleware.WithAccount(req.Context(), account))`.
-- Use a fake store and real services (e.g. `testutil.NewFakeStore()`, then construct the service and handler). Assert status code and, when relevant, response body (decode JSON into `map[string]any` or a small struct).
+- **Success-path tests**: Use a fake store and real services (e.g. `testutil.NewFakeStore()`, then construct the service and handler). Assert status code and, when relevant, response body (decode JSON into `map[string]any` or a small struct).
+- **Error-path tests**: When triggering the right store state is awkward, use a hand-written mock that implements the service interface — override only the method under test and return the desired error (e.g. `domain.ErrNotFound`).
 - Prefer table-driven tests and `require` for setup, `assert` for response checks. Use `t.Helper()` in helpers.
 
 ## Checklist for a new handler
@@ -79,5 +80,5 @@ r.Get("/accounts/{id}", deps.Accounts.GETAccounts)
 - [ ] Methods: parse input → optional auth check → call service → `api.HandleError` on error → `api.WriteJSON` (or WriteActivityJSON/WriteJRD) on success.
 - [ ] Route registered in `router.go` with correct middleware (OptionalAuth / RequireAuth, RequiredScopes if Mastodon).
 - [ ] Handler constructed in `serve.go` and added to `router.Deps`.
-- [ ] Response types/conversions in `apimodel` (or local) when not trivial.
+- [ ] Response types/conversions in `apimodel` (or local). DO NOT RETURN DOMAIN TYPES DIRECTLY.
 - [ ] Tests for success and key error paths (e.g. 401 when unauthenticated, 404 when not found).

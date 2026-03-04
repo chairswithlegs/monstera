@@ -23,7 +23,10 @@ type jsDLQPublisher struct {
 
 func (p *jsDLQPublisher) Publish(ctx context.Context, subject string, payload []byte) error {
 	_, err := p.js.Publish(ctx, subject, payload)
-	return err
+	if err != nil {
+		return fmt.Errorf("Publish: %w", err)
+	}
+	return nil
 }
 
 const fanoutPageSize = 500
@@ -243,5 +246,5 @@ func (w *outboxFanoutWorker) getActivityType(subject string) string {
 	if strings.HasPrefix(subject, subjectPrefixFanout) {
 		return strings.TrimPrefix(subject, subjectPrefixFanout)
 	}
-	return "unknown"
+	return activityTypeUnknown
 }

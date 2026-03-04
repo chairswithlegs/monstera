@@ -26,6 +26,11 @@ func TestActorHandler_GETActor(t *testing.T) {
 		PublicKey: "-----BEGIN PUBLIC KEY-----\nMIIB...", APID: "https://example.com/users/bob",
 	})
 	require.NoError(t, err)
+	_, err = fake.CreateUser(ctx, store.CreateUserInput{
+		ID: "01USERBOB", AccountID: "01HXXX", Email: "bob@example.com", PasswordHash: "hash", Role: domain.RoleUser,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.ConfirmUser(ctx, "01USERBOB"))
 
 	cfg := &config.Config{InstanceDomain: "example.com"}
 	h := NewActorHandler(service.NewAccountService(fake, "https://example.com"), cfg)

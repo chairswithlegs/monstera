@@ -14,13 +14,17 @@ interface LoginState {
   submitCredentials: (username: string, password: string) => Promise<void>;
 }
 
+function getAuthRedirectUri(): string {
+  if (typeof window === 'undefined') return '';
+  return `${window.location.origin}/home`;
+}
+
 export function useLogin(): LoginState {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [stage, setStage] = useState<Stage>('credentials');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const AUTH_REDIRECT_URI = `${window.location.origin}/home`;
 
   const params = {
     clientId: searchParams.get('client_id'),
@@ -38,7 +42,7 @@ export function useLogin(): LoginState {
       // Third-party flow: redirect back to the client app with the code
       const redirectParams = new URLSearchParams({ code });
       if (params.state) redirectParams.set('state', params.state);
-      window.location.href = `${params.redirectUri}?${params}`;
+      window.location.href = `${params.redirectUri}?${redirectParams.toString()}`;
     } else {
       // Internal flow: exchange code for tokens ourselves
       const verifier = sessionStorage.getItem('pkce_verifier');
@@ -51,7 +55,7 @@ export function useLogin(): LoginState {
         body: new URLSearchParams({
           grant_type: 'authorization_code',
           code,
-          redirect_uri: AUTH_REDIRECT_URI,
+          redirect_uri: getAuthRedirectUri(),
           client_id: config.auth_client_id,
           code_verifier: verifier,
         }),
@@ -88,7 +92,7 @@ export function useLogin(): LoginState {
           email,
           password,
           client_id: params.clientId ?? config.auth_client_id,
-          redirect_uri: params.redirectUri ?? AUTH_REDIRECT_URI,
+          redirect_uri: params.redirectUri ?? getAuthRedirectUri(),
           scope: isThirdParty ? undefined : config.auth_scopes,
           code_challenge: codeChallenge,
           code_challenge_method: params.codeChallengeMethod ?? 'S256',

@@ -125,7 +125,11 @@ func runServe(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("email: %w", err)
 	}
-	_ = emailSender
+	emailTemplates, err := email.NewTemplates()
+	if err != nil {
+		return fmt.Errorf("email templates: %w", err)
+	}
+	registrationMailer := service.NewRegistrationEmailSender(emailSender, emailTemplates, cfg.EmailFrom, cfg.EmailFromName)
 
 	instanceBaseURL := "https://" + cfg.InstanceDomain
 	accountSvc := service.NewAccountService(s, instanceBaseURL)
@@ -190,27 +194,47 @@ func runServe(_ *cobra.Command, _ []string) error {
 	inboxHandler := activitypub.NewInboxHandler(inboxProcessor, cacheStore, cfg, signatureService)
 	userHandler := monstera.NewUserHandler(accountSvc)
 
+	moderationSvc := service.NewModerationService(s)
+	registrationSvc := service.NewRegistrationService(s, registrationMailer, registrationMailer, instanceBaseURL, cfg.InstanceName)
+	serverFilterSvc := service.NewServerFilterService(s)
+	adminDashboard := monstera.NewAdminDashboardHandler(instanceSvc, moderationSvc)
+	adminUsers := monstera.NewAdminUsersHandler(accountSvc, moderationSvc)
+	adminRegistrations := monstera.NewAdminRegistrationsHandler(accountSvc, registrationSvc)
+	adminInvites := monstera.NewAdminInvitesHandler(accountSvc, registrationSvc)
+	adminReports := monstera.NewAdminReportsHandler(accountSvc, moderationSvc)
+	adminFederation := monstera.NewAdminFederationHandler(accountSvc, instanceSvc, moderationSvc)
+	adminContent := monstera.NewAdminContentHandler(accountSvc, serverFilterSvc)
+	adminSettings := monstera.NewAdminSettingsHandler(accountSvc, instanceSvc)
+
 	handler := router.New(router.Deps{
-		AccountsService: accountSvc,
-		Health:          health,
-		OAuthHandler:    oauthHandler,
-		OAuthServer:     oauthServer,
-		Accounts:        accountsHandler,
-		Statuses:        statusesHandler,
-		Timelines:       timelinesHandler,
-		Instance:        instanceHandler,
-		Notifications:   notificationsHandler,
-		Media:           mediaHandler,
-		Search:          searchHandler,
-		Streaming:       streamingHandler,
-		WebFinger:       webFingerHandler,
-		NodeInfoPtr:     nodeInfoPtrHandler,
-		NodeInfo:        nodeInfoHandler,
-		Actor:           actorHandler,
-		Collections:     collectionsHandler,
-		Outbox:          outboxHandler,
-		Inbox:           inboxHandler,
-		User:            userHandler,
+		AccountsService:    accountSvc,
+		Health:             health,
+		OAuthHandler:       oauthHandler,
+		OAuthServer:        oauthServer,
+		Accounts:           accountsHandler,
+		Statuses:           statusesHandler,
+		Timelines:          timelinesHandler,
+		Instance:           instanceHandler,
+		Notifications:      notificationsHandler,
+		Media:              mediaHandler,
+		Search:             searchHandler,
+		Streaming:          streamingHandler,
+		WebFinger:          webFingerHandler,
+		NodeInfoPtr:        nodeInfoPtrHandler,
+		NodeInfo:           nodeInfoHandler,
+		Actor:              actorHandler,
+		Collections:        collectionsHandler,
+		Outbox:             outboxHandler,
+		Inbox:              inboxHandler,
+		User:               userHandler,
+		AdminDashboard:     adminDashboard,
+		AdminUsers:         adminUsers,
+		AdminRegistrations: adminRegistrations,
+		AdminInvites:       adminInvites,
+		AdminReports:       adminReports,
+		AdminFederation:    adminFederation,
+		AdminContent:       adminContent,
+		AdminSettings:      adminSettings,
 	})
 
 	// Start HTTP server
