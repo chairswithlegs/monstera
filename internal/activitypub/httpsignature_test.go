@@ -208,6 +208,7 @@ func TestVerify_success(t *testing.T) {
 	ck := pubKeyCacheKey(testKeyID)
 	err = c.Set(context.Background(), ck, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}), time.Hour)
 	require.NoError(t, err)
+	time.Sleep(10 * time.Millisecond) // ristretto admits asynchronously
 
 	svc := NewHTTPSignatureService(&config.Config{}, c, nil)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://"+testHost+"/users/alice", nil)
@@ -286,6 +287,7 @@ func TestVerify_digestMismatch(t *testing.T) {
 	defer func() { _ = c.Close() }()
 	pubDER, _ := x509.MarshalPKIXPublicKey(&key.PublicKey)
 	_ = c.Set(context.Background(), pubKeyCacheKey(testKeyID), pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}), time.Hour)
+	time.Sleep(10 * time.Millisecond) // ristretto admits asynchronously
 
 	svc := NewHTTPSignatureService(&config.Config{}, c, nil)
 	body := []byte(`{"type":"Create"}`)
