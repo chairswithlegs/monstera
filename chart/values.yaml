@@ -1,0 +1,80 @@
+# Default values for the Monstera Helm chart.
+# IMPORTANT: This chart relies on secrets being created before installation (see README).
+
+instanceName: Monstera
+instanceDomain: ""   # e.g. social.example.com (required)
+uiDomain: ""         # defaults to instanceDomain if empty
+appEnv: production
+logLevel: info
+
+# -- Server (API)
+server:
+  # Name of the Secret containing server env (DATABASE_URL, NATS_URL, SECRET_KEY_BASE, etc.). Required.
+  existingSecret: ""
+  image:
+    repository: ghcr.io/chairswithlegs/monstera
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources: {}
+  extraEnv: []
+
+# -- UI (Next.js static + nginx)
+ui:
+  image:
+    repository: ghcr.io/chairswithlegs/monstera-ui
+    tag: latest
+    pullPolicy: IfNotPresent
+  config:
+    server_url: ""    # e.g. https://social.example.com (public API URL for the UI)
+    auth_client_id: ui-client
+    auth_scopes: "admin:read admin:write read:accounts"
+
+# -- PostgreSQL (optional; when disabled, use your own and set DATABASE_URL in the server secret)
+postgresql:
+  enabled: true
+  auth:
+    username: monstera
+    password: ""      # set on install; use same in server secret DATABASE_URL
+    database: monstera_fed
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+
+# -- NATS (optional; when disabled, use your own and set NATS_URL in the server secret)
+nats:
+  enabled: true
+  config:
+    jetstream:
+      enabled: true
+      fileStore:
+        enabled: true
+        dir: /data
+      pvc:
+        enabled: true
+        size: 10Gi
+    merge:
+      authorization:
+        users:
+          - user: "monstera"
+            password: "changeme"   # MUST override; use same in server secret NATS_URL (e.g. nats://monstera:PASSWORD@release-nats:4222)
+
+# -- Media (local = chart provisions PVC; s3 = use your own S3)
+media:
+  driver: local
+  localPath: /data/media
+  baseUrl: ""         # e.g. https://social.example.com/media (often set via secret MEDIA_BASE_URL)
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""  # optional, omit for cluster default
+
+# -- Email
+email:
+  driver: noop # noop or smtp
+  from: "" # e.g. noreply@example.com
+
+# -- Migration Job (runs before server, uses same existingSecret)
+migrationJob:
+  enabled: true
