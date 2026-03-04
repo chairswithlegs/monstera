@@ -44,10 +44,9 @@ test-integration:
 	docker compose -f docker-compose.yaml --profile dependencies up -d --wait
 	sleep 5 # wait for the services to be ready
 
-	# Run migrations and seed
+	# Run migrations
 	make migrate-down
 	make migrate-up
-	make seed
 
 	# Run the tests
 	go test -race -count=1 -tags=integration ./...; \
