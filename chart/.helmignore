@@ -1,7 +1,0 @@
-# Patterns to ignore when building packages.
-*.swp
-*.bak
-*.tmp
-.git/
-.gitignore
-.DS_Store
