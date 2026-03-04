@@ -43,10 +43,10 @@ export default function AuthenticatedLayout({
             Home
           </Link>
           <Link
-            href="/settings"
+            href="/account"
             className="font-medium text-gray-700 hover:text-gray-900"
           >
-            Account settings
+            Account
           </Link>
           {showModeration && (
             <Link

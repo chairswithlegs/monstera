@@ -7,11 +7,7 @@ import { useEffect, useState } from 'react';
 import type { NodeInfoResponse } from '@/lib/api/nodeinfo';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from '@/components/ui/card';
+import { StatsCard } from '@/components/stats-card';
 
 export default function LandingPage() {
   const { token, loading: authLoading } = useAuth();
@@ -64,28 +60,10 @@ export default function LandingPage() {
           A federated server running {software.name} {software.version}.
         </p>
 
-        <dl className="mt-8 grid gap-4 sm:grid-cols-2">
-          <Card>
-            <CardHeader className="pb-2">
-              <dt className="text-sm font-medium text-muted-foreground">Users</dt>
-            </CardHeader>
-            <CardContent>
-              <dd className="text-2xl font-semibold text-foreground">
-                {usage.users.total.toLocaleString()}
-              </dd>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <dt className="text-sm font-medium text-muted-foreground">Local posts</dt>
-            </CardHeader>
-            <CardContent>
-              <dd className="text-2xl font-semibold text-foreground">
-                {usage.localPosts.toLocaleString()}
-              </dd>
-            </CardContent>
-          </Card>
-        </dl>
+        <div className="mt-8 grid gap-4 sm:grid-cols-2">
+          <StatsCard label="Users" value={usage.users.total.toLocaleString()} />
+          <StatsCard label="Local posts" value={usage.localPosts.toLocaleString()} />
+        </div>
 
         <p className="mt-4 text-sm text-muted-foreground">
           Registrations are {openRegistrations ? 'open' : 'closed'}.
