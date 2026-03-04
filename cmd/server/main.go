@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/chairswithlegs/monstera-fed/cmd/server/internal/cli"
+	"github.com/chairswithlegs/monstera/cmd/server/internal/cli"
 )
 
 func main() {

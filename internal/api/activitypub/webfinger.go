@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/chairswithlegs/monstera-fed/internal/api"
-	"github.com/chairswithlegs/monstera-fed/internal/api/activitypub/apimodel"
-	"github.com/chairswithlegs/monstera-fed/internal/config"
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/service"
+	"github.com/chairswithlegs/monstera/internal/api"
+	"github.com/chairswithlegs/monstera/internal/api/activitypub/apimodel"
+	"github.com/chairswithlegs/monstera/internal/config"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/service"
 )
 
 // WebFingerHandler handles GET /.well-known/webfinger?resource=acct:user@domain

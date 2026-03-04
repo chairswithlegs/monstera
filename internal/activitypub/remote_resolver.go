@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chairswithlegs/monstera-fed/internal/config"
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/store"
-	"github.com/chairswithlegs/monstera-fed/internal/uid"
+	"github.com/chairswithlegs/monstera/internal/config"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/store"
+	"github.com/chairswithlegs/monstera/internal/uid"
 )
 
 const ianaWebFingerTimeout = 5 * time.Second

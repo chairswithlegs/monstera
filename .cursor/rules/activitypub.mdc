@@ -6,7 +6,7 @@ alwaysApply: false
 
 # ActivityPub & Federation
 
-Design doc: `docs/architecture/07-activitypub-and-federation.md`
+Design doc: `docs/architecture/03-activitypub-implementation.md`
 
 ## Conventions
 

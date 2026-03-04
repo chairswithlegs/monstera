@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera-fed/internal/email"
-	_ "github.com/chairswithlegs/monstera-fed/internal/email/noop"
-	_ "github.com/chairswithlegs/monstera-fed/internal/email/smtp"
+	"github.com/chairswithlegs/monstera/internal/email"
+	_ "github.com/chairswithlegs/monstera/internal/email/noop"
+	_ "github.com/chairswithlegs/monstera/internal/email/smtp"
 )
 
 func TestNew_UnknownDriver(t *testing.T) {

@@ -1,7 +1,7 @@
 package apimodel
 
 import (
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/domain"
 )
 
 // AdminUser is a single user in the admin API.

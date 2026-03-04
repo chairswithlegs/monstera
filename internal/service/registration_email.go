@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/chairswithlegs/monstera-fed/internal/email"
+	"github.com/chairswithlegs/monstera/internal/email"
 )
 
 // AccountApprovedData is the template data for account_approved emails.

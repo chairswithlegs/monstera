@@ -15,7 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 
-	"github.com/chairswithlegs/monstera-fed/internal/media"
+	"github.com/chairswithlegs/monstera/internal/media"
 )
 
 // Config holds S3-specific configuration.

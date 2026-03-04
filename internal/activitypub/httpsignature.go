@@ -20,10 +20,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chairswithlegs/monstera-fed/internal/cache"
-	"github.com/chairswithlegs/monstera-fed/internal/config"
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/service"
+	"github.com/chairswithlegs/monstera/internal/cache"
+	"github.com/chairswithlegs/monstera/internal/config"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/service"
 )
 
 // clockSkew is the maximum tolerated difference between the request's Date

@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"runtime/debug"
 
-	"github.com/chairswithlegs/monstera-fed/internal/api"
-	"github.com/chairswithlegs/monstera-fed/internal/observability"
+	"github.com/chairswithlegs/monstera/internal/api"
+	"github.com/chairswithlegs/monstera/internal/observability"
 )
 
 // Recoverer returns a middleware that recovers from panics, logs the panic and

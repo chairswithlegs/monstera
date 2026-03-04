@@ -4,7 +4,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const namespace = "monstera_fed"
+const namespace = "monstera"
 
 type Metrics struct {
 	HTTPRequestsTotal                 *prometheus.CounterVec

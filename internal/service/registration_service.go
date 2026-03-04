@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/store"
-	"github.com/chairswithlegs/monstera-fed/internal/uid"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/store"
+	"github.com/chairswithlegs/monstera/internal/uid"
 )
 
 // PendingRegistration is a user awaiting approval (confirmed_at is NULL).

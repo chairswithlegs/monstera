@@ -8,11 +8,11 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/chairswithlegs/monstera-fed/internal/cache"
-	"github.com/chairswithlegs/monstera-fed/internal/config"
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/events"
-	"github.com/chairswithlegs/monstera-fed/internal/service"
+	"github.com/chairswithlegs/monstera/internal/cache"
+	"github.com/chairswithlegs/monstera/internal/config"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/events"
+	"github.com/chairswithlegs/monstera/internal/service"
 )
 
 const (

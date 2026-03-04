@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera-fed/internal/email"
+	"github.com/chairswithlegs/monstera/internal/email"
 )
 
 func TestSender_Send(t *testing.T) {

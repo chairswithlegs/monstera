@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Email Layer
 
-Design doc: `docs/architecture/05-email-abstraction.md`
+Design doc: `docs/architecture/01-high-level-system-architecture.md`
 
 ## Conventions
 

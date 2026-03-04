@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Store Layer
 
-Design doc: `docs/architecture/02-data-model-and-migrations.md`
+Design doc: `docs/architecture/05-database.md`
 
 ## Conventions
 

@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"strings"
 
-	ap "github.com/chairswithlegs/monstera-fed/internal/activitypub"
-	"github.com/chairswithlegs/monstera-fed/internal/api"
-	"github.com/chairswithlegs/monstera-fed/internal/cache"
-	"github.com/chairswithlegs/monstera-fed/internal/config"
+	ap "github.com/chairswithlegs/monstera/internal/activitypub"
+	"github.com/chairswithlegs/monstera/internal/api"
+	"github.com/chairswithlegs/monstera/internal/cache"
+	"github.com/chairswithlegs/monstera/internal/config"
 )
 
 // InboxHandler handles POST /users/{username}/inbox and POST /inbox.

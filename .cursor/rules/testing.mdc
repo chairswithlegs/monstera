@@ -14,7 +14,7 @@ alwaysApply: true
 ## Organisation
 
 - Tests live alongside code (`*_test.go` in same package).
-- Integration tests (PostgreSQL, NATS, Redis) use `//go:build integration` and live in the same package for white-box access. Run with: `go test -tags=integration ./path/...`.
+- Integration tests (PostgreSQL, NATS) use `//go:build integration` and live in the same package for white-box access. Run with: `go test -tags=integration ./path/...`.
 
 ## Conventions
 

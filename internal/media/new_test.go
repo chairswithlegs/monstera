@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera-fed/internal/media"
-	_ "github.com/chairswithlegs/monstera-fed/internal/media/local"
-	_ "github.com/chairswithlegs/monstera-fed/internal/media/s3"
+	"github.com/chairswithlegs/monstera/internal/media"
+	_ "github.com/chairswithlegs/monstera/internal/media/local"
+	_ "github.com/chairswithlegs/monstera/internal/media/s3"
 )
 
 func TestNew_LocalOK(t *testing.T) {

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chairswithlegs/monstera-fed/internal/api"
-	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
-	"github.com/chairswithlegs/monstera-fed/internal/events/sse"
+	"github.com/chairswithlegs/monstera/internal/api"
+	"github.com/chairswithlegs/monstera/internal/api/middleware"
+	"github.com/chairswithlegs/monstera/internal/events/sse"
 )
 
 const (

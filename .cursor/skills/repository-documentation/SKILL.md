@@ -26,8 +26,8 @@ description: Creates and updates documentation in the repository. Places high-le
 ## Quick decision flow
 
 1. **Overview or “main” doc for the repo?** → Update or create `README.md` at repo root.
-2. **Saving or resolving open product/architecture question?** → Update `docs/open_questions.md`
-2. **Architecture decision or design rationale?** → `docs/architecture/<filename>.md` (lowercase).
-3. **User-facing guide, spec, or reference?** → `docs/<filename>.md` (lowercase).
+2. **Saving or resolving open product/architecture question?** → Update the Open questions section in `docs/roadmap.md`.
+3. **Architecture decision or design rationale?** → `docs/architecture/<filename>.md` (lowercase).
+4. **User-facing guide, spec, or reference?** → `docs/<filename>.md` (lowercase).
 
 Create `docs/architecture` if it does not exist when adding architecture or ADR docs.

@@ -4,11 +4,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/chairswithlegs/monstera-fed/internal/api"
-	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
-	"github.com/chairswithlegs/monstera-fed/internal/api/monstera/apimodel"
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/service"
+	"github.com/chairswithlegs/monstera/internal/api"
+	"github.com/chairswithlegs/monstera/internal/api/middleware"
+	"github.com/chairswithlegs/monstera/internal/api/monstera/apimodel"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 

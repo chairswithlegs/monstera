@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/media"
-	"github.com/chairswithlegs/monstera-fed/internal/store"
-	"github.com/chairswithlegs/monstera-fed/internal/uid"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/media"
+	"github.com/chairswithlegs/monstera/internal/store"
+	"github.com/chairswithlegs/monstera/internal/uid"
 )
 
 // MediaService orchestrates media upload (storage + DB attachment record).

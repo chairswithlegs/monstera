@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/microcosm-cc/bluemonday"
 	"mvdan.cc/xurls/v2"
 )

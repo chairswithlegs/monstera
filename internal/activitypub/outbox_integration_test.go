@@ -22,13 +22,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera-fed/internal/cache"
-	"github.com/chairswithlegs/monstera-fed/internal/config"
-	natsutil "github.com/chairswithlegs/monstera-fed/internal/nats"
-	"github.com/chairswithlegs/monstera-fed/internal/service"
-	"github.com/chairswithlegs/monstera-fed/internal/store"
-	"github.com/chairswithlegs/monstera-fed/internal/testutil"
-	"github.com/chairswithlegs/monstera-fed/internal/uid"
+	"github.com/chairswithlegs/monstera/internal/cache"
+	"github.com/chairswithlegs/monstera/internal/config"
+	natsutil "github.com/chairswithlegs/monstera/internal/nats"
+	"github.com/chairswithlegs/monstera/internal/service"
+	"github.com/chairswithlegs/monstera/internal/store"
+	"github.com/chairswithlegs/monstera/internal/testutil"
+	"github.com/chairswithlegs/monstera/internal/uid"
 )
 
 // receivedRequest captures a request for assertions.

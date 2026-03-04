@@ -4,7 +4,7 @@ package events
 import (
 	"context"
 
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/domain"
 )
 
 // StatusCreatedEvent carries the data needed to publish a status create event.

@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/events"
-	"github.com/chairswithlegs/monstera-fed/internal/store"
-	"github.com/chairswithlegs/monstera-fed/internal/uid"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/events"
+	"github.com/chairswithlegs/monstera/internal/store"
+	"github.com/chairswithlegs/monstera/internal/uid"
 )
 
 // StatusFederationPublisher publishes status create/delete to federation (e.g. ap.Outbox).

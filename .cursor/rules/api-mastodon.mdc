@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Mastodon REST API Handlers
 
-Design doc: `docs/architecture/08-mastodon-rest-api.md`
+Design doc: `docs/architecture/01-high-level-system-architecture.md`
 
 ## Conventions
 

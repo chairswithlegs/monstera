@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera-fed/internal/media"
+	"github.com/chairswithlegs/monstera/internal/media"
 )
 
 func TestStore_PutGetRoundTrip(t *testing.T) {

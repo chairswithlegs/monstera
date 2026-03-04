@@ -1,4 +1,4 @@
-# Monstera-fed
+# Monstera
 
 A self-hosted **ActivityPub server** written in Go that exposes the **Mastodon-compatible REST API**. Use any Mastodon client (Ivory, Tusky, Elk, Mona, Pinafore, etc.) to connect without modification.
 
@@ -7,8 +7,7 @@ A self-hosted **ActivityPub server** written in Go that exposes the **Mastodon-c
 - **Mastodon API** — Accounts, statuses, timelines, notifications, media, search, streaming (SSE)
 - **ActivityPub federation** — Follow and interact with users on other instances (Mastodon, Pleroma, etc.)
 - **OAuth 2.0** — Authorization Code and PKCE for client apps
-- **Pluggable backends** — Cache (memory or Redis), media (local or S3), email (noop or SMTP)
-- **Admin portal** — Server-rendered UI (HTMX + Pico.css) for users, reports, moderation, instance settings
+- **UI** — Next.js UI for users, reports, moderation, instance settings
 - **Horizontally scalable** — Stateless API pods; PostgreSQL + NATS JetStream for federation and SSE fan-out
 
 ## Requirements
@@ -18,7 +17,6 @@ A self-hosted **ActivityPub server** written in Go that exposes the **Mastodon-c
 | **Go 1.26+** | Yes | Build and run |
 | **PostgreSQL 16+** | Yes | Primary data store |
 | **NATS** (JetStream) | Yes | Federation delivery queue, SSE pub/sub |
-| Redis / Valkey | No | Use `CACHE_DRIVER=memory` for single-node |
 | S3-compatible storage | No | Use `MEDIA_DRIVER=local` for dev/small deploys |
 
 ## Quick start
@@ -64,7 +62,7 @@ All configuration is via environment variables (12-factor).
 |----------|-------------|---------|
 | `APP_ENV` | `development` or `production` | `development` |
 | `APP_PORT` | HTTP listen port | `8080` |
-| `INSTANCE_NAME` | Instance display name | `Monstera-fed` |
+| `INSTANCE_NAME` | Instance display name | `Monstera` |
 | `LOG_LEVEL` | `debug`, `info`, `warn`, or `error` | `info` |
 | `METRICS_TOKEN` | Optional token for `/metrics` (empty = no auth) | — |
 | `VERSION` | App version string | `0.0.0-dev` |
@@ -86,8 +84,7 @@ All configuration is via environment variables (12-factor).
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `CACHE_DRIVER` | `memory` or `redis` | `memory` |
-| `CACHE_REDIS_URL` | Redis URL (required if `CACHE_DRIVER=redis`) | — |
+| `CACHE_DRIVER` | `memory` | `memory` |
 
 ### Media
 
@@ -106,7 +103,7 @@ All configuration is via environment variables (12-factor).
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `EMAIL_DRIVER` | `noop` or `smtp` | `noop` |
-| `EMAIL_FROM_NAME` | From name for outgoing email | `Monstera-fed` |
+| `EMAIL_FROM_NAME` | From name for outgoing email | `Monstera` |
 | `EMAIL_SMTP_HOST` | SMTP host (required if `EMAIL_DRIVER=smtp`) | — |
 | `EMAIL_SMTP_PORT` | SMTP port | `587` |
 | `EMAIL_SMTP_USERNAME` | SMTP username | — |
@@ -120,7 +117,7 @@ All configuration is via environment variables (12-factor).
 | `FEDERATION_INSECURE_SKIP_TLS_VERIFY` | Skip TLS verification for federation (dev only) | dev: `true`, prod: `false` |
 | `MAX_STATUS_CHARS` | Max characters per status | `500` |
 
-Full deployment options: [docs/spec.md §19 Configuration](docs/spec.md#19-configuration).
+See [docs/tech_stack.md](docs/tech_stack.md) and `internal/config` for full configuration options.
 
 ## Development
 
@@ -135,14 +132,11 @@ make lint-fix         # Auto-fix lint issues
 
 | Document | Description |
 |----------|-------------|
-| [docs/spec.md](docs/spec.md) | Project specification — architecture, API, data model, config |
 | [docs/tech_stack.md](docs/tech_stack.md) | Technologies and libraries |
-| [docs/roadmap.md](docs/roadmap.md) | Build sequence and validation milestones |
-| [docs/nats_conventions.md](docs/nats_conventions.md) | NATS streams and subject naming |
-| [docs/architecture/](docs/architecture/) | Architecture and design docs (01–10) |
-| [docs/phase_two_features.md](docs/phase_two_features.md) | Deferred features for later phases |
+| [docs/roadmap.md](docs/roadmap.md) | Open questions, deferred features, and future phases |
+| [docs/architecture/](docs/architecture/) | Architecture and design docs |
 
-See [docs/README.md](docs/README.md) for a full index.
+See [docs/README.md](docs/README.md) for the full index.
 
 ## License
 

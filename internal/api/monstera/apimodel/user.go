@@ -3,7 +3,7 @@ package apimodel
 import (
 	"time"
 
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/domain"
 )
 
 type User struct {

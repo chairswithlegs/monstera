@@ -6,7 +6,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/chairswithlegs/monstera-fed/internal/email"
+	"github.com/chairswithlegs/monstera/internal/email"
 )
 
 func init() {

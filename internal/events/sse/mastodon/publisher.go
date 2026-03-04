@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"log/slog"
 
-	"github.com/chairswithlegs/monstera-fed/internal/activitypub"
-	"github.com/chairswithlegs/monstera-fed/internal/api/mastodon/apimodel"
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/events"
-	"github.com/chairswithlegs/monstera-fed/internal/events/sse"
-	"github.com/chairswithlegs/monstera-fed/internal/observability"
+	"github.com/chairswithlegs/monstera/internal/activitypub"
+	"github.com/chairswithlegs/monstera/internal/api/mastodon/apimodel"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/events"
+	"github.com/chairswithlegs/monstera/internal/events/sse"
+	"github.com/chairswithlegs/monstera/internal/observability"
 )
 
 const (

@@ -9,9 +9,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/store"
-	db "github.com/chairswithlegs/monstera-fed/internal/store/postgres/generated"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/store"
+	db "github.com/chairswithlegs/monstera/internal/store/postgres/generated"
 )
 
 // PostgresStore wraps the sqlc-generated *db.Queries and satisfies store.Store.

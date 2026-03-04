@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/chairswithlegs/monstera-fed/internal/store"
+	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/spf13/cobra"
 )
 

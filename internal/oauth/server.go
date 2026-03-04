@@ -10,9 +10,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/chairswithlegs/monstera-fed/internal/cache"
-	"github.com/chairswithlegs/monstera-fed/internal/store"
-	"github.com/chairswithlegs/monstera-fed/internal/uid"
+	"github.com/chairswithlegs/monstera/internal/cache"
+	"github.com/chairswithlegs/monstera/internal/store"
+	"github.com/chairswithlegs/monstera/internal/uid"
 )
 
 // AuthorizeRequest represents the validated parameters from GET /oauth/authorize

@@ -3,7 +3,7 @@ package apimodel
 import (
 	"time"
 
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/domain"
 )
 
 // AdminServerFilter is one server filter in the admin API.

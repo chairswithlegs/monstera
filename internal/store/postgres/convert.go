@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	db "github.com/chairswithlegs/monstera-fed/internal/store/postgres/generated"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	db "github.com/chairswithlegs/monstera/internal/store/postgres/generated"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 

@@ -11,7 +11,7 @@ import (
 
 	emaillib "github.com/jordan-wright/email"
 
-	"github.com/chairswithlegs/monstera-fed/internal/email"
+	"github.com/chairswithlegs/monstera/internal/email"
 )
 
 func init() {

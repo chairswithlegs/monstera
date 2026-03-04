@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/store"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/store"
 )
 
 // NodeInfoStats holds instance-level counts and settings for NodeInfo discovery.

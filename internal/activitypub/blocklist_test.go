@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera-fed/internal/testutil"
+	"github.com/chairswithlegs/monstera/internal/testutil"
 )
 
 func TestBlocklistCache_RefreshAndIsBlocked(t *testing.T) {

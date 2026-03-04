@@ -1,7 +1,7 @@
 package apimodel
 
 import (
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/domain"
 )
 
 const timeFormatRFC3339Milli = "2006-01-02T15:04:05.000Z"

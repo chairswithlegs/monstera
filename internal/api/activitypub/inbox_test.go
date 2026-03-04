@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	ap "github.com/chairswithlegs/monstera-fed/internal/activitypub"
-	"github.com/chairswithlegs/monstera-fed/internal/cache"
-	"github.com/chairswithlegs/monstera-fed/internal/config"
+	ap "github.com/chairswithlegs/monstera/internal/activitypub"
+	"github.com/chairswithlegs/monstera/internal/cache"
+	"github.com/chairswithlegs/monstera/internal/config"
 )
 
 func TestInboxHandler_POSTInbox_badContentType_returns400(t *testing.T) {

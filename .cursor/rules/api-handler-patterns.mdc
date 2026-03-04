@@ -46,7 +46,7 @@ func NewStatusesHandler(accounts *service.AccountService, statuses *service.Stat
 ## Router wiring (adding a new handler)
 
 1. **Add the handler to `router.Deps`** in `internal/api/router/router.go`: add a field, e.g. `MyNew *mastodon.MyNewHandler`.
-2. **Construct the handler in `cmd/monstera-fed/internal/cli/serve.go`** (where other handlers are built) and set it on the `router.Deps` struct passed to `router.New`.
+2. **Construct the handler in `cmd/server/internal/cli/serve.go`** (where other handlers are built) and set it on the `router.Deps` struct passed to `router.New`.
 3. **Register the route** in `router.New()`:
    - Use the correct **route group**: unauthenticated, `OptionalAuth`, or `RequireAuth` (and optionally `RequiredScopes` for Mastodon).
    - For Mastodon scoped routes, wrap the handler with `middleware.RequiredScopes("scope:name")` and use `r.Method("VERB", "/path", middleware.RequiredScopes("...")(http.HandlerFunc(deps.MyNew.METHODMyNew)))`.

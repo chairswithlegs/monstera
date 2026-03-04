@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/chairswithlegs/monstera-fed/internal/api"
-	"github.com/chairswithlegs/monstera-fed/internal/api/activitypub/apimodel"
-	"github.com/chairswithlegs/monstera-fed/internal/config"
-	"github.com/chairswithlegs/monstera-fed/internal/service"
+	"github.com/chairswithlegs/monstera/internal/api"
+	"github.com/chairswithlegs/monstera/internal/api/activitypub/apimodel"
+	"github.com/chairswithlegs/monstera/internal/config"
+	"github.com/chairswithlegs/monstera/internal/service"
 )
 
 // NodeInfoPointerHandler serves the well-known nodeinfo pointer document.
@@ -58,7 +58,7 @@ func (h *NodeInfoHandler) GETNodeInfo(w http.ResponseWriter, r *http.Request) {
 	resp := apimodel.NodeInfoResponse{
 		Version: "2.0",
 		Software: apimodel.NodeInfoSoftware{
-			Name:    "monstera-fed",
+			Name:    "monstera",
 			Version: h.config.Version,
 		},
 		Protocols: []string{"activitypub"},

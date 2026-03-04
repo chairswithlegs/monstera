@@ -1,6 +1,6 @@
 # Federation testing
 
-Runs two Monstera-fed instances (**app-a** and **app-b**) behind Caddy so you can test federation locally (follow, deliver activities, receive replies).
+Runs two Monstera instances (**app-a** and **app-b**) behind Caddy so you can test federation locally (follow, deliver activities, receive replies).
 
 ## Prerequisites
 
@@ -20,8 +20,8 @@ docker compose up -d
 This starts:
 
 - **Caddy** — HTTPS on 443 for `monstera.local` and `monstera2.local`
-- **app-a** — Monstera-fed for `monstera.local` (DB: postgres-a)
-- **app-b** — Monstera-fed for `monstera2.local` (DB: postgres-b)
+- **app-a** — Monstera for `monstera.local` (DB: postgres-a)
+- **app-b** — Monstera for `monstera2.local` (DB: postgres-b)
 - **postgres-a** — DB for app-a (host port 5433)
 - **postgres-b** — DB for app-b (host port 5434)
 - **nats-a** — NATs (host port 4222)

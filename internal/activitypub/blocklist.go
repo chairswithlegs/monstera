@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/store"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/store"
 )
 
 // BlocklistCache caches the set of blocked domains for fast inbox/outbox checks.

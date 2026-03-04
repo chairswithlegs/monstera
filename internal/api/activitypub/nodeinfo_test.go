@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera-fed/internal/config"
-	"github.com/chairswithlegs/monstera-fed/internal/service"
-	"github.com/chairswithlegs/monstera-fed/internal/testutil"
+	"github.com/chairswithlegs/monstera/internal/config"
+	"github.com/chairswithlegs/monstera/internal/service"
+	"github.com/chairswithlegs/monstera/internal/testutil"
 )
 
 func TestNodeInfoPointerHandler_GETNodeInfoPointer(t *testing.T) {
@@ -56,7 +56,7 @@ func TestNodeInfoHandler_GETNodeInfo(t *testing.T) {
 	}
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&body))
 	assert.Equal(t, "2.0", body.Version)
-	assert.Equal(t, "monstera-fed", body.Software.Name)
+	assert.Equal(t, "monstera", body.Software.Name)
 	assert.Equal(t, "0.1.0", body.Software.Version)
 	assert.Contains(t, body.Protocols, "activitypub")
 }

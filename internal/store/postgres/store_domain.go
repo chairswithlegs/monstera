@@ -8,10 +8,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/store"
-	db "github.com/chairswithlegs/monstera-fed/internal/store/postgres/generated"
-	"github.com/chairswithlegs/monstera-fed/internal/uid"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/store"
+	db "github.com/chairswithlegs/monstera/internal/store/postgres/generated"
+	"github.com/chairswithlegs/monstera/internal/uid"
 )
 
 const noCursorSentinel = "ZZZZZZZZZZZZZZZZZZZZZZZZZZ"

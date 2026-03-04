@@ -9,7 +9,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/chairswithlegs/monstera-fed/internal/config"
+	"github.com/chairswithlegs/monstera/internal/config"
 )
 
 var ErrEmptyURL = errors.New("nats: NATS_URL is required")

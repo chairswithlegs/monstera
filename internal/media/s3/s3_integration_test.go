@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera-fed/internal/media"
+	"github.com/chairswithlegs/monstera/internal/media"
 )
 
 // TestStore_Integration requires MinIO (or S3-compatible server) running with credentials set.

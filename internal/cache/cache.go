@@ -16,7 +16,7 @@ import (
 //	}
 var ErrCacheMiss = errors.New("cache miss")
 
-// Store is the cache abstraction used throughout Monstera-fed.
+// Store is the cache abstraction used throughout Monstera.
 // Implementations must be safe for concurrent use by multiple goroutines.
 // All keys and values are opaque byte slices; structured data is marshalled
 // by the helpers in helpers.go.

@@ -1,239 +1,531 @@
-# Monstera-fed — Roadmap
-> Roadmap for Phase 1, organized around dependency order and validation milestones.
+# Roadmap
+
+This document is the single source of truth for unresolved decisions, deferred features, and future phase planning.
 
 ---
 
-## Guiding Principles
+## Open questions
 
-1. **Build leaves first.** Packages with no internal dependencies are implemented before packages that depend on them.
-2. **Validate early and often.** Each stage ends with a concrete validation step — a passing test suite, a working migration, a client connection — not just "code compiles."
-3. **Defer horizontal breadth.** Implement one full vertical slice (e.g., one API endpoint from handler → service → store) before fanning out to all endpoints. This catches integration issues early.
+Unresolved product and architecture questions. When making a design change, add or update the relevant entry here. When a question is answered, mark it resolved and link to the commit, PR, or architecture doc that codifies the decision.
 
----
+### API surface & auth
 
-## Stage 1 — Scaffolding & Leaf Packages
+| Area | Question | Why it matters |
+|------|----------|----------------|
+| Routing | Should we split Mastodon routes into **RequireAuth** vs **OptionalAuth** groups so public read endpoints work anonymously (status detail, account lookup, public timelines)? | Affects client compatibility and handler grouping; no service-layer impact. |
+| Timelines | Do we accept **home timeline cache staleness** (e.g. 60s TTL), or add invalidation on follow/unfollow and/or new posts? | Trade-off between freshness and complexity/write fan-out. |
+| Accounts | Should we implement **profile field verification** (`verified_at`) by checking for `rel="me"` backlinks? | Affects client UX; requires outbound HTTP + HTML parsing + background work. |
+| Statuses | What is the canonical **character counting** rule (CJK rune count + URL counting convention)? | Impacts post validation and client expectations. |
+| Store/queries | How should we manage query complexity for `GET /api/v1/accounts/:id/statuses` filters (`only_media`, `exclude_replies`, `exclude_reblogs`)? | Affects sqlc query design and index usage. |
 
-**Packages:** `config`, `domain`, `uid`, `observability`
+### Data model & migrations
 
-These have zero internal dependencies and unlock everything downstream.
+| Area | Question | Why it matters |
+|------|----------|----------------|
+| Hashtags | Should we extract/index hashtags for **remote statuses** as well as local ones? | Better federated hashtag timelines vs extra ingest overhead. |
+| OAuth | Should we add a partial index for hot-path token lookup (e.g. `WHERE revoked_at IS NULL`) even though `token` is already unique-indexed? | Small perf win; adds a migration and ongoing index maintenance. |
 
-| Package | Key deliverables |
-|---------|-----------------|
-| `internal/config` | `Load()`, `Validate()`, env var parsing, HKDF sub-key derivation from `SECRET_KEY_BASE` |
-| `internal/domain` | All domain structs (`Account`, `Status`, `Follow`, etc.), `errors.go` with sentinel errors |
-| `internal/uid` | ULID generation wrapper |
-| `internal/observability` | slog JSON setup, Prometheus registry, `RequestID` middleware |
+### Federation & ActivityPub
 
-**Validation:** Unit tests only. `go test ./internal/config/... ./internal/domain/... ./internal/uid/... ./internal/observability/...` passes. No infrastructure required.
+| Area | Question | Why it matters |
+|------|----------|----------------|
+| Delivery | Should we persist `shared_inbox_url` and coalesce deliveries to shared inboxes (instead of deduping only by inbox URL string)? | Reduces outbound HTTP volume for servers with per-user inboxes. |
+| Inbox | Should inbox processing remain synchronous, or move to a bounded async pool / durable queue? | Latency vs complexity/observability/backpressure. |
+| Media | Should remote media be lazy-fetched or fetched on ingest and stored locally (local filesystem/S3)? | Privacy (remote sees client IP), durability, and storage cost. |
+| Cleanup | On repeated `410 Gone` responses, should we clean up follows / mark domains as gone? | Reduces repeated failed delivery attempts; needs careful semantics. |
+| NodeInfo | Should we publish `usage.users.activeMonth` / `activeHalfyear`? If yes, via query or last-activity tracking? | Operator expectations and ecosystem ranking sites; adds write/query load. |
+| Outbox | Should `totalItems` be accurate (true count) vs "best-effort" first-page count? | Mostly informational; can add an extra query. |
+| Emojis | Should we ingest **remote custom emojis** from incoming activities so clients render them? | Impacts fidelity of federated content; adds ingestion logic/storage. |
 
----
+### Streaming (SSE) & NATS
 
-## Stage 2 — Data Layer
+| Area | Question | Why it matters |
+|------|----------|----------------|
+| Filtering | Should the server do **mute/block filtering** for authenticated clients on public/hashtag streams, or rely on client-side filtering? | Compatibility vs Hub complexity/memory. |
+| Transport | Do we need **WebSocket** streaming support, or is SSE-only sufficient? | Some clients may prefer WS; doubles transport surface area. |
+| Multiplexing | Should we support multi-stream subscriptions on a single connection (`?stream=user&stream=public`)? | Reduces connections; adds multiplexing complexity. |
+| Fan-out strategy | Do we keep "fan-out at publish time" to `stream.user.{id}`, or switch to Hub-side follower filtering for large instances? | Changes NATS message volume vs Hub workload; impacts scale characteristics. |
+| Control events | Do we implement `filters_changed` and similar control events once filters land? | Client UX; requires coordination with filter subsystem. |
 
-**Packages:** `store/postgres` (migrations + sqlc), `cache`
+### Email
 
-| Package | Key deliverables |
-|---------|-----------------|
-| `internal/store/migrations/` | All migration SQL files (000001–000032) |
-| `internal/store/postgres/` | sqlc config, generated code, `db.go` (pgxpool setup), `Store` interface |
-| `internal/cache/memory` | Ristretto-backed in-memory cache |
-| `internal/cache/redis` | Redis/Valkey cache driver |
+| Area | Question | Why it matters |
+|------|----------|----------------|
+| Deliverability | Should we include `List-Unsubscribe` / `List-Unsubscribe-Post` headers on account-lifecycle emails? | Gmail/Yahoo deliverability requirements vs applicability for transactional email. |
+| Tokens | If a user requests a new confirmation email, do we invalidate prior tokens or allow multiple active tokens? | Security posture vs user experience; Mastodon-like behavior allows multiples. |
+| Reaping | Where do we run periodic deletion of expired email tokens (startup, in-process ticker, external cron)? | Operational simplicity vs keeping app pods stateless/simple. |
+| SMTP init | Should SMTP initialization verify connectivity (fail fast), optionally behind a config flag? | Startup reliability vs surfacing email misconfiguration early. |
+| Drivers | Do we need vendor-specific HTTP email drivers (vs SMTP-only) for some deployments? | Port egress constraints; increases maintenance surface. |
 
-**Validation:**
-- Stand up PostgreSQL via Docker Compose.
-- Run `cmd/monstera-fed migrate up` — all 32 migrations apply cleanly.
-- Run `cmd/monstera-fed migrate down` — full rollback succeeds.
-- Integration tests (build tag `integration`) verify every sqlc query against a real database.
-- Cache unit tests verify get/set/delete/TTL for both memory and Redis drivers.
+### Admin portal
 
-This is the highest-risk stage — schema bugs found later are expensive. Invest in thorough query-level tests here.
-
-**Note on `wrappers.go`:** The file contains forward-looking methods on `*PostgresStore` that return `db.*` types. These are not on the `store.Store` interface. As each subsequent stage promotes methods to the interface (returning domain types via `store_domain.go`), the corresponding `db.*`-returning wrappers should be deleted from `wrappers.go`. The integration test should use the `store.Store` interface where possible instead of type-asserting to `*PostgresStore`.
-
----
-
-## Stage 3 — Infrastructure Abstractions
-
-**Packages:** `media`, `email`, `nats`
-
-| Package | Key deliverables |
-|---------|-----------------|
-| `internal/media/local` | Local filesystem storage |
-| `internal/media/s3` | S3-compatible storage |
-| `internal/email/noop` | No-op sender (dev/testing) |
-| `internal/email/smtp` | SMTP sender |
-| `internal/nats/` | Client wrapper, `EnsureStreams`, stream/consumer definitions |
-
-**Validation:**
-- Media: unit tests with a temp directory (local), integration test with MinIO (S3).
-- Email: unit tests with noop driver, manual SMTP test with Mailpit or similar.
-- NATS: integration test that publishes and consumes a message through JetStream.
-
-These packages are isolated — they can be built in parallel by different contributors.
+| Area | Question | Why it matters |
+|------|----------|----------------|
+| Dashboard | Should the UI show "last updated" timestamps for cached stats? | UX polish; helps operators interpret cached numbers. |
 
 ---
 
-## Stage 4 — Auth & Identity
+## Unimplemented / deferred features
 
-**Packages:** `oauth`, `ap` (HTTP signatures + actor key management)
+Features deferred from Phase 1 that should be revisited in later phases. Each includes current state, why it was deferred, and implementation notes for when the feature is picked up.
 
-| Package | Key deliverables |
-|---------|-----------------|
-| `internal/oauth/` | Authorization code + PKCE flow, token issuance, token validation, scope checking |
-| `internal/ap/httpsig.go` | HTTP Signature sign/verify with key rotation retry |
-| `internal/ap/vocab.go` | ActivityStreams type definitions |
+### 1. OAuth Out-of-Band (OOB) Code Display Flow
 
-**Validation:**
-- OAuth: integration test that walks through the full authorization code flow (create app → authorize → token → verify).
-- HTTP Signatures: unit tests with known-good signature fixtures from the Mastodon test suite or [go-fed/httpsig](https://github.com/go-fed/httpsig) test vectors.
-- Private key encryption: round-trip test (generate key → encrypt → store → load → decrypt → sign).
+**Origin:** IMPLEMENTATION 06, Open Question #3
 
----
+Mastodon supports `urn:ietf:wg:oauth:2.0:oob` as a redirect URI for CLI tools. Instead of redirecting the browser to a callback URL, the server displays the authorization code on an HTML page for the user to copy-paste into their terminal.
 
-## Stage 5 — Service Layer (First Vertical Slice)
+**Current state:** The `isValidRedirectURI` helper already accepts `urn:ietf:wg:oauth:2.0:oob` as a valid URI. What's missing is the display page — when `AuthorizeSubmit` detects this URI, it should render a simple template showing the code rather than issuing an HTTP redirect.
 
-**Package:** `service`
+**Why deferred:** Low priority for launch. The primary use case (mobile and desktop Mastodon clients) uses standard redirect URIs. CLI tools (toot, Mastodon.py scripts, admin utilities) are the main consumers of OOB, and their user base is small relative to GUI clients.
 
-Build one complete slice first to validate the full stack:
-
-**Recommended first slice: Account registration + status creation**
-
-| Service | Methods |
-|---------|---------|
-| `AccountService` | `Create`, `GetByID`, `GetByUsername` |
-| `StatusService` | `Create`, `GetByID`, `Delete` |
-| `TimelineService` | `Home`, `PublicLocal` |
-
-**Validation:**
-- Unit tests with mocked store/cache.
-- Integration test that registers a user, creates a status, and reads it back from the home timeline — exercising the full store → service → domain round-trip.
-
-After this slice works end-to-end, fan out to the remaining services: `FollowService`, `NotificationService`, `ModerationService`, `FederationService`, etc.
+**Implementation when ready:**
+- Add `internal/api/oauth/templates/oob.html` — a minimal page displaying the authorization code with a "copy" button.
+- In `AuthorizeSubmit`, add a branch: if `redirectURI == "urn:ietf:wg:oauth:2.0:oob"`, render the OOB template instead of issuing `http.Redirect`.
+- Estimated effort: ~1 template + ~10 lines of handler logic.
 
 ---
 
-## Stage 6 — API Handlers (First Client Connection)
+### 2. Configurable Token Expiry Policy
 
-**Package:** `api` (Mastodon REST handlers, router, middleware)
+**Origin:** IMPLEMENTATION 06, Open Question #1
 
-Build handlers in this order — each enables a meaningful client interaction:
+Mastodon's default behaviour is non-expiring access tokens — clients cache the token indefinitely and never refresh. Monstera follows this default. However, security-conscious operators may want tokens to expire after a configurable period (e.g. 90 days), forcing users to re-authenticate periodically.
 
-| Priority | Endpoints | Why |
-|----------|----------|-----|
-| 1 | `POST /api/v1/apps`, OAuth flow, `GET /api/v1/accounts/verify_credentials` | Client can authenticate |
-| 2 | `POST /api/v1/statuses`, `GET /api/v1/timelines/home` | Client can post and read |
-| 3 | `GET /api/v1/accounts/:id`, `POST /api/v1/accounts/:id/follow` | Client can browse profiles and follow |
-| 4 | `GET /api/v1/notifications` | Client shows follow/mention notifications |
-| 5 | `POST /api/v2/media`, `GET /api/v1/timelines/public` | Media uploads, public timeline |
-| 6 | Remaining CRUD endpoints | Full API surface |
+**Current state:** The schema (`oauth_access_tokens.expires_at`) and the token lookup code (`LookupToken`) already support expiry. The `expires_at` column is nullable; NULL means non-expiring. When set, the token is rejected after the timestamp passes and the cache entry uses the shorter of the standard cache TTL and the remaining token lifetime.
 
-### Milestone: First client connection
+**Why deferred:** Adding a configurable TTL is a policy decision with UX implications. Mastodon clients do not implement token refresh (there is no refresh_token grant in the Mastodon OAuth flow). If tokens expire, users are silently logged out and must re-authorize the app. This needs careful product thought: should it be a global setting, per-application, or per-role? Should there be a warning mechanism before expiry?
 
-After priorities 1–2 are implemented, connect a real Mastodon client and verify:
-- App registration succeeds.
-- OAuth login flow completes.
-- Posting a status works.
-- Home timeline displays the post.
-
-This is the most important validation milestone in the project. Client compatibility issues surface here — undocumented API behaviors, missing response fields, header quirks. Fix these before building more endpoints.
-
-**Validation:**
-- `httptest`-based handler tests for every endpoint.
-- Manual testing with **Tusky** (Android) — the most widely used mobile client, exercises core API well.
-- Manual testing with the **Mastodon web UI** — the reference frontend implementation. If it works here, most other clients will too.
+**Implementation when ready:**
+- Add an `instance_settings` key: `oauth_token_ttl_seconds` (NULL or 0 = non-expiring).
+- In `Server.issueToken`, read the setting and populate `expires_at` accordingly.
+- Add admin portal UI to configure the value.
+- Consider a "token expiring soon" notification mechanism (email or SSE event) so users aren't surprised by sudden logouts.
+- Estimated effort: ~50 lines of service logic + admin UI work.
 
 ---
 
-## Stage 7 — Federation
+### 3. Shared Inbox Delivery Optimization
 
-**Packages:** `activitypub/inbox.go`, `activitypub/outbox.go`, `activitypub/outbox_worker.go`, `nats/` (streams)
+**Origin:** IMPLEMENTATION 07, Open Question #1
 
-| Component | Key deliverables |
-|-----------|-----------------|
-| Outbox | On local status create → enqueue `Create{Note}` delivery to follower inboxes |
-| Inbox | Receive and process `Create`, `Delete`, `Follow`, `Undo`, `Accept`, `Reject`, `Announce`, `Like`, `Block`, `Update` |
-| Worker | Pull from NATS `FEDERATION` stream, deliver via HTTP POST with signatures, retry with backoff, DLQ after 5 attempts |
-| WebFinger + NodeInfo | Discovery endpoints |
+Phase 1 deduplicates outbound federation deliveries by raw `inbox_url`. This works well because most Mastodon instances use the same shared inbox URL for all accounts. However, Pleroma/Akkoma instances often use per-user inboxes, meaning Monstera sends N identical deliveries to the same server (one per follower) instead of a single delivery to the shared inbox.
 
-### Milestone: First federated interaction
+**Current state:** The `accounts` table does not have a `shared_inbox_url` column. The `GetFollowerInboxURLs` query returns `a.inbox_url` and deduplicates in application code.
 
-Stand up a local Mastodon instance (via its Docker Compose) alongside Monstera-fed. Verify:
-- Mastodon can discover a Monstera-fed user via WebFinger.
-- Following a Monstera-fed user from Mastodon sends a `Follow` activity that Monstera-fed accepts.
-- A Monstera-fed post appears in the Mastodon user's home timeline.
-- A Mastodon reply appears in Monstera-fed's inbox and creates a notification.
+**Why deferred:** The current approach is functionally correct — every remote server receives the activity. The inefficiency only manifests with instances that use per-user inboxes, which are a minority. The cost is wasted outbound HTTP requests, not missed deliveries.
 
-This is the second critical milestone. Federation bugs are the hardest to diagnose — invest time here.
-
-**Validation:**
-- Unit tests for each activity type handler with fixture JSON.
-- Integration test with a real Mastodon instance (Docker Compose).
-- Verify HTTP Signature verification against Mastodon's signatures.
+**Implementation when ready:**
+- Add migration: `ALTER TABLE accounts ADD COLUMN shared_inbox_url TEXT`.
+- Populate `shared_inbox_url` from the `endpoints.sharedInbox` field when ingesting remote Actor documents in `syncRemoteActor`.
+- Update `GetFollowerInboxURLs`: `SELECT DISTINCT COALESCE(a.shared_inbox_url, a.inbox_url) FROM accounts a INNER JOIN follows f ON ...`
+- Estimated effort: ~1 migration + ~20 lines across `inbox.go`, `outbox.go`, and `accounts.sql`.
 
 ---
 
-## Stage 8 — SSE Streaming
+### 4. Remote Media Lazy-Fetch
 
-**Packages:** `nats/streaming/` (publisher + hub)
+**Origin:** IMPLEMENTATION 07, Open Question #3
 
-| Component | Key deliverables |
-|-----------|-----------------|
-| Publisher | Publish `SSEEvent` to NATS `events.*` subjects on status/notification/delete |
-| Hub | Subscribe to NATS subjects on demand, fan out to connected SSE clients |
-| `GET /api/v1/streaming` | SSE endpoint with `stream` query parameter |
+Phase 1 stores `remote_url` on media attachments from incoming `Create{Note}` activities without fetching the media. Clients must proxy or link directly to the remote URL, which has privacy implications (the remote server sees the client's IP) and availability risks (the remote URL may go stale).
 
-**Validation:**
-- Connect a Mastodon client's streaming endpoint. Post a status from another account. Verify the status appears in real-time without a page refresh.
-- Test with two replicas (scale `monstera-fed` to 2 in Docker Compose) to verify cross-replica fan-out via NATS.
+**Current state:** `media_attachments.remote_url` is populated; `media_attachments.url` and `storage_key` point to the remote URL. No local copy is stored.
 
----
+**Why deferred:** Fetching remote media on ingest is I/O-intensive and increases the processing time for incoming activities. Mastodon fetches immediately, but Monstera's Phase 1 prioritizes correctness and simplicity over media fidelity.
 
-## Stage 9 — Admin Portal & Moderation
-
-**Packages:** `api/admin/` (handlers + templates), `service/moderation_service.go`
-
-Build in this order:
-1. Login/logout + session management
-2. Dashboard (stats)
-3. User management (browse, suspend, silence)
-4. Reports (list, view, resolve)
-5. Federation (known instances, domain blocks)
-6. Instance settings
-7. Invites + registration management
-8. Content (custom emoji, filters)
-
-**Validation:**
-- Browser testing of each admin page.
-- Verify HTMX partial updates work (actions like suspend/unsuspend swap the action buttons without full reload).
-- Verify RBAC: moderator cannot access admin-only pages.
+**Implementation when ready:**
+- Add a NATS `MEDIA_FETCH` stream with subject `media.fetch.>`.
+- When `InboxProcessor` stores a remote media reference, enqueue a `media.fetch.{attachmentID}` message.
+- A `MediaFetchWorker` (same pattern as `FederationWorker`) pulls messages, downloads the media, stores it via `MediaStore`, and updates `media_attachments.url` and `storage_key`.
+- Add a proxy endpoint (`GET /media/proxy/:id`) that triggers a synchronous fetch on cache miss as a fallback.
+- Estimated effort: ~1 new NATS stream + ~150 lines of worker code + ~50 lines of proxy handler.
 
 ---
 
-## Stage 10 — Deployment & Polish
+### 5. Async Inbox Processing
 
-| Task | Details |
-|------|---------|
-| Docker Compose | Full local dev environment (Monstera-fed, PostgreSQL, NATS, Redis, MinIO, Mailpit) |
-| Kubernetes manifests | Deployment, Service, ConfigMap, HPA, NATS Helm values |
-| Health endpoints | `/healthz/live`, `/healthz/ready` |
-| Prometheus metrics | Verify all counters/histograms emit under load |
-| CI pipeline | Lint → unit tests → integration tests (GitHub Actions) |
+**Origin:** IMPLEMENTATION 07, Open Question #2
 
-**Validation:**
-- Deploy to a real Kubernetes cluster (or `kind`/`k3d`).
-- Run two replicas. Verify stateless behavior: any replica can serve any request.
-- Federation works across a real network (not just localhost).
+Phase 1 processes incoming ActivityPub activities synchronously on the HTTP handler goroutine. Under high inbound traffic, this can slow inbox responses — particularly for `Create{Note}` activities that trigger remote account resolution (outbound HTTP fetch).
+
+**Current state:** `InboxHandler` calls `InboxProcessor.Process` synchronously and returns 202 after processing completes.
+
+**Why deferred:** Most instances will not experience meaningful latency from synchronous processing. The HTTP Signature verification (which is always synchronous) dominates request time. Moving to async processing adds complexity (error visibility, backpressure, ordering) without significant benefit at low-to-medium scale.
+
+**Implementation when ready:**
+- Option A: Bounded goroutine pool via `errgroup.SetLimit(50)`. The inbox handler submits work and returns 202 immediately. Simple but no durability — if the process crashes, in-flight activities are lost.
+- Option B: Enqueue to a NATS `INBOX_PROCESSING` stream. A dedicated worker pool consumes and processes. Durable and observable but adds latency for the initial enqueue and a new stream to manage.
+- Estimated effort: Option A ~30 lines; Option B ~100 lines + NATS stream config.
 
 ---
 
-## Summary: Validation Milestones
+### 6. NodeInfo Active User Counts
 
-| After | You can verify |
-|-------|---------------|
-| Stage 2 | Migrations apply and roll back cleanly; queries return correct results |
-| Stage 4 | OAuth flow works; HTTP signatures verify against known-good fixtures |
-| Stage 6 | A real Mastodon client can log in, post, and read timelines |
-| Stage 7 | A local Mastodon instance can follow and receive posts from Monstera-fed |
-| Stage 8 | Real-time updates appear in client without refresh |
-| Stage 9 | Admin can log in, view dashboard, and moderate users |
-| Stage 10 | Multi-replica Kubernetes deployment works end-to-end |
+**Origin:** IMPLEMENTATION 07, Open Question #6
+
+NodeInfo 2.0 supports optional `usage.users.activeMonth` and `usage.users.activeHalfyear` fields. Mastodon populates these; some aggregation sites (instances.social, fediverse.observer) use them to rank instances by activity.
+
+**Current state:** Monstera's NodeInfo response includes `usage.users.total` but not active user counts.
+
+**Why deferred:** The counts are purely informational and do not affect federation. Computing them requires either a query against the `statuses` table (scanning for accounts with recent posts) or tracking a `last_active_at` timestamp on the `users` table. Neither is complex, but the `last_active_at` approach requires updating a row on every authenticated API request, which adds write load.
+
+**Implementation when ready:**
+- Add `last_active_at TIMESTAMPTZ` column to the `users` table.
+- Update `last_active_at` on authenticated requests (debounced — at most once per 15 minutes per user, using the cache to track the last update time).
+- Add queries: `CountActiveUsersMonth` and `CountActiveUsersHalfYear`.
+- Populate the NodeInfo fields.
+- Estimated effort: ~1 migration + ~40 lines of middleware/query code.
+
+---
+
+### 7. Pinned Posts (Featured Collection)
+
+**Origin:** IMPLEMENTATION 07, Design Decisions table
+
+Phase 1 returns an empty `OrderedCollection` for the `featured` endpoint (`/users/{username}/collections/featured`). Mastodon clients and remote servers fetch this to display pinned posts on a user's profile.
+
+**Current state:** The Actor document advertises a `featured` URL. The endpoint returns `{"totalItems": 0, "orderedItems": []}`. No database support for pinning.
+
+**Why deferred:** Pinning requires a new join table (`account_pins` or a `pinned` boolean on `statuses`), REST API endpoints for pin/unpin, and updates to the featured collection handler. It's a self-contained feature with no impact on core federation.
+
+**Implementation when ready:**
+- Add `account_pins (account_id, status_id, created_at)` table with a unique constraint and a limit (e.g., max 5 pins per account).
+- Add REST endpoints: `POST /api/v1/statuses/:id/pin`, `POST /api/v1/statuses/:id/unpin`.
+- Update `FeaturedHandler` to query pinned statuses and return them as `Note` objects.
+- Estimated effort: ~1 migration + ~80 lines of handler/service code.
+
+---
+
+### 8. Outbox totalItems Accuracy
+
+**Origin:** IMPLEMENTATION 07, Open Question #7
+
+The AP outbox handler returns `totalItems` based on the first page query result count rather than a true count of all public statuses for the account.
+
+**Current state:** `totalItems` shows the number of statuses returned in the first page (up to 20), not the actual total.
+
+**Why deferred:** `totalItems` is informational. Remote servers use `next` page links to traverse the collection, not the count. No known Mastodon client or federation peer relies on `totalItems` being accurate.
+
+**Implementation when ready:**
+- Add `CountPublicAccountStatuses(ctx, accountID)` query using the existing `idx_statuses_account` index with an additional `visibility = 'public'` filter.
+- Call it in the outbox handler's collection-root response.
+- Estimated effort: ~1 query + ~5 lines of handler code.
+
+---
+
+### 9. Scheduled Statuses
+
+**Origin:** IMPLEMENTATION 08, Design Decisions table
+
+Mastodon's `POST /api/v1/statuses` accepts a `scheduled_at` parameter that defers publication to a future time. The client receives a `ScheduledStatus` object and can manage it via `/api/v1/scheduled_statuses`.
+
+**Current state:** Phase 1 rejects requests with `scheduled_at` (returns 422). Status creation is always immediate.
+
+**Why deferred:** Scheduled statuses require a persistent job scheduler — either a NATS JetStream delayed delivery, a `scheduled_statuses` table with a polling worker, or a separate cron-like subsystem. The REST endpoints for managing scheduled statuses (`GET`, `PUT`, `DELETE /api/v1/scheduled_statuses/:id`) also need to be implemented. The feature is self-contained and has no impact on core federation or timeline rendering.
+
+**Implementation when ready:**
+- Add `scheduled_statuses` table: `(id, account_id, params JSONB, scheduled_at TIMESTAMPTZ, created_at)`.
+- Add REST endpoints: `GET /api/v1/scheduled_statuses`, `GET/PUT/DELETE /api/v1/scheduled_statuses/:id`.
+- Add a worker goroutine (or NATS delayed message) that polls for statuses past their `scheduled_at` and publishes them through the normal status creation flow.
+- Remove the 422 rejection in `POST /api/v1/statuses` and route to the scheduled path when `scheduled_at` is present.
+- Estimated effort: ~1 migration + ~150 lines of handler/service/worker code.
+
+---
+
+### 10. Markdown Rendering in Status Content
+
+**Origin:** IMPLEMENTATION 08, Design Decisions table
+
+Phase 1 accepts plain text only for status content. Some Mastodon-compatible servers (Misskey, Calckey) and power users expect Markdown or basic formatting support in post composition.
+
+**Current state:** `content.Render` strips all HTML, auto-links URLs/@mentions/#hashtags, and wraps in `<p>` tags. No Markdown parsing.
+
+**Why deferred:** Markdown support requires integrating a Markdown parser (`github.com/yuin/goldmark`), defining which Markdown features are allowed (headers? tables? code blocks?), and ensuring the output is safe after rendering. The interaction between Markdown and @mention/#hashtag auto-linking needs careful handling (Markdown links should not be double-processed). This is a rendering-layer change with no schema or federation impact.
+
+**Implementation when ready:**
+- Add `goldmark` dependency with a restricted set of extensions (no raw HTML passthrough).
+- In `content.Render`, detect whether the input contains Markdown syntax and route to the Markdown pipeline.
+- Auto-linking of @mentions and #hashtags must run *before* Markdown rendering (or integrated as a goldmark extension) to avoid conflicts with Markdown link syntax.
+- Add an `instance_settings` key `status_format` (`plain`|`markdown`) to allow admins to enable/disable.
+- Estimated effort: ~100 lines of rendering code + goldmark config.
+
+---
+
+### 11. Status Editing via REST API
+
+**Origin:** IMPLEMENTATION 08, Design Decisions table
+
+Mastodon 4.0+ supports editing published statuses via `PUT /api/v1/statuses/:id`. The edit history is stored and visible to users.
+
+**Current state:** The database schema already supports editing — `status_edits` table exists (IMPLEMENTATION 02, migration 000006), `statuses.edited_at` column exists, and `UpdateStatus` / `CreateStatusEdit` queries are defined. The federation layer handles incoming `Update{Note}` activities (IMPLEMENTATION 07). What's missing is the REST API endpoint for local users to edit their own statuses.
+
+**Why deferred:** The REST endpoint itself is straightforward, but editing has complex side effects: re-rendering content (new mentions/hashtags may be added or removed), updating `status_mentions` and `status_hashtags`, federating an `Update{Note}` activity to all followers, and sending new mention notifications without duplicating existing ones. These side effects need careful design.
+
+**Implementation when ready:**
+- Add `PUT /api/v1/statuses/:id` handler: accepts same body as `POST /api/v1/statuses` (minus `in_reply_to_id`, `visibility`, `scheduled_at`).
+- Before updating: snapshot the current content into `status_edits`.
+- Re-run `content.Render` on the new text; diff mentions/hashtags to determine additions and removals.
+- Update `statuses` row (text, content, content_warning, sensitive, media_ids, edited_at).
+- Federate `Update{Note}`.
+- Add `GET /api/v1/statuses/:id/history` endpoint.
+- Estimated effort: ~200 lines of handler/service code.
+
+---
+
+### 12. Conversation Muting
+
+**Origin:** IMPLEMENTATION 08, Design Decisions table
+
+Mastodon allows users to mute individual conversations (threads) so they stop receiving notifications from replies. The `muted` field on Status responses indicates whether the authenticated user has muted that conversation.
+
+**Current state:** `muted` is hardcoded to `false` on all Status responses. No `conversation_mutes` table exists.
+
+**Why deferred:** Conversation muting requires a `conversation_mutes (account_id, conversation_id)` table, a concept of "conversation ID" (Mastodon uses the root status ID of a thread), and integration with the notification pipeline to suppress mention notifications for muted conversations. It's a self-contained feature.
+
+**Implementation when ready:**
+- Add `conversation_mutes (id, account_id, conversation_id TEXT, created_at)` table. `conversation_id` is the root status ID of the thread.
+- Add `POST /api/v1/statuses/:id/mute` and `/unmute` endpoints.
+- In the notification creation path, check `conversation_mutes` before creating `mention` notifications.
+- In the batch status API model, query `conversation_mutes` to set the `muted` field.
+- Estimated effort: ~1 migration + ~80 lines of handler/service code.
+
+---
+
+### 13. Link Preview Cards
+
+**Origin:** IMPLEMENTATION 08, Design Decisions table
+
+Mastodon generates Open Graph / oEmbed link preview cards for URLs in statuses. These appear as rich previews below the status content in clients.
+
+**Current state:** `card` is returned as `null` on all Status responses.
+
+**Why deferred:** Link preview generation requires fetching the target URL, parsing HTML for Open Graph meta tags (`og:title`, `og:description`, `og:image`), optionally fetching and storing the preview image, and caching the result. This is I/O-intensive and best handled as an async background job (NATS worker). The feature has no federation impact — cards are a client-facing enhancement.
+
+**Implementation when ready:**
+- Add `status_cards` table: `(status_id, url, title, description, image_url, type, provider_name, provider_url, blurhash, width, height)`.
+- After status creation, enqueue a `card.fetch.{statusID}` NATS message.
+- A `CardFetchWorker` fetches the first URL in the status, parses OG tags, stores the card, and pushes an SSE update event.
+- Add the card to the Status API model (query `status_cards` in the batch lookup).
+- Estimated effort: ~1 migration + ~200 lines of worker/parser code.
+
+---
+
+### 14. Profile Field Verification
+
+**Origin:** IMPLEMENTATION 08, Open Question #3
+
+Mastodon verifies profile metadata link fields by fetching the target URL and checking for a `rel="me"` backlink to the user's profile. Verified fields display a green checkmark in clients.
+
+**Current state:** The `accounts.fields` JSONB schema includes a `verified_at` field per entry, but it is always `null`. No verification logic exists.
+
+**Why deferred:** Verification requires outbound HTTP fetches to arbitrary URLs (privacy and performance considerations), HTML parsing for `rel="me"` links, and periodic re-verification (links may be removed). This is best implemented as a background job.
+
+**Implementation when ready:**
+- On `PATCH /api/v1/accounts/update_credentials` with `fields_attributes`, enqueue a verification job for each field that contains a URL.
+- The worker fetches the URL, checks for `<a rel="me" href="https://{INSTANCE_DOMAIN}/@{username}">`, and sets `verified_at` on match.
+- Re-verify periodically (e.g., weekly) to detect removed backlinks.
+- Estimated effort: ~80 lines of worker code.
+
+---
+
+### 15. WebSocket Streaming Transport
+
+**Origin:** IMPLEMENTATION 09, Open Question #2
+
+Mastodon's streaming server supports both SSE (`EventSource`) and WebSocket connections on the same streaming endpoint. Some clients prefer WebSocket for bidirectional framing and better mobile lifecycle management. The connection is upgraded via the standard `Upgrade: websocket` header.
+
+**Current state:** Phase 1 supports SSE only. All major Mastodon clients (Ivory, Tusky, Mona, Ice Cubes, Elk) support SSE as a primary or fallback transport.
+
+**Why deferred:** Adding WebSocket introduces a second transport with different framing (WebSocket messages vs. SSE `event:`/`data:` lines), connection lifecycle, and error handling. The Hub would need to abstract over both transport types. SSE covers the client ecosystem today.
+
+**Implementation when ready:**
+- Add `gorilla/websocket` (or `nhooyr.io/websocket`) dependency.
+- In `ServeSSE`, detect `Upgrade: websocket` header and branch to a WebSocket handler.
+- The WebSocket handler subscribes to the same Hub channel and writes JSON-framed messages instead of SSE frames.
+- Keepalive uses WebSocket ping/pong frames instead of SSE comment lines.
+- Estimated effort: ~150 lines of handler code + websocket dependency.
+
+---
+
+### 16. Multi-Stream SSE Subscriptions
+
+**Origin:** IMPLEMENTATION 09, Open Question #3
+
+Mastodon supports subscribing to multiple streams on a single SSE connection via the `?stream=` query parameter (e.g., `?stream=user&stream=public`) and the `?list=` parameter for list timelines. This reduces the number of open connections per client.
+
+**Current state:** Phase 1 requires one SSE connection per stream type. Clients open separate connections for `user`, `public`, and `hashtag` streams.
+
+**Why deferred:** Multi-stream subscriptions require the Hub to multiplex events from multiple stream keys onto a single channel, tagging each event with its source stream so the client can distinguish them. The SSE frame format also changes (Mastodon wraps multi-stream events in an additional JSON envelope). This adds complexity to both the Hub and the HTTP handler for a moderate connection-count reduction.
+
+**Implementation when ready:**
+- Parse `?stream=` as a list of stream keys.
+- Subscribe to each stream key via `hub.Subscribe` and merge the channels using a `select` loop or `reflect.Select` for dynamic channel count.
+- Tag each `SSEEvent` with a `stream` field in the SSE `data` payload (Mastodon's multi-stream format).
+- Estimated effort: ~80 lines of handler + Hub changes.
+
+---
+
+### 17. Hub-Side Mute/Block Filtering for Public Streams
+
+**Origin:** IMPLEMENTATION 09, Open Question #1
+
+Mastodon's streaming server filters out posts from muted and blocked accounts before delivering events to authenticated clients on the public and hashtag streams. This means a user watching the public timeline via SSE never sees posts from accounts they've blocked.
+
+**Current state:** The Hub performs pure fan-out — all subscribers to a stream key receive all events on that stream. No per-client filtering. Clients handle mute/block filtering locally using their cached block/mute lists.
+
+**Why deferred:** Per-client filtering requires the Hub to load each connected user's mute and block lists (from the cache or DB), check every incoming event against them, and keep the lists up-to-date when the user mutes/blocks someone during an active SSE session. This significantly increases Hub complexity and memory usage.
+
+**Implementation when ready:**
+- On `Subscribe` for authenticated clients: load the user's muted and blocked account ID sets into an in-memory filter attached to the subscriber.
+- In `fanOut`, before sending to each subscriber: check if the event's author is in the subscriber's block/mute set. Skip if blocked/muted.
+- When a block/mute is created or removed, publish a control event (e.g., `stream.control.{accountID}`) that the Hub uses to update the in-memory filter.
+- Estimated effort: ~120 lines of Hub logic + control event plumbing.
+
+---
+
+### 18. Two-Factor Authentication for Admin Portal
+
+**Origin:** IMPLEMENTATION 10, Design Decisions table
+
+Admin and moderator accounts are high-value targets. TOTP-based 2FA (RFC 6238) would add a second factor to the admin login flow, significantly reducing the risk of compromised passwords.
+
+**Current state:** Admin login is email + password only, protected by bcrypt (cost 12) and the `HttpOnly`/`SameSite=Strict` session cookie.
+
+**Why deferred:** 2FA requires a new `totp_secrets` table (or column on `users`), a TOTP library (`github.com/pquerna/otp`), a setup flow with QR code generation, recovery codes, and changes to the login handler to prompt for TOTP after password verification. The security posture is acceptable for initial launch given the session cookie protections, but 2FA should be prioritised for any instance with multiple moderators.
+
+**Implementation when ready:**
+- Add `totp_secret TEXT` and `totp_enabled BOOLEAN DEFAULT FALSE` columns to `users` (or a dedicated table).
+- Add admin portal pages: 2FA setup (QR code + verify), 2FA disable, recovery codes.
+- Modify `LoginHandler` POST flow: after password verification, if `totp_enabled`, render a TOTP input form. Verify the 6-digit code before issuing the session.
+- Generate 8 recovery codes at setup time, stored as bcrypt hashes.
+- Estimated effort: ~1 migration + ~200 lines of handler code + TOTP library + 2 templates.
+
+---
+
+### 19. Federation Report Forwarding (`Flag` AP Activity)
+
+**Origin:** IMPLEMENTATION 10, Design Decisions table; SPEC §16
+
+When a local user reports a remote account, the SPEC states that a copy of the report should be forwarded to the remote instance's moderators as an ActivityPub `Flag` activity. This enables cross-instance moderation cooperation.
+
+**Current state:** Reports against remote accounts are stored locally and appear in the admin portal, but no `Flag` activity is sent to the remote instance.
+
+**Why deferred:** The `Flag` activity type was not covered in IMPLEMENTATION 07's supported activity vocabulary. Implementing it requires: building the `Flag` activity JSON (actor = instance actor, object = reported account + status URIs), delivering it to the remote instance's inbox, and handling incoming `Flag` activities in the inbox processor. The incoming side also needs a way to display "forwarded reports" in the admin portal — a report where the reporter is a remote instance, not a local user.
+
+**Implementation when ready:**
+- Add `Flag` to the outbox publisher: `PublishFlag(ctx, report, targetAccount)`.
+- The `Flag` activity uses the instance actor (not the reporting user) as the `actor` to preserve reporter anonymity.
+- Add `Flag` handling to the inbox processor: create a local report with `account_id` set to the instance actor.
+- Add a "forwarded" badge to reports in the admin UI when the reporter is a remote instance.
+- Estimated effort: ~80 lines of outbox code + ~40 lines of inbox code + template changes.
+
+---
+
+### 20. Admin Email Notifications on New Reports
+
+**Origin:** IMPLEMENTATION 10, Design Decisions table
+
+Admins and moderators should optionally receive an email when a new report is filed, so they don't need to check the admin portal dashboard for pending reports.
+
+**Current state:** Reports appear in the admin portal queue; there is no push notification mechanism for moderators.
+
+**Why deferred:** This requires: a notification preference system (which moderators want email alerts?), a new email template, and logic in the report creation path to look up moderator emails and send notifications. The volume of reports on a new instance is low enough that periodic dashboard checks suffice.
+
+**Implementation when ready:**
+- Add an `instance_settings` key: `notify_moderators_on_report` (boolean, default false).
+- When a report is created, if the setting is enabled, query all users with `role IN ('admin', 'moderator')` and send a notification email with report summary.
+- Add a `report_notification.html/.txt` email template.
+- Consider a per-moderator opt-out preference column on `users` for larger moderation teams.
+- Estimated effort: ~1 email template + ~30 lines of service code + admin setting.
+
+---
+
+### 21. Moderator Access to Domain Block Management
+
+**Origin:** IMPLEMENTATION 10, Permission Matrix
+
+Phase 1 restricts domain block creation and removal to admin-only. In larger instances with dedicated moderation teams, moderators may need to create domain blocks without escalating to an admin.
+
+**Current state:** Domain block endpoints (`POST /admin/federation/domain-blocks`, `DELETE /admin/federation/domain-blocks/{domain}`) require `role = 'admin'`.
+
+**Why deferred:** Domain blocks have significant federation impact — a `suspend` severity severs all existing follows with the target domain. Restricting this to admins in Phase 1 is the safer default. The permission change is a one-line code modification when ready.
+
+**Implementation when ready:**
+- Remove the `requireAdmin` check from the domain block create/delete handlers.
+- Optionally: add a `moderator_can_manage_domain_blocks` instance setting for per-instance control.
+- Estimated effort: ~2 lines of handler code (or ~10 lines with the setting).
+
+---
+
+## Future phases
+
+### Phase 1 — Shipped (current baseline)
+
+Phase 1 delivered a working Mastodon-compatible instance that users can connect to with their preferred client. The following are implemented:
+
+| Feature | Notes |
+|---------|-------|
+| Account registration (approval + invite modes) | Core |
+| Email verification | Core |
+| OAuth 2.0 (Authorization Code + PKCE) | Core |
+| Profile CRUD | Core |
+| Status create / delete / boost / favourite | Core |
+| Home timeline | Core |
+| Local public timeline | Core |
+| Notifications | Core |
+| Follow / unfollow / block / mute | Core |
+| Media upload (local + S3) | Core |
+| ActivityPub inbox / outbox | Core |
+| Mastodon-compatible federation | Core |
+| Domain blocklist | Core |
+| SSE streaming (user + public) | Core |
+| Admin portal (users, reports, moderation, settings) | Core |
+| Content moderation (reports, suspend, silence, domain blocks) | Core |
+| WebFinger + NodeInfo | Core |
+| Prometheus metrics + health endpoints | Core |
+| Structured JSON logging | Core |
+| Docker Compose dev environment | Core |
+| Kubernetes manifests | Core |
+| Database migrations | Core |
+
+### Phase 2 — Richness
+
+| Feature | Notes |
+|---------|-------|
+| Full-text post search (PostgreSQL tsvector) | Medium effort |
+| Lists | Low effort |
+| Filters (client-side + server-side) | Low effort |
+| Polls | Medium effort |
+| Bookmarks | Low effort |
+| Custom emoji upload + management | Low effort |
+| Mastodon Admin API (`/api/v1/admin/...`) | Enables admin client apps |
+| Followed hashtags | Low effort |
+| Push notification subscriptions (Web Push) | Medium effort |
+| Trending tags / posts | Medium effort |
+| Announcements | Low effort |
+| Account migration (Move activity) | High effort |
+| Relay support | Medium effort |
+
+**Phase 2 API (post-launch):**
+- Full-text post search (tsvector)
+- Lists (`/api/v1/lists`)
+- Filters (`/api/v1/filters`)
+- Polls (`/api/v1/polls`)
+- Bookmarks (`/api/v1/bookmarks`)
+- Favourites collection (`/api/v1/favourites`)
+- Followed hashtags (`/api/v1/followed_tags`)
+- Announcements (`/api/v1/announcements`)
+- Mastodon Admin API (`/api/v1/admin/...`)
+- Push notification subscriptions (`/api/v1/push/subscription`)
+
+### Phase 3 — Scale & operations
+
+| Feature | Notes |
+|---------|-------|
+| Read replica routing | Needed at ~10k+ users |
+| pgBouncer connection pooling | Needed with many pods |
+| Media processing pipeline (thumbnails, video transcoding) | Background worker |
+| CDN integration for media | Performance |
+| Elasticsearch / Typesense integration (optional full-text) | Alternative to pg FTS at scale |
+| Rate limiting as middleware option | For deployments without gateway |
+| Multi-language admin UI | i18n |

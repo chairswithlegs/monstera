@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera-fed/internal/events/sse"
-	"github.com/chairswithlegs/monstera-fed/internal/observability"
+	"github.com/chairswithlegs/monstera/internal/events/sse"
+	"github.com/chairswithlegs/monstera/internal/observability"
 )
 
 func TestStreamingHandler_GETHealth(t *testing.T) {

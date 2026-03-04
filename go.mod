@@ -1,4 +1,4 @@
-module github.com/chairswithlegs/monstera-fed
+module github.com/chairswithlegs/monstera
 
 go 1.26
 

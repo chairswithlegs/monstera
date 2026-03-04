@@ -1,7 +1,6 @@
-# Monstera-fed — Technology Stack
+# Monstera — Technology Stack
 
-> High-level overview of the technologies and libraries used in the Monstera-fed project.
-> For full design rationale, see [spec.md](spec.md) and the documents in [architecture/](architecture/).
+High-level overview of the technologies and libraries used in the Monstera project.
 
 ---
 
@@ -9,7 +8,7 @@
 
 | | |
 |---|---|
-| **Go 1.26+** | Primary language. Compiles to a single static binary with no runtime dependencies. |
+| **Go 1.26+** | Primary language for the API server. Compiles to a single static binary with no runtime dependencies. |
 
 ---
 
@@ -17,15 +16,14 @@
 
 | Component | Technology | Role |
 |-----------|-----------|------|
-| Database | **PostgreSQL 16+** | Primary data store. Relational schema for the social graph, JSONB columns for raw ActivityPub payloads, full-text search via `tsvector`/`tsquery` (Phase 2). |
+| Database | **PostgreSQL 16+** | Primary data store. Relational schema for the social graph, JSONB columns for raw ActivityPub payloads. |
 | Message Broker | **NATS JetStream** | Durable federation delivery queues (at-least-once) and ephemeral core pub/sub for SSE fan-out across replicas. |
-| Cache | **Redis / Valkey** (prod) or **in-memory** (dev) | Timeline caching, idempotency keys, HTTP signature replay prevention, admin session storage. |
-| Object Storage | **S3-compatible** (prod) or **local filesystem** (dev) | Media attachment storage (images, video, audio). |
-| Reverse Proxy | **NGINX / Envoy** (Kubernetes Ingress) | TLS termination, rate limiting, load balancing. |
+| Cache | **In-memory (ristretto)** | Timeline caching, idempotency keys, HTTP signature replay prevention, token lookup cache. |
+| Object Storage | **S3-compatible** or **local filesystem** | Media attachment storage (images, video, audio). |
 
 ---
 
-## Go Libraries
+## Go Libraries (backend)
 
 ### Core
 
@@ -33,17 +31,17 @@
 |---------|------------|---------|
 | chi | `github.com/go-chi/chi/v5` | HTTP router and middleware stack |
 | pgx | `github.com/jackc/pgx/v5` | PostgreSQL driver (connection pooling via `pgxpool`) |
-| sqlc | `github.com/sqlc-dev/sqlc` (code generator) | Type-safe Go code generation from SQL queries |
-| golang-migrate | `github.com/golang-migrate/migrate/v4` | SQL-first database migration runner |
+| sqlc | (code generator) | Type-safe Go code generation from SQL; generated code lives in `internal/store/postgres/generated/` |
+| golang-migrate | `github.com/golang-migrate/migrate/v4` | SQL-first database migration runner; migrations in `internal/store/migrations/` |
 | NATS client | `github.com/nats-io/nats.go` | NATS connection management, core pub/sub, JetStream API |
 | ULID | `github.com/oklog/ulid/v2` | Time-sortable, lexicographically ordered unique IDs |
+| Cobra | `github.com/spf13/cobra` | CLI subcommands (serve, migrate) |
 
 ### Caching
 
 | Library | Import Path | Purpose |
 |---------|------------|---------|
-| ristretto | `github.com/dgraph-io/ristretto/v2` | In-memory cache with cost-based eviction (single-node / dev) |
-| go-redis | `github.com/redis/go-redis/v9` | Redis / Valkey client (multi-replica prod) |
+| ristretto | `github.com/dgraph-io/ristretto/v2` | In-memory cache with cost-based eviction |
 | singleflight | `golang.org/x/sync/singleflight` | Request deduplication to prevent cache stampedes |
 
 ### Media & Content
@@ -51,9 +49,7 @@
 | Library | Import Path | Purpose |
 |---------|------------|---------|
 | AWS SDK v2 | `github.com/aws/aws-sdk-go-v2/service/s3` | S3-compatible object storage client |
-| go-blurhash | `github.com/buckket/go-blurhash` | BlurHash placeholder generation for images |
-| go-nanoid | `github.com/jaevor/go-nanoid` | Short, URL-safe IDs for storage keys |
-| webp decoder | `golang.org/x/image/webp` | WebP image format support |
+| go-nanoid | `github.com/jaevor/go-nanoid` | Short, URL-safe IDs for media storage keys |
 | bluemonday | `github.com/microcosm-cc/bluemonday` | HTML sanitization for rendered content |
 | xurls | `mvdan.cc/xurls/v2` | URL detection in plain-text status content |
 
@@ -78,44 +74,29 @@
 
 ---
 
-## Admin Portal
+## UI
+
+The UI is implemented as a **separate Next.js application** in the `ui/` directory. It talks to the Go API via the Monstera REST API using Bearer token authentication.
 
 | Technology | Role |
 |-----------|------|
-| **Go `html/template`** | Server-side page rendering |
-| **HTMX 2.x** | Partial-page updates without client-side JS framework |
-| **Pico.css 2.x** | Classless CSS framework for clean default styling |
-
-All admin assets are vendored and embedded into the Go binary via `go:embed` — no Node.js build step.
-
----
-
-## Deployment
-
-| Component | Technology |
-|-----------|-----------|
-| Container image | Multi-stage Dockerfile → `gcr.io/distroless/static:nonroot` |
-| Orchestration | **Kubernetes** (Deployment, HPA, ConfigMap) |
-| Local development | **Docker Compose** (Go server, PostgreSQL, NATS, optional Redis/MinIO) |
-| NATS deployment | [NATS Helm chart](https://github.com/nats-io/k8s) |
+| **Next.js 16** | React framework (App Router) |
+| **React 19** | UI components |
+| **TypeScript** | Typed JavaScript |
+| **Tailwind CSS 4** | Utility-first styling |
+| **shadcn (Radix UI)** | Accessible component primitives |
+| **Lucide React** | Icons |
 
 ---
 
 ## Testing & Linting
 
-| Tool | Version | Purpose |
-|------|---------|---------|
-| testify | `github.com/stretchr/testify` v1.10.0 | Assertions (`assert`, `require`), mocking |
-| golangci-lint | v2.9.0+ (external binary) | Linter aggregator — runs `staticcheck`, `gosec`, `errcheck`, `testifylint`, and others |
-| gofumpt | via golangci-lint formatters | Strict `gofmt` superset for consistent formatting |
+| Tool | Purpose |
+|------|---------|
+| testify | Assertions (`assert`, `require`), mocking |
+| golangci-lint | Linter aggregator — runs `staticcheck`, `gosec`, `errcheck`, `testifylint`, and others |
+| gofumpt | via golangci-lint formatters — strict `gofmt` superset |
 
 See `.cursor/rules/testing.mdc` for test conventions; `.cursor/rules/lint-and-test.mdc` for lint/test commands and CI.
 
 ---
-
-## Phase 2 Additions (Planned)
-
-| Library | Import Path | Purpose |
-|---------|------------|---------|
-| goldmark | `github.com/yuin/goldmark` | Markdown → HTML rendering for status content |
-| otp | `github.com/pquerna/otp` | TOTP-based two-factor authentication |

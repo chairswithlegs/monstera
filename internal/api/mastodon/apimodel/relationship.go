@@ -1,7 +1,7 @@
 package apimodel
 
 import (
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/domain"
 )
 
 // Relationship is the Mastodon API relationship response shape.

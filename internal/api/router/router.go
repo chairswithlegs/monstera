@@ -7,15 +7,15 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
-	"github.com/chairswithlegs/monstera-fed/internal/api"
-	"github.com/chairswithlegs/monstera-fed/internal/api/activitypub"
-	"github.com/chairswithlegs/monstera-fed/internal/api/mastodon"
-	"github.com/chairswithlegs/monstera-fed/internal/api/middleware"
-	"github.com/chairswithlegs/monstera-fed/internal/api/monstera"
-	oauthhandlers "github.com/chairswithlegs/monstera-fed/internal/api/oauth"
-	oauthpkg "github.com/chairswithlegs/monstera-fed/internal/oauth"
-	"github.com/chairswithlegs/monstera-fed/internal/observability"
-	"github.com/chairswithlegs/monstera-fed/internal/service"
+	"github.com/chairswithlegs/monstera/internal/api"
+	"github.com/chairswithlegs/monstera/internal/api/activitypub"
+	"github.com/chairswithlegs/monstera/internal/api/mastodon"
+	"github.com/chairswithlegs/monstera/internal/api/middleware"
+	"github.com/chairswithlegs/monstera/internal/api/monstera"
+	oauthhandlers "github.com/chairswithlegs/monstera/internal/api/oauth"
+	oauthpkg "github.com/chairswithlegs/monstera/internal/oauth"
+	"github.com/chairswithlegs/monstera/internal/observability"
+	"github.com/chairswithlegs/monstera/internal/service"
 )
 
 // Deps holds dependencies required to build the HTTP router.

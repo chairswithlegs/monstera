@@ -13,9 +13,9 @@ Use this skill when reviewing the architecture of the application. Take a holist
 2. **Subsystem focus** — Each area (store, cache, media, email, activitypub, nats, oauth, api) has a clear responsibility and minimal surface.
 3. **Loose coupling** — Subsystems interact via interfaces and domain types; no layer below `internal/api` depends on HTTP or API types.
 4. **Maintainability and readability** — Consistent patterns, clear naming, appropriate error handling and logging.
-5. **Conventions** — Project rules (`.cursor/rules/`) and docs (`docs/spec.md`, `docs/architecture/`) are respected.
+5. **Conventions** — Project rules (`.cursor/rules/`) and docs (`docs/roadmap.md`, `docs/tech_stack.md`, `docs/architecture/`) are respected.
 
-## Project-specific rules (Monstera-fed)
+## Project-specific rules (Monstera)
 
 - **internal/domain** — Zero internal imports. Pure types and sentinel errors only.
 - **internal/service** — Never imports `internal/api`. Depends only on domain and infra interfaces (store, cache, media, email, etc.).
@@ -49,8 +49,8 @@ Use this skill when reviewing the architecture of the application. Take a holist
 ### Documentation and consistency
 
 - [ ] Architecture decisions and non-obvious choices are reflected in `docs/architecture/` or ADRs where appropriate.
-- [ ] NATS streams and subjects follow `docs/nats_conventions.md`.
-- [ ] New behavior matches patterns described in `docs/spec.md` and implementation order.
+- [ ] NATS usage (streams, subjects) follows patterns in `docs/architecture/02-sse.md` and `docs/architecture/03-activitypub-implementation.md`.
+- [ ] New behavior aligns with `docs/roadmap.md` and the architecture docs in `docs/architecture/`.
 
 ## How to apply
 
@@ -62,5 +62,5 @@ Use this skill when reviewing the architecture of the application. Take a holist
 
 ## Reference
 
-- **Architecture docs** — `docs/architecture/01-project-foundation.md` through `10-admin-portal-and-moderation.md` describe intended design per subsystem.
-- **Spec and order** — `docs/spec.md`, `docs/roadmap.md`, `docs/nats_conventions.md`.
+- **Architecture docs** — `docs/architecture/01-high-level-system-architecture.md` through `06-ui-server-integration.md` describe the system and subsystems.
+- **Roadmap and stack** — `docs/roadmap.md` (open questions, deferred features, phases), `docs/tech_stack.md` (technologies in use).

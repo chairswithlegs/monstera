@@ -7,8 +7,8 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "monstera-fed",
-	Short: "Monstera-fed — Mastodon-compatible ActivityPub server",
+	Use:   "monstera",
+	Short: "Monstera — Mastodon-compatible ActivityPub server",
 }
 
 func Execute() error {

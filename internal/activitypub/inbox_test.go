@@ -9,12 +9,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera-fed/internal/cache"
-	"github.com/chairswithlegs/monstera-fed/internal/config"
-	"github.com/chairswithlegs/monstera-fed/internal/events"
-	"github.com/chairswithlegs/monstera-fed/internal/media"
-	"github.com/chairswithlegs/monstera-fed/internal/service"
-	"github.com/chairswithlegs/monstera-fed/internal/testutil"
+	"github.com/chairswithlegs/monstera/internal/cache"
+	"github.com/chairswithlegs/monstera/internal/config"
+	"github.com/chairswithlegs/monstera/internal/events"
+	"github.com/chairswithlegs/monstera/internal/media"
+	"github.com/chairswithlegs/monstera/internal/service"
+	"github.com/chairswithlegs/monstera/internal/testutil"
 )
 
 func TestInboxProcessor_Process_unsupportedType(t *testing.T) {

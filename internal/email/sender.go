@@ -17,7 +17,7 @@ type Message struct {
 	From    string // optional: overrides Config.From when non-empty
 }
 
-// Sender is the email delivery abstraction used throughout Monstera-fed.
+// Sender is the email delivery abstraction used throughout Monstera.
 // Implementations must be safe for concurrent use by multiple goroutines.
 type Sender interface {
 	Send(ctx context.Context, msg Message) error

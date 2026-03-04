@@ -3,7 +3,7 @@ package mastodon
 import (
 	"net/http"
 
-	"github.com/chairswithlegs/monstera-fed/internal/api"
+	"github.com/chairswithlegs/monstera/internal/api"
 )
 
 // InstanceConfig is the configuration sub-object in the instance response.
@@ -66,7 +66,7 @@ func (h *InstanceHandler) GETInstance(w http.ResponseWriter, r *http.Request) {
 	resp := InstanceResponse{
 		Domain:      h.instanceDomain,
 		Title:       h.instanceName,
-		Version:     "0.1.0 (compatible; Monstera-fed)",
+		Version:     "0.1.0 (compatible; Monstera)",
 		SourceURL:   "",
 		Description: "",
 		Languages:   []string{"en"},

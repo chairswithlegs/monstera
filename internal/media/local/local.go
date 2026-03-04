@@ -18,7 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/chairswithlegs/monstera-fed/internal/media"
+	"github.com/chairswithlegs/monstera/internal/media"
 )
 
 // Store is the local filesystem MediaStore implementation.

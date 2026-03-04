@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/domain"
 )
 
 // Store is the persistence abstraction. All methods use domain types so that

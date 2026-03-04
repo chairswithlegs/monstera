@@ -32,8 +32,7 @@ type Config struct {
 	NATSUrl       string
 	NATSCredsFile string
 
-	CacheDriver   string
-	CacheRedisURL string
+	CacheDriver string
 
 	MediaDriver     string
 	MediaLocalPath  string
@@ -69,7 +68,7 @@ func Load() (*Config, error) {
 		AppPort:        envInt("APP_PORT", 8080),
 		InstanceDomain: envStringRequired("INSTANCE_DOMAIN", &errs),
 		UIDomain:       envString("UI_DOMAIN", ""),
-		InstanceName:   envString("INSTANCE_NAME", "Monstera-fed"),
+		InstanceName:   envString("INSTANCE_NAME", "Monstera"),
 		LogLevel:       envString("LOG_LEVEL", "info"),
 
 		DatabaseURL:          envStringRequired("DATABASE_URL", &errs),
@@ -79,8 +78,7 @@ func Load() (*Config, error) {
 		NATSUrl:       envStringRequired("NATS_URL", &errs),
 		NATSCredsFile: envString("NATS_CREDS_FILE", ""),
 
-		CacheDriver:   envString("CACHE_DRIVER", "memory"),
-		CacheRedisURL: envString("CACHE_REDIS_URL", ""),
+		CacheDriver: envString("CACHE_DRIVER", "memory"),
 
 		MediaDriver:     envString("MEDIA_DRIVER", "local"),
 		MediaLocalPath:  envString("MEDIA_LOCAL_PATH", ""),
@@ -92,7 +90,7 @@ func Load() (*Config, error) {
 
 		EmailDriver:       envString("EMAIL_DRIVER", "noop"),
 		EmailFrom:         envStringRequired("EMAIL_FROM", &errs),
-		EmailFromName:     envString("EMAIL_FROM_NAME", "Monstera-fed"),
+		EmailFromName:     envString("EMAIL_FROM_NAME", "Monstera"),
 		EmailSMTPHost:     envString("EMAIL_SMTP_HOST", ""),
 		EmailSMTPPort:     envInt("EMAIL_SMTP_PORT", 587),
 		EmailSMTPUsername: envString("EMAIL_SMTP_USERNAME", ""),
@@ -137,10 +135,6 @@ func (c *Config) Validate() error {
 	case "debug", "info", "warn", "error":
 	default:
 		errs = append(errs, "LOG_LEVEL must be debug, info, warn, or error")
-	}
-
-	if c.CacheDriver == "redis" && c.CacheRedisURL == "" {
-		errs = append(errs, "CACHE_REDIS_URL is required when CACHE_DRIVER=redis")
 	}
 
 	if c.MediaDriver == "local" && c.MediaLocalPath == "" {

@@ -35,7 +35,7 @@ func TestMetricsMiddleware_incrementsCounter(t *testing.T) {
 	require.NoError(t, err)
 	var found bool
 	for _, mf := range metrics {
-		if mf.GetName() == "monstera_fed_http_requests_total" {
+		if mf.GetName() == "monstera_http_requests_total" {
 			found = true
 			break
 		}

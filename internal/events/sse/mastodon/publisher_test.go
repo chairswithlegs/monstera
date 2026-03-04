@@ -10,12 +10,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera-fed/internal/activitypub"
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/events"
-	"github.com/chairswithlegs/monstera-fed/internal/events/sse"
-	"github.com/chairswithlegs/monstera-fed/internal/observability"
-	"github.com/chairswithlegs/monstera-fed/internal/testutil"
+	"github.com/chairswithlegs/monstera/internal/activitypub"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/events"
+	"github.com/chairswithlegs/monstera/internal/events/sse"
+	"github.com/chairswithlegs/monstera/internal/observability"
+	"github.com/chairswithlegs/monstera/internal/testutil"
 )
 
 func TestNoopEventBus_ImplementsEventBus(t *testing.T) {

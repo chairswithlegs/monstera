@@ -76,16 +76,6 @@ func TestValidate_logLevel(t *testing.T) {
 	assert.Contains(t, err.Error(), "LOG_LEVEL")
 }
 
-func TestValidate_cacheRedisRequired(t *testing.T) {
-	setRequiredEnvs(t)
-	setEnv(t, "CACHE_DRIVER", "redis")
-	setEnv(t, "CACHE_REDIS_URL", "")
-
-	_, err := Load()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "CACHE_REDIS_URL")
-}
-
 func TestValidate_mediaLocalPathRequired(t *testing.T) {
 	setRequiredEnvs(t)
 	setEnv(t, "MEDIA_DRIVER", "local")
@@ -145,8 +135,8 @@ func TestDeriveKey_deterministic(t *testing.T) {
 	cfg, err := Load()
 	require.NoError(t, err)
 
-	key1 := cfg.DeriveKey("monstera-fed-csrf", 32)
-	key2 := cfg.DeriveKey("monstera-fed-csrf", 32)
+	key1 := cfg.DeriveKey("monstera-csrf", 32)
+	key2 := cfg.DeriveKey("monstera-csrf", 32)
 	assert.Equal(t, key1, key2)
 	assert.Len(t, key1, 32)
 }
@@ -156,7 +146,7 @@ func TestDeriveKey_differentPurposeDifferentOutput(t *testing.T) {
 	cfg, err := Load()
 	require.NoError(t, err)
 
-	key1 := cfg.DeriveKey("monstera-fed-csrf", 32)
-	key2 := cfg.DeriveKey("monstera-fed-email-token", 32)
+	key1 := cfg.DeriveKey("monstera-csrf", 32)
+	key2 := cfg.DeriveKey("monstera-email-token", 32)
 	assert.NotEqual(t, key1, key2)
 }

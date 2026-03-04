@@ -15,9 +15,9 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/chairswithlegs/monstera-fed/internal/config"
-	natsutil "github.com/chairswithlegs/monstera-fed/internal/nats"
-	"github.com/chairswithlegs/monstera-fed/internal/observability"
+	"github.com/chairswithlegs/monstera/internal/config"
+	natsutil "github.com/chairswithlegs/monstera/internal/nats"
+	"github.com/chairswithlegs/monstera/internal/observability"
 )
 
 const outboxUserAgent = "Monstera/1.0"

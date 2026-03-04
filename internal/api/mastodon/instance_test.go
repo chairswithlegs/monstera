@@ -23,7 +23,7 @@ func TestInstanceHandler_GetInstance(t *testing.T) {
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
 	assert.Equal(t, "example.com", body.Domain)
 	assert.Equal(t, "Example Instance", body.Title)
-	assert.Equal(t, "0.1.0 (compatible; Monstera-fed)", body.Version)
+	assert.Equal(t, "0.1.0 (compatible; Monstera)", body.Version)
 	assert.Equal(t, 500, body.Configuration.Statuses.MaxCharacters)
 	assert.Equal(t, 4, body.Configuration.Statuses.MaxMediaAttachments)
 	assert.Equal(t, []string{"image/jpeg", "image/png"}, body.Configuration.MediaAttachments.SupportedMimeTypes)

@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Media Storage Layer
 
-Design doc: `docs/architecture/04-media-storage-abstraction.md`
+Design doc: `docs/architecture/01-high-level-system-architecture.md` (media store as component)
 
 ## Conventions
 

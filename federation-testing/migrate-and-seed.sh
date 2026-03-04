@@ -6,7 +6,7 @@ cd "$ROOT"
 
 echo "Instance A (monstera.local): migrate..."
 DATABASE_URL="postgres://monstera:monstera@localhost:5433/monstera_fed?sslmode=disable" \
-  ./bin/monstera-fed migrate up
+  ./bin/monstera migrate up
 
 echo "Instance A (monstera.local): seed..."
 INSTANCE_DOMAIN=monstera.local \
@@ -20,7 +20,7 @@ INSTANCE_DOMAIN=monstera.local \
 
 echo "Instance B (monstera2.local): migrate..."
 DATABASE_URL="postgres://monstera:monstera@localhost:5434/monstera_fed?sslmode=disable" \
-  ./bin/monstera-fed migrate up
+  ./bin/monstera migrate up
 
 echo "Instance B (monstera2.local): seed..."
 INSTANCE_DOMAIN=monstera2.local \

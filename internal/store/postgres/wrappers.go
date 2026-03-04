@@ -3,7 +3,7 @@ package postgres
 import (
 	"context"
 
-	db "github.com/chairswithlegs/monstera-fed/internal/store/postgres/generated"
+	db "github.com/chairswithlegs/monstera/internal/store/postgres/generated"
 )
 
 // Wrapper methods translate pgx/pgconn errors to domain errors (ErrNotFound, ErrConflict).

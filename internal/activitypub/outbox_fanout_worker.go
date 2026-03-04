@@ -10,10 +10,10 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/chairswithlegs/monstera-fed/internal/config"
-	natsutil "github.com/chairswithlegs/monstera-fed/internal/nats"
-	"github.com/chairswithlegs/monstera-fed/internal/observability"
-	"github.com/chairswithlegs/monstera-fed/internal/store"
+	"github.com/chairswithlegs/monstera/internal/config"
+	natsutil "github.com/chairswithlegs/monstera/internal/nats"
+	"github.com/chairswithlegs/monstera/internal/observability"
+	"github.com/chairswithlegs/monstera/internal/store"
 )
 
 // jsDLQPublisher adapts jetstream.JetStream to the outboxFanoutDLQPublisher interface.

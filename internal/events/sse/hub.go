@@ -8,7 +8,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/chairswithlegs/monstera-fed/internal/observability"
+	"github.com/chairswithlegs/monstera/internal/observability"
 )
 
 const (

@@ -2,7 +2,7 @@
 -- (INSERT … ON CONFLICT is idempotent; no transaction needed.)
 
 INSERT INTO instance_settings (key, value) VALUES
-    ('instance_name',        'Monstera-fed'),
+    ('instance_name',        'Monstera'),
     ('instance_description', 'A Mastodon-compatible ActivityPub server'),
     ('registration_mode',    'approval'),
     ('contact_email',        ''),

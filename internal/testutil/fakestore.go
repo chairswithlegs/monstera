@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	"github.com/chairswithlegs/monstera-fed/internal/store"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/store"
 )
 
 // FakeStore implements store.Store for unit tests using in-memory domain types.

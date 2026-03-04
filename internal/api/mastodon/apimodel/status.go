@@ -3,7 +3,7 @@ package apimodel
 import (
 	"time"
 
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/domain"
 )
 
 // ToStatus converts a domain status to the Mastodon API status shape.

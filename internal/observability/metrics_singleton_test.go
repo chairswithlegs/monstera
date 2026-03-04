@@ -29,7 +29,7 @@ func TestIncNATSPublish_incrementsWhenSet(t *testing.T) {
 	require.NoError(t, err)
 	var okCount, errCount float64
 	for _, mf := range metrics {
-		if mf.GetName() != "monstera_fed_nats_publish_total" {
+		if mf.GetName() != "monstera_nats_publish_total" {
 			continue
 		}
 		for _, m := range mf.GetMetric() {

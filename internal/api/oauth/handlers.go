@@ -8,11 +8,11 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/chairswithlegs/monstera-fed/internal/api"
-	"github.com/chairswithlegs/monstera-fed/internal/config"
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	oauthpkg "github.com/chairswithlegs/monstera-fed/internal/oauth"
-	"github.com/chairswithlegs/monstera-fed/internal/store"
+	"github.com/chairswithlegs/monstera/internal/api"
+	"github.com/chairswithlegs/monstera/internal/config"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	oauthpkg "github.com/chairswithlegs/monstera/internal/oauth"
+	"github.com/chairswithlegs/monstera/internal/store"
 	"golang.org/x/crypto/bcrypt"
 )
 

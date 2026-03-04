@@ -7,11 +7,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/chairswithlegs/monstera-fed/internal/api"
-	"github.com/chairswithlegs/monstera-fed/internal/domain"
-	oauthpkg "github.com/chairswithlegs/monstera-fed/internal/oauth"
-	"github.com/chairswithlegs/monstera-fed/internal/observability"
-	"github.com/chairswithlegs/monstera-fed/internal/service"
+	"github.com/chairswithlegs/monstera/internal/api"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	oauthpkg "github.com/chairswithlegs/monstera/internal/oauth"
+	"github.com/chairswithlegs/monstera/internal/observability"
+	"github.com/chairswithlegs/monstera/internal/service"
 )
 
 type contextKey int
