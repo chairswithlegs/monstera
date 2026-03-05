@@ -29,9 +29,6 @@ linters:
     - wrapcheck
 
   settings:
-    errname:
-      rules:
-        - glob: "Err*"
     exhaustive:
       default-signifies-exhaustive: true
     gocritic:
