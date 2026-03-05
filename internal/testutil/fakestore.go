@@ -777,15 +777,35 @@ func (f *FakeStore) CountFollowing(ctx context.Context, accountID string) (int64
 	return 0, nil
 }
 func (f *FakeStore) IncrementFollowersCount(ctx context.Context, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if a, ok := f.accountsByID[accountID]; ok {
+		a.FollowersCount++
+	}
 	return nil
 }
 func (f *FakeStore) DecrementFollowersCount(ctx context.Context, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if a, ok := f.accountsByID[accountID]; ok && a.FollowersCount > 0 {
+		a.FollowersCount--
+	}
 	return nil
 }
 func (f *FakeStore) IncrementFollowingCount(ctx context.Context, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if a, ok := f.accountsByID[accountID]; ok {
+		a.FollowingCount++
+	}
 	return nil
 }
 func (f *FakeStore) DecrementFollowingCount(ctx context.Context, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if a, ok := f.accountsByID[accountID]; ok && a.FollowingCount > 0 {
+		a.FollowingCount--
+	}
 	return nil
 }
 
@@ -827,6 +847,16 @@ func (f *FakeStore) GetFollow(ctx context.Context, accountID, targetID string) (
 	}
 	return follow, nil
 }
+func (f *FakeStore) GetFollowByID(ctx context.Context, id string) (*domain.Follow, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, follow := range f.followsByKey {
+		if follow.ID == id {
+			return follow, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
 func (f *FakeStore) GetFollowByAPID(ctx context.Context, apID string) (*domain.Follow, error) {
 	return nil, domain.ErrNotFound
 }
@@ -845,7 +875,15 @@ func (f *FakeStore) CreateFollow(ctx context.Context, in store.CreateFollowInput
 	return follow, nil
 }
 func (f *FakeStore) AcceptFollow(ctx context.Context, followID string) error {
-	return nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, follow := range f.followsByKey {
+		if follow.ID == followID {
+			follow.State = domain.FollowStateAccepted
+			return nil
+		}
+	}
+	return domain.ErrNotFound
 }
 func (f *FakeStore) DeleteFollow(ctx context.Context, accountID, targetID string) error {
 	f.mu.Lock()

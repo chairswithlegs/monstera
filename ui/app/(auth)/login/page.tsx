@@ -1,10 +1,9 @@
 'use client';
-import { Suspense, useState } from 'react';
+import { Suspense } from 'react';
 import Link from 'next/link';
 import { useLogin } from '@/hooks/useLogin';
-import { Input } from '@/components/ui/input';
+import { CredentialsForm } from '@/components/credentials-form';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Card,
@@ -61,54 +60,5 @@ export default function LoginPage() {
     }>
       <LoginContent />
     </Suspense>
-  );
-}
-
-function CredentialsForm({
-  onSubmit,
-  loading,
-}: {
-  onSubmit: (username: string, password: string) => Promise<void>;
-  loading: boolean;
-}) {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSubmit(username, password);
-      }}
-      className="flex flex-col gap-4"
-    >
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="username">Username</Label>
-        <Input
-          id="username"
-          type="text"
-          autoComplete="username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          disabled={loading}
-          required
-        />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="password">Password</Label>
-        <Input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          disabled={loading}
-          required
-        />
-      </div>
-      <Button type="submit" disabled={loading} className="mt-2 w-full">
-        {loading ? 'Signing in...' : 'Sign in'}
-      </Button>
-    </form>
   );
 }

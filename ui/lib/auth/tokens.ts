@@ -1,4 +1,5 @@
 import { getConfig } from '@/lib/config';
+import { MONSTERA_UI_OAUTH_APPLICATION_ID } from '@/lib/auth/oauth';
 
 const ACCESS_TOKEN_KEY = 'access_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
@@ -32,7 +33,7 @@ export async function refreshAccessToken(): Promise<string> {
     body: new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: refreshToken,
-      client_id: config.auth_client_id,
+      client_id: MONSTERA_UI_OAUTH_APPLICATION_ID,
     }),
   });
 

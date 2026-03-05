@@ -17,16 +17,6 @@ From this directory (`federation-testing`):
 docker compose up -d
 ```
 
-This starts:
-
-- **Caddy** — HTTPS on 443 for `monstera.local` and `monstera2.local`
-- **app-a** — Monstera for `monstera.local` (DB: postgres-a)
-- **app-b** — Monstera for `monstera2.local` (DB: postgres-b)
-- **postgres-a** — DB for app-a (host port 5433)
-- **postgres-b** — DB for app-b (host port 5434)
-- **nats-a** — NATs (host port 4222)
-- **nats-b** - NATs (host port 4223)
-
 ## Migrations and seed
 
 From this directory, run the script:

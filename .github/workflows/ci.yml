@@ -52,7 +52,7 @@ jobs:
       CACHE_DRIVER: memory
       EMAIL_DRIVER: noop
       EMAIL_FROM: noreply@localhost
-      UI_DOMAIN: localhost:3000
+      MONSTERA_UI_URL: http://localhost:3000
       INSTANCE_NAME: Monstera
       MINIO_ENDPOINT: http://localhost:9000
       S3_TEST_BUCKET: test-bucket

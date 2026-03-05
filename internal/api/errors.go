@@ -55,6 +55,8 @@ type ErrorResponse struct {
 // HandleError maps an internal error to an HTTP response.
 // It logs unexpected errors and writes the appropriate status code and message.
 func HandleError(w http.ResponseWriter, r *http.Request, err error) {
+	slog.DebugContext(r.Context(), "handling error", slog.Any("error", err))
+
 	switch {
 	case errors.Is(err, domain.ErrNotFound) || errors.Is(err, ErrNotFound):
 		WriteJSON(w, http.StatusNotFound, ErrorResponse{Error: "Record not found"})

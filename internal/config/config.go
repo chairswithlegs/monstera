@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -21,7 +22,7 @@ type Config struct {
 	AppEnv         string
 	AppPort        int
 	InstanceDomain string
-	UIDomain       string // UIDomain defaults to InstanceDomain if not set
+	MonsteraUiUrl  *url.URL
 	InstanceName   string
 	LogLevel       string
 
@@ -67,7 +68,7 @@ func Load() (*Config, error) {
 		AppEnv:         envString("APP_ENV", appEnvDevelopment),
 		AppPort:        envInt("APP_PORT", 8080),
 		InstanceDomain: envStringRequired("INSTANCE_DOMAIN", &errs),
-		UIDomain:       envString("UI_DOMAIN", ""),
+		MonsteraUiUrl:  envRequiredURL("MONSTERA_UI_URL", &errs),
 		InstanceName:   envString("INSTANCE_NAME", "Monstera"),
 		LogLevel:       envString("LOG_LEVEL", "info"),
 
@@ -109,10 +110,6 @@ func Load() (*Config, error) {
 
 	if len(errs) > 0 {
 		return nil, errors.New(strings.Join(errs, "; "))
-	}
-
-	if cfg.UIDomain == "" {
-		cfg.UIDomain = cfg.InstanceDomain
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -254,4 +251,18 @@ func envBool(key string, defaultVal bool) bool {
 	default:
 		return defaultVal
 	}
+}
+
+func envRequiredURL(key string, errs *[]string) *url.URL {
+	v := os.Getenv(key)
+	if v == "" {
+		*errs = append(*errs, key+" is required")
+		return nil
+	}
+	u, err := url.Parse(v)
+	if err != nil {
+		*errs = append(*errs, key+" is invalid: "+err.Error())
+		return nil
+	}
+	return u
 }

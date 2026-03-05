@@ -38,10 +38,10 @@ func Render(text string, instanceDomain string, resolve MentionResolver) (Render
 	strict := bluemonday.StrictPolicy()
 	text = strict.Sanitize(text)
 
+	text = replaceURLs(text)
 	var mentions []MentionRef
 	text = replaceMentions(text, resolve, &mentions)
 	text, tags := replaceHashtags(text, instanceDomain)
-	text = replaceURLs(text)
 	text = paragraphWrap(text)
 
 	ugc := bluemonday.UGCPolicy()

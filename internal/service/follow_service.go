@@ -307,14 +307,31 @@ func (svc *followService) GetFollow(ctx context.Context, actorAccountID, targetA
 	return f, nil
 }
 
-// CreateFollowFromInbox creates a follow from inbox (remote actor following local target). Does not increment follower/following counts.
+// CreateFollowFromInbox creates a follow from inbox (remote actor following local target).
+// When state is accepted (e.g. target not locked), increments follower/following counts.
 func (svc *followService) CreateFollowFromInbox(ctx context.Context, actorAccountID, targetAccountID string, state string, apID *string) (*domain.Follow, error) {
-	follow, err := svc.store.CreateFollow(ctx, store.CreateFollowInput{
-		ID:        uid.New(),
-		AccountID: actorAccountID,
-		TargetID:  targetAccountID,
-		State:     state,
-		APID:      apID,
+	var follow *domain.Follow
+	err := svc.store.WithTx(ctx, func(tx store.Store) error {
+		var txErr error
+		follow, txErr = tx.CreateFollow(ctx, store.CreateFollowInput{
+			ID:        uid.New(),
+			AccountID: actorAccountID,
+			TargetID:  targetAccountID,
+			State:     state,
+			APID:      apID,
+		})
+		if txErr != nil {
+			return fmt.Errorf("CreateFollow: %w", txErr)
+		}
+		if state == domain.FollowStateAccepted {
+			if txErr := tx.IncrementFollowersCount(ctx, targetAccountID); txErr != nil {
+				return fmt.Errorf("IncrementFollowersCount: %w", txErr)
+			}
+			if txErr := tx.IncrementFollowingCount(ctx, actorAccountID); txErr != nil {
+				return fmt.Errorf("IncrementFollowingCount: %w", txErr)
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("CreateFollowFromInbox: %w", err)
@@ -322,10 +339,29 @@ func (svc *followService) CreateFollowFromInbox(ctx context.Context, actorAccoun
 	return follow, nil
 }
 
-// AcceptFollow marks the follow as accepted (for inbox Accept activity). Does not change counts.
+// AcceptFollow marks the follow as accepted (for inbox Accept activity) and increments follower/following counts.
 func (svc *followService) AcceptFollow(ctx context.Context, followID string) error {
-	if err := svc.store.AcceptFollow(ctx, followID); err != nil {
-		return fmt.Errorf("AcceptFollow: %w", err)
+	follow, err := svc.store.GetFollowByID(ctx, followID)
+	if err != nil {
+		return fmt.Errorf("AcceptFollow GetFollowByID: %w", err)
+	}
+	if follow.State == domain.FollowStateAccepted {
+		return nil
+	}
+	err = svc.store.WithTx(ctx, func(tx store.Store) error {
+		if txErr := tx.AcceptFollow(ctx, followID); txErr != nil {
+			return fmt.Errorf("AcceptFollow: %w", txErr)
+		}
+		if txErr := tx.IncrementFollowersCount(ctx, follow.TargetID); txErr != nil {
+			return fmt.Errorf("IncrementFollowersCount: %w", txErr)
+		}
+		if txErr := tx.IncrementFollowingCount(ctx, follow.AccountID); txErr != nil {
+			return fmt.Errorf("IncrementFollowingCount: %w", txErr)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("AcceptFollow tx: %w", err)
 	}
 	return nil
 }
