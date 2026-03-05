@@ -37,14 +37,8 @@ Account and user are attached to context; handlers read them via `middleware.Acc
 
 Middleware is in `internal/api/middleware/` (auth, streaming_auth, etc.).
 
-## Admin / moderator API (Monstera)
+## Monstera UI
 
-Routes under `/monstera/api/v1/admin/*` require a valid Bearer token (RequireAuth) and then RequireModerator or RequireAdmin. The token is the same OAuth access token as for the Mastodon API; the difference is that the authenticated user must have role `moderator` or `admin`. The Next.js UI uses the same token for both Mastodon API calls (if any) and Monstera admin calls.
+The Monstera UI provides the user interface for the Oauth flow. When new client connects to Monstera, the server will redirect them to the sign-in form, where users will enter their credentials and authorize the app.
 
-## Next.js UI auth
-
-The UI is a separate app that uses OAuth to obtain an access token, then stores and sends it on every request.
-
-- **API client** (`ui/lib/api/client.ts`): `authFetch` adds `Authorization: Bearer <token>` and `Content-Type: application/json`. On 401, it attempts a token refresh (e.g. via refresh endpoint or re-login), then retries once; on failure it triggers logout.
-- **Login / register**: Handled by the UI (e.g. `/login`, `/register`). The backend exposes `POST /oauth/login` and OAuth authorize/token endpoints; the UI drives the user through the flow and stores the returned access token.
-- **Token storage and refresh**: Implemented in `ui/lib/auth/` (tokens, logout). Refresh behaviour is defined there (e.g. refresh token if supported, or re-prompt login).
+The Monstera UI also offers a portal for managing the server. This portal is itself an Oauth app that leverages the same Oauth server endpoints for user authentication, albeit with a different UI flow.
