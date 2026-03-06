@@ -19,7 +19,7 @@ services:
       CACHE_DRIVER: memory
       MEDIA_DRIVER: local
       MEDIA_LOCAL_PATH: /data/media
-      MEDIA_BASE_URL: http://localhost:8080/media
+      MEDIA_BASE_URL: http://localhost:8080
       EMAIL_DRIVER: noop
       EMAIL_FROM: noreply@localhost
       SECRET_KEY_BASE: "0000000000000000000000000000000000000000000000000000000000000000"

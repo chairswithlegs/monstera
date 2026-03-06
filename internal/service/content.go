@@ -35,8 +35,10 @@ var (
 
 // Render transforms plain text to HTML with mentions and hashtags extracted.
 func Render(text string, instanceDomain string, resolve MentionResolver) (RenderResult, error) {
+	// TODO: figure out if there is a standard for how to santize this content
 	strict := bluemonday.StrictPolicy()
 	text = strict.Sanitize(text)
+	text = unescapeQuotes(text)
 
 	text = replaceURLs(text)
 	var mentions []MentionRef
@@ -49,8 +51,19 @@ func Render(text string, instanceDomain string, resolve MentionResolver) (Render
 	ugc.AllowAttrs("href", "rel", "class", "target").OnElements("a")
 	ugc.AllowAttrs("class").OnElements("span")
 	text = ugc.Sanitize(text)
+	text = unescapeQuotes(text)
 
 	return RenderResult{HTML: text, Mentions: mentions, Tags: tags}, nil
+}
+
+// unescapeQuotes restores double and single quotes that bluemonday encodes as
+// HTML entities, so content displays with normal punctuation.
+func unescapeQuotes(s string) string {
+	s = strings.ReplaceAll(s, "&#34;", `"`)
+	s = strings.ReplaceAll(s, "&#39;", "'")
+	s = strings.ReplaceAll(s, "&quot;", `"`)
+	s = strings.ReplaceAll(s, "&apos;", "'")
+	return s
 }
 
 func replaceMentions(text string, resolve MentionResolver, out *[]MentionRef) string {

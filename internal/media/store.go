@@ -43,7 +43,7 @@ type MediaStore interface {
 type Config struct {
 	Driver     string // "local" | "s3"
 	LocalPath  string // required when Driver == "local"
-	BaseURL    string // required — public base URL for local and S3 CDN
+	BaseURL    string // required — public base URL for local and S3
 	S3Bucket   string // required when Driver == "s3"
 	S3Region   string // required when Driver == "s3"
 	S3Endpoint string // optional: endpoint override for MinIO / R2 / B2

@@ -1,6 +1,7 @@
 package router
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/chairswithlegs/monstera/internal/api/middleware"
 	"github.com/chairswithlegs/monstera/internal/api/monstera"
 	oauthhandlers "github.com/chairswithlegs/monstera/internal/api/oauth"
+	"github.com/chairswithlegs/monstera/internal/media/local"
 	oauthpkg "github.com/chairswithlegs/monstera/internal/oauth"
 	"github.com/chairswithlegs/monstera/internal/observability"
 	"github.com/chairswithlegs/monstera/internal/service"
@@ -47,6 +49,10 @@ type Deps struct {
 	Collections *activitypub.CollectionsHandler
 	Outbox      *activitypub.OutboxHandler
 	Inbox       *activitypub.InboxHandler
+
+	// MediaFileServer serves locally-stored media files (local driver only).
+	// nil when media is served externally (e.g. S3/CDN).
+	MediaFileServer http.Handler
 
 	// Monstera API handlers
 	User                   *monstera.UserHandler
@@ -209,6 +215,12 @@ func New(deps Deps) http.Handler {
 			})
 		})
 	})
+
+	// Serve locally-stored media files (local driver only).
+	if deps.MediaFileServer != nil {
+		mediaFileServerPath := fmt.Sprintf("/%s/*", local.LOCAL_MEDIA_URL_PATH_PREFIX)
+		r.Get(mediaFileServerPath, deps.MediaFileServer.ServeHTTP)
+	}
 
 	// OAuth routes
 	r.Group(func(r chi.Router) {

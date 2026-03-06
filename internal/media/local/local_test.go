@@ -81,5 +81,5 @@ func TestStore_URL(t *testing.T) {
 
 	url, err := store.URL(ctx, "media/2026/02/25/foo.jpg")
 	require.NoError(t, err)
-	assert.Equal(t, "https://example.com/system/media/2026/02/25/foo.jpg", url)
+	assert.Equal(t, "https://example.com/monstera/media/local/media/2026/02/25/foo.jpg", url)
 }
