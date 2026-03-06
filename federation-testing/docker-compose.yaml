@@ -7,23 +7,24 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
-      - app-a
-      - app-b
+      - server-a
+      - server-b
     networks:
       federation:
         aliases:
           - monstera.local
           - monstera2.local
 
-  app-a:
+  server-a:
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.server
     environment:
       APP_ENV: development
       APP_PORT: "8080"
       INSTANCE_DOMAIN: monstera.local
       INSTANCE_NAME: Monstera A (local)
+      MONSTERA_UI_URL: http://localhost:3000
       LOG_LEVEL: debug
       DATABASE_URL: postgres://monstera:monstera@postgres-a:5432/monstera_fed?sslmode=disable
       NATS_URL: nats://nats-a:4222
@@ -44,15 +45,29 @@ services:
     networks:
       - federation
 
-  app-b:
+  ui-a:
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.ui
+    ports:
+      - "3000:3000"
+    configs:
+      - source: ui_a_config
+        target: /usr/share/nginx/html/config/config.json
+    depends_on:
+      server-a:
+        condition: service_started
+
+  server-b:
+    build:
+      context: ..
+      dockerfile: Dockerfile.server
     environment:
       APP_ENV: development
       APP_PORT: "8080"
       INSTANCE_DOMAIN: monstera2.local
       INSTANCE_NAME: Monstera B (local)
+      MONSTERA_UI_URL: http://localhost:3001
       LOG_LEVEL: debug
       DATABASE_URL: postgres://monstera:monstera@postgres-b:5432/monstera_fed?sslmode=disable
       NATS_URL: nats://nats-b:4222
@@ -72,6 +87,19 @@ services:
         condition: service_started
     networks:
       - federation
+
+  ui-b:
+    build:
+      context: ..
+      dockerfile: Dockerfile.ui
+    ports:
+      - "3001:3000"
+    configs:
+      - source: ui_b_config
+        target: /usr/share/nginx/html/config/config.json
+    depends_on:
+      server-b:
+        condition: service_started
 
   postgres-a:
     image: postgres:16-alpine
@@ -142,3 +170,15 @@ volumes:
 networks:
   federation:
     driver: bridge
+
+configs:
+  ui_a_config:
+    content: |
+      {
+        "server_url": "https://monstera.local"
+      }
+  ui_b_config:
+    content: |
+      {
+        "server_url": "https://monstera2.local"
+      }

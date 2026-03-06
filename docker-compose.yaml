@@ -11,7 +11,7 @@ services:
       APP_ENV: production
       APP_PORT: "8080"
       INSTANCE_DOMAIN: localhost:8080
-      UI_DOMAIN: localhost:3000
+      MONSTERA_UI_URL: http://localhost:3000
       INSTANCE_NAME: Monstera
       LOG_LEVEL: debug
       DATABASE_URL: postgres://monstera:monstera@postgres:5432/monstera_fed?sslmode=disable
@@ -95,7 +95,5 @@ configs:
   ui_config:
     content: |
       {
-        "server_url": "http://localhost:8080",
-        "auth_client_id": "ui-client",
-        "auth_scopes": "admin:read admin:write read:accounts"
+        "server_url": "http://localhost:8080"
       }

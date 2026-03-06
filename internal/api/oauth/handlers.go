@@ -11,21 +11,21 @@ import (
 	"github.com/chairswithlegs/monstera/internal/api"
 	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/domain"
-	oauthpkg "github.com/chairswithlegs/monstera/internal/oauth"
+	"github.com/chairswithlegs/monstera/internal/oauth"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"golang.org/x/crypto/bcrypt"
 )
 
 // Handler holds dependencies for the OAuth HTTP endpoints.
 type Handler struct {
-	oauth *oauthpkg.Server
+	oauth *oauth.Server
 	store store.Store
 	cfg   *config.Config
 }
 
 // NewHandler constructs an OAuth Handler.
 func NewHandler(
-	oauth *oauthpkg.Server,
+	oauth *oauth.Server,
 	store store.Store,
 	cfg *config.Config,
 ) *Handler {
@@ -112,7 +112,7 @@ func (h *Handler) POSTRegisterApp(w http.ResponseWriter, r *http.Request) {
 }
 
 // GETAuthorize handles GET /oauth/authorize.
-// Redirects to the UI's login page with all OAuth params.
+// Redirects to the UI's OAuth authorize page with all OAuth params.
 func (h *Handler) GETAuthorize(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
@@ -153,26 +153,25 @@ func (h *Handler) GETAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Forward all OAuth params to the Next.js login page
-	loginURL, err := url.Parse(h.cfg.UIDomain + "/login")
-	if err != nil {
-		slog.ErrorContext(r.Context(), "failed to parse login URL", slog.Any("error", err))
-		api.HandleError(w, r, api.ErrInternalServerError)
-		return
-	}
-	loginQuery := loginURL.Query()
-	loginQuery.Set("client_id", clientID)
-	loginQuery.Set("redirect_uri", redirectURI)
-	loginQuery.Set("response_type", responseType)
-	loginQuery.Set("scope", scope)
-	loginQuery.Set("code_challenge", codeChallenge)
-	loginQuery.Set("code_challenge_method", codeChallengeMethod)
+	// Forward all OAuth params to the Monstera UI OAuth authorize page
+	authorizeURL := h.cfg.MonsteraUiUrl.JoinPath("/oauth/authorize")
+	authorizeQuery := authorizeURL.Query()
+	authorizeQuery.Set("client_id", clientID)
+	authorizeQuery.Set("redirect_uri", redirectURI)
+	authorizeQuery.Set("response_type", responseType)
+	authorizeQuery.Set("scope", scope)
+	authorizeQuery.Set("code_challenge", codeChallenge)
+	authorizeQuery.Set("code_challenge_method", codeChallengeMethod)
 	if state != "" {
-		loginQuery.Set("state", state)
+		authorizeQuery.Set("state", state)
 	}
-	loginURL.RawQuery = loginQuery.Encode()
+	authorizeQuery.Set("app_name", app.Name)
+	if app.Website != nil {
+		authorizeQuery.Set("app_website", *app.Website)
+	}
+	authorizeURL.RawQuery = authorizeQuery.Encode()
 
-	http.Redirect(w, r, loginURL.String(), http.StatusFound)
+	http.Redirect(w, r, authorizeURL.String(), http.StatusFound)
 }
 
 type loginRequest struct {
@@ -232,7 +231,7 @@ func (h *Handler) POSTLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	code, err := h.oauth.AuthorizeRequest(r.Context(), oauthpkg.AuthorizeRequest{
+	code, err := h.oauth.AuthorizeRequest(r.Context(), oauth.AuthorizeRequest{
 		ApplicationID:       app.ID,
 		AccountID:           user.AccountID,
 		RedirectURI:         body.RedirectURI,
@@ -245,13 +244,6 @@ func (h *Handler) POSTLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Internal dashboard flow — return code as JSON
-	if h.isInternalRedirectURI(body.RedirectURI) {
-		api.WriteJSON(w, http.StatusOK, map[string]string{"code": code})
-		return
-	}
-
-	// Third-party flow — redirect back to the client app
 	redirectURL, err := url.Parse(body.RedirectURI)
 	if err != nil {
 		api.HandleError(w, r, api.NewBadRequestError("invalid redirect_uri"))
@@ -263,15 +255,7 @@ func (h *Handler) POSTLogin(w http.ResponseWriter, r *http.Request) {
 		redirectQuery.Set("state", body.State)
 	}
 	redirectURL.RawQuery = redirectQuery.Encode()
-	http.Redirect(w, r, redirectURL.String(), http.StatusFound)
-}
-
-func (h *Handler) isInternalRedirectURI(uri string) bool {
-	parsedURI, err := url.Parse(uri)
-	if err != nil {
-		return false
-	}
-	return parsedURI.Host == h.cfg.UIDomain
+	api.WriteJSON(w, http.StatusOK, map[string]string{"redirect_url": redirectURL.String()})
 }
 
 // POSTToken handles POST /oauth/token.
@@ -285,7 +269,7 @@ func (h *Handler) POSTToken(w http.ResponseWriter, r *http.Request) {
 
 	switch grantType {
 	case "authorization_code":
-		resp, err := h.oauth.ExchangeCode(r.Context(), oauthpkg.TokenRequest{
+		resp, err := h.oauth.ExchangeCode(r.Context(), oauth.TokenRequest{
 			GrantType:    grantType,
 			Code:         r.FormValue("code"),
 			RedirectURI:  r.FormValue("redirect_uri"),
@@ -300,7 +284,7 @@ func (h *Handler) POSTToken(w http.ResponseWriter, r *http.Request) {
 		api.WriteJSON(w, http.StatusOK, resp)
 
 	case "client_credentials":
-		resp, err := h.oauth.ExchangeClientCredentials(r.Context(), oauthpkg.TokenRequest{
+		resp, err := h.oauth.ExchangeClientCredentials(r.Context(), oauth.TokenRequest{
 			GrantType:    grantType,
 			ClientID:     r.FormValue("client_id"),
 			ClientSecret: r.FormValue("client_secret"),
@@ -337,6 +321,7 @@ func (h *Handler) POSTRevoke(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) isValidRedirectURI(uri string, app *domain.OAuthApplication) bool {
 	if app == nil {
+		slog.Error("application is nil")
 		return false
 	}
 
@@ -346,10 +331,12 @@ func (h *Handler) isValidRedirectURI(uri string, app *domain.OAuthApplication) b
 
 	parsedURI, err := url.Parse(uri)
 	if err != nil {
+		slog.Error("failed to parse redirect URI", slog.Any("error", err))
 		return false
 	}
 
-	if app.ClientID == "ui-client" && parsedURI.Host == h.cfg.UIDomain {
+	if app.ClientID == oauth.MONSTERA_UI_APPLICATION_ID && parsedURI.Host == h.cfg.MonsteraUiUrl.Host {
+		slog.Info("valid internal redirect URI", slog.String("uri", uri))
 		return true
 	}
 
@@ -358,5 +345,6 @@ func (h *Handler) isValidRedirectURI(uri string, app *domain.OAuthApplication) b
 			return true
 		}
 	}
+	slog.Info("Fall through case")
 	return false
 }

@@ -1,0 +1,36 @@
+const SCOPE_LABELS: Record<string, string> = {
+  read: 'Read your account data, posts, and notifications',
+  write: 'Create, edit, and delete posts on your behalf',
+  follow: 'Follow and unfollow accounts',
+  push: 'Receive push notifications',
+  'admin:read': 'Read server administration data',
+  'admin:write': 'Modify server administration data',
+  'read:accounts': 'View account information',
+  'read:blocks': 'View blocked accounts',
+  'read:bookmarks': 'View bookmarked posts',
+  'read:favourites': 'View favourited posts',
+  'read:filters': 'View content filters',
+  'read:follows': 'View followed accounts',
+  'read:lists': 'View lists',
+  'read:mutes': 'View muted accounts',
+  'read:notifications': 'View notifications',
+  'read:search': 'Search posts and accounts',
+  'read:statuses': 'View posts',
+  'write:accounts': 'Modify your account profile',
+  'write:blocks': 'Block and unblock accounts',
+  'write:bookmarks': 'Bookmark and unbookmark posts',
+  'write:conversations': 'Manage conversations',
+  'write:favourites': 'Favourite and unfavourite posts',
+  'write:filters': 'Manage content filters',
+  'write:follows': 'Follow and unfollow accounts',
+  'write:lists': 'Manage lists',
+  'write:media': 'Upload media attachments',
+  'write:mutes': 'Mute and unmute accounts',
+  'write:notifications': 'Manage notifications',
+  'write:reports': 'Submit reports',
+  'write:statuses': 'Create, edit, and delete posts',
+};
+
+export function getScopeLabel(scope: string): string {
+  return SCOPE_LABELS[scope] ?? scope;
+}

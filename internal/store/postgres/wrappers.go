@@ -19,11 +19,6 @@ func (s *PostgresStore) GetEmailToken(ctx context.Context, tokenHash string) (db
 	return t, mapErr(err)
 }
 
-func (s *PostgresStore) GetFollowByID(ctx context.Context, id string) (db.Follow, error) {
-	f, err := s.q.GetFollowByID(ctx, id)
-	return f, mapErr(err)
-}
-
 func (s *PostgresStore) GetHashtagByName(ctx context.Context, lower string) (db.Hashtag, error) {
 	h, err := s.q.GetHashtagByName(ctx, lower)
 	return h, mapErr(err)

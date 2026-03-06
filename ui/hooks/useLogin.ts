@@ -1,85 +1,38 @@
 'use client';
 import { useState } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { generateCodeVerifier, generateCodeChallenge } from '@/lib/auth/pkce';
 import { storeTokens } from '@/lib/auth/tokens';
 import { getConfig } from '@/lib/config';
+import { MONSTERA_UI_OAUTH_APPLICATION_ID, MONSTERA_UI_OAUTH_SCOPES } from '@/lib/auth/oauth';
+
+const uiLoginRedirectPath = '/home';
+
+function getUILoginRedirectUri(): string {
+  if (typeof window === 'undefined') return '';
+  return `${window.location.origin}${uiLoginRedirectPath}`;
+}
 
 interface LoginState {
   loading: boolean;
   error: string | null;
-  submitCredentials: (username: string, password: string) => Promise<void>;
-}
-
-function getAuthRedirectUri(): string {
-  if (typeof window === 'undefined') return '';
-  return `${window.location.origin}/home`;
+  submitCredentials: (email: string, password: string) => Promise<void>;
 }
 
 export function useLogin(): LoginState {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const params = {
-    clientId: searchParams.get('client_id'),
-    redirectUri: searchParams.get('redirect_uri'),
-    codeChallenge: searchParams.get('code_challenge'),
-    codeChallengeMethod: searchParams.get('code_challenge_method'),
-    state: searchParams.get('state'),
-  };
-
-  async function handleCode(code: string) {
-    const config = await getConfig();
-    const isThirdParty = params.clientId && params.clientId !== config.auth_client_id;
-
-    if (isThirdParty) {
-      // Third-party flow: redirect back to the client app with the code
-      const redirectParams = new URLSearchParams({ code });
-      if (params.state) redirectParams.set('state', params.state);
-      window.location.href = `${params.redirectUri}?${redirectParams.toString()}`;
-    } else {
-      // Internal flow: exchange code for tokens ourselves
-      const verifier = sessionStorage.getItem('pkce_verifier');
-      if (!verifier) throw new Error('Missing PKCE verifier');
-      sessionStorage.removeItem('pkce_verifier');
-
-      const response = await fetch(`${config.server_url}/oauth/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'authorization_code',
-          code,
-          redirect_uri: getAuthRedirectUri(),
-          client_id: config.auth_client_id,
-          code_verifier: verifier,
-        }),
-      });
-
-      if (!response.ok) throw new Error('Token exchange failed');
-      const { access_token, refresh_token } = await response.json();
-      storeTokens(access_token, refresh_token);
-      router.replace('/home');
-    }
-  }
-
   async function submitCredentials(email: string, password: string) {
     const config = await getConfig();
-    const isThirdParty = params.clientId && params.clientId !== config.auth_client_id;
-
     setLoading(true);
     setError(null);
 
     try {
-      // For internal flow, we generate PKCE here and store the verifier
-      // For third-party flow, the client app already sent code_challenge in the URL
-      let codeChallenge = params.codeChallenge;
-      if (!isThirdParty) {
-        const verifier = generateCodeVerifier();
-        codeChallenge = await generateCodeChallenge(verifier);
-        sessionStorage.setItem('pkce_verifier', verifier);
-      }
+      const verifier = generateCodeVerifier();
+      const codeChallenge = await generateCodeChallenge(verifier);
+      sessionStorage.setItem('pkce_verifier', verifier);
 
       const response = await fetch(`${config.server_url}/oauth/login`, {
         method: 'POST',
@@ -87,26 +40,56 @@ export function useLogin(): LoginState {
         body: JSON.stringify({
           email,
           password,
-          client_id: params.clientId ?? config.auth_client_id,
-          redirect_uri: params.redirectUri ?? getAuthRedirectUri(),
-          scope: isThirdParty ? undefined : config.auth_scopes,
+          client_id: MONSTERA_UI_OAUTH_APPLICATION_ID,
+          redirect_uri: getUILoginRedirectUri(),
+          scope: MONSTERA_UI_OAUTH_SCOPES,
           code_challenge: codeChallenge,
-          code_challenge_method: params.codeChallengeMethod ?? 'S256',
+          code_challenge_method: 'S256',
         }),
       });
 
       if (!response.ok) {
-        const { error } = await response.json();
-        throw new Error(error ?? 'Invalid credentials');
+        const body = await response.json().catch(() => ({}));
+        throw new Error(
+          (body as { error?: string }).error ?? 'Invalid credentials'
+        );
       }
 
-      const data = await response.json();
-      await handleCode(data.code);
+      const data = (await response.json()) as { redirect_url: string };
+      const url = new URL(data.redirect_url);
+      const code = url.searchParams.get('code');
+      if (!code) throw new Error('Missing code in redirect URL');
+
+      await exchangeCodeForTokens(code);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
+  }
+
+  async function exchangeCodeForTokens(code: string) {
+    const config = await getConfig();
+    const verifier = sessionStorage.getItem('pkce_verifier');
+    if (!verifier) throw new Error('Missing PKCE verifier');
+    sessionStorage.removeItem('pkce_verifier');
+
+    const response = await fetch(`${config.server_url}/oauth/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: getUILoginRedirectUri(),
+        client_id: MONSTERA_UI_OAUTH_APPLICATION_ID,
+        code_verifier: verifier,
+      }),
+    });
+
+    if (!response.ok) throw new Error('Token exchange failed');
+    const { access_token, refresh_token } = await response.json();
+    storeTokens(access_token, refresh_token);
+    router.replace(uiLoginRedirectPath);
   }
 
   return { loading, error, submitCredentials };

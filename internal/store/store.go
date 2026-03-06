@@ -81,6 +81,7 @@ type Store interface {
 	GetRelationship(ctx context.Context, accountID, targetID string) (*domain.Relationship, error)
 
 	GetFollow(ctx context.Context, accountID, targetID string) (*domain.Follow, error)
+	GetFollowByID(ctx context.Context, id string) (*domain.Follow, error)
 	GetFollowByAPID(ctx context.Context, apID string) (*domain.Follow, error)
 	CreateFollow(ctx context.Context, in CreateFollowInput) (*domain.Follow, error)
 	AcceptFollow(ctx context.Context, followID string) error

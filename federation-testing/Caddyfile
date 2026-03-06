@@ -4,9 +4,9 @@
 }
 
 monstera.local {
-  reverse_proxy app-a:8080
+  reverse_proxy server-a:8080
 }
 
 monstera2.local {
-  reverse_proxy app-b:8080
+  reverse_proxy server-b:8080
 }

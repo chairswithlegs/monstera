@@ -731,6 +731,15 @@ func (s *PostgresStore) GetFollow(ctx context.Context, accountID, targetID strin
 	return &d, nil
 }
 
+func (s *PostgresStore) GetFollowByID(ctx context.Context, id string) (*domain.Follow, error) {
+	f, err := s.q.GetFollowByID(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainFollow(f)
+	return &d, nil
+}
+
 func (s *PostgresStore) GetFollowByAPID(ctx context.Context, apID string) (*domain.Follow, error) {
 	f, err := s.q.GetFollowByAPID(ctx, &apID)
 	if err != nil {
