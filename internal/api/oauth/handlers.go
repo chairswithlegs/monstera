@@ -12,21 +12,20 @@ import (
 	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/oauth"
-	oauthpkg "github.com/chairswithlegs/monstera/internal/oauth"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"golang.org/x/crypto/bcrypt"
 )
 
 // Handler holds dependencies for the OAuth HTTP endpoints.
 type Handler struct {
-	oauth *oauthpkg.Server
+	oauth *oauth.Server
 	store store.Store
 	cfg   *config.Config
 }
 
 // NewHandler constructs an OAuth Handler.
 func NewHandler(
-	oauth *oauthpkg.Server,
+	oauth *oauth.Server,
 	store store.Store,
 	cfg *config.Config,
 ) *Handler {
@@ -232,7 +231,7 @@ func (h *Handler) POSTLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	code, err := h.oauth.AuthorizeRequest(r.Context(), oauthpkg.AuthorizeRequest{
+	code, err := h.oauth.AuthorizeRequest(r.Context(), oauth.AuthorizeRequest{
 		ApplicationID:       app.ID,
 		AccountID:           user.AccountID,
 		RedirectURI:         body.RedirectURI,
@@ -270,7 +269,7 @@ func (h *Handler) POSTToken(w http.ResponseWriter, r *http.Request) {
 
 	switch grantType {
 	case "authorization_code":
-		resp, err := h.oauth.ExchangeCode(r.Context(), oauthpkg.TokenRequest{
+		resp, err := h.oauth.ExchangeCode(r.Context(), oauth.TokenRequest{
 			GrantType:    grantType,
 			Code:         r.FormValue("code"),
 			RedirectURI:  r.FormValue("redirect_uri"),
@@ -285,7 +284,7 @@ func (h *Handler) POSTToken(w http.ResponseWriter, r *http.Request) {
 		api.WriteJSON(w, http.StatusOK, resp)
 
 	case "client_credentials":
-		resp, err := h.oauth.ExchangeClientCredentials(r.Context(), oauthpkg.TokenRequest{
+		resp, err := h.oauth.ExchangeClientCredentials(r.Context(), oauth.TokenRequest{
 			GrantType:    grantType,
 			ClientID:     r.FormValue("client_id"),
 			ClientSecret: r.FormValue("client_secret"),
