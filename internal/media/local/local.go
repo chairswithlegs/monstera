@@ -113,12 +113,16 @@ func (s *Store) Delete(_ context.Context, key string) error {
 // URL returns the public URL for the given storage key.
 // Format: {baseURL}/{LOCAL_MEDIA_BASE_PATH}/{key}
 func (s *Store) URL(_ context.Context, key string) (string, error) {
-	return url.JoinPath(s.baseURL, LOCAL_MEDIA_URL_PATH_PREFIX, key)
+	mediaUrl, err := url.JoinPath(s.baseURL, LOCAL_MEDIA_URL_PATH_PREFIX, key)
+	if err != nil {
+		return "", fmt.Errorf("media/local: join path: %w", err)
+	}
+	return mediaUrl, nil
 }
 
 // ServeHTTP handles GET requests for locally-stored media.
 func (s *Store) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	urlPrefix := fmt.Sprintf("/%s", LOCAL_MEDIA_URL_PATH_PREFIX)
+	urlPrefix := "/" + LOCAL_MEDIA_URL_PATH_PREFIX
 	key := strings.TrimPrefix(r.URL.Path, urlPrefix)
 	if key == "" || strings.Contains(key, "..") {
 		http.Error(w, "not found", http.StatusNotFound)
