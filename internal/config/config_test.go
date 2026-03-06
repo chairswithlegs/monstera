@@ -21,6 +21,7 @@ func setRequiredEnvs(t *testing.T) {
 	setEnv(t, "MEDIA_LOCAL_PATH", "/tmp/media")
 	setEnv(t, "EMAIL_FROM", "noreply@test.example.com")
 	setEnv(t, "SECRET_KEY_BASE", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") // 32 bytes hex
+	setEnv(t, "MONSTERA_UI_URL", "https://test.example.com/ui")
 }
 
 func TestLoad_success(t *testing.T) {
