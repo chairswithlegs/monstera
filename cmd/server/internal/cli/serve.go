@@ -112,6 +112,11 @@ func runServe(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("media: %w", err)
 	}
 
+	var mediaFileServer http.Handler
+	if h, ok := mediaStore.(http.Handler); ok {
+		mediaFileServer = h
+	}
+
 	emailSender, err := email.New(email.Config{
 		Driver:       cfg.EmailDriver,
 		From:         cfg.EmailFrom,
@@ -209,6 +214,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	handler := router.New(router.Deps{
 		AccountsService:        accountSvc,
 		Health:                 health,
+		MediaFileServer:        mediaFileServer,
 		OAuthHandler:           oauthHandler,
 		OAuthServer:            oauthServer,
 		Accounts:               accountsHandler,

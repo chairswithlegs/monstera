@@ -1,6 +1,6 @@
 // Package local provides a filesystem-backed MediaStore implementation.
 // Files are stored under a configurable base directory, mirroring the
-// storage key structure. The Go HTTP server serves them at /system/...
+// storage key structure.
 //
 // Not suitable for multi-replica deployments unless the base directory is
 // on shared storage (NFS, EFS). Use the s3 driver for multi-replica setups.
@@ -14,12 +14,17 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/chairswithlegs/monstera/internal/media"
 )
+
+// LOCAL_MEDIA_URL_PATH_PREFIX is the path prefix for locally-stored media in the URL.
+// This is used to construct media URLs and is also used by the router when registering the local media file server.
+const LOCAL_MEDIA_URL_PATH_PREFIX = "monstera/media/local"
 
 // Store is the local filesystem MediaStore implementation.
 type Store struct {
@@ -106,14 +111,15 @@ func (s *Store) Delete(_ context.Context, key string) error {
 }
 
 // URL returns the public URL for the given storage key.
-// Format: {baseURL}/system/{key}
+// Format: {baseURL}/{LOCAL_MEDIA_BASE_PATH}/{key}
 func (s *Store) URL(_ context.Context, key string) (string, error) {
-	return s.baseURL + "/system/" + key, nil
+	return url.JoinPath(s.baseURL, LOCAL_MEDIA_URL_PATH_PREFIX, key)
 }
 
-// ServeHTTP handles GET /system/{key...} requests for locally-stored media.
+// ServeHTTP handles GET requests for locally-stored media.
 func (s *Store) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	key := strings.TrimPrefix(r.URL.Path, "/system/")
+	urlPrefix := fmt.Sprintf("/%s", LOCAL_MEDIA_URL_PATH_PREFIX)
+	key := strings.TrimPrefix(r.URL.Path, urlPrefix)
 	if key == "" || strings.Contains(key, "..") {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
