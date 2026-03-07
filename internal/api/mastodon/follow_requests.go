@@ -52,11 +52,7 @@ func (h *FollowRequestsHandler) GETFollowRequests(w http.ResponseWriter, r *http
 	}
 
 	if nextCursor != nil && *nextCursor != "" {
-<<<<<<< HEAD
 		if link := linkHeaderWithNext(AbsoluteRequestURL(r, h.instanceDomain), *nextCursor); link != "" {
-=======
-		if link := linkHeaderWithNext(r.URL.String(), *nextCursor); link != "" {
->>>>>>> main
 			w.Header().Set("Link", link)
 		}
 	}
