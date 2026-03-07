@@ -35,8 +35,18 @@ type InstanceV1Stats struct {
 	DomainCount int64 `json:"domain_count"`
 }
 
+// InstanceConfigURLs holds configuration URLs (v2 instance); clients like Elk read configuration.urls.streaming.
+type InstanceConfigURLs struct {
+	Streaming      string  `json:"streaming"`
+	Status         *string `json:"status,omitempty"`
+	About          *string `json:"about,omitempty"`
+	PrivacyPolicy  *string `json:"privacy_policy,omitempty"`
+	TermsOfService *string `json:"terms_of_service,omitempty"`
+}
+
 // InstanceConfig is the configuration sub-object in the instance response.
 type InstanceConfig struct {
+	URLs     InstanceConfigURLs `json:"urls"`
 	Statuses struct {
 		MaxCharacters            int `json:"max_characters"`
 		MaxMediaAttachments      int `json:"max_media_attachments"`
@@ -140,6 +150,9 @@ func (h *InstanceHandler) GETInstance(w http.ResponseWriter, r *http.Request) {
 		Description: "",
 		Languages:   []string{"en"},
 		Rules:       []any{},
+	}
+	resp.Configuration.URLs = InstanceConfigURLs{
+		Streaming: "wss://" + h.instanceDomain,
 	}
 	resp.Configuration.Statuses.MaxCharacters = h.maxStatusChars
 	resp.Configuration.Statuses.MaxMediaAttachments = 4

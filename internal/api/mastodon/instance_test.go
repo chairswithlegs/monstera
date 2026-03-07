@@ -28,6 +28,7 @@ func TestInstanceHandler_GetInstance(t *testing.T) {
 	assert.Equal(t, "example.com", body.Domain)
 	assert.Equal(t, "Example Instance", body.Title)
 	assert.Equal(t, "4.1.0", body.Version)
+	assert.Equal(t, "wss://example.com", body.Configuration.URLs.Streaming, "clients like Elk require configuration.urls.streaming")
 	assert.Equal(t, 500, body.Configuration.Statuses.MaxCharacters)
 	assert.Equal(t, 4, body.Configuration.Statuses.MaxMediaAttachments)
 	assert.Equal(t, []string{"image/jpeg", "image/png"}, body.Configuration.MediaAttachments.SupportedMimeTypes)

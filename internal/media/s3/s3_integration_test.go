@@ -39,7 +39,7 @@ func TestStore_Integration(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	key := "media/2026/02/25/integration-test.jpg"
+	key := "2026/02/25/integration-test.jpg"
 	content := []byte("integration test body")
 
 	err = store.Put(ctx, key, bytes.NewReader(content), "image/jpeg")

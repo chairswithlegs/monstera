@@ -189,6 +189,9 @@ func runServe(_ *cobra.Command, _ []string) error {
 	pollsHandler := mastodon.NewPollsHandler(statusSvc)
 	timelinesHandler := mastodon.NewTimelinesHandler(timelineSvc, cfg.InstanceDomain)
 	instanceHandler := mastodon.NewInstanceHandler(cfg.InstanceDomain, cfg.InstanceName, cfg.MaxStatusChars, cfg.MediaMaxBytes, nil, instanceSvc)
+	trendsHandler := mastodon.NewTrendsHandler()
+	conversationsHandler := mastodon.NewConversationsHandler()
+	suggestionsHandler := mastodon.NewSuggestionsHandler()
 	notificationsHandler := mastodon.NewNotificationsHandler(notificationSvc, accountSvc, cfg.InstanceDomain)
 	mediaHandler := mastodon.NewMediaHandler(mediaSvc)
 	searchHandler := mastodon.NewSearchHandler(searchSvc, cfg.InstanceDomain)
@@ -240,6 +243,9 @@ func runServe(_ *cobra.Command, _ []string) error {
 		Polls:                  pollsHandler,
 		Timelines:              timelinesHandler,
 		Instance:               instanceHandler,
+		Trends:                 trendsHandler,
+		Conversations:          conversationsHandler,
+		Suggestions:            suggestionsHandler,
 		Notifications:          notificationsHandler,
 		Media:                  mediaHandler,
 		Search:                 searchHandler,

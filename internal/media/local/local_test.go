@@ -19,7 +19,7 @@ func TestStore_PutGetRoundTrip(t *testing.T) {
 	store, err := New(dir, "https://example.com")
 	require.NoError(t, err)
 
-	key := "media/2026/02/25/test123.jpg"
+	key := "2026/02/25/test123.jpg"
 	content := []byte("jpeg content")
 	err = store.Put(ctx, key, bytes.NewReader(content), "image/jpeg")
 	require.NoError(t, err)
@@ -39,7 +39,7 @@ func TestStore_GetNotFound(t *testing.T) {
 	store, err := New(dir, "https://example.com")
 	require.NoError(t, err)
 
-	_, err = store.Get(ctx, "media/2026/02/25/nonexistent.jpg")
+	_, err = store.Get(ctx, "2026/02/25/nonexistent.jpg")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, media.ErrNotFound)
 }
@@ -51,7 +51,7 @@ func TestStore_Delete(t *testing.T) {
 	store, err := New(dir, "https://example.com")
 	require.NoError(t, err)
 
-	key := "media/2026/02/25/delete-me.jpg"
+	key := "2026/02/25/delete-me.jpg"
 	require.NoError(t, store.Put(ctx, key, bytes.NewReader([]byte("x")), "image/jpeg"))
 
 	err = store.Delete(ctx, key)
@@ -68,7 +68,7 @@ func TestStore_DeleteNonexistent(t *testing.T) {
 	store, err := New(dir, "https://example.com")
 	require.NoError(t, err)
 
-	err = store.Delete(ctx, "media/2026/02/25/not-there.jpg")
+	err = store.Delete(ctx, "2026/02/25/not-there.jpg")
 	require.NoError(t, err)
 }
 
@@ -79,7 +79,7 @@ func TestStore_URL(t *testing.T) {
 	store, err := New(dir, "https://example.com")
 	require.NoError(t, err)
 
-	url, err := store.URL(ctx, "media/2026/02/25/foo.jpg")
+	url, err := store.URL(ctx, "2026/02/25/foo.jpg")
 	require.NoError(t, err)
-	assert.Equal(t, "https://example.com/monstera/media/local/media/2026/02/25/foo.jpg", url)
+	assert.Equal(t, "https://example.com/monstera/media/local/2026/02/25/foo.jpg", url)
 }
