@@ -108,6 +108,9 @@ func (h *Handler) POSTRegisterApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	slog.InfoContext(r.Context(), "oauth app registered",
+		slog.String("client_id", app.ClientID),
+		slog.String("name", app.Name))
 	api.WriteJSON(w, http.StatusOK, app)
 }
 

@@ -25,7 +25,6 @@ services:
       # Caddy stores local CA root at this path inside the caddy_data volume
       - NODE_EXTRA_CA_CERTS=/caddy_data/caddy/pki/authorities/local/root.crt
     volumes:
-      - ./elk-storage:/elk/data
       - caddy_data:/caddy_data:ro  # to read Caddy's root cert
     depends_on:
       - caddy
