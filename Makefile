@@ -6,9 +6,6 @@ include .env.local
 export
 endif
 
-UI_PID_FILE := .ui-dev.pid
-MONSTERA_PID_FILE := .monstera-dev.pid
-
 start:
 	docker compose -f docker-compose.yaml --profile app up --build -d --wait
 	sleep 5 # wait for the services to be ready
