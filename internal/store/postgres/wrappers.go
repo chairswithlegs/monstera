@@ -43,8 +43,3 @@ func (s *PostgresStore) CreateEmailToken(ctx context.Context, arg db.CreateEmail
 	t, err := s.q.CreateEmailToken(ctx, arg)
 	return t, mapErr(err)
 }
-
-func (s *PostgresStore) UpdateMediaAttachment(ctx context.Context, arg db.UpdateMediaAttachmentParams) (db.MediaAttachment, error) {
-	m, err := s.q.UpdateMediaAttachment(ctx, arg)
-	return m, mapErr(err)
-}

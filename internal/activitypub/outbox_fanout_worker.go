@@ -118,6 +118,8 @@ func (w *outboxFanoutWorker) start(ctx context.Context) error {
 
 // publish publishes a fan-out message to the stream. The worker will later consume it and fan out to follower inboxes.
 func (w *outboxFanoutWorker) publish(ctx context.Context, activityType string, msg outboxFanoutMessage) (err error) {
+	slog.DebugContext(ctx, "outbox fanout worker: publishing message", slog.String("activity_type", activityType), slog.String("activity_id", msg.ActivityID))
+
 	subject := subjectPrefixFanout + strings.ToLower(activityType)
 	defer func() {
 		if err != nil {
@@ -140,6 +142,8 @@ func (w *outboxFanoutWorker) publish(ctx context.Context, activityType string, m
 }
 
 func (w *outboxFanoutWorker) processMessage(ctx context.Context, msg jetstream.Msg) {
+	slog.DebugContext(ctx, "outbox fanout worker: processing message", slog.String("subject", msg.Subject()))
+
 	var fanout outboxFanoutMessage
 	if err := json.Unmarshal(msg.Data(), &fanout); err != nil {
 		slog.Warn("fanout worker: invalid payload", slog.Any("error", err))
@@ -193,11 +197,6 @@ func (w *outboxFanoutWorker) processMessage(ctx context.Context, msg jetstream.M
 	}
 
 	_ = msg.Ack()
-	slog.DebugContext(ctx, "fanout worker: completed",
-		slog.String("activity_id", fanout.ActivityID),
-		slog.String("sender_id", fanout.SenderID),
-		slog.Int("delivered", delivered),
-	)
 }
 
 // handleFanoutFailure NAKs with backoff for retry, or sends to fanout DLQ and Acks if max retries exhausted.

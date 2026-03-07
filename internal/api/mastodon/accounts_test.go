@@ -125,7 +125,7 @@ func TestAccountsHandler_GETAccountStatuses(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	followSvc := service.NewFollowService(st, nil, nil)
-	timelineSvc := service.NewTimelineService(st)
+	timelineSvc := service.NewTimelineService(st, &allowAllVisibilityChecker{})
 	handler := NewAccountsHandler(accountSvc, followSvc, timelineSvc, "example.com")
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {

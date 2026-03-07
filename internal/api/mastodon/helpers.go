@@ -41,7 +41,9 @@ func PageParamsFromRequest(r *http.Request) PageParams {
 	}
 }
 
-// LinkHeader builds an RFC 5988 Link header for pagination.
+// LinkHeader builds an RFC 5988 Link header for cursor-based pagination.
+// Clients use the Link response header to discover next/prev page URLs: rel="next"
+// (max_id=lastID for older items) and rel="prev" (min_id=firstID for newer items).
 func LinkHeader(requestURL string, firstID, lastID string) string {
 	if firstID == "" && lastID == "" {
 		return ""
@@ -70,6 +72,50 @@ func LinkHeader(requestURL string, firstID, lastID string) string {
 		return ""
 	}
 	return strings.Join(parts, ", ")
+}
+
+// linkHeaderFavourites builds a Link header for GET /api/v1/favourites.
+// nextCursor is the favourite ID for the next page (max_id); firstID is the first status ID for prev (min_id).
+func linkHeaderFavourites(requestURL, firstID string, nextCursor *string) string {
+	base, err := url.Parse(requestURL)
+	if err != nil {
+		return ""
+	}
+	var parts []string
+	if nextCursor != nil && *nextCursor != "" {
+		u := *base
+		q := u.Query()
+		q.Set("max_id", *nextCursor)
+		u.RawQuery = q.Encode()
+		parts = append(parts, fmt.Sprintf("<%s>; rel=%q", u.String(), "next"))
+	}
+	if firstID != "" {
+		u := *base
+		q := u.Query()
+		q.Del("max_id")
+		q.Set("min_id", firstID)
+		u.RawQuery = q.Encode()
+		parts = append(parts, fmt.Sprintf("<%s>; rel=%q", u.String(), "prev"))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, ", ")
+}
+
+// linkHeaderWithNext builds a Link header with only rel="next" and max_id=cursor.
+func linkHeaderWithNext(requestURL, cursor string) string {
+	if cursor == "" {
+		return ""
+	}
+	base, err := url.Parse(requestURL)
+	if err != nil {
+		return ""
+	}
+	q := base.Query()
+	q.Set("max_id", cursor)
+	base.RawQuery = q.Encode()
+	return fmt.Sprintf("<%s>; rel=%q", base.String(), "next")
 }
 
 // optionalString returns a pointer to s if non-empty, otherwise nil.

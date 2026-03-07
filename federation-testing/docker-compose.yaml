@@ -6,6 +6,7 @@ services:
       # Omit "80:80" if host port 80 is in use; HTTPS on 443 is enough for federation.
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data 
     depends_on:
       - server-a
       - server-b
@@ -14,6 +15,46 @@ services:
         aliases:
           - monstera.local
           - monstera2.local
+
+  elk:
+    image: ghcr.io/elk-zone/elk:latest
+    user: "0:0"  # run as root so we can read Caddy's root-owned cert in caddy_data
+    ports:
+      - "5314:5314"
+    environment:
+      # Caddy stores local CA root at this path inside the caddy_data volume
+      - NODE_EXTRA_CA_CERTS=/caddy_data/caddy/pki/authorities/local/root.crt
+    volumes:
+      - ./elk-storage:/elk/data
+      - caddy_data:/caddy_data:ro  # to read Caddy's root cert
+    depends_on:
+      - caddy
+    networks:
+      - federation
+
+  init-a:
+    build:
+      context: ..
+      dockerfile: federation-testing/Dockerfile.init
+    environment:
+      APP_ENV: development
+      INSTANCE_DOMAIN: monstera.local
+      MONSTERA_UI_URL: http://localhost:3000
+      LOG_LEVEL: info
+      DATABASE_URL: postgres://monstera:monstera@postgres-a:5432/monstera_fed?sslmode=disable
+      NATS_URL: nats://nats-a:4222
+      MEDIA_BASE_URL: https://monstera.local
+      MEDIA_LOCAL_PATH: /data/media
+      EMAIL_FROM: noreply@monstera.local
+      SECRET_KEY_BASE: "0000000000000000000000000000000000000000000000000000000000000001"
+    depends_on:
+      postgres-a:
+        condition: service_healthy
+      nats-a:
+        condition: service_started
+    restart: "no"
+    networks:
+      - federation
 
   server-a:
     build:
@@ -38,8 +79,8 @@ services:
     volumes:
       - app_a_media:/data/media
     depends_on:
-      postgres-a:
-        condition: service_healthy
+      init-a:
+        condition: service_completed_successfully
       nats-a:
         condition: service_started
     networks:
@@ -57,6 +98,30 @@ services:
     depends_on:
       server-a:
         condition: service_started
+
+  init-b:
+    build:
+      context: ..
+      dockerfile: federation-testing/Dockerfile.init
+    environment:
+      APP_ENV: development
+      INSTANCE_DOMAIN: monstera2.local
+      MONSTERA_UI_URL: http://localhost:3001
+      LOG_LEVEL: info
+      DATABASE_URL: postgres://monstera:monstera@postgres-b:5432/monstera_fed?sslmode=disable
+      NATS_URL: nats://nats-b:4222
+      MEDIA_BASE_URL: https://monstera2.local
+      MEDIA_LOCAL_PATH: /data/media
+      EMAIL_FROM: noreply@monstera2.local
+      SECRET_KEY_BASE: "0000000000000000000000000000000000000000000000000000000000000002"
+    depends_on:
+      postgres-b:
+        condition: service_healthy
+      nats-b:
+        condition: service_started
+    restart: "no"
+    networks:
+      - federation
 
   server-b:
     build:
@@ -81,8 +146,8 @@ services:
     volumes:
       - app_b_media:/data/media
     depends_on:
-      postgres-b:
-        condition: service_healthy
+      init-b:
+        condition: service_completed_successfully
       nats-b:
         condition: service_started
     networks:
@@ -160,6 +225,7 @@ services:
       - federation
 
 volumes:
+  caddy_data: {}
   app_a_media: {}
   app_b_media: {}
   pg_a_data: {}

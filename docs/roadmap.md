@@ -408,7 +408,7 @@ Admin and moderator accounts are high-value targets. TOTP-based 2FA (RFC 6238) w
 
 When a local user reports a remote account, the SPEC states that a copy of the report should be forwarded to the remote instance's moderators as an ActivityPub `Flag` activity. This enables cross-instance moderation cooperation.
 
-**Current state:** Reports against remote accounts are stored locally and appear in the admin portal, but no `Flag` activity is sent to the remote instance.
+**Current state:** Reports against remote accounts are stored locally and appear in the admin portal, but no `Flag` activity is sent to the remote instance. The Mastodon API `POST /api/v1/reports` endpoint accepts the `forward` parameter from clients but ignores it; the response always returns `forwarded: false`. Implementing report forwarding in a future phase would wire the API to honour `forward` and send the `Flag` activity when the reported account is remote.
 
 **Why deferred:** The `Flag` activity type was not covered in IMPLEMENTATION 07's supported activity vocabulary. Implementing it requires: building the `Flag` activity JSON (actor = instance actor, object = reported account + status URIs), delivering it to the remote instance's inbox, and handling incoming `Flag` activities in the inbox processor. The incoming side also needs a way to display "forwarded reports" in the admin portal — a report where the reporter is a remote instance, not a local user.
 

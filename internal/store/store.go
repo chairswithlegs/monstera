@@ -12,6 +12,7 @@ import (
 type Store interface {
 	CreateAccount(ctx context.Context, in CreateAccountInput) (*domain.Account, error)
 	GetAccountByID(ctx context.Context, id string) (*domain.Account, error)
+	GetAccountsByIDs(ctx context.Context, ids []string) ([]*domain.Account, error)
 	GetAccountByAPID(ctx context.Context, apID string) (*domain.Account, error)
 	SearchAccounts(ctx context.Context, query string, limit int) ([]*domain.Account, error)
 	GetLocalAccountByUsername(ctx context.Context, username string) (*domain.Account, error)
@@ -33,6 +34,7 @@ type Store interface {
 	DecrementStatusesCount(ctx context.Context, accountID string) error
 
 	GetHomeTimeline(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error)
+	GetFavouritesTimeline(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, *string, error)
 	GetPublicTimeline(ctx context.Context, localOnly bool, maxID *string, limit int) ([]domain.Status, error)
 	GetHashtagTimeline(ctx context.Context, tagName string, maxID *string, limit int) ([]domain.Status, error)
 	GetStatusAncestors(ctx context.Context, statusID string) ([]domain.Status, error)
@@ -88,18 +90,24 @@ type Store interface {
 	DeleteFollow(ctx context.Context, accountID, targetID string) error
 	GetFollowers(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error)
 	GetFollowing(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error)
+	GetPendingFollowRequests(ctx context.Context, targetID string, maxID *string, limit int) ([]domain.Account, *string, error)
 
 	SoftDeleteStatus(ctx context.Context, id string) error
 	SuspendAccount(ctx context.Context, id string) error
 
 	CreateBlock(ctx context.Context, in CreateBlockInput) error
 	DeleteBlock(ctx context.Context, accountID, targetID string) error
+	IsBlockedEitherDirection(ctx context.Context, accountID, targetID string) (bool, error)
 	CreateMute(ctx context.Context, in CreateMuteInput) error
 	DeleteMute(ctx context.Context, accountID, targetID string) error
 	CreateFavourite(ctx context.Context, in CreateFavouriteInput) (*domain.Favourite, error)
 	DeleteFavourite(ctx context.Context, accountID, statusID string) error
 	GetFavouriteByAPID(ctx context.Context, apID string) (*domain.Favourite, error)
 	GetFavouriteByAccountAndStatus(ctx context.Context, accountID, statusID string) (*domain.Favourite, error)
+	CreateBookmark(ctx context.Context, in CreateBookmarkInput) error
+	DeleteBookmark(ctx context.Context, accountID, statusID string) error
+	GetBookmarks(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, *string, error)
+	IsBookmarked(ctx context.Context, accountID, statusID string) (bool, error)
 	IncrementFavouritesCount(ctx context.Context, statusID string) error
 	DecrementFavouritesCount(ctx context.Context, statusID string) error
 	IncrementReblogsCount(ctx context.Context, statusID string) error
@@ -111,6 +119,7 @@ type Store interface {
 	UpdateAccountKeys(ctx context.Context, id, publicKey string, apRaw []byte) error
 	AttachMediaToStatus(ctx context.Context, mediaID, statusID, accountID string) error
 	CreateMediaAttachment(ctx context.Context, in CreateMediaAttachmentInput) (*domain.MediaAttachment, error)
+	UpdateMediaAttachment(ctx context.Context, in UpdateMediaAttachmentInput) (*domain.MediaAttachment, error)
 	CreateStatusEdit(ctx context.Context, in CreateStatusEditInput) error
 	UpdateStatus(ctx context.Context, in UpdateStatusInput) error
 
@@ -164,4 +173,21 @@ type Store interface {
 	ListLocalAccounts(ctx context.Context, limit, offset int) ([]domain.Account, error)
 
 	DeleteFollowsByDomain(ctx context.Context, domain string) error
+
+	CreateList(ctx context.Context, in CreateListInput) (*domain.List, error)
+	GetListByID(ctx context.Context, id string) (*domain.List, error)
+	ListLists(ctx context.Context, accountID string) ([]domain.List, error)
+	UpdateList(ctx context.Context, in UpdateListInput) (*domain.List, error)
+	DeleteList(ctx context.Context, id string) error
+	ListListAccountIDs(ctx context.Context, listID string) ([]string, error)
+	AddAccountToList(ctx context.Context, listID, accountID string) error
+	RemoveAccountFromList(ctx context.Context, listID, accountID string) error
+	GetListTimeline(ctx context.Context, listID string, maxID *string, limit int) ([]domain.Status, error)
+
+	CreateUserFilter(ctx context.Context, in CreateUserFilterInput) (*domain.UserFilter, error)
+	GetUserFilterByID(ctx context.Context, id string) (*domain.UserFilter, error)
+	ListUserFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error)
+	UpdateUserFilter(ctx context.Context, in UpdateUserFilterInput) (*domain.UserFilter, error)
+	DeleteUserFilter(ctx context.Context, id string) error
+	GetActiveUserFiltersByContext(ctx context.Context, accountID, context string) ([]domain.UserFilter, error)
 }

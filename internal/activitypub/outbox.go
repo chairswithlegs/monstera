@@ -85,7 +85,6 @@ func (p *Outbox) PublishStatus(ctx context.Context, status *domain.Status) error
 	if err := p.fanout.publish(ctx, "create", msg); err != nil {
 		return fmt.Errorf("outbox: enqueue fanout: %w", err)
 	}
-	slog.DebugContext(ctx, "outbox: PublishStatus enqueued fanout", slog.String("status_id", status.ID), slog.String("activity_id", activityID))
 	return nil
 }
 
@@ -122,7 +121,6 @@ func (p *Outbox) DeleteStatus(ctx context.Context, status *domain.Status) error 
 	if err := p.fanout.publish(ctx, "delete", msg); err != nil {
 		return fmt.Errorf("outbox: enqueue fanout: %w", err)
 	}
-	slog.DebugContext(ctx, "outbox: DeleteStatus enqueued fanout", slog.String("status_id", status.ID))
 	return nil
 }
 

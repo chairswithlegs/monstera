@@ -14,6 +14,7 @@ import (
 
 type AccountService interface {
 	GetByID(ctx context.Context, id string) (*domain.Account, error)
+	GetAccountsByIDs(ctx context.Context, ids []string) ([]*domain.Account, error)
 	GetByAPID(ctx context.Context, apID string) (*domain.Account, error)
 	GetLocalByUsername(ctx context.Context, username string) (*domain.Account, error)
 	Create(ctx context.Context, in CreateAccountInput) (*domain.Account, error)
@@ -192,6 +193,15 @@ func (svc *accountService) GetByID(ctx context.Context, id string) (*domain.Acco
 		return nil, fmt.Errorf("GetAccountByID(%s): %w", id, err)
 	}
 	return acc, nil
+}
+
+// GetAccountsByIDs returns accounts for the given IDs. Missing IDs are omitted; order is not guaranteed.
+func (svc *accountService) GetAccountsByIDs(ctx context.Context, ids []string) ([]*domain.Account, error) {
+	accounts, err := svc.store.GetAccountsByIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("GetAccountsByIDs: %w", err)
+	}
+	return accounts, nil
 }
 
 // GetByAPID returns the account by ActivityPub ID (actor IRI), or ErrNotFound.

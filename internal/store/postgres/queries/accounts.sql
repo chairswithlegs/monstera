@@ -1,6 +1,9 @@
 -- name: GetAccountByID :one
 SELECT * FROM accounts WHERE id = $1;
 
+-- name: GetAccountsByIDs :many
+SELECT * FROM accounts WHERE id = ANY($1::text[]);
+
 -- name: GetLocalAccountByUsername :one
 SELECT * FROM accounts WHERE username = $1 AND domain IS NULL;
 

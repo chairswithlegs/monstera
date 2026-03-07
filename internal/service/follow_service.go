@@ -39,6 +39,9 @@ type FollowService interface {
 	DeleteFollowFromInbox(ctx context.Context, actorAccountID, targetAccountID string) error
 	GetFollowers(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error)
 	GetFollowing(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error)
+	ListPendingFollowRequests(ctx context.Context, targetAccountID string, maxID *string, limit int) ([]domain.Account, *string, error)
+	AuthorizeFollowRequest(ctx context.Context, targetAccountID, requesterAccountID string) error
+	RejectFollowRequest(ctx context.Context, targetAccountID, requesterAccountID string) error
 }
 
 type followService struct {
@@ -390,4 +393,49 @@ func (svc *followService) GetFollowing(ctx context.Context, accountID string, ma
 		return nil, fmt.Errorf("GetFollowing: %w", err)
 	}
 	return list, nil
+}
+
+// ListPendingFollowRequests returns accounts that have requested to follow the target (paginated).
+func (svc *followService) ListPendingFollowRequests(ctx context.Context, targetAccountID string, maxID *string, limit int) ([]domain.Account, *string, error) {
+	accounts, nextCursor, err := svc.store.GetPendingFollowRequests(ctx, targetAccountID, maxID, limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("GetPendingFollowRequests: %w", err)
+	}
+	return accounts, nextCursor, nil
+}
+
+// AuthorizeFollowRequest accepts a pending follow request (requesterAccountID requested to follow targetAccountID).
+func (svc *followService) AuthorizeFollowRequest(ctx context.Context, targetAccountID, requesterAccountID string) error {
+	follow, err := svc.store.GetFollow(ctx, requesterAccountID, targetAccountID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return fmt.Errorf("follow request: %w", domain.ErrNotFound)
+		}
+		return fmt.Errorf("GetFollow: %w", err)
+	}
+	if follow.State != domain.FollowStatePending {
+		return nil
+	}
+	if err := svc.AcceptFollow(ctx, follow.ID); err != nil {
+		return fmt.Errorf("AcceptFollow: %w", err)
+	}
+	return nil
+}
+
+// RejectFollowRequest rejects a pending follow request.
+func (svc *followService) RejectFollowRequest(ctx context.Context, targetAccountID, requesterAccountID string) error {
+	follow, err := svc.store.GetFollow(ctx, requesterAccountID, targetAccountID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return fmt.Errorf("follow request: %w", domain.ErrNotFound)
+		}
+		return fmt.Errorf("GetFollow: %w", err)
+	}
+	if follow.State != domain.FollowStatePending {
+		return nil
+	}
+	if err := svc.store.DeleteFollow(ctx, requesterAccountID, targetAccountID); err != nil {
+		return fmt.Errorf("DeleteFollow: %w", err)
+	}
+	return nil
 }

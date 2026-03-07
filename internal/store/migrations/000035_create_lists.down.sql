@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS list_accounts;
+DROP TABLE IF EXISTS lists;

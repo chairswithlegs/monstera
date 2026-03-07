@@ -128,6 +128,51 @@ type CreateFavouriteInput struct {
 	APID      *string
 }
 
+// CreateBookmarkInput is the input for creating a bookmark.
+type CreateBookmarkInput struct {
+	ID        string
+	AccountID string
+	StatusID  string
+}
+
+// CreateListInput is the input for creating a list.
+type CreateListInput struct {
+	ID            string
+	AccountID     string
+	Title         string
+	RepliesPolicy string
+	Exclusive     bool
+}
+
+// UpdateListInput is the input for updating a list.
+type UpdateListInput struct {
+	ID            string
+	Title         string
+	RepliesPolicy string
+	Exclusive     bool
+}
+
+// CreateUserFilterInput is the input for creating a user filter.
+type CreateUserFilterInput struct {
+	ID           string
+	AccountID    string
+	Phrase       string
+	Context      []string
+	WholeWord    bool
+	ExpiresAt    *time.Time
+	Irreversible bool
+}
+
+// UpdateUserFilterInput is the input for updating a user filter.
+type UpdateUserFilterInput struct {
+	ID           string
+	Phrase       string
+	Context      []string
+	WholeWord    bool
+	ExpiresAt    *time.Time
+	Irreversible bool
+}
+
 // UpdateAccountInput is the input for updating an account (profile fields).
 type UpdateAccountInput struct {
 	ID            string
@@ -152,6 +197,14 @@ type CreateMediaAttachmentInput struct {
 	RemoteURL   *string
 	Description *string
 	Blurhash    *string
+	Meta        []byte
+}
+
+// UpdateMediaAttachmentInput is the input for updating a media attachment (description, meta).
+type UpdateMediaAttachmentInput struct {
+	ID          string
+	AccountID   string
+	Description *string
 	Meta        []byte
 }
 

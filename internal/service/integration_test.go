@@ -29,7 +29,7 @@ func TestIntegration_RegisterUser_CreateStatus_HomeTimeline(t *testing.T) {
 	instanceBaseURL := "https://test.example.com"
 	accountSvc := NewAccountService(s, instanceBaseURL)
 	statusSvc := NewStatusService(s, NoopFederationPublisher, events.NoopEventBus, instanceBaseURL, "test.example.com", 500, slog.Default())
-	timelineSvc := NewTimelineService(s)
+	timelineSvc := NewTimelineService(s, statusSvc)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
 		Username:     "integration_user",
