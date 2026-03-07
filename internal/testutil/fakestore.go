@@ -33,6 +33,14 @@ type FakeStore struct {
 	mediaByID              map[string]*domain.MediaAttachment
 	notificationsByAccount map[string][]*domain.Notification
 	hashtagsByName         map[string]*domain.Hashtag
+	hashtagsByID           map[string]*domain.Hashtag
+	followedTagsList       []followedTagEntry      // for ListFollowedTags order
+	featuredTagsList       []featuredTagEntry      // for ListFeaturedTags order
+	conversationMutesByKey map[string]struct{}     // "accountID:conversationID"
+	conversationMutesList  []conversationMuteEntry // for ListMutedConversationIDs
+	announcementsByID      map[string]*domain.Announcement
+	announcementReads      map[string]struct{} // "accountID:announcementID"
+	announcementReactions  []announcementReactionEntry
 	Settings               map[string]string // optional; GetSetting reads from here
 
 	applications     map[string]*domain.OAuthApplication
@@ -51,14 +59,49 @@ type FakeStore struct {
 
 	lastStatusAtByAccount map[string]time.Time // for ListDirectoryAccounts "active" order
 
-	accountPins []pinEntry          // accountID, statusID, created_at for ListPinnedStatusIDs order
-	statusEdits []domain.StatusEdit // for ListStatusEdits
+	accountPins       []pinEntry          // accountID, statusID, created_at for ListPinnedStatusIDs order
+	statusEdits       []domain.StatusEdit // for ListStatusEdits
+	scheduledStatuses map[string]*domain.ScheduledStatus
+
+	pollsByID       map[string]*domain.Poll
+	pollsByStatusID map[string]*domain.Poll
+	pollOptions     map[string][]domain.PollOption // pollID -> options ordered by position
+	pollVotes       []pollVoteEntry                // poll_id, account_id, option_id
+}
+
+type pollVoteEntry struct {
+	pollID    string
+	accountID string
+	optionID  string
 }
 
 type pinEntry struct {
 	accountID string
 	statusID  string
 	createdAt time.Time
+}
+
+type followedTagEntry struct {
+	ID        string
+	AccountID string
+	TagID     string
+}
+
+type featuredTagEntry struct {
+	ID        string
+	AccountID string
+	TagID     string
+}
+
+type conversationMuteEntry struct {
+	AccountID      string
+	ConversationID string
+}
+
+type announcementReactionEntry struct {
+	AnnouncementID string
+	AccountID      string
+	Name           string
 }
 
 // NewFakeStore returns a new FakeStore for use in tests.
@@ -77,6 +120,7 @@ func NewFakeStore() *FakeStore {
 		mediaByID:              make(map[string]*domain.MediaAttachment),
 		notificationsByAccount: make(map[string][]*domain.Notification),
 		hashtagsByName:         make(map[string]*domain.Hashtag),
+		hashtagsByID:           make(map[string]*domain.Hashtag),
 		applications:           make(map[string]*domain.OAuthApplication),
 		applicationsByID:       make(map[string]*domain.OAuthApplication),
 		authCodes:              make(map[string]*domain.OAuthAuthorizationCode),
@@ -89,6 +133,15 @@ func NewFakeStore() *FakeStore {
 		lastStatusAtByAccount:  make(map[string]time.Time),
 		accountPins:            nil,
 		statusEdits:            nil,
+		scheduledStatuses:      make(map[string]*domain.ScheduledStatus),
+		pollsByID:              make(map[string]*domain.Poll),
+		pollsByStatusID:        make(map[string]*domain.Poll),
+		pollOptions:            make(map[string][]domain.PollOption),
+		pollVotes:              nil,
+		conversationMutesByKey: make(map[string]struct{}),
+		announcementsByID:      make(map[string]*domain.Announcement),
+		announcementReads:      make(map[string]struct{}),
+		announcementReactions:  nil,
 	}
 }
 
@@ -751,6 +804,7 @@ func (f *FakeStore) GetOrCreateHashtag(ctx context.Context, name string) (*domai
 	}
 	h := &domain.Hashtag{ID: "tag-" + key, Name: key, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	f.hashtagsByName[key] = h
+	f.hashtagsByID[h.ID] = h
 	return h, nil
 }
 func (f *FakeStore) AttachHashtagsToStatus(ctx context.Context, statusID string, hashtagIDs []string) error {
@@ -790,6 +844,365 @@ func (f *FakeStore) SearchHashtagsByPrefix(ctx context.Context, prefix string, l
 	}
 	return out, nil
 }
+
+func (f *FakeStore) FollowTag(ctx context.Context, id, accountID, tagID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, e := range f.followedTagsList {
+		if e.AccountID == accountID && e.TagID == tagID {
+			return nil
+		}
+	}
+	f.followedTagsList = append(f.followedTagsList, followedTagEntry{ID: id, AccountID: accountID, TagID: tagID})
+	return nil
+}
+
+func (f *FakeStore) UnfollowTag(ctx context.Context, accountID, tagID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, e := range f.followedTagsList {
+		if e.AccountID == accountID && e.TagID == tagID {
+			f.followedTagsList = append(f.followedTagsList[:i], f.followedTagsList[i+1:]...)
+			break
+		}
+	}
+	return nil
+}
+
+func (f *FakeStore) ListFollowedTags(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Hashtag, *string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var entries []followedTagEntry
+	for _, e := range f.followedTagsList {
+		if e.AccountID == accountID {
+			if maxID != nil && *maxID != "" && e.ID >= *maxID {
+				continue
+			}
+			entries = append(entries, e)
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].ID > entries[j].ID })
+	if limit <= 0 {
+		limit = 40
+	}
+	var nextCursor *string
+	if len(entries) > limit {
+		nextCursor = &entries[limit-1].ID
+		entries = entries[:limit]
+	}
+	out := make([]domain.Hashtag, 0, len(entries))
+	for _, e := range entries {
+		if h, ok := f.hashtagsByID[e.TagID]; ok && h != nil {
+			out = append(out, *h)
+		}
+	}
+	return out, nextCursor, nil
+}
+
+func (f *FakeStore) CreateFeaturedTag(ctx context.Context, id, accountID, tagID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, e := range f.featuredTagsList {
+		if e.AccountID == accountID && e.TagID == tagID {
+			return nil
+		}
+	}
+	f.featuredTagsList = append(f.featuredTagsList, featuredTagEntry{ID: id, AccountID: accountID, TagID: tagID})
+	return nil
+}
+
+func (f *FakeStore) DeleteFeaturedTag(ctx context.Context, id, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, e := range f.featuredTagsList {
+		if e.ID == id && e.AccountID == accountID {
+			f.featuredTagsList = append(f.featuredTagsList[:i], f.featuredTagsList[i+1:]...)
+			break
+		}
+	}
+	return nil
+}
+
+func (f *FakeStore) ListFeaturedTags(ctx context.Context, accountID string) ([]domain.FeaturedTag, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]domain.FeaturedTag, 0)
+	for _, e := range f.featuredTagsList {
+		if e.AccountID != accountID {
+			continue
+		}
+		h, ok := f.hashtagsByID[e.TagID]
+		if !ok || h == nil {
+			continue
+		}
+		out = append(out, domain.FeaturedTag{
+			ID:            e.ID,
+			AccountID:     e.AccountID,
+			TagID:         e.TagID,
+			Name:          h.Name,
+			StatusesCount: 0,
+			LastStatusAt:  nil,
+			CreatedAt:     time.Now(),
+		})
+	}
+	return out, nil
+}
+
+func (f *FakeStore) GetFeaturedTagByID(ctx context.Context, id, accountID string) (*domain.FeaturedTag, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, e := range f.featuredTagsList {
+		if e.ID == id && e.AccountID == accountID {
+			name := ""
+			if h, ok := f.hashtagsByID[e.TagID]; ok && h != nil {
+				name = h.Name
+			}
+			return &domain.FeaturedTag{
+				ID:            e.ID,
+				AccountID:     e.AccountID,
+				TagID:         e.TagID,
+				Name:          name,
+				StatusesCount: 0,
+				LastStatusAt:  nil,
+				CreatedAt:     time.Now(),
+			}, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
+func (f *FakeStore) ListFeaturedTagSuggestions(ctx context.Context, accountID string, limit int) ([]domain.Hashtag, []int64, error) {
+	return nil, nil, nil
+}
+
+func convMuteKey(accountID, conversationID string) string {
+	return accountID + ":" + conversationID
+}
+
+func (f *FakeStore) GetConversationRoot(ctx context.Context, statusID string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	visited := make(map[string]struct{})
+	currentID := statusID
+	for {
+		if _, ok := visited[currentID]; ok {
+			return currentID, nil
+		}
+		visited[currentID] = struct{}{}
+		st, ok := f.statusesByID[currentID]
+		if !ok || st == nil {
+			return "", domain.ErrNotFound
+		}
+		if st.InReplyToID == nil || *st.InReplyToID == "" {
+			return currentID, nil
+		}
+		currentID = *st.InReplyToID
+	}
+}
+
+func (f *FakeStore) CreateConversationMute(ctx context.Context, accountID, conversationID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := convMuteKey(accountID, conversationID)
+	f.conversationMutesByKey[key] = struct{}{}
+	f.conversationMutesList = append(f.conversationMutesList, conversationMuteEntry{AccountID: accountID, ConversationID: conversationID})
+	return nil
+}
+
+func (f *FakeStore) DeleteConversationMute(ctx context.Context, accountID, conversationID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.conversationMutesByKey, convMuteKey(accountID, conversationID))
+	for i, e := range f.conversationMutesList {
+		if e.AccountID == accountID && e.ConversationID == conversationID {
+			f.conversationMutesList = append(f.conversationMutesList[:i], f.conversationMutesList[i+1:]...)
+			break
+		}
+	}
+	return nil
+}
+
+func (f *FakeStore) IsConversationMuted(ctx context.Context, accountID, conversationID string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.conversationMutesByKey[convMuteKey(accountID, conversationID)]
+	return ok, nil
+}
+
+func (f *FakeStore) ListMutedConversationIDs(ctx context.Context, accountID string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []string
+	for _, e := range f.conversationMutesList {
+		if e.AccountID == accountID {
+			out = append(out, e.ConversationID)
+		}
+	}
+	return out, nil
+}
+
+func announcementReadKey(accountID, announcementID string) string {
+	return accountID + ":" + announcementID
+}
+
+func (f *FakeStore) CreateAnnouncement(ctx context.Context, in store.CreateAnnouncementInput) (*domain.Announcement, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	a := &domain.Announcement{
+		ID:          in.ID,
+		Content:     in.Content,
+		StartsAt:    in.StartsAt,
+		EndsAt:      in.EndsAt,
+		AllDay:      in.AllDay,
+		PublishedAt: in.PublishedAt,
+		UpdatedAt:   in.PublishedAt,
+	}
+	f.announcementsByID[in.ID] = a
+	return a, nil
+}
+
+func (f *FakeStore) UpdateAnnouncement(ctx context.Context, in store.UpdateAnnouncementInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	a, ok := f.announcementsByID[in.ID]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	a.Content = in.Content
+	a.StartsAt = in.StartsAt
+	a.EndsAt = in.EndsAt
+	a.AllDay = in.AllDay
+	a.PublishedAt = in.PublishedAt
+	a.UpdatedAt = time.Now()
+	return nil
+}
+
+func (f *FakeStore) GetAnnouncementByID(ctx context.Context, id string) (*domain.Announcement, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	a, ok := f.announcementsByID[id]
+	if !ok || a == nil {
+		return nil, domain.ErrNotFound
+	}
+	cp := *a
+	return &cp, nil
+}
+
+func isAnnouncementActive(a *domain.Announcement, now time.Time) bool {
+	if a.PublishedAt.After(now) {
+		return false
+	}
+	if a.StartsAt != nil && a.StartsAt.After(now) {
+		return false
+	}
+	if a.EndsAt != nil && !a.EndsAt.After(now) {
+		return false
+	}
+	return true
+}
+
+func (f *FakeStore) ListActiveAnnouncements(ctx context.Context) ([]domain.Announcement, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.Announcement
+	for _, a := range f.announcementsByID {
+		if a != nil && isAnnouncementActive(a, time.Now()) {
+			out = append(out, *a)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].PublishedAt.After(out[j].PublishedAt) })
+	return out, nil
+}
+
+func (f *FakeStore) ListAllAnnouncements(ctx context.Context) ([]domain.Announcement, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.Announcement
+	for _, a := range f.announcementsByID {
+		if a != nil {
+			out = append(out, *a)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].PublishedAt.After(out[j].PublishedAt) })
+	return out, nil
+}
+
+func (f *FakeStore) DismissAnnouncement(ctx context.Context, accountID, announcementID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.announcementReads[announcementReadKey(accountID, announcementID)] = struct{}{}
+	return nil
+}
+
+func (f *FakeStore) ListReadAnnouncementIDs(ctx context.Context, accountID string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []string
+	for k := range f.announcementReads {
+		parts := strings.SplitN(k, ":", 2)
+		if len(parts) == 2 && parts[0] == accountID {
+			out = append(out, parts[1])
+		}
+	}
+	return out, nil
+}
+
+func (f *FakeStore) AddAnnouncementReaction(ctx context.Context, announcementID, accountID, name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, r := range f.announcementReactions {
+		if r.AnnouncementID == announcementID && r.AccountID == accountID && r.Name == name {
+			return nil
+		}
+	}
+	f.announcementReactions = append(f.announcementReactions, announcementReactionEntry{
+		AnnouncementID: announcementID,
+		AccountID:      accountID,
+		Name:           name,
+	})
+	return nil
+}
+
+func (f *FakeStore) RemoveAnnouncementReaction(ctx context.Context, announcementID, accountID, name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, r := range f.announcementReactions {
+		if r.AnnouncementID == announcementID && r.AccountID == accountID && r.Name == name {
+			f.announcementReactions = append(f.announcementReactions[:i], f.announcementReactions[i+1:]...)
+			break
+		}
+	}
+	return nil
+}
+
+func (f *FakeStore) ListAnnouncementReactionCounts(ctx context.Context, announcementID string) ([]domain.AnnouncementReactionCount, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	counts := make(map[string]int)
+	for _, r := range f.announcementReactions {
+		if r.AnnouncementID == announcementID {
+			counts[r.Name]++
+		}
+	}
+	out := make([]domain.AnnouncementReactionCount, 0, len(counts))
+	for name, count := range counts {
+		out = append(out, domain.AnnouncementReactionCount{Name: name, Count: count, Me: false})
+	}
+	return out, nil
+}
+
+func (f *FakeStore) ListAccountAnnouncementReactionNames(ctx context.Context, announcementID, accountID string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []string
+	for _, r := range f.announcementReactions {
+		if r.AnnouncementID == announcementID && r.AccountID == accountID {
+			out = append(out, r.Name)
+		}
+	}
+	return out, nil
+}
+
 func (f *FakeStore) CreateNotification(ctx context.Context, in store.CreateNotificationInput) (*domain.Notification, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -1670,6 +2083,97 @@ func (f *FakeStore) UpdateStatus(ctx context.Context, in store.UpdateStatusInput
 	st.UpdatedAt = now
 	return nil
 }
+
+func (f *FakeStore) CreateScheduledStatus(ctx context.Context, in store.CreateScheduledStatusInput) (*domain.ScheduledStatus, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	s := &domain.ScheduledStatus{
+		ID:          in.ID,
+		AccountID:   in.AccountID,
+		Params:      in.Params,
+		ScheduledAt: in.ScheduledAt,
+		CreatedAt:   time.Now(),
+	}
+	f.scheduledStatuses[in.ID] = s
+	return s, nil
+}
+
+func (f *FakeStore) GetScheduledStatusByID(ctx context.Context, id string) (*domain.ScheduledStatus, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	s := f.scheduledStatuses[id]
+	if s == nil {
+		return nil, domain.ErrNotFound
+	}
+	cp := *s
+	return &cp, nil
+}
+
+func (f *FakeStore) ListScheduledStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.ScheduledStatus, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var list []*domain.ScheduledStatus
+	for _, s := range f.scheduledStatuses {
+		if s.AccountID != accountID {
+			continue
+		}
+		list = append(list, s)
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].ID > list[j].ID })
+	var out []domain.ScheduledStatus
+	for _, s := range list {
+		if maxID != nil && *maxID != "" && s.ID >= *maxID {
+			continue
+		}
+		out = append(out, *s)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (f *FakeStore) UpdateScheduledStatus(ctx context.Context, in store.UpdateScheduledStatusInput) (*domain.ScheduledStatus, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	s := f.scheduledStatuses[in.ID]
+	if s == nil {
+		return nil, domain.ErrNotFound
+	}
+	s.Params = in.Params
+	s.ScheduledAt = in.ScheduledAt
+	cp := *s
+	return &cp, nil
+}
+
+func (f *FakeStore) DeleteScheduledStatus(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.scheduledStatuses[id] == nil {
+		return domain.ErrNotFound
+	}
+	delete(f.scheduledStatuses, id)
+	return nil
+}
+
+func (f *FakeStore) ListScheduledStatusesDue(ctx context.Context, limit int) ([]domain.ScheduledStatus, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	now := time.Now()
+	var list []*domain.ScheduledStatus
+	for _, s := range f.scheduledStatuses {
+		if !s.ScheduledAt.After(now) {
+			list = append(list, s)
+		}
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].ScheduledAt.Before(list[j].ScheduledAt) })
+	var out []domain.ScheduledStatus
+	for i := 0; i < limit && i < len(list); i++ {
+		out = append(out, *list[i])
+	}
+	return out, nil
+}
+
 func (f *FakeStore) GetFollowerInboxURLs(ctx context.Context, accountID string) ([]string, error) {
 	return f.getDistinctFollowerInboxURLsPaginated(ctx, accountID, "", 0)
 }
@@ -1967,4 +2471,124 @@ func (f *FakeStore) ListLocalAccounts(ctx context.Context, limit, offset int) ([
 }
 func (f *FakeStore) DeleteFollowsByDomain(ctx context.Context, domain string) error {
 	return nil
+}
+
+func (f *FakeStore) CreatePoll(ctx context.Context, in store.CreatePollInput) (*domain.Poll, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p := &domain.Poll{
+		ID:        in.ID,
+		StatusID:  in.StatusID,
+		ExpiresAt: in.ExpiresAt,
+		Multiple:  in.Multiple,
+		CreatedAt: time.Now(),
+	}
+	f.pollsByID[p.ID] = p
+	f.pollsByStatusID[p.StatusID] = p
+	f.pollOptions[p.ID] = nil
+	return p, nil
+}
+
+func (f *FakeStore) CreatePollOption(ctx context.Context, in store.CreatePollOptionInput) (*domain.PollOption, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	opt := domain.PollOption{ID: in.ID, PollID: in.PollID, Title: in.Title, Position: in.Position}
+	opts := f.pollOptions[in.PollID]
+	if opts == nil {
+		opts = []domain.PollOption{}
+	}
+	f.pollOptions[in.PollID] = append(opts, opt)
+	return &opt, nil
+}
+
+func (f *FakeStore) GetPollByID(ctx context.Context, id string) (*domain.Poll, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p := f.pollsByID[id]
+	if p == nil {
+		return nil, domain.ErrNotFound
+	}
+	return p, nil
+}
+
+func (f *FakeStore) GetPollByStatusID(ctx context.Context, statusID string) (*domain.Poll, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p := f.pollsByStatusID[statusID]
+	if p == nil {
+		return nil, domain.ErrNotFound
+	}
+	return p, nil
+}
+
+func (f *FakeStore) ListPollOptions(ctx context.Context, pollID string) ([]domain.PollOption, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	opts := f.pollOptions[pollID]
+	if opts == nil {
+		return nil, nil
+	}
+	cp := append([]domain.PollOption{}, opts...)
+	sort.Slice(cp, func(i, j int) bool {
+		if cp[i].Position != cp[j].Position {
+			return cp[i].Position < cp[j].Position
+		}
+		return cp[i].ID < cp[j].ID
+	})
+	return cp, nil
+}
+
+func (f *FakeStore) DeletePollVotesByAccount(ctx context.Context, pollID, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var keep []pollVoteEntry
+	for _, v := range f.pollVotes {
+		if v.pollID != pollID || v.accountID != accountID {
+			keep = append(keep, v)
+		}
+	}
+	f.pollVotes = keep
+	return nil
+}
+
+func (f *FakeStore) CreatePollVote(ctx context.Context, id, pollID, accountID, optionID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pollVotes = append(f.pollVotes, pollVoteEntry{pollID: pollID, accountID: accountID, optionID: optionID})
+	return nil
+}
+
+func (f *FakeStore) GetVoteCountsByPoll(ctx context.Context, pollID string) (map[string]int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	counts := make(map[string]int)
+	for _, v := range f.pollVotes {
+		if v.pollID == pollID {
+			counts[v.optionID]++
+		}
+	}
+	return counts, nil
+}
+
+func (f *FakeStore) HasVotedOnPoll(ctx context.Context, pollID, accountID string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, v := range f.pollVotes {
+		if v.pollID == pollID && v.accountID == accountID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (f *FakeStore) GetOwnVoteOptionIDs(ctx context.Context, pollID, accountID string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var ids []string
+	for _, v := range f.pollVotes {
+		if v.pollID == pollID && v.accountID == accountID {
+			ids = append(ids, v.optionID)
+		}
+	}
+	return ids, nil
 }

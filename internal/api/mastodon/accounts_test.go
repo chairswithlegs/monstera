@@ -452,6 +452,110 @@ func TestAccountsHandler_GETMutes(t *testing.T) {
 	})
 }
 
+func TestAccountsHandler_FollowedTags(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	followSvc := service.NewFollowService(st, nil, nil)
+	handler := NewAccountsHandler(accountSvc, followSvc, nil, "example.com")
+
+	actor, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	t.Run("GET unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/followed_tags", nil)
+		rec := httptest.NewRecorder()
+		handler.GETFollowedTags(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("GET authenticated empty returns 200 and empty array", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/followed_tags", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), actor))
+		rec := httptest.NewRecorder()
+		handler.GETFollowedTags(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body []any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Empty(t, body)
+	})
+
+	t.Run("POST unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/followed_tags", strings.NewReader(`{"name":"golang"}`))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		handler.POSTFollowedTags(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("POST with name returns 200 and tag with following true", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/followed_tags", strings.NewReader(`{"name":"golang"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), actor))
+		rec := httptest.NewRecorder()
+		handler.POSTFollowedTags(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Equal(t, "golang", body["name"])
+		assert.True(t, body["following"].(bool))
+		assert.NotEmpty(t, body["id"])
+		assert.Contains(t, body["url"], "/tags/golang")
+	})
+
+	t.Run("GET after follow returns tag in list", func(t *testing.T) {
+		_, err := followSvc.FollowTag(ctx, actor.ID, "rust")
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/followed_tags", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), actor))
+		rec := httptest.NewRecorder()
+		handler.GETFollowedTags(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body []map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		var found bool
+		for _, tag := range body {
+			if tag["name"] == "rust" {
+				found = true
+				assert.True(t, tag["following"].(bool))
+				break
+			}
+		}
+		assert.True(t, found, "expected tag 'rust' in list")
+	})
+
+	t.Run("DELETE unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/followed_tags/tag-rust", nil)
+		rec := httptest.NewRecorder()
+		handler.DELETEFollowedTag(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("DELETE by tag id returns 200 and removes from list", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/followed_tags/tag-rust", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), actor))
+		req = testutil.AddChiURLParam(req, "id", "tag-rust")
+		rec := httptest.NewRecorder()
+		handler.DELETEFollowedTag(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		listReq := httptest.NewRequest(http.MethodGet, "/api/v1/followed_tags", nil)
+		listReq = listReq.WithContext(middleware.WithAccount(listReq.Context(), actor))
+		listRec := httptest.NewRecorder()
+		handler.GETFollowedTags(listRec, listReq)
+		var list []map[string]any
+		require.NoError(t, json.NewDecoder(listRec.Body).Decode(&list))
+		for _, tag := range list {
+			assert.NotEqual(t, "rust", tag["name"], "rust should be removed after DELETE")
+		}
+	})
+}
+
 func TestAccountsHandler_BlockUnblock(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

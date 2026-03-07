@@ -23,6 +23,21 @@ type EnrichedStatus struct {
 	Mentions []*domain.Account
 	Tags     []domain.Hashtag
 	Media    []domain.MediaAttachment
+	Poll     *EnrichedPoll // optional; set when status has an attached poll
+}
+
+// EnrichedPoll is a poll with options (and vote counts), plus viewer-relative voted/own_votes.
+type EnrichedPoll struct {
+	Poll     domain.Poll
+	Options  []PollOptionWithCount // ordered by position
+	Voted    bool                  // has the viewer voted (only when viewerAccountID was provided)
+	OwnVotes []int                 // 0-based option indices the viewer selected
+}
+
+// PollOptionWithCount is a poll option with its vote count for API response.
+type PollOptionWithCount struct {
+	Title      string
+	VotesCount int
 }
 
 // TimelineService handles timeline queries (home, public).

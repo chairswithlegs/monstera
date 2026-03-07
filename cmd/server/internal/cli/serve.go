@@ -162,6 +162,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	go func() { _ = outbox.Start(workerCtx) }()
 	go func() { _ = hub.Start(workerCtx) }()
+	go runScheduledStatusWorker(workerCtx, s, statusSvc, logger)
 	defer workerCancel()
 	inboxProcessor := ap.NewInbox(
 		accountSvc,
@@ -183,7 +184,9 @@ func runServe(_ *cobra.Command, _ []string) error {
 	oauthHandler := oauthhandlers.NewHandler(oauthServer, s, cfg)
 	health := api.NewHealthChecker(pool, natsClient.Conn)
 	accountsHandler := mastodon.NewAccountsHandler(accountSvc, followSvc, timelineSvc, cfg.InstanceDomain)
-	statusesHandler := mastodon.NewStatusesHandler(accountSvc, statusSvc, cfg.InstanceDomain, cacheStore)
+	statusesHandler := mastodon.NewStatusesHandler(accountSvc, statusSvc, cfg.InstanceDomain, cacheStore, nil)
+	scheduledStatusesHandler := mastodon.NewScheduledStatusesHandler(statusSvc)
+	pollsHandler := mastodon.NewPollsHandler(statusSvc)
 	timelinesHandler := mastodon.NewTimelinesHandler(timelineSvc, cfg.InstanceDomain)
 	instanceHandler := mastodon.NewInstanceHandler(cfg.InstanceDomain, cfg.InstanceName, cfg.MaxStatusChars, cfg.MediaMaxBytes, nil, instanceSvc)
 	notificationsHandler := mastodon.NewNotificationsHandler(notificationSvc, accountSvc, cfg.InstanceDomain)
@@ -209,6 +212,10 @@ func runServe(_ *cobra.Command, _ []string) error {
 	preferencesHandler := mastodon.NewPreferencesHandler(accountSvc)
 	markerSvc := service.NewMarkerService(s)
 	markersHandler := mastodon.NewMarkersHandler(markerSvc)
+	featuredTagSvc := service.NewFeaturedTagService(s)
+	featuredTagsHandler := mastodon.NewFeaturedTagsHandler(featuredTagSvc, accountSvc, cfg.InstanceDomain)
+	announcementSvc := service.NewAnnouncementService(s)
+	announcementsHandler := mastodon.NewAnnouncementsHandler(announcementSvc)
 	registrationSvc := service.NewRegistrationService(s, registrationMailer, registrationMailer, instanceBaseURL, cfg.InstanceName)
 	serverFilterSvc := service.NewServerFilterService(s)
 	moderatorDashboard := monstera.NewModeratorDashboardHandler(instanceSvc, moderationSvc)
@@ -219,6 +226,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	adminFederation := monstera.NewAdminFederationHandler(instanceSvc, moderationSvc)
 	moderatorContent := monstera.NewModeratorContentHandler(serverFilterSvc)
 	adminSettings := monstera.NewAdminSettingsHandler(instanceSvc)
+	adminAnnouncements := monstera.NewAdminAnnouncementsHandler(announcementSvc)
 
 	handler := router.New(router.Deps{
 		AccountsService:        accountSvc,
@@ -228,6 +236,8 @@ func runServe(_ *cobra.Command, _ []string) error {
 		OAuthServer:            oauthServer,
 		Accounts:               accountsHandler,
 		Statuses:               statusesHandler,
+		ScheduledStatuses:      scheduledStatusesHandler,
+		Polls:                  pollsHandler,
 		Timelines:              timelinesHandler,
 		Instance:               instanceHandler,
 		Notifications:          notificationsHandler,
@@ -240,6 +250,8 @@ func runServe(_ *cobra.Command, _ []string) error {
 		Filters:                filtersHandler,
 		Preferences:            preferencesHandler,
 		Markers:                markersHandler,
+		FeaturedTags:           featuredTagsHandler,
+		Announcements:          announcementsHandler,
 		WebFinger:              webFingerHandler,
 		NodeInfoPtr:            nodeInfoPtrHandler,
 		NodeInfo:               nodeInfoHandler,
@@ -256,6 +268,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 		AdminFederation:        adminFederation,
 		ModeratorContent:       moderatorContent,
 		AdminSettings:          adminSettings,
+		AdminAnnouncements:     adminAnnouncements,
 	})
 
 	// Start HTTP server
@@ -289,6 +302,31 @@ func runServe(_ *cobra.Command, _ []string) error {
 	natsClient.Close()
 	logger.Info("server stopped")
 	return nil
+}
+
+// runScheduledStatusWorker runs a ticker that publishes due scheduled statuses.
+func runScheduledStatusWorker(ctx context.Context, st store.Store, statusSvc service.StatusService, logger *slog.Logger) {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			due, err := st.ListScheduledStatusesDue(ctx, 20)
+			if err != nil {
+				if logger != nil {
+					logger.WarnContext(ctx, "scheduled status worker list failed", slog.Any("error", err))
+				}
+				continue
+			}
+			for i := range due {
+				if err := statusSvc.PublishScheduled(ctx, due[i].ID); err != nil && logger != nil {
+					logger.WarnContext(ctx, "scheduled status publish failed", slog.String("id", due[i].ID), slog.Any("error", err))
+				}
+			}
+		}
+	}
 }
 
 // natsConnAdapter adapts *nats.Conn to sse's natsConn interface (Subscribe return type).

@@ -78,8 +78,33 @@ func TagFromName(name, instanceDomain string) Tag {
 	}
 }
 
-// StatusEditFromDomain converts a domain status edit to the API model.
-func StatusEditFromDomain(e domain.StatusEdit) StatusEdit {
+// FollowedTagFromDomain builds a Tag for the followed_tags list (id, name, url, following: true).
+func FollowedTagFromDomain(h domain.Hashtag, instanceDomain string) Tag {
+	return Tag{
+		ID:        h.ID,
+		Name:      h.Name,
+		URL:       "https://" + instanceDomain + "/tags/" + h.Name,
+		Following: true,
+	}
+}
+
+// FeaturedTagFromDomain builds a FeaturedTag API response. Profile URL is base/@{username}/tagged/{name}.
+func FeaturedTagFromDomain(ft domain.FeaturedTag, profileTagURL string) FeaturedTag {
+	out := FeaturedTag{
+		ID:            ft.ID,
+		Name:          ft.Name,
+		URL:           profileTagURL,
+		StatusesCount: ft.StatusesCount,
+	}
+	if ft.LastStatusAt != nil {
+		s := ft.LastStatusAt.Format("2006-01-02")
+		out.LastStatusAt = &s
+	}
+	return out
+}
+
+// StatusEditFromDomain converts a domain status edit to the API model with the given author account.
+func StatusEditFromDomain(e domain.StatusEdit, author Account) StatusEdit {
 	content := ""
 	if e.Content != nil {
 		content = *e.Content
@@ -89,10 +114,13 @@ func StatusEditFromDomain(e domain.StatusEdit) StatusEdit {
 		spoiler = *e.ContentWarning
 	}
 	return StatusEdit{
-		Content:     content,
-		SpoilerText: spoiler,
-		Sensitive:   e.Sensitive,
-		CreatedAt:   e.CreatedAt.UTC().Format(time.RFC3339),
+		Content:          content,
+		SpoilerText:      spoiler,
+		Sensitive:        e.Sensitive,
+		CreatedAt:        e.CreatedAt.UTC().Format(time.RFC3339),
+		Account:          author,
+		MediaAttachments: nil,
+		Emojis:           []any{},
 	}
 }
 

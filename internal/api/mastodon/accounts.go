@@ -684,3 +684,86 @@ func (h *AccountsHandler) POSTUnmute(w http.ResponseWriter, r *http.Request) {
 	}
 	api.WriteJSON(w, http.StatusOK, apimodel.ToRelationship(rel))
 }
+
+// GETFollowedTags handles GET /api/v1/followed_tags.
+func (h *AccountsHandler) GETFollowedTags(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	params := PageParamsFromRequest(r)
+	limit := DefaultListLimit
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+			if limit > MaxListLimit {
+				limit = MaxListLimit
+			}
+		}
+	}
+	tags, nextCursor, err := h.follows.ListFollowedTags(r.Context(), account.ID, optionalString(params.MaxID), limit)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	out := make([]apimodel.Tag, 0, len(tags))
+	for i := range tags {
+		out = append(out, apimodel.FollowedTagFromDomain(tags[i], h.instanceDomain))
+	}
+	if nextCursor != nil && *nextCursor != "" {
+		if link := linkHeaderWithNext(AbsoluteRequestURL(r, h.instanceDomain), *nextCursor); link != "" {
+			w.Header().Set("Link", link)
+		}
+	}
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// POSTFollowedTags handles POST /api/v1/followed_tags. Body: { "name": "hashtag" }.
+func (h *AccountsHandler) POSTFollowedTags(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+		return
+	}
+	if body.Name == "" {
+		api.HandleError(w, r, api.NewUnprocessableError("name is required"))
+		return
+	}
+	tag, err := h.follows.FollowTag(r.Context(), account.ID, body.Name)
+	if err != nil {
+		if errors.Is(err, domain.ErrValidation) {
+			api.HandleError(w, r, api.NewUnprocessableError("Validation failed: Tag is invalid"))
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, apimodel.FollowedTagFromDomain(*tag, h.instanceDomain))
+}
+
+// DELETEFollowedTag handles DELETE /api/v1/followed_tags/:id. id is the tag ID.
+func (h *AccountsHandler) DELETEFollowedTag(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	tagID := chi.URLParam(r, "id")
+	if tagID == "" {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	if err := h.follows.UnfollowTag(r.Context(), account.ID, tagID); err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, map[string]any{})
+}

@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/events"
@@ -74,6 +76,22 @@ type StatusService interface {
 	UpdateStatusFromAPI(ctx context.Context, accountID, statusID string, text, spoilerText string, sensitive bool) (EnrichedStatus, error)
 	GetStatusHistory(ctx context.Context, statusID string, viewerAccountID *string) ([]domain.StatusEdit, error)
 	GetStatusSource(ctx context.Context, statusID string, viewerAccountID *string) (text, spoilerText string, err error)
+
+	CreateScheduledStatus(ctx context.Context, accountID string, params []byte, scheduledAt time.Time) (*domain.ScheduledStatus, error)
+	GetScheduledStatus(ctx context.Context, id, accountID string) (*domain.ScheduledStatus, error)
+	ListScheduledStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.ScheduledStatus, error)
+	UpdateScheduledStatus(ctx context.Context, id, accountID string, params []byte, scheduledAt time.Time) (*domain.ScheduledStatus, error)
+	DeleteScheduledStatus(ctx context.Context, id, accountID string) error
+	PublishScheduled(ctx context.Context, scheduledID string) error
+
+	GetPoll(ctx context.Context, pollID string, viewerAccountID *string) (*EnrichedPoll, error)
+	RecordVote(ctx context.Context, pollID, accountID string, optionIndices []int) (*EnrichedPoll, error)
+
+	MuteConversation(ctx context.Context, accountID, statusID string) error
+	UnmuteConversation(ctx context.Context, accountID, statusID string) error
+	GetConversationRoot(ctx context.Context, statusID string) (string, error)
+	IsConversationMutedForViewer(ctx context.Context, viewerAccountID, statusID string) (bool, error)
+	ListMutedConversationIDs(ctx context.Context, accountID string) ([]string, error)
 }
 
 type statusService struct {
@@ -115,8 +133,24 @@ type CreateWithContentInput struct {
 	ContentWarning    string
 	Language          string
 	Sensitive         bool
-	InReplyToID       *string  // optional parent status ID for replies
-	MediaIDs          []string // optional media attachment IDs (max 4)
+	InReplyToID       *string     // optional parent status ID for replies
+	MediaIDs          []string    // optional media attachment IDs (max 4)
+	Poll              *PollInput  // optional; when set, status is created with an attached poll
+	PollLimits        *PollLimits // required when Poll is set (from instance configuration)
+}
+
+// PollInput is the poll payload when creating a status with a poll.
+type PollInput struct {
+	Options          []string
+	ExpiresInSeconds int
+	Multiple         bool
+}
+
+// PollLimits is instance configuration for poll validation (e.g. from GET /api/v2/instance).
+type PollLimits struct {
+	MaxOptions    int
+	MinExpiration int
+	MaxExpiration int
 }
 
 // CreateStatusInput is the input for creating a status.
@@ -497,13 +531,21 @@ func (svc *statusService) GetByIDEnriched(ctx context.Context, id string, viewer
 	if err != nil {
 		return EnrichedStatus{}, fmt.Errorf("GetStatusAttachments: %w", err)
 	}
-	return EnrichedStatus{
+	out := EnrichedStatus{
 		Status:   st,
 		Author:   author,
 		Mentions: mentions,
 		Tags:     tags,
 		Media:    media,
-	}, nil
+	}
+	poll, pollErr := svc.store.GetPollByStatusID(ctx, st.ID)
+	if pollErr == nil && poll != nil {
+		enrichedPoll, enrichErr := svc.getPollEnriched(ctx, poll.ID, viewerAccountID)
+		if enrichErr == nil {
+			out.Poll = enrichedPoll
+		}
+	}
+	return out, nil
 }
 
 // CreateWithContent creates a status from plain text: validates, renders content (mentions, hashtags),
@@ -547,6 +589,17 @@ func (svc *statusService) CreateWithContent(ctx context.Context, in CreateWithCo
 			return EnrichedStatus{}, fmt.Errorf("CreateWithContent Render: %w", err)
 		}
 	}
+	if in.Poll != nil {
+		if in.PollLimits == nil {
+			return EnrichedStatus{}, fmt.Errorf("CreateWithContent: %w", domain.ErrValidation)
+		}
+		if len(in.Poll.Options) < 2 || len(in.Poll.Options) > in.PollLimits.MaxOptions {
+			return EnrichedStatus{}, fmt.Errorf("CreateWithContent poll options: %w", domain.ErrValidation)
+		}
+		if in.Poll.ExpiresInSeconds < in.PollLimits.MinExpiration || in.Poll.ExpiresInSeconds > in.PollLimits.MaxExpiration {
+			return EnrichedStatus{}, fmt.Errorf("CreateWithContent poll expires_in: %w", domain.ErrValidation)
+		}
+	}
 	// TODO: this should be a setting
 	language := in.Language
 	if language == "" {
@@ -556,6 +609,7 @@ func (svc *statusService) CreateWithContent(ctx context.Context, in CreateWithCo
 	statusURI := fmt.Sprintf("%s/users/%s/statuses/%s", svc.instanceBaseURL, in.Username, statusID)
 
 	var created *domain.Status
+	var createdPollID string
 	err := svc.store.WithTx(ctx, func(tx store.Store) error {
 		var txErr error
 		created, txErr = createStatusWithContentTx(ctx, tx, in.AccountID, in.Username, statusID, statusURI, visibility, text, renderResult.HTML, in.ContentWarning, language, in.Sensitive, renderResult, in.InReplyToID, inReplyToAccountID, in.MediaIDs)
@@ -571,6 +625,30 @@ func (svc *statusService) CreateWithContent(ctx context.Context, in CreateWithCo
 			if txErr = tx.AttachMediaToStatus(ctx, mid, statusID, in.AccountID); txErr != nil {
 				return fmt.Errorf("AttachMediaToStatus: %w", txErr)
 			}
+		}
+		if in.Poll != nil {
+			pollID := uid.New()
+			expiresAt := time.Now().Add(time.Duration(in.Poll.ExpiresInSeconds) * time.Second)
+			if _, txErr = tx.CreatePoll(ctx, store.CreatePollInput{
+				ID:        pollID,
+				StatusID:  statusID,
+				ExpiresAt: &expiresAt,
+				Multiple:  in.Poll.Multiple,
+			}); txErr != nil {
+				return fmt.Errorf("CreatePoll: %w", txErr)
+			}
+			for i, title := range in.Poll.Options {
+				optID := uid.New()
+				if _, txErr = tx.CreatePollOption(ctx, store.CreatePollOptionInput{
+					ID:       optID,
+					PollID:   pollID,
+					Title:    strings.TrimSpace(title),
+					Position: i,
+				}); txErr != nil {
+					return fmt.Errorf("CreatePollOption: %w", txErr)
+				}
+			}
+			createdPollID = pollID
 		}
 		return nil
 	})
@@ -611,13 +689,146 @@ func (svc *statusService) CreateWithContent(ctx context.Context, in CreateWithCo
 		Media:               media,
 		MentionedAccountIDs: mentionedAccountIDs,
 	})
-	return EnrichedStatus{
+	out := EnrichedStatus{
 		Status:   created,
 		Author:   author,
 		Mentions: mentions,
 		Tags:     tags,
 		Media:    media,
+	}
+	if createdPollID != "" {
+		enrichedPoll, getErr := svc.getPollEnriched(ctx, createdPollID, &in.AccountID)
+		if getErr == nil {
+			out.Poll = enrichedPoll
+		}
+	}
+	return out, nil
+}
+
+// getPollEnriched loads a poll by ID, enforces visibility via the parent status, and attaches options, counts, voted, own_votes.
+func (svc *statusService) getPollEnriched(ctx context.Context, pollID string, viewerAccountID *string) (*EnrichedPoll, error) {
+	poll, err := svc.store.GetPollByID(ctx, pollID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, fmt.Errorf("getPollEnriched: %w", domain.ErrNotFound)
+		}
+		return nil, fmt.Errorf("GetPollByID: %w", err)
+	}
+	st, err := svc.store.GetStatusByID(ctx, poll.StatusID)
+	if err != nil {
+		return nil, fmt.Errorf("GetPoll GetStatusByID: %w", err)
+	}
+	ok, err := svc.canViewStatus(ctx, st, viewerAccountID)
+	if err != nil {
+		return nil, fmt.Errorf("GetPoll canViewStatus: %w", err)
+	}
+	if !ok {
+		return nil, fmt.Errorf("GetPoll: %w", domain.ErrNotFound)
+	}
+	opts, err := svc.store.ListPollOptions(ctx, pollID)
+	if err != nil {
+		return nil, fmt.Errorf("GetPoll ListPollOptions: %w", err)
+	}
+	counts, err := svc.store.GetVoteCountsByPoll(ctx, pollID)
+	if err != nil {
+		return nil, fmt.Errorf("GetPoll GetVoteCountsByPoll: %w", err)
+	}
+	optionsWithCount := make([]PollOptionWithCount, 0, len(opts))
+	for _, o := range opts {
+		c := 0
+		if n, ok := counts[o.ID]; ok {
+			c = n
+		}
+		optionsWithCount = append(optionsWithCount, PollOptionWithCount{Title: o.Title, VotesCount: c})
+	}
+	var voted bool
+	var ownVotes []int
+	if viewerAccountID != nil && *viewerAccountID != "" {
+		voted, err = svc.store.HasVotedOnPoll(ctx, pollID, *viewerAccountID)
+		if err != nil {
+			return nil, fmt.Errorf("GetPoll HasVotedOnPoll: %w", err)
+		}
+		ownIDs, err := svc.store.GetOwnVoteOptionIDs(ctx, pollID, *viewerAccountID)
+		if err != nil {
+			return nil, fmt.Errorf("GetPoll GetOwnVoteOptionIDs: %w", err)
+		}
+		ownVotes = make([]int, 0, len(ownIDs))
+		for _, id := range ownIDs {
+			for i := range opts {
+				if opts[i].ID == id {
+					ownVotes = append(ownVotes, i)
+					break
+				}
+			}
+		}
+	}
+	return &EnrichedPoll{
+		Poll:     *poll,
+		Options:  optionsWithCount,
+		Voted:    voted,
+		OwnVotes: ownVotes,
 	}, nil
+}
+
+// GetPoll returns an enriched poll by ID. Returns ErrNotFound if the poll does not exist or the viewer cannot see the parent status.
+func (svc *statusService) GetPoll(ctx context.Context, pollID string, viewerAccountID *string) (*EnrichedPoll, error) {
+	enriched, err := svc.getPollEnriched(ctx, pollID, viewerAccountID)
+	if err != nil {
+		return nil, fmt.Errorf("GetPoll: %w", err)
+	}
+	return enriched, nil
+}
+
+// RecordVote records the viewer's vote on a poll (replacing any existing vote). Returns the updated EnrichedPoll.
+func (svc *statusService) RecordVote(ctx context.Context, pollID, accountID string, optionIndices []int) (*EnrichedPoll, error) {
+	poll, err := svc.store.GetPollByID(ctx, pollID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, fmt.Errorf("RecordVote: %w", domain.ErrNotFound)
+		}
+		return nil, fmt.Errorf("RecordVote: %w", err)
+	}
+	if poll.ExpiresAt != nil && poll.ExpiresAt.Before(time.Now()) {
+		return nil, fmt.Errorf("RecordVote: %w", domain.ErrUnprocessable)
+	}
+	st, err := svc.store.GetStatusByID(ctx, poll.StatusID)
+	if err != nil {
+		return nil, fmt.Errorf("RecordVote: %w", err)
+	}
+	viewerID := &accountID
+	ok, err := svc.canViewStatus(ctx, st, viewerID)
+	if err != nil {
+		return nil, fmt.Errorf("RecordVote: %w", err)
+	}
+	if !ok {
+		return nil, fmt.Errorf("RecordVote: %w", domain.ErrNotFound)
+	}
+	opts, err := svc.store.ListPollOptions(ctx, pollID)
+	if err != nil {
+		return nil, fmt.Errorf("RecordVote: %w", err)
+	}
+	if len(optionIndices) == 0 {
+		return nil, fmt.Errorf("RecordVote: %w", domain.ErrValidation)
+	}
+	if !poll.Multiple && len(optionIndices) > 1 {
+		return nil, fmt.Errorf("RecordVote: %w", domain.ErrValidation)
+	}
+	for _, idx := range optionIndices {
+		if idx < 0 || idx >= len(opts) {
+			return nil, fmt.Errorf("RecordVote: %w", domain.ErrValidation)
+		}
+	}
+	if err := svc.store.DeletePollVotesByAccount(ctx, pollID, accountID); err != nil {
+		return nil, fmt.Errorf("RecordVote: %w", err)
+	}
+	for _, idx := range optionIndices {
+		optionID := opts[idx].ID
+		voteID := uid.New()
+		if err := svc.store.CreatePollVote(ctx, voteID, pollID, accountID, optionID); err != nil {
+			return nil, fmt.Errorf("RecordVote: %w", err)
+		}
+	}
+	return svc.getPollEnriched(ctx, pollID, &accountID)
 }
 
 func resolveVisibilityService(reqVis, defaultVis string) string {
@@ -704,13 +915,24 @@ func createStatusWithContentTx(
 	if err := tx.UpdateAccountLastStatusAt(ctx, accountID); err != nil {
 		return nil, fmt.Errorf("UpdateAccountLastStatusAt: %w", err)
 	}
+	root, err := tx.GetConversationRoot(ctx, statusID)
+	if err != nil {
+		return nil, fmt.Errorf("GetConversationRoot: %w", err)
+	}
 	for _, m := range renderResult.Mentions {
 		mentioned, _ := tx.GetAccountByID(ctx, m.AccountID)
 		if mentioned == nil || (mentioned.Domain != nil && *mentioned.Domain != "") {
 			continue
 		}
+		muted, err := tx.IsConversationMuted(ctx, mentioned.ID, root)
+		if err != nil {
+			return nil, fmt.Errorf("IsConversationMuted: %w", err)
+		}
+		if muted {
+			continue
+		}
 		notifID := uid.New()
-		_, err := tx.CreateNotification(ctx, store.CreateNotificationInput{
+		_, err = tx.CreateNotification(ctx, store.CreateNotificationInput{
 			ID:        notifID,
 			AccountID: mentioned.ID,
 			FromID:    accountID,
@@ -1161,6 +1383,143 @@ func (svc *statusService) GetStatusSource(ctx context.Context, statusID string, 
 	return t, spoiler, nil
 }
 
+func (svc *statusService) CreateScheduledStatus(ctx context.Context, accountID string, params []byte, scheduledAt time.Time) (*domain.ScheduledStatus, error) {
+	now := time.Now()
+	if !scheduledAt.After(now) {
+		return nil, fmt.Errorf("CreateScheduledStatus scheduled_at must be in the future: %w", domain.ErrValidation)
+	}
+	var p domain.ScheduledStatusParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, fmt.Errorf("CreateScheduledStatus invalid params: %w", domain.ErrValidation)
+	}
+	id := uid.New()
+	s, err := svc.store.CreateScheduledStatus(ctx, store.CreateScheduledStatusInput{
+		ID:          id,
+		AccountID:   accountID,
+		Params:      params,
+		ScheduledAt: scheduledAt,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateScheduledStatus: %w", err)
+	}
+	return s, nil
+}
+
+func (svc *statusService) GetScheduledStatus(ctx context.Context, id, accountID string) (*domain.ScheduledStatus, error) {
+	s, err := svc.store.GetScheduledStatusByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, fmt.Errorf("GetScheduledStatus: %w", err)
+		}
+		return nil, fmt.Errorf("GetScheduledStatus: %w", err)
+	}
+	if s.AccountID != accountID {
+		return nil, domain.ErrNotFound
+	}
+	return s, nil
+}
+
+func (svc *statusService) ListScheduledStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.ScheduledStatus, error) {
+	if limit <= 0 || limit > 40 {
+		limit = 20
+	}
+	list, err := svc.store.ListScheduledStatuses(ctx, accountID, maxID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("ListScheduledStatuses: %w", err)
+	}
+	return list, nil
+}
+
+func (svc *statusService) UpdateScheduledStatus(ctx context.Context, id, accountID string, params []byte, scheduledAt time.Time) (*domain.ScheduledStatus, error) {
+	s, err := svc.store.GetScheduledStatusByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, fmt.Errorf("UpdateScheduledStatus: %w", err)
+		}
+		return nil, fmt.Errorf("UpdateScheduledStatus: %w", err)
+	}
+	if s.AccountID != accountID {
+		return nil, domain.ErrNotFound
+	}
+	var p domain.ScheduledStatusParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, fmt.Errorf("UpdateScheduledStatus invalid params: %w", domain.ErrValidation)
+	}
+	now := time.Now()
+	if !scheduledAt.After(now) {
+		return nil, fmt.Errorf("UpdateScheduledStatus scheduled_at must be in the future: %w", domain.ErrValidation)
+	}
+	updated, err := svc.store.UpdateScheduledStatus(ctx, store.UpdateScheduledStatusInput{
+		ID:          id,
+		Params:      params,
+		ScheduledAt: scheduledAt,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("UpdateScheduledStatus: %w", err)
+	}
+	return updated, nil
+}
+
+func (svc *statusService) DeleteScheduledStatus(ctx context.Context, id, accountID string) error {
+	s, err := svc.store.GetScheduledStatusByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return fmt.Errorf("DeleteScheduledStatus: %w", err)
+		}
+		return fmt.Errorf("DeleteScheduledStatus: %w", err)
+	}
+	if s.AccountID != accountID {
+		return domain.ErrNotFound
+	}
+	if err := svc.store.DeleteScheduledStatus(ctx, id); err != nil {
+		return fmt.Errorf("DeleteScheduledStatus: %w", err)
+	}
+	return nil
+}
+
+func (svc *statusService) PublishScheduled(ctx context.Context, scheduledID string) error {
+	s, err := svc.store.GetScheduledStatusByID(ctx, scheduledID)
+	if err != nil {
+		return fmt.Errorf("PublishScheduled GetScheduledStatusByID: %w", err)
+	}
+	var p domain.ScheduledStatusParams
+	if err := json.Unmarshal(s.Params, &p); err != nil {
+		return fmt.Errorf("PublishScheduled invalid params: %w", err)
+	}
+	acc, err := svc.store.GetAccountByID(ctx, s.AccountID)
+	if err != nil {
+		return fmt.Errorf("PublishScheduled GetAccountByID: %w", err)
+	}
+	user, _ := svc.store.GetUserByAccountID(ctx, s.AccountID)
+	defaultVisibility := ""
+	if user != nil {
+		defaultVisibility = user.DefaultPrivacy
+	}
+	var inReplyToID *string
+	if p.InReplyToID != "" {
+		inReplyToID = &p.InReplyToID
+	}
+	_, err = svc.CreateWithContent(ctx, CreateWithContentInput{
+		AccountID:         s.AccountID,
+		Username:          acc.Username,
+		Text:              p.Text,
+		Visibility:        p.Visibility,
+		DefaultVisibility: defaultVisibility,
+		ContentWarning:    p.SpoilerText,
+		Language:          p.Language,
+		Sensitive:         p.Sensitive,
+		InReplyToID:       inReplyToID,
+		MediaIDs:          p.MediaIDs,
+	})
+	if err != nil {
+		return fmt.Errorf("PublishScheduled CreateWithContent: %w", err)
+	}
+	if err := svc.store.DeleteScheduledStatus(ctx, scheduledID); err != nil {
+		return fmt.Errorf("PublishScheduled DeleteScheduledStatus: %w", err)
+	}
+	return nil
+}
+
 // ContextResult holds ancestors and descendants for a status thread.
 type ContextResult struct {
 	Ancestors   []domain.Status
@@ -1268,4 +1627,59 @@ func (svc *statusService) GetRebloggedBy(ctx context.Context, statusID string, v
 		out = append(out, &accounts[i])
 	}
 	return out, nil
+}
+
+// MuteConversation mutes the conversation (thread) containing the given status for the account.
+func (svc *statusService) MuteConversation(ctx context.Context, accountID, statusID string) error {
+	root, err := svc.store.GetConversationRoot(ctx, statusID)
+	if err != nil {
+		return fmt.Errorf("MuteConversation GetConversationRoot: %w", err)
+	}
+	if err := svc.store.CreateConversationMute(ctx, accountID, root); err != nil {
+		return fmt.Errorf("CreateConversationMute: %w", err)
+	}
+	return nil
+}
+
+// UnmuteConversation unmutes the conversation containing the given status for the account.
+func (svc *statusService) UnmuteConversation(ctx context.Context, accountID, statusID string) error {
+	root, err := svc.store.GetConversationRoot(ctx, statusID)
+	if err != nil {
+		return fmt.Errorf("UnmuteConversation GetConversationRoot: %w", err)
+	}
+	if err := svc.store.DeleteConversationMute(ctx, accountID, root); err != nil {
+		return fmt.Errorf("DeleteConversationMute: %w", err)
+	}
+	return nil
+}
+
+// GetConversationRoot returns the root status ID of the conversation (thread) containing the given status.
+func (svc *statusService) GetConversationRoot(ctx context.Context, statusID string) (string, error) {
+	root, err := svc.store.GetConversationRoot(ctx, statusID)
+	if err != nil {
+		return "", fmt.Errorf("GetConversationRoot: %w", err)
+	}
+	return root, nil
+}
+
+// IsConversationMutedForViewer returns whether the viewer has muted the conversation containing the given status.
+func (svc *statusService) IsConversationMutedForViewer(ctx context.Context, viewerAccountID, statusID string) (bool, error) {
+	root, err := svc.store.GetConversationRoot(ctx, statusID)
+	if err != nil {
+		return false, fmt.Errorf("GetConversationRoot: %w", err)
+	}
+	ok, err := svc.store.IsConversationMuted(ctx, viewerAccountID, root)
+	if err != nil {
+		return false, fmt.Errorf("IsConversationMuted: %w", err)
+	}
+	return ok, nil
+}
+
+// ListMutedConversationIDs returns the list of conversation (root) IDs the account has muted.
+func (svc *statusService) ListMutedConversationIDs(ctx context.Context, accountID string) ([]string, error) {
+	ids, err := svc.store.ListMutedConversationIDs(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("ListMutedConversationIDs: %w", err)
+	}
+	return ids, nil
 }

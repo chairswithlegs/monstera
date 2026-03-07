@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/store"
@@ -44,6 +45,9 @@ type FollowService interface {
 	ListMutedAccounts(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, *string, error)
 	AuthorizeFollowRequest(ctx context.Context, targetAccountID, requesterAccountID string) error
 	RejectFollowRequest(ctx context.Context, targetAccountID, requesterAccountID string) error
+	ListFollowedTags(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Hashtag, *string, error)
+	FollowTag(ctx context.Context, accountID, tagName string) (*domain.Hashtag, error)
+	UnfollowTag(ctx context.Context, accountID, tagID string) error
 }
 
 type followService struct {
@@ -468,6 +472,46 @@ func (svc *followService) RejectFollowRequest(ctx context.Context, targetAccount
 	}
 	if err := svc.store.DeleteFollow(ctx, requesterAccountID, targetAccountID); err != nil {
 		return fmt.Errorf("DeleteFollow: %w", err)
+	}
+	return nil
+}
+
+// ListFollowedTags returns tags the account follows, paginated.
+func (svc *followService) ListFollowedTags(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Hashtag, *string, error) {
+	if limit <= 0 {
+		limit = DefaultServiceListLimit
+	}
+	if limit > MaxServicePageLimit {
+		limit = MaxServicePageLimit
+	}
+	tags, next, err := svc.store.ListFollowedTags(ctx, accountID, maxID, limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("ListFollowedTags: %w", err)
+	}
+	return tags, next, nil
+}
+
+// FollowTag resolves the tag by name (creating it if needed), then records the follow.
+func (svc *followService) FollowTag(ctx context.Context, accountID, tagName string) (*domain.Hashtag, error) {
+	tagName = strings.TrimSpace(tagName)
+	if tagName == "" {
+		return nil, fmt.Errorf("FollowTag: %w", domain.ErrValidation)
+	}
+	tag, err := svc.store.GetOrCreateHashtag(ctx, tagName)
+	if err != nil {
+		return nil, fmt.Errorf("GetOrCreateHashtag: %w", err)
+	}
+	rowID := uid.New()
+	if err := svc.store.FollowTag(ctx, rowID, accountID, tag.ID); err != nil {
+		return nil, fmt.Errorf("FollowTag: %w", err)
+	}
+	return tag, nil
+}
+
+// UnfollowTag removes the follow for the given tag ID.
+func (svc *followService) UnfollowTag(ctx context.Context, accountID, tagID string) error {
+	if err := svc.store.UnfollowTag(ctx, accountID, tagID); err != nil {
+		return fmt.Errorf("UnfollowTag: %w", err)
 	}
 	return nil
 }

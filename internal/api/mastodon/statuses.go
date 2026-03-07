@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,17 +21,32 @@ import (
 
 const idempotencyTTL = time.Hour
 
+// Default poll limits when instance configuration is not provided (Mastodon-compatible defaults).
+const (
+	DefaultPollMaxOptions    = 4
+	DefaultPollMinExpiration = 300
+	DefaultPollMaxExpiration = 2629746
+)
+
 // StatusesHandler handles status-related Mastodon API endpoints.
 type StatusesHandler struct {
 	accounts       service.AccountService
 	statuses       service.StatusService
 	instanceDomain string
 	cache          cache.Store // optional; when set, Idempotency-Key is honored
+	pollLimits     *service.PollLimits
 }
 
-// NewStatusesHandler returns a new StatusesHandler. idempotencyCache may be nil to disable idempotency.
-func NewStatusesHandler(accounts service.AccountService, statuses service.StatusService, instanceDomain string, idempotencyCache cache.Store) *StatusesHandler {
-	return &StatusesHandler{accounts: accounts, statuses: statuses, instanceDomain: instanceDomain, cache: idempotencyCache}
+// NewStatusesHandler returns a new StatusesHandler. idempotencyCache may be nil to disable idempotency. pollLimits may be nil to use defaults.
+func NewStatusesHandler(accounts service.AccountService, statuses service.StatusService, instanceDomain string, idempotencyCache cache.Store, pollLimits *service.PollLimits) *StatusesHandler {
+	if pollLimits == nil {
+		pollLimits = &service.PollLimits{
+			MaxOptions:    DefaultPollMaxOptions,
+			MinExpiration: DefaultPollMinExpiration,
+			MaxExpiration: DefaultPollMaxExpiration,
+		}
+	}
+	return &StatusesHandler{accounts: accounts, statuses: statuses, instanceDomain: instanceDomain, cache: idempotencyCache, pollLimits: pollLimits}
 }
 
 type idempotencyCached struct {
@@ -48,6 +64,11 @@ type CreateStatusRequest struct {
 	InReplyToID string   `json:"in_reply_to_id"`
 	MediaIDs    []string `json:"media_ids"`
 	ScheduledAt string   `json:"scheduled_at"` // if non-empty, return 422 (Phase 1)
+	Poll        *struct {
+		Options   []string `json:"options"`
+		ExpiresIn int      `json:"expires_in"`
+		Multiple  bool     `json:"multiple"`
+	} `json:"poll"`
 }
 
 // POSTStatuses handles POST /api/v1/statuses.
@@ -66,7 +87,46 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.ScheduledAt != "" {
-		api.HandleError(w, r, api.NewUnprocessableError("Scheduled statuses are not yet supported"))
+		scheduledAt, err := time.Parse(time.RFC3339, req.ScheduledAt)
+		if err != nil {
+			api.HandleError(w, r, api.NewUnprocessableError("scheduled_at must be a valid ISO8601 datetime"))
+			return
+		}
+		params := domain.ScheduledStatusParams{
+			Text:        req.Status,
+			Visibility:  req.Visibility,
+			SpoilerText: req.SpoilerText,
+			Sensitive:   req.Sensitive,
+			Language:    req.Language,
+			InReplyToID: req.InReplyToID,
+			MediaIDs:    req.MediaIDs,
+		}
+		if params.Language == "" {
+			params.Language = "en"
+		}
+		paramsJSON, err := json.Marshal(params)
+		if err != nil {
+			api.HandleError(w, r, err)
+			return
+		}
+		s, err := h.statuses.CreateScheduledStatus(ctx, account.ID, paramsJSON, scheduledAt)
+		if err != nil {
+			if errors.Is(err, domain.ErrValidation) {
+				api.HandleError(w, r, api.NewUnprocessableError("scheduled_at must be in the future"))
+				return
+			}
+			api.HandleError(w, r, err)
+			return
+		}
+		out := apimodel.ScheduledStatus{
+			ID:               s.ID,
+			ScheduledAt:      s.ScheduledAt.UTC().Format(time.RFC3339),
+			Params:           mastodonScheduledParams(s.Params),
+			MediaAttachments: nil,
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(out)
 		return
 	}
 
@@ -108,7 +168,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 		mediaIDs = mediaIDs[:4]
 	}
 
-	result, err := h.statuses.CreateWithContent(ctx, service.CreateWithContentInput{
+	createInput := service.CreateWithContentInput{
 		AccountID:         account.ID,
 		Username:          account.Username,
 		Text:              req.Status,
@@ -119,7 +179,16 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 		Sensitive:         req.Sensitive,
 		InReplyToID:       inReplyToID,
 		MediaIDs:          mediaIDs,
-	})
+	}
+	if req.Poll != nil && len(req.Poll.Options) > 0 {
+		createInput.Poll = &service.PollInput{
+			Options:          req.Poll.Options,
+			ExpiresInSeconds: req.Poll.ExpiresIn,
+			Multiple:         req.Poll.Multiple,
+		}
+		createInput.PollLimits = h.pollLimits
+	}
+	result, err := h.statuses.CreateWithContent(ctx, createInput)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -129,11 +198,11 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 	body, _ := json.Marshal(out)
 	if idemKey != "" && h.cache != nil {
 		cacheKey := "idempotency:" + account.ID + ":" + idemKey
-		cached, _ := json.Marshal(idempotencyCached{Status: http.StatusOK, Body: body})
+		cached, _ := json.Marshal(idempotencyCached{Status: http.StatusCreated, Body: body})
 		_ = h.cache.Set(ctx, cacheKey, cached, idempotencyTTL)
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusCreated)
 	_, _ = w.Write(body)
 }
 
@@ -166,6 +235,9 @@ func (h *StatusesHandler) GETStatuses(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
+		}
+		if muted, err := h.statuses.IsConversationMutedForViewer(r.Context(), account.ID, id); err == nil {
+			out.Muted = muted
 		}
 	}
 	api.WriteJSON(w, http.StatusOK, out)
@@ -231,6 +303,68 @@ func (h *StatusesHandler) POSTUnpin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// POSTMuteConversation handles POST /api/v1/statuses/:id/mute (thread mute).
+func (h *StatusesHandler) POSTMuteConversation(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	if err := h.statuses.MuteConversation(r.Context(), account.ID, id); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	viewerID := &account.ID
+	result, err := h.statuses.GetByIDEnriched(r.Context(), id, viewerID)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	out.Muted = true
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// POSTUnmuteConversation handles POST /api/v1/statuses/:id/unmute (thread unmute).
+func (h *StatusesHandler) POSTUnmuteConversation(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	if err := h.statuses.UnmuteConversation(r.Context(), account.ID, id); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	viewerID := &account.ID
+	result, err := h.statuses.GetByIDEnriched(r.Context(), id, viewerID)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	out.Muted = false
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -311,8 +445,16 @@ func (h *StatusesHandler) GETStatusHistory(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	out := make([]apimodel.StatusEdit, 0, len(edits))
-	for _, e := range edits {
-		out = append(out, apimodel.StatusEditFromDomain(e))
+	if len(edits) > 0 {
+		author, err := h.accounts.GetByID(r.Context(), edits[0].AccountID)
+		if err != nil {
+			api.HandleError(w, r, err)
+			return
+		}
+		authorAPI := apimodel.ToAccount(author, h.instanceDomain)
+		for _, e := range edits {
+			out = append(out, apimodel.StatusEditFromDomain(e, authorAPI))
+		}
 	}
 	api.WriteJSON(w, http.StatusOK, out)
 }
@@ -404,6 +546,22 @@ func parseCreateStatusRequest(r *http.Request) (CreateStatusRequest, error) {
 			req.MediaIDs = ids
 		} else if ids := r.Form["media_ids"]; len(ids) > 0 {
 			req.MediaIDs = ids
+		}
+		if opts := r.Form["poll[options][]"]; len(opts) > 0 {
+			if req.Poll == nil {
+				req.Poll = &struct {
+					Options   []string `json:"options"`
+					ExpiresIn int      `json:"expires_in"`
+					Multiple  bool     `json:"multiple"`
+				}{}
+			}
+			req.Poll.Options = opts
+			if e := r.FormValue("poll[expires_in]"); e != "" {
+				if n, err := strconv.Atoi(e); err == nil {
+					req.Poll.ExpiresIn = n
+				}
+			}
+			req.Poll.Multiple = r.FormValue("poll[multiple]") == resolveQueryTrue || r.FormValue("poll[multiple]") == "1"
 		}
 	}
 	req.Status = strings.TrimSpace(req.Status)
@@ -704,5 +862,38 @@ func enrichedStatusToAPIModel(result service.EnrichedStatus, instanceDomain stri
 	for i := range result.Media {
 		mediaResp = append(mediaResp, apimodel.MediaFromDomain(&result.Media[i]))
 	}
-	return apimodel.ToStatus(result.Status, authorAcc, mentionsResp, tagsResp, mediaResp, instanceDomain)
+	out := apimodel.ToStatus(result.Status, authorAcc, mentionsResp, tagsResp, mediaResp, instanceDomain)
+	if result.Poll != nil {
+		p := enrichedPollToAPIModel(result.Poll)
+		out.Poll = &p
+	}
+	return out
+}
+
+// enrichedPollToAPIModel maps service.EnrichedPoll to apimodel.Poll.
+func enrichedPollToAPIModel(p *service.EnrichedPoll) apimodel.Poll {
+	var expiresAt *string
+	if p.Poll.ExpiresAt != nil {
+		s := p.Poll.ExpiresAt.UTC().Format(time.RFC3339)
+		expiresAt = &s
+	}
+	expired := p.Poll.ExpiresAt != nil && p.Poll.ExpiresAt.Before(time.Now())
+	options := make([]apimodel.PollOption, 0, len(p.Options))
+	var votesCount int
+	for _, o := range p.Options {
+		votesCount += o.VotesCount
+		options = append(options, apimodel.PollOption{Title: o.Title, VotesCount: o.VotesCount})
+	}
+	return apimodel.Poll{
+		ID:          p.Poll.ID,
+		ExpiresAt:   expiresAt,
+		Expired:     expired,
+		Multiple:    p.Poll.Multiple,
+		VotesCount:  votesCount,
+		VotersCount: nil,
+		Voted:       p.Voted,
+		OwnVotes:    p.OwnVotes,
+		Options:     options,
+		Emojis:      []any{},
+	}
 }

@@ -5,6 +5,26 @@ import (
 	"time"
 )
 
+// ScheduledStatus is a status scheduled for future publication.
+type ScheduledStatus struct {
+	ID          string
+	AccountID   string
+	Params      json.RawMessage
+	ScheduledAt time.Time
+	CreatedAt   time.Time
+}
+
+// ScheduledStatusParams is the JSON shape stored in scheduled_statuses.params for replay into CreateWithContent.
+type ScheduledStatusParams struct {
+	Text        string   `json:"text"`
+	Visibility  string   `json:"visibility"`
+	SpoilerText string   `json:"spoiler_text"`
+	Sensitive   bool     `json:"sensitive"`
+	Language    string   `json:"language"`
+	InReplyToID string   `json:"in_reply_to_id"`
+	MediaIDs    []string `json:"media_ids"`
+}
+
 type Status struct {
 	ID                 string
 	URI                string
@@ -56,3 +76,20 @@ const (
 	VisibilityPrivate  = "private"
 	VisibilityDirect   = "direct"
 )
+
+// Poll is a poll attached to a status.
+type Poll struct {
+	ID        string
+	StatusID  string
+	ExpiresAt *time.Time
+	Multiple  bool
+	CreatedAt time.Time
+}
+
+// PollOption is one option in a poll.
+type PollOption struct {
+	ID       string
+	PollID   string
+	Title    string
+	Position int
+}

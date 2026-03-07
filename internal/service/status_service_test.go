@@ -2,13 +2,16 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/events"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/testutil"
+	"github.com/chairswithlegs/monstera/internal/uid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -206,6 +209,53 @@ func TestStatusService_CreateWithContent_success_returns_result_with_author(t *t
 	assert.Contains(t, result.Status.URI, "/users/alice/statuses/")
 }
 
+func TestStatusService_CreateWithContent_no_mention_notification_when_mentionee_muted_conversation(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+
+	alice, err := accountSvc.Register(ctx, RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	bob, err := accountSvc.Register(ctx, RegisterInput{
+		Username:     "bob",
+		Email:        "bob@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	root, err := statusSvc.CreateWithContent(ctx, CreateWithContentInput{
+		AccountID:  alice.ID,
+		Username:   alice.Username,
+		Text:       "root post",
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+
+	err = statusSvc.MuteConversation(ctx, bob.ID, root.Status.ID)
+	require.NoError(t, err)
+
+	_, err = statusSvc.CreateWithContent(ctx, CreateWithContentInput{
+		AccountID:   alice.ID,
+		Username:    alice.Username,
+		Text:        "hey @bob",
+		Visibility:  domain.VisibilityPublic,
+		InReplyToID: &root.Status.ID,
+	})
+	require.NoError(t, err)
+
+	notifs, err := fake.ListNotifications(ctx, bob.ID, nil, 10)
+	require.NoError(t, err)
+	assert.Empty(t, notifs, "bob should receive no mention notification when conversation is muted")
+}
+
 func TestStatusService_GetByIDEnriched_private_returns_ErrNotFound_when_unauthenticated(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -277,4 +327,105 @@ func TestStatusService_GetByIDEnriched_returns_ErrNotFound_when_viewer_blocked_b
 	_, err = statusSvc.GetByIDEnriched(ctx, st.ID, &viewer.ID)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrNotFound)
+}
+
+func TestStatusService_PublishScheduled(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+
+	acc, err := accountSvc.Register(ctx, RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	params := domain.ScheduledStatusParams{Text: "published by worker", Language: "en"}
+	paramsJSON, err := json.Marshal(params)
+	require.NoError(t, err)
+
+	schedID := uid.New()
+	_, err = fake.CreateScheduledStatus(ctx, store.CreateScheduledStatusInput{
+		ID:          schedID,
+		AccountID:   acc.ID,
+		Params:      paramsJSON,
+		ScheduledAt: time.Now().Add(-1 * time.Minute),
+	})
+	require.NoError(t, err)
+
+	err = statusSvc.PublishScheduled(ctx, schedID)
+	require.NoError(t, err)
+
+	_, err = fake.GetScheduledStatusByID(ctx, schedID)
+	require.Error(t, err)
+	require.ErrorIs(t, err, domain.ErrNotFound)
+
+	statuses, err := fake.GetAccountPublicStatuses(ctx, acc.ID, nil, 10)
+	require.NoError(t, err)
+	require.Len(t, statuses, 1)
+	assert.Contains(t, *statuses[0].Content, "published by worker")
+}
+
+// TestStatusService_workerPublishScheduled simulates the scheduled-status worker: list due, then publish each.
+func TestStatusService_workerPublishScheduled(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+
+	acc, err := accountSvc.Register(ctx, RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	dueParams, err := json.Marshal(domain.ScheduledStatusParams{Text: "due post", Language: "en"})
+	require.NoError(t, err)
+	futureParams, err := json.Marshal(domain.ScheduledStatusParams{Text: "future post", Language: "en"})
+	require.NoError(t, err)
+
+	dueID := uid.New()
+	futureID := uid.New()
+	_, err = fake.CreateScheduledStatus(ctx, store.CreateScheduledStatusInput{
+		ID:          dueID,
+		AccountID:   acc.ID,
+		Params:      dueParams,
+		ScheduledAt: time.Now().Add(-1 * time.Hour),
+	})
+	require.NoError(t, err)
+	_, err = fake.CreateScheduledStatus(ctx, store.CreateScheduledStatusInput{
+		ID:          futureID,
+		AccountID:   acc.ID,
+		Params:      futureParams,
+		ScheduledAt: time.Now().Add(2 * time.Hour),
+	})
+	require.NoError(t, err)
+
+	dueList, err := fake.ListScheduledStatusesDue(ctx, 20)
+	require.NoError(t, err)
+	require.Len(t, dueList, 1)
+	assert.Equal(t, dueID, dueList[0].ID)
+
+	for i := range dueList {
+		err = statusSvc.PublishScheduled(ctx, dueList[i].ID)
+		require.NoError(t, err)
+	}
+
+	_, err = fake.GetScheduledStatusByID(ctx, dueID)
+	require.Error(t, err)
+	require.ErrorIs(t, err, domain.ErrNotFound)
+	_, err = fake.GetScheduledStatusByID(ctx, futureID)
+	require.NoError(t, err)
+
+	statuses, err := fake.GetAccountPublicStatuses(ctx, acc.ID, nil, 10)
+	require.NoError(t, err)
+	require.Len(t, statuses, 1)
+	assert.Contains(t, *statuses[0].Content, "due post")
 }

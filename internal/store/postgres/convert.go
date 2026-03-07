@@ -63,6 +63,39 @@ func ToDomainStatusEdit(e db.StatusEdit) domain.StatusEdit {
 	}
 }
 
+// ToDomainScheduledStatus converts a sqlc db.ScheduledStatus to a domain.ScheduledStatus.
+func ToDomainScheduledStatus(s db.ScheduledStatus) domain.ScheduledStatus {
+	return domain.ScheduledStatus{
+		ID:          s.ID,
+		AccountID:   s.AccountID,
+		Params:      s.Params,
+		ScheduledAt: pgTime(s.ScheduledAt),
+		CreatedAt:   pgTime(s.CreatedAt),
+	}
+}
+
+// ToDomainPoll converts a sqlc db.Poll to a domain.Poll.
+func ToDomainPoll(p db.Poll) domain.Poll {
+	out := domain.Poll{
+		ID:        p.ID,
+		StatusID:  p.StatusID,
+		Multiple:  p.Multiple,
+		CreatedAt: pgTime(p.CreatedAt),
+	}
+	out.ExpiresAt = pgTimePtr(p.ExpiresAt)
+	return out
+}
+
+// ToDomainPollOption converts a sqlc db.PollOption to a domain.PollOption.
+func ToDomainPollOption(o db.PollOption) domain.PollOption {
+	return domain.PollOption{
+		ID:       o.ID,
+		PollID:   o.PollID,
+		Title:    o.Title,
+		Position: int(o.Position),
+	}
+}
+
 // ToDomainList converts a sqlc db.List to a domain.List.
 func ToDomainList(l db.List) domain.List {
 	return domain.List{
@@ -433,6 +466,20 @@ func ToDomainMarker(m db.Marker) domain.Marker {
 		Version:    int(m.Version),
 		UpdatedAt:  pgTime(m.UpdatedAt),
 	}
+}
+
+// ToDomainAnnouncement converts a sqlc db.Announcement to a domain.Announcement.
+func ToDomainAnnouncement(a db.Announcement) domain.Announcement {
+	out := domain.Announcement{
+		ID:          a.ID,
+		Content:     a.Content,
+		AllDay:      a.AllDay,
+		PublishedAt: pgTime(a.PublishedAt),
+		UpdatedAt:   pgTime(a.UpdatedAt),
+	}
+	out.StartsAt = pgTimePtr(a.StartsAt)
+	out.EndsAt = pgTimePtr(a.EndsAt)
+	return out
 }
 
 // ToDomainDomainBlock converts a sqlc db.DomainBlock to a domain.DomainBlock.

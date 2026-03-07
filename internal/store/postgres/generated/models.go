@@ -5,6 +5,8 @@
 package db
 
 import (
+	"encoding/json"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -37,6 +39,20 @@ type Account struct {
 	LastStatusAt   pgtype.Timestamptz `json:"last_status_at"`
 }
 
+type AccountFeaturedTag struct {
+	ID        string             `json:"id"`
+	AccountID string             `json:"account_id"`
+	TagID     string             `json:"tag_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type AccountFollowedTag struct {
+	ID        string             `json:"id"`
+	AccountID string             `json:"account_id"`
+	TagID     string             `json:"tag_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type AccountPin struct {
 	AccountID string             `json:"account_id"`
 	StatusID  string             `json:"status_id"`
@@ -53,6 +69,29 @@ type AdminAction struct {
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 }
 
+type Announcement struct {
+	ID          string             `json:"id"`
+	Content     string             `json:"content"`
+	StartsAt    pgtype.Timestamptz `json:"starts_at"`
+	EndsAt      pgtype.Timestamptz `json:"ends_at"`
+	AllDay      bool               `json:"all_day"`
+	PublishedAt pgtype.Timestamptz `json:"published_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type AnnouncementReaction struct {
+	AnnouncementID string             `json:"announcement_id"`
+	AccountID      string             `json:"account_id"`
+	Name           string             `json:"name"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type AnnouncementRead struct {
+	AccountID      string             `json:"account_id"`
+	AnnouncementID string             `json:"announcement_id"`
+	ReadAt         pgtype.Timestamptz `json:"read_at"`
+}
+
 type Block struct {
 	ID        string             `json:"id"`
 	AccountID string             `json:"account_id"`
@@ -65,6 +104,12 @@ type Bookmark struct {
 	AccountID string             `json:"account_id"`
 	StatusID  string             `json:"status_id"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type ConversationMute struct {
+	AccountID      string             `json:"account_id"`
+	ConversationID string             `json:"conversation_id"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
 type CustomEmoji struct {
@@ -237,6 +282,30 @@ type OauthAuthorizationCode struct {
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 }
 
+type Poll struct {
+	ID        string             `json:"id"`
+	StatusID  string             `json:"status_id"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	Multiple  bool               `json:"multiple"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type PollOption struct {
+	ID        string             `json:"id"`
+	PollID    string             `json:"poll_id"`
+	Title     string             `json:"title"`
+	Position  int32              `json:"position"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type PollVote struct {
+	ID        string             `json:"id"`
+	PollID    string             `json:"poll_id"`
+	AccountID string             `json:"account_id"`
+	OptionID  string             `json:"option_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type Report struct {
 	ID           string             `json:"id"`
 	AccountID    string             `json:"account_id"`
@@ -249,6 +318,14 @@ type Report struct {
 	ActionTaken  *string            `json:"action_taken"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	ResolvedAt   pgtype.Timestamptz `json:"resolved_at"`
+}
+
+type ScheduledStatus struct {
+	ID          string             `json:"id"`
+	AccountID   string             `json:"account_id"`
+	Params      json.RawMessage    `json:"params"`
+	ScheduledAt pgtype.Timestamptz `json:"scheduled_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
 type ServerFilter struct {

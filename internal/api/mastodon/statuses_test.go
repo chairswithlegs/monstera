@@ -29,7 +29,7 @@ func TestStatusesHandler_Create(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
 		body := bytes.NewBufferString(`{"status":"hello world"}`)
@@ -58,7 +58,7 @@ func TestStatusesHandler_Create(t *testing.T) {
 		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	})
 
-	t.Run("valid JSON creates status and returns 200", func(t *testing.T) {
+	t.Run("valid JSON creates status and returns 201", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
 			Username:     "bob",
 			Email:        "bob@example.com",
@@ -73,7 +73,7 @@ func TestStatusesHandler_Create(t *testing.T) {
 		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
 		rec := httptest.NewRecorder()
 		handler.POSTStatuses(rec, req)
-		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, http.StatusCreated, rec.Code)
 		var statusBody map[string]any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&statusBody))
 		assert.Contains(t, statusBody["content"], "Hello from API test")
@@ -95,12 +95,86 @@ func TestStatusesHandler_Create(t *testing.T) {
 		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
 		rec := httptest.NewRecorder()
 		handler.POSTStatuses(rec, req)
-		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, http.StatusCreated, rec.Code)
 		var statusBody map[string]any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&statusBody))
 		assert.Contains(t, statusBody["content"], "Form post content")
 	})
 
+	t.Run("scheduled_at in future returns ScheduledStatus", func(t *testing.T) {
+		acc, err := accountSvc.Register(ctx, service.RegisterInput{
+			Username:     "scheduler",
+			Email:        "scheduler@example.com",
+			PasswordHash: "hash",
+			Role:         domain.RoleUser,
+		})
+		require.NoError(t, err)
+		scheduledAt := time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)
+		body := bytes.NewBufferString(`{"status":"Scheduled post","scheduled_at":"` + scheduledAt + `"}`)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		rec := httptest.NewRecorder()
+		handler.POSTStatuses(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var out map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
+		assert.NotEmpty(t, out["id"])
+		assert.Equal(t, scheduledAt, out["scheduled_at"])
+		params, ok := out["params"].(map[string]any)
+		require.True(t, ok, "params should be object")
+		assert.Equal(t, "Scheduled post", params["text"])
+		assert.Contains(t, params, "application_id", "params should include Mastodon compatibility keys")
+		assert.Contains(t, params, "poll", "params should include poll (null)")
+		assert.Contains(t, params, "with_rate_limit", "params should include with_rate_limit")
+	})
+
+	t.Run("scheduled_at in past returns 422", func(t *testing.T) {
+		acc, err := accountSvc.Register(ctx, service.RegisterInput{
+			Username:     "past",
+			Email:        "past@example.com",
+			PasswordHash: "hash",
+			Role:         domain.RoleUser,
+		})
+		require.NoError(t, err)
+		past := time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339)
+		body := bytes.NewBufferString(`{"status":"Past post","scheduled_at":"` + past + `"}`)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		rec := httptest.NewRecorder()
+		handler.POSTStatuses(rec, req)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	})
+
+	t.Run("create with poll returns status with embedded poll", func(t *testing.T) {
+		acc, err := accountSvc.Register(ctx, service.RegisterInput{
+			Username:     "pollster",
+			Email:        "pollster@example.com",
+			PasswordHash: "hash",
+			Role:         domain.RoleUser,
+		})
+		require.NoError(t, err)
+		body := bytes.NewBufferString(`{"status":"What do you think?","poll":{"options":["Yes","No"],"expires_in":3600,"multiple":false}}`)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		rec := httptest.NewRecorder()
+		handler.POSTStatuses(rec, req)
+		require.Equal(t, http.StatusCreated, rec.Code)
+		var out map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
+		assert.NotEmpty(t, out["id"])
+		poll, ok := out["poll"].(map[string]any)
+		require.True(t, ok, "response should include poll")
+		assert.Equal(t, false, poll["multiple"])
+		assert.InDelta(t, 0.0, poll["votes_count"].(float64), 0.01)
+		options, ok := poll["options"].([]any)
+		require.True(t, ok)
+		require.Len(t, options, 2)
+		assert.Equal(t, "Yes", (options[0].(map[string]any))["title"])
+		assert.Equal(t, "No", (options[1].(map[string]any))["title"])
+	})
 }
 
 func TestStatusesHandler_Create_account_without_user_returns_401(t *testing.T) {
@@ -109,7 +183,7 @@ func TestStatusesHandler_Create_account_without_user_returns_401(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "nouser"})
 	require.NoError(t, err)
@@ -159,7 +233,7 @@ func TestStatusesHandler_POSTReblog(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -209,7 +283,7 @@ func TestStatusesHandler_POSTUnreblog(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -255,7 +329,7 @@ func TestStatusesHandler_POSTPin(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -320,7 +394,7 @@ func TestStatusesHandler_POSTUnpin(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -364,13 +438,98 @@ func TestStatusesHandler_POSTUnpin(t *testing.T) {
 	})
 }
 
+func TestStatusesHandler_ConversationMute(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
+
+	acc, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	statusID := uid.New()
+	_, err = st.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         statusID,
+		URI:        "https://example.com/statuses/" + statusID,
+		AccountID:  acc.ID,
+		Text:       testutil.StrPtr("post"),
+		Content:    testutil.StrPtr("<p>post</p>"),
+		Visibility: domain.VisibilityPublic,
+		APID:       "https://example.com/statuses/" + statusID,
+		Local:      true,
+	})
+	require.NoError(t, err)
+
+	t.Run("unauthenticated mute returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+statusID+"/mute", nil)
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.POSTMuteConversation(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("mute returns 200 and status with muted true", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+statusID+"/mute", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.POSTMuteConversation(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.True(t, body["muted"].(bool))
+	})
+
+	t.Run("GET status returns muted true when conversation muted", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/statuses/"+statusID, nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.GETStatuses(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.True(t, body["muted"].(bool))
+	})
+
+	t.Run("unmute returns 200 and status with muted false", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+statusID+"/unmute", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.POSTUnmuteConversation(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.False(t, body["muted"].(bool))
+	})
+
+	t.Run("GET status returns muted false after unmute", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/statuses/"+statusID, nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.GETStatuses(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.False(t, body["muted"].(bool))
+	})
+}
+
 func TestStatusesHandler_PUTStatuses(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -443,7 +602,7 @@ func TestStatusesHandler_GETStatusHistory(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -486,6 +645,30 @@ func TestStatusesHandler_GETStatusHistory(t *testing.T) {
 		require.Len(t, edits, 1)
 		assert.Equal(t, "<p>first</p>", edits[0]["content"])
 	})
+
+	t.Run("no edits returns empty array", func(t *testing.T) {
+		statusIDNoEdits := uid.New()
+		_, err := st.CreateStatus(ctx, store.CreateStatusInput{
+			ID:         statusIDNoEdits,
+			URI:        "https://example.com/statuses/" + statusIDNoEdits,
+			AccountID:  acc.ID,
+			Text:       testutil.StrPtr("never edited"),
+			Content:    testutil.StrPtr("<p>never edited</p>"),
+			Visibility: domain.VisibilityPublic,
+			APID:       "https://example.com/statuses/" + statusIDNoEdits,
+			Local:      true,
+		})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/statuses/"+statusIDNoEdits+"/history", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", statusIDNoEdits)
+		rec := httptest.NewRecorder()
+		handler.GETStatusHistory(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var edits []map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&edits))
+		assert.Empty(t, edits)
+	})
 }
 
 func TestStatusesHandler_GETStatusSource(t *testing.T) {
@@ -494,7 +677,7 @@ func TestStatusesHandler_GETStatusSource(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -538,7 +721,7 @@ func TestStatusesHandler_POSTFavourite(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -584,7 +767,7 @@ func TestStatusesHandler_POSTUnfavourite(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -630,7 +813,7 @@ func TestStatusesHandler_GETContext(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
 
 	statusID := uid.New()
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
@@ -666,7 +849,7 @@ func TestStatusesHandler_GETStatuses_private_returns_404_when_unauthenticated(t 
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -697,7 +880,7 @@ func TestStatusesHandler_GETFavouritedBy(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -724,7 +907,7 @@ func TestStatusesHandler_GETRebloggedBy(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -779,7 +962,7 @@ func TestStatusesHandler_POSTStatuses_idempotency(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", cacheStore)
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", cacheStore, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -796,7 +979,7 @@ func TestStatusesHandler_POSTStatuses_idempotency(t *testing.T) {
 	req1 = req1.WithContext(middleware.WithAccount(req1.Context(), acc))
 	rec1 := httptest.NewRecorder()
 	handler.POSTStatuses(rec1, req1)
-	require.Equal(t, http.StatusOK, rec1.Code)
+	require.Equal(t, http.StatusCreated, rec1.Code)
 	var firstResp map[string]any
 	require.NoError(t, json.NewDecoder(rec1.Body).Decode(&firstResp))
 
@@ -807,7 +990,7 @@ func TestStatusesHandler_POSTStatuses_idempotency(t *testing.T) {
 	req2 = req2.WithContext(middleware.WithAccount(req2.Context(), acc))
 	rec2 := httptest.NewRecorder()
 	handler.POSTStatuses(rec2, req2)
-	require.Equal(t, http.StatusOK, rec2.Code)
+	require.Equal(t, http.StatusCreated, rec2.Code)
 	var secondResp map[string]any
 	require.NoError(t, json.NewDecoder(rec2.Body).Decode(&secondResp))
 	assert.Equal(t, firstResp["id"], secondResp["id"], "idempotency key should return cached response with same status id")

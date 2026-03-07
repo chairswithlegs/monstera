@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/store"
@@ -609,6 +611,191 @@ func (s *PostgresStore) SearchHashtagsByPrefix(ctx context.Context, prefix strin
 		out = append(out, ToDomainHashtag(r))
 	}
 	return out, nil
+}
+
+func (s *PostgresStore) FollowTag(ctx context.Context, id, accountID, tagID string) error {
+	return mapErr(s.q.FollowTag(ctx, db.FollowTagParams{
+		ID:        id,
+		AccountID: accountID,
+		TagID:     tagID,
+	}))
+}
+
+func (s *PostgresStore) UnfollowTag(ctx context.Context, accountID, tagID string) error {
+	return mapErr(s.q.UnfollowTag(ctx, db.UnfollowTagParams{
+		AccountID: accountID,
+		TagID:     tagID,
+	}))
+}
+
+func (s *PostgresStore) ListFollowedTags(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Hashtag, *string, error) {
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	rows, err := s.q.ListFollowedTagsPaginated(ctx, db.ListFollowedTagsPaginatedParams{
+		AccountID: accountID,
+		Column2:   cursor,
+		Limit:     int32(limit), //nolint:gosec // limit clamped by caller
+	})
+	if err != nil {
+		return nil, nil, mapErr(err)
+	}
+	out := make([]domain.Hashtag, 0, len(rows))
+	var nextCursor *string
+	for i, r := range rows {
+		out = append(out, domain.Hashtag{
+			ID:        r.ID,
+			Name:      r.Name,
+			CreatedAt: pgTime(r.CreatedAt),
+			UpdatedAt: pgTime(r.UpdatedAt),
+		})
+		if i == len(rows)-1 && len(rows) == limit {
+			nextCursor = &r.Cursor
+		}
+	}
+	return out, nextCursor, nil
+}
+
+func featuredTagRowToDomain(r db.ListFeaturedTagsByAccountRow) domain.FeaturedTag {
+	var lastAt *time.Time
+	if r.LastStatusAt != nil {
+		switch v := r.LastStatusAt.(type) {
+		case time.Time:
+			lastAt = &v
+		case *time.Time:
+			lastAt = v
+		case pgtype.Timestamptz:
+			if v.Valid {
+				t := v.Time
+				lastAt = &t
+			}
+		}
+	}
+	return domain.FeaturedTag{
+		ID:            r.ID,
+		AccountID:     r.AccountID,
+		TagID:         r.TagID,
+		Name:          r.Name,
+		StatusesCount: int(r.StatusesCount),
+		LastStatusAt:  lastAt,
+		CreatedAt:     pgTime(r.CreatedAt),
+	}
+}
+
+func (s *PostgresStore) CreateFeaturedTag(ctx context.Context, id, accountID, tagID string) error {
+	return mapErr(s.q.CreateFeaturedTag(ctx, db.CreateFeaturedTagParams{
+		ID:        id,
+		AccountID: accountID,
+		TagID:     tagID,
+	}))
+}
+
+func (s *PostgresStore) DeleteFeaturedTag(ctx context.Context, id, accountID string) error {
+	return mapErr(s.q.DeleteFeaturedTag(ctx, db.DeleteFeaturedTagParams{
+		ID:        id,
+		AccountID: accountID,
+	}))
+}
+
+func (s *PostgresStore) ListFeaturedTags(ctx context.Context, accountID string) ([]domain.FeaturedTag, error) {
+	rows, err := s.q.ListFeaturedTagsByAccount(ctx, accountID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.FeaturedTag, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, featuredTagRowToDomain(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetFeaturedTagByID(ctx context.Context, id, accountID string) (*domain.FeaturedTag, error) {
+	row, err := s.q.GetFeaturedTagByID(ctx, db.GetFeaturedTagByIDParams{
+		ID:        id,
+		AccountID: accountID,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return &domain.FeaturedTag{
+		ID:            row.ID,
+		AccountID:     row.AccountID,
+		TagID:         row.TagID,
+		Name:          row.Name,
+		StatusesCount: 0,
+		LastStatusAt:  nil,
+		CreatedAt:     pgTime(row.CreatedAt),
+	}, nil
+}
+
+func (s *PostgresStore) ListFeaturedTagSuggestions(ctx context.Context, accountID string, limit int) ([]domain.Hashtag, []int64, error) {
+	rows, err := s.q.ListAccountTagSuggestions(ctx, db.ListAccountTagSuggestionsParams{
+		AccountID: accountID,
+		Limit:     int32(limit), //nolint:gosec // limit clamped by caller
+	})
+	if err != nil {
+		return nil, nil, mapErr(err)
+	}
+	tags := make([]domain.Hashtag, 0, len(rows))
+	counts := make([]int64, 0, len(rows))
+	for _, r := range rows {
+		tags = append(tags, domain.Hashtag{ID: r.ID, Name: r.Name})
+		counts = append(counts, r.UseCount)
+	}
+	return tags, counts, nil
+}
+
+func (s *PostgresStore) GetConversationRoot(ctx context.Context, statusID string) (string, error) {
+	visited := make(map[string]struct{})
+	currentID := statusID
+	for {
+		if _, ok := visited[currentID]; ok {
+			return currentID, nil
+		}
+		visited[currentID] = struct{}{}
+		st, err := s.q.GetStatusByID(ctx, currentID)
+		if err != nil {
+			return "", mapErr(err)
+		}
+		if st.InReplyToID == nil || *st.InReplyToID == "" {
+			return currentID, nil
+		}
+		currentID = *st.InReplyToID
+	}
+}
+
+func (s *PostgresStore) CreateConversationMute(ctx context.Context, accountID, conversationID string) error {
+	return mapErr(s.q.CreateConversationMute(ctx, db.CreateConversationMuteParams{
+		AccountID:      accountID,
+		ConversationID: conversationID,
+	}))
+}
+
+func (s *PostgresStore) DeleteConversationMute(ctx context.Context, accountID, conversationID string) error {
+	return mapErr(s.q.DeleteConversationMute(ctx, db.DeleteConversationMuteParams{
+		AccountID:      accountID,
+		ConversationID: conversationID,
+	}))
+}
+
+func (s *PostgresStore) IsConversationMuted(ctx context.Context, accountID, conversationID string) (bool, error) {
+	ok, err := s.q.IsConversationMuted(ctx, db.IsConversationMutedParams{
+		AccountID:      accountID,
+		ConversationID: conversationID,
+	})
+	if err != nil {
+		return false, mapErr(err)
+	}
+	return ok, nil
+}
+
+func (s *PostgresStore) ListMutedConversationIDs(ctx context.Context, accountID string) ([]string, error) {
+	rows, err := s.q.ListMutedConversationIDs(ctx, accountID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return rows, nil
 }
 
 func (s *PostgresStore) CreateNotification(ctx context.Context, in store.CreateNotificationInput) (*domain.Notification, error) {
@@ -1241,6 +1428,78 @@ func (s *PostgresStore) ListStatusEdits(ctx context.Context, statusID string) ([
 	return out, nil
 }
 
+func (s *PostgresStore) CreateScheduledStatus(ctx context.Context, in store.CreateScheduledStatusInput) (*domain.ScheduledStatus, error) {
+	row, err := s.q.CreateScheduledStatus(ctx, db.CreateScheduledStatusParams{
+		ID:          in.ID,
+		AccountID:   in.AccountID,
+		Params:      in.Params,
+		ScheduledAt: timeToPg(in.ScheduledAt),
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := ToDomainScheduledStatus(row)
+	return &out, nil
+}
+
+func (s *PostgresStore) GetScheduledStatusByID(ctx context.Context, id string) (*domain.ScheduledStatus, error) {
+	row, err := s.q.GetScheduledStatusByID(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := ToDomainScheduledStatus(row)
+	return &out, nil
+}
+
+func (s *PostgresStore) ListScheduledStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.ScheduledStatus, error) {
+	maxIDVal := ""
+	if maxID != nil {
+		maxIDVal = *maxID
+	}
+	rows, err := s.q.ListScheduledStatuses(ctx, db.ListScheduledStatusesParams{
+		AccountID: accountID,
+		Column2:   maxIDVal,
+		Limit:     int32(limit), //nolint:gosec // limit clamped by caller
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.ScheduledStatus, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainScheduledStatus(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) UpdateScheduledStatus(ctx context.Context, in store.UpdateScheduledStatusInput) (*domain.ScheduledStatus, error) {
+	row, err := s.q.UpdateScheduledStatus(ctx, db.UpdateScheduledStatusParams{
+		ID:          in.ID,
+		Params:      in.Params,
+		ScheduledAt: timeToPg(in.ScheduledAt),
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := ToDomainScheduledStatus(row)
+	return &out, nil
+}
+
+func (s *PostgresStore) DeleteScheduledStatus(ctx context.Context, id string) error {
+	return mapErr(s.q.DeleteScheduledStatus(ctx, id))
+}
+
+func (s *PostgresStore) ListScheduledStatusesDue(ctx context.Context, limit int) ([]domain.ScheduledStatus, error) {
+	rows, err := s.q.ListScheduledStatusesDue(ctx, int32(limit)) //nolint:gosec // limit clamped by caller
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.ScheduledStatus, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainScheduledStatus(r))
+	}
+	return out, nil
+}
+
 func toDbUpdateStatusParams(in store.UpdateStatusInput) db.UpdateStatusParams {
 	return db.UpdateStatusParams{
 		ID:             in.ID,
@@ -1335,6 +1594,124 @@ func (s *PostgresStore) AssignReport(ctx context.Context, reportID string, assig
 
 func (s *PostgresStore) ResolveReport(ctx context.Context, reportID string, actionTaken *string) error {
 	return mapErr(s.q.ResolveReport(ctx, db.ResolveReportParams{ID: reportID, ActionTaken: actionTaken}))
+}
+
+func (s *PostgresStore) CreateAnnouncement(ctx context.Context, in store.CreateAnnouncementInput) (*domain.Announcement, error) {
+	a, err := s.q.CreateAnnouncement(ctx, db.CreateAnnouncementParams{
+		ID:          in.ID,
+		Content:     in.Content,
+		StartsAt:    timePtrToPg(in.StartsAt),
+		EndsAt:      timePtrToPg(in.EndsAt),
+		AllDay:      in.AllDay,
+		PublishedAt: timeToPg(in.PublishedAt),
+		UpdatedAt:   timeToPg(in.PublishedAt),
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainAnnouncement(a)
+	return &d, nil
+}
+
+func (s *PostgresStore) UpdateAnnouncement(ctx context.Context, in store.UpdateAnnouncementInput) error {
+	return mapErr(s.q.UpdateAnnouncement(ctx, db.UpdateAnnouncementParams{
+		ID:          in.ID,
+		Content:     in.Content,
+		StartsAt:    timePtrToPg(in.StartsAt),
+		EndsAt:      timePtrToPg(in.EndsAt),
+		AllDay:      in.AllDay,
+		PublishedAt: timeToPg(in.PublishedAt),
+	}))
+}
+
+func (s *PostgresStore) GetAnnouncementByID(ctx context.Context, id string) (*domain.Announcement, error) {
+	a, err := s.q.GetAnnouncementByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("GetAnnouncementByID(%s): %w", id, domain.ErrNotFound)
+		}
+		return nil, fmt.Errorf("GetAnnouncementByID(%s): %w", id, err)
+	}
+	d := ToDomainAnnouncement(a)
+	return &d, nil
+}
+
+func (s *PostgresStore) ListActiveAnnouncements(ctx context.Context) ([]domain.Announcement, error) {
+	rows, err := s.q.ListActiveAnnouncements(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.Announcement, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainAnnouncement(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) ListAllAnnouncements(ctx context.Context) ([]domain.Announcement, error) {
+	rows, err := s.q.ListAllAnnouncements(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.Announcement, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainAnnouncement(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) DismissAnnouncement(ctx context.Context, accountID, announcementID string) error {
+	return mapErr(s.q.DismissAnnouncement(ctx, db.DismissAnnouncementParams{
+		AccountID:      accountID,
+		AnnouncementID: announcementID,
+	}))
+}
+
+func (s *PostgresStore) ListReadAnnouncementIDs(ctx context.Context, accountID string) ([]string, error) {
+	ids, err := s.q.ListReadAnnouncementIDs(ctx, accountID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return ids, nil
+}
+
+func (s *PostgresStore) AddAnnouncementReaction(ctx context.Context, announcementID, accountID, name string) error {
+	return mapErr(s.q.AddAnnouncementReaction(ctx, db.AddAnnouncementReactionParams{
+		AnnouncementID: announcementID,
+		AccountID:      accountID,
+		Name:           name,
+	}))
+}
+
+func (s *PostgresStore) RemoveAnnouncementReaction(ctx context.Context, announcementID, accountID, name string) error {
+	return mapErr(s.q.RemoveAnnouncementReaction(ctx, db.RemoveAnnouncementReactionParams{
+		AnnouncementID: announcementID,
+		AccountID:      accountID,
+		Name:           name,
+	}))
+}
+
+func (s *PostgresStore) ListAnnouncementReactionCounts(ctx context.Context, announcementID string) ([]domain.AnnouncementReactionCount, error) {
+	rows, err := s.q.ListAnnouncementReactionCounts(ctx, announcementID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.AnnouncementReactionCount, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, domain.AnnouncementReactionCount{Name: r.Name, Count: int(r.Count), Me: false})
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) ListAccountAnnouncementReactionNames(ctx context.Context, announcementID, accountID string) ([]string, error) {
+	names, err := s.q.ListAccountAnnouncementReactionNames(ctx, db.ListAccountAnnouncementReactionNamesParams{
+		AnnouncementID: announcementID,
+		AccountID:      accountID,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return names, nil
 }
 
 func (s *PostgresStore) CreateDomainBlock(ctx context.Context, in store.CreateDomainBlockInput) (*domain.DomainBlock, error) {
@@ -1824,4 +2201,119 @@ func (s *PostgresStore) ListDirectoryAccounts(ctx context.Context, order string,
 		out = append(out, ToDomainAccount(r))
 	}
 	return out, nil
+}
+
+func (s *PostgresStore) CreatePoll(ctx context.Context, in store.CreatePollInput) (*domain.Poll, error) {
+	p, err := s.q.CreatePoll(ctx, db.CreatePollParams{
+		ID:        in.ID,
+		StatusID:  in.StatusID,
+		ExpiresAt: timePtrToPg(in.ExpiresAt),
+		Multiple:  in.Multiple,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := ToDomainPoll(p)
+	return &out, nil
+}
+
+func (s *PostgresStore) CreatePollOption(ctx context.Context, in store.CreatePollOptionInput) (*domain.PollOption, error) {
+	o, err := s.q.CreatePollOption(ctx, db.CreatePollOptionParams{
+		ID:       in.ID,
+		PollID:   in.PollID,
+		Title:    in.Title,
+		Position: int32(in.Position), //nolint:gosec // position from API
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := ToDomainPollOption(o)
+	return &out, nil
+}
+
+func (s *PostgresStore) GetPollByID(ctx context.Context, id string) (*domain.Poll, error) {
+	p, err := s.q.GetPollByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("GetPollByID: %w", domain.ErrNotFound)
+		}
+		return nil, mapErr(err)
+	}
+	out := ToDomainPoll(p)
+	return &out, nil
+}
+
+func (s *PostgresStore) GetPollByStatusID(ctx context.Context, statusID string) (*domain.Poll, error) {
+	p, err := s.q.GetPollByStatusID(ctx, statusID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("GetPollByStatusID: %w", domain.ErrNotFound)
+		}
+		return nil, mapErr(err)
+	}
+	out := ToDomainPoll(p)
+	return &out, nil
+}
+
+func (s *PostgresStore) ListPollOptions(ctx context.Context, pollID string) ([]domain.PollOption, error) {
+	rows, err := s.q.ListPollOptions(ctx, pollID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.PollOption, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainPollOption(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) DeletePollVotesByAccount(ctx context.Context, pollID, accountID string) error {
+	return mapErr(s.q.DeletePollVotesByAccount(ctx, db.DeletePollVotesByAccountParams{
+		PollID:    pollID,
+		AccountID: accountID,
+	}))
+}
+
+func (s *PostgresStore) CreatePollVote(ctx context.Context, id, pollID, accountID, optionID string) error {
+	_, err := s.q.CreatePollVote(ctx, db.CreatePollVoteParams{
+		ID:        id,
+		PollID:    pollID,
+		AccountID: accountID,
+		OptionID:  optionID,
+	})
+	return mapErr(err)
+}
+
+func (s *PostgresStore) GetVoteCountsByPoll(ctx context.Context, pollID string) (map[string]int, error) {
+	rows, err := s.q.GetVoteCountsByPoll(ctx, pollID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make(map[string]int, len(rows))
+	for _, r := range rows {
+		out[r.OptionID] = int(r.VotesCount)
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) HasVotedOnPoll(ctx context.Context, pollID, accountID string) (bool, error) {
+	voted, err := s.q.HasVotedOnPoll(ctx, db.HasVotedOnPollParams{
+		PollID:    pollID,
+		AccountID: accountID,
+	})
+	if err != nil {
+		return false, mapErr(err)
+	}
+	return voted, nil
+}
+
+func (s *PostgresStore) GetOwnVoteOptionIDs(ctx context.Context, pollID, accountID string) ([]string, error) {
+	ids, err := s.q.GetOwnVoteOptionIDs(ctx, db.GetOwnVoteOptionIDsParams{
+		PollID:    pollID,
+		AccountID: accountID,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return ids, nil
 }

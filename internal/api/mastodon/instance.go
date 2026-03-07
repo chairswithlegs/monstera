@@ -38,14 +38,21 @@ type InstanceV1Stats struct {
 // InstanceConfig is the configuration sub-object in the instance response.
 type InstanceConfig struct {
 	Statuses struct {
-		MaxCharacters       int `json:"max_characters"`
-		MaxMediaAttachments int `json:"max_media_attachments"`
+		MaxCharacters            int `json:"max_characters"`
+		MaxMediaAttachments      int `json:"max_media_attachments"`
+		CharactersReservedPerURL int `json:"characters_reserved_per_url"`
 	} `json:"statuses"`
 	MediaAttachments struct {
 		SupportedMimeTypes []string `json:"supported_mime_types"`
 		ImageSizeLimit     int64    `json:"image_size_limit"`
 		VideoSizeLimit     int64    `json:"video_size_limit"`
 	} `json:"media_attachments"`
+	Polls struct {
+		MaxOptions             int `json:"max_options"`
+		MaxCharactersPerOption int `json:"max_characters_per_option"`
+		MinExpiration          int `json:"min_expiration"`
+		MaxExpiration          int `json:"max_expiration"`
+	} `json:"polls"`
 }
 
 // InstanceResponse is the Mastodon API v2 instance response.
@@ -136,9 +143,14 @@ func (h *InstanceHandler) GETInstance(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Configuration.Statuses.MaxCharacters = h.maxStatusChars
 	resp.Configuration.Statuses.MaxMediaAttachments = 4
+	resp.Configuration.Statuses.CharactersReservedPerURL = 23
 	resp.Configuration.MediaAttachments.SupportedMimeTypes = mimeTypes
 	resp.Configuration.MediaAttachments.ImageSizeLimit = h.mediaMaxBytes
 	resp.Configuration.MediaAttachments.VideoSizeLimit = h.mediaMaxBytes
+	resp.Configuration.Polls.MaxOptions = 4
+	resp.Configuration.Polls.MaxCharactersPerOption = 50
+	resp.Configuration.Polls.MinExpiration = 300
+	resp.Configuration.Polls.MaxExpiration = 2629746
 	resp.Registrations.Enabled = true
 	api.WriteJSON(w, http.StatusOK, resp)
 }

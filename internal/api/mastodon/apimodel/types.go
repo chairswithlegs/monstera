@@ -1,5 +1,7 @@
 package apimodel
 
+import "encoding/json"
+
 // Account is the Mastodon API account response shape.
 type Account struct {
 	ID             string  `json:"id"`
@@ -63,7 +65,7 @@ type Status struct {
 	Tags               []Tag             `json:"tags"`
 	Emojis             []any             `json:"emojis"`
 	Card               *any              `json:"card"`
-	Poll               *any              `json:"poll"`
+	Poll               *Poll             `json:"poll"`
 	Favourited         bool              `json:"favourited"`
 	Reblogged          bool              `json:"reblogged"`
 	Muted              bool              `json:"muted"`
@@ -79,18 +81,52 @@ type Mention struct {
 	URL      string `json:"url"`
 }
 
-// Tag is a hashtag in a status.
+// Tag is a hashtag in a status or in followed/featured tag lists.
 type Tag struct {
-	Name string `json:"name"`
-	URL  string `json:"url"`
+	ID        string `json:"id,omitempty"`
+	Name      string `json:"name"`
+	URL       string `json:"url"`
+	Following bool   `json:"following,omitempty"`
+}
+
+// FeaturedTag is a hashtag featured on an account profile.
+type FeaturedTag struct {
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	URL           string  `json:"url"`
+	StatusesCount int     `json:"statuses_count"`
+	LastStatusAt  *string `json:"last_status_at"`
+}
+
+// Poll is the Mastodon API poll entity (GET /api/v1/polls/:id, or embedded in Status).
+type Poll struct {
+	ID          string       `json:"id"`
+	ExpiresAt   *string      `json:"expires_at"`
+	Expired     bool         `json:"expired"`
+	Multiple    bool         `json:"multiple"`
+	VotesCount  int          `json:"votes_count"`
+	VotersCount *int         `json:"voters_count"`
+	Voted       bool         `json:"voted"`
+	OwnVotes    []int        `json:"own_votes"`
+	Options     []PollOption `json:"options"`
+	Emojis      []any        `json:"emojis"`
+}
+
+// PollOption is one option in a Poll.
+type PollOption struct {
+	Title      string `json:"title"`
+	VotesCount int    `json:"votes_count"`
 }
 
 // StatusEdit is one revision in a status's edit history (GET .../history).
 type StatusEdit struct {
-	Content     string `json:"content"`
-	SpoilerText string `json:"spoiler_text"`
-	Sensitive   bool   `json:"sensitive"`
-	CreatedAt   string `json:"created_at"`
+	Content          string            `json:"content"`
+	SpoilerText      string            `json:"spoiler_text"`
+	Sensitive        bool              `json:"sensitive"`
+	CreatedAt        string            `json:"created_at"`
+	Account          Account           `json:"account"`
+	MediaAttachments []MediaAttachment `json:"media_attachments"`
+	Emojis           []any             `json:"emojis"`
 }
 
 // StatusSource is the plain-text source for a status (GET .../source).
@@ -98,6 +134,14 @@ type StatusSource struct {
 	ID          string `json:"id"`
 	Text        string `json:"text"`
 	SpoilerText string `json:"spoiler_text"`
+}
+
+// ScheduledStatus is the Mastodon API scheduled status response (GET/POST/PUT scheduled_statuses).
+type ScheduledStatus struct {
+	ID               string            `json:"id"`
+	ScheduledAt      string            `json:"scheduled_at"`
+	Params           json.RawMessage   `json:"params"`
+	MediaAttachments []MediaAttachment `json:"media_attachments"`
 }
 
 // MediaAttachment is the Mastodon API media attachment shape.
@@ -109,4 +153,44 @@ type MediaAttachment struct {
 	RemoteURL   string `json:"remote_url,omitempty"`
 	Description string `json:"description"`
 	Blurhash    string `json:"blurhash,omitempty"`
+}
+
+// Announcement is the Mastodon API announcement entity (GET /api/v1/announcements).
+type Announcement struct {
+	ID          string       `json:"id"`
+	Content     string       `json:"content"`
+	StartsAt    *string      `json:"starts_at"`
+	EndsAt      *string      `json:"ends_at"`
+	AllDay      bool         `json:"all_day"`
+	PublishedAt string       `json:"published_at"`
+	UpdatedAt   string       `json:"updated_at"`
+	Read        bool         `json:"read"`
+	Mentions    []AccountRef `json:"mentions"`
+	Statuses    []StatusRef  `json:"statuses"`
+	Tags        []Tag        `json:"tags"`
+	Emojis      []any        `json:"emojis"`
+	Reactions   []Reaction   `json:"reactions"`
+}
+
+// AccountRef is a minimal account reference in an announcement (mentions).
+type AccountRef struct {
+	ID       string `json:"id"`
+	Username string `json:"username"`
+	URL      string `json:"url"`
+	Acct     string `json:"acct"`
+}
+
+// StatusRef is a minimal status reference in an announcement.
+type StatusRef struct {
+	ID  string `json:"id"`
+	URL string `json:"url"`
+}
+
+// Reaction is one emoji reaction on an announcement.
+type Reaction struct {
+	Name      string `json:"name"`
+	Count     int    `json:"count"`
+	Me        bool   `json:"me"`
+	URL       string `json:"url,omitempty"`
+	StaticURL string `json:"static_url,omitempty"`
 }

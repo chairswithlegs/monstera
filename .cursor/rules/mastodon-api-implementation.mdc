@@ -30,6 +30,14 @@ When implementing from **docs/mastodon-api-remainder-implementation-plan.md**:
 - Read the full section: Goal, Spec, **Pattern**, **Files to read first**, **Convention**, Steps, Acceptance.
 - Open and skim the listed “Files to read first” so you follow existing patterns (handlers, pagination, auth, etc.).
 
+## After coding a section
+
+If the change touch the Mastodon or ActivityPub endpoints, use the mastodon-api-expert skill to validate the changes.
+
+If the change touches the internal/activitypub or internal/api/activitypub packages, use the activitypub-expert skill to validate the changes.
+
+After a batch in the plan is implemented, use the code-reviewer skill to review the changes in the batch.
+
 ## Other rules
 
 - Follow existing project rules: `api-handler-patterns.mdc`, `error-handling.mdc`, `testing.mdc`, `store.mdc`, and the security/architecture guidance in the plan (§5).
