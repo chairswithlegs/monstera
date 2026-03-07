@@ -9,7 +9,7 @@ Use this skill when reviewing the architecture of the application. Take a holist
 
 ## Scope of review
 
-1. **Layers and dependency direction** — Dependencies must point inward (toward `internal/domain`). No cycles.
+1. **Layers and dependency direction** — Dependencies must point inward (toward `internal/domain`). No cycles. Business logic belongs in the service layer.
 2. **Subsystem focus** — Each area (store, cache, media, email, activitypub, nats, oauth, api) has a clear responsibility and minimal surface.
 3. **Loose coupling** — Subsystems interact via interfaces and domain types; no layer below `internal/api` depends on HTTP or API types.
 4. **Maintainability and readability** — Consistent patterns, clear naming, appropriate error handling and logging.

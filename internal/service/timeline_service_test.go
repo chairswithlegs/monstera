@@ -7,10 +7,18 @@ import (
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/events"
+	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/testutil"
+	"github.com/chairswithlegs/monstera/internal/uid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type allowAllVisibilityChecker struct{}
+
+func (*allowAllVisibilityChecker) CanViewStatus(context.Context, *domain.Status, *string) (bool, error) {
+	return true, nil
+}
 
 func TestTimelineService_Home(t *testing.T) {
 	t.Parallel()
@@ -18,7 +26,7 @@ func TestTimelineService_Home(t *testing.T) {
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	timelineSvc := NewTimelineService(fake)
+	timelineSvc := NewTimelineService(fake, statusSvc)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
 		Username:     "alice",
@@ -47,7 +55,7 @@ func TestTimelineService_Home_empty(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	timelineSvc := NewTimelineService(fake)
+	timelineSvc := NewTimelineService(fake, &allowAllVisibilityChecker{})
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -63,7 +71,7 @@ func TestTimelineService_Home_respects_limit(t *testing.T) {
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	timelineSvc := NewTimelineService(fake)
+	timelineSvc := NewTimelineService(fake, statusSvc)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -88,7 +96,7 @@ func TestTimelineService_PublicLocal(t *testing.T) {
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	timelineSvc := NewTimelineService(fake)
+	timelineSvc := NewTimelineService(fake, statusSvc)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -110,7 +118,7 @@ func TestTimelineService_PublicLocal_default_limit(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	timelineSvc := NewTimelineService(fake)
+	timelineSvc := NewTimelineService(fake, &allowAllVisibilityChecker{})
 
 	pub, err := timelineSvc.PublicLocal(ctx, false, nil, 0)
 	require.NoError(t, err)
@@ -122,7 +130,7 @@ func TestTimelineService_HomeEnriched_empty(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	timelineSvc := NewTimelineService(fake)
+	timelineSvc := NewTimelineService(fake, &allowAllVisibilityChecker{})
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -138,7 +146,7 @@ func TestTimelineService_HomeEnriched_one_status(t *testing.T) {
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
-	timelineSvc := NewTimelineService(fake)
+	timelineSvc := NewTimelineService(fake, statusSvc)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
 		Username:     "alice",
@@ -165,4 +173,92 @@ func TestTimelineService_HomeEnriched_one_status(t *testing.T) {
 	assert.Empty(t, enriched[0].Mentions)
 	assert.Empty(t, enriched[0].Tags)
 	assert.Empty(t, enriched[0].Media)
+}
+
+func TestTimelineService_ListTimelineEnriched_excludes_private_status_when_list_owner_does_not_follow_author(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	timelineSvc := NewTimelineService(fake, statusSvc)
+
+	alice, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	bob, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
+	require.NoError(t, err)
+
+	listID := uid.New()
+	_, err = fake.CreateList(ctx, store.CreateListInput{
+		ID:            listID,
+		AccountID:     alice.ID,
+		Title:         "My list",
+		RepliesPolicy: "list",
+		Exclusive:     false,
+	})
+	require.NoError(t, err)
+	err = fake.AddAccountToList(ctx, listID, bob.ID)
+	require.NoError(t, err)
+
+	privText := "private post"
+	_, err = statusSvc.Create(ctx, CreateStatusInput{
+		AccountID:  bob.ID,
+		Text:       &privText,
+		Visibility: domain.VisibilityPrivate,
+	})
+	require.NoError(t, err)
+
+	enriched, err := timelineSvc.ListTimelineEnriched(ctx, alice.ID, listID, nil, 10)
+	require.NoError(t, err)
+	assert.Empty(t, enriched, "list owner should not see private status from list member they do not follow")
+}
+
+func TestTimelineService_ListTimelineEnriched_includes_private_status_when_list_owner_follows_author(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	timelineSvc := NewTimelineService(fake, statusSvc)
+
+	alice, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	bob, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
+	require.NoError(t, err)
+
+	listID := uid.New()
+	_, err = fake.CreateList(ctx, store.CreateListInput{
+		ID:            listID,
+		AccountID:     alice.ID,
+		Title:         "My list",
+		RepliesPolicy: "list",
+		Exclusive:     false,
+	})
+	require.NoError(t, err)
+	err = fake.AddAccountToList(ctx, listID, bob.ID)
+	require.NoError(t, err)
+
+	_, err = fake.CreateFollow(ctx, store.CreateFollowInput{
+		ID:        uid.New(),
+		AccountID: alice.ID,
+		TargetID:  bob.ID,
+		State:     domain.FollowStateAccepted,
+		APID:      nil,
+	})
+	require.NoError(t, err)
+
+	privText := "private post"
+	_, err = statusSvc.Create(ctx, CreateStatusInput{
+		AccountID:  bob.ID,
+		Text:       &privText,
+		Visibility: domain.VisibilityPrivate,
+	})
+	require.NoError(t, err)
+
+	enriched, err := timelineSvc.ListTimelineEnriched(ctx, alice.ID, listID, nil, 10)
+	require.NoError(t, err)
+	require.Len(t, enriched, 1)
+	assert.Equal(t, "private post", *enriched[0].Status.Text)
+	assert.Equal(t, domain.VisibilityPrivate, enriched[0].Status.Visibility)
+	assert.Equal(t, bob.ID, enriched[0].Status.AccountID)
 }

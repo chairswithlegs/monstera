@@ -37,6 +37,13 @@ type FakeStore struct {
 	applicationsByID map[string]*domain.OAuthApplication
 	authCodes        map[string]*domain.OAuthAuthorizationCode
 	tokens           map[string]*domain.OAuthAccessToken
+
+	userFiltersByID map[string]*domain.UserFilter
+
+	listsByID      map[string]*domain.List
+	listAccountIDs map[string][]string
+
+	mentionsByStatusID map[string][]string // statusID -> accountIDs mentioned
 }
 
 // NewFakeStore returns a new FakeStore for use in tests.
@@ -59,6 +66,10 @@ func NewFakeStore() *FakeStore {
 		applicationsByID:       make(map[string]*domain.OAuthApplication),
 		authCodes:              make(map[string]*domain.OAuthAuthorizationCode),
 		tokens:                 make(map[string]*domain.OAuthAccessToken),
+		userFiltersByID:        make(map[string]*domain.UserFilter),
+		listsByID:              make(map[string]*domain.List),
+		listAccountIDs:         make(map[string][]string),
+		mentionsByStatusID:     make(map[string][]string),
 	}
 }
 
@@ -669,14 +680,35 @@ func (f *FakeStore) ConfirmUser(ctx context.Context, userID string) error {
 }
 
 func (f *FakeStore) CreateStatusMention(ctx context.Context, statusID, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.mentionsByStatusID[statusID] = append(f.mentionsByStatusID[statusID], accountID)
 	return nil
 }
+
 func (f *FakeStore) GetStatusMentions(ctx context.Context, statusID string) ([]*domain.Account, error) {
-	return nil, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ids := f.mentionsByStatusID[statusID]
+	out := make([]*domain.Account, 0, len(ids))
+	for _, id := range ids {
+		if a := f.accountsByID[id]; a != nil {
+			out = append(out, a)
+		}
+	}
+	return out, nil
 }
 
 func (f *FakeStore) GetStatusMentionAccountIDs(ctx context.Context, statusID string) ([]string, error) {
-	return nil, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ids := f.mentionsByStatusID[statusID]
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	out := make([]string, len(ids))
+	copy(out, ids)
+	return out, nil
 }
 
 func (f *FakeStore) GetOrCreateHashtag(ctx context.Context, name string) (*domain.Hashtag, error) {
@@ -943,7 +975,23 @@ func (f *FakeStore) IsBookmarked(ctx context.Context, accountID, statusID string
 	return false, nil
 }
 
+func copyList(l *domain.List) *domain.List {
+	if l == nil {
+		return nil
+	}
+	return &domain.List{
+		ID:            l.ID,
+		AccountID:     l.AccountID,
+		Title:         l.Title,
+		RepliesPolicy: l.RepliesPolicy,
+		Exclusive:     l.Exclusive,
+		CreatedAt:     l.CreatedAt,
+	}
+}
+
 func (f *FakeStore) CreateList(ctx context.Context, in store.CreateListInput) (*domain.List, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	l := &domain.List{
 		ID:            in.ID,
 		AccountID:     in.AccountID,
@@ -952,68 +1000,224 @@ func (f *FakeStore) CreateList(ctx context.Context, in store.CreateListInput) (*
 		Exclusive:     in.Exclusive,
 		CreatedAt:     time.Now().UTC(),
 	}
-	return l, nil
+	f.listsByID[in.ID] = l
+	f.listAccountIDs[in.ID] = nil
+	return copyList(l), nil
 }
 
 func (f *FakeStore) GetListByID(ctx context.Context, id string) (*domain.List, error) {
-	return nil, domain.ErrNotFound
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	l, ok := f.listsByID[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return copyList(l), nil
 }
 
 func (f *FakeStore) ListLists(ctx context.Context, accountID string) ([]domain.List, error) {
-	return nil, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.List
+	for _, l := range f.listsByID {
+		if l.AccountID == accountID {
+			out = append(out, *copyList(l))
+		}
+	}
+	return out, nil
 }
 
 func (f *FakeStore) UpdateList(ctx context.Context, in store.UpdateListInput) (*domain.List, error) {
-	return nil, domain.ErrNotFound
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	l, ok := f.listsByID[in.ID]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	l.Title = in.Title
+	l.RepliesPolicy = in.RepliesPolicy
+	l.Exclusive = in.Exclusive
+	return copyList(l), nil
 }
 
 func (f *FakeStore) DeleteList(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.listsByID, id)
+	delete(f.listAccountIDs, id)
 	return nil
 }
 
 func (f *FakeStore) ListListAccountIDs(ctx context.Context, listID string) ([]string, error) {
-	return nil, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.listsByID[listID]; !ok {
+		return nil, domain.ErrNotFound
+	}
+	ids := f.listAccountIDs[listID]
+	if ids == nil {
+		return nil, nil
+	}
+	out := make([]string, len(ids))
+	copy(out, ids)
+	return out, nil
 }
 
 func (f *FakeStore) AddAccountToList(ctx context.Context, listID, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.listsByID[listID]; !ok {
+		return domain.ErrNotFound
+	}
+	ids := f.listAccountIDs[listID]
+	for _, id := range ids {
+		if id == accountID {
+			return nil
+		}
+	}
+	f.listAccountIDs[listID] = append(ids, accountID)
 	return nil
 }
 
 func (f *FakeStore) RemoveAccountFromList(ctx context.Context, listID, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ids := f.listAccountIDs[listID]
+	if ids == nil {
+		return nil
+	}
+	var newIDs []string
+	for _, id := range ids {
+		if id != accountID {
+			newIDs = append(newIDs, id)
+		}
+	}
+	f.listAccountIDs[listID] = newIDs
 	return nil
 }
 
 func (f *FakeStore) GetListTimeline(ctx context.Context, listID string, maxID *string, limit int) ([]domain.Status, error) {
-	return nil, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	memberIDs := f.listAccountIDs[listID]
+	if len(memberIDs) == 0 {
+		return nil, nil
+	}
+	memberSet := make(map[string]struct{}, len(memberIDs))
+	for _, id := range memberIDs {
+		memberSet[id] = struct{}{}
+	}
+	var list []*domain.Status
+	for _, s := range f.statusesByID {
+		if s.DeletedAt != nil || s.ReblogOfID != nil {
+			continue
+		}
+		if _, ok := memberSet[s.AccountID]; ok {
+			list = append(list, s)
+		}
+	}
+	sort.Slice(list, func(i, j int) bool { return list[j].ID < list[i].ID })
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	out := make([]domain.Status, 0, limit)
+	for _, s := range list {
+		if cursor != noCursorSentinel && s.ID >= cursor {
+			continue
+		}
+		if len(out) >= limit {
+			break
+		}
+		out = append(out, *s)
+	}
+	return out, nil
+}
+
+func copyUserFilter(uf *domain.UserFilter) *domain.UserFilter {
+	if uf == nil {
+		return nil
+	}
+	ctxCopy := make([]string, len(uf.Context))
+	copy(ctxCopy, uf.Context)
+	var exp *time.Time
+	if uf.ExpiresAt != nil {
+		t := *uf.ExpiresAt
+		exp = &t
+	}
+	return &domain.UserFilter{
+		ID:           uf.ID,
+		AccountID:    uf.AccountID,
+		Phrase:       uf.Phrase,
+		Context:      ctxCopy,
+		WholeWord:    uf.WholeWord,
+		ExpiresAt:    exp,
+		Irreversible: uf.Irreversible,
+		CreatedAt:    uf.CreatedAt,
+	}
 }
 
 func (f *FakeStore) CreateUserFilter(ctx context.Context, in store.CreateUserFilterInput) (*domain.UserFilter, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	uf := &domain.UserFilter{
 		ID:           in.ID,
 		AccountID:    in.AccountID,
 		Phrase:       in.Phrase,
-		Context:      in.Context,
+		Context:      append([]string(nil), in.Context...),
 		WholeWord:    in.WholeWord,
 		ExpiresAt:    in.ExpiresAt,
 		Irreversible: in.Irreversible,
 		CreatedAt:    time.Now().UTC(),
 	}
-	return uf, nil
+	f.userFiltersByID[in.ID] = uf
+	return copyUserFilter(uf), nil
 }
 
 func (f *FakeStore) GetUserFilterByID(ctx context.Context, id string) (*domain.UserFilter, error) {
-	return nil, domain.ErrNotFound
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	uf, ok := f.userFiltersByID[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return copyUserFilter(uf), nil
 }
 
 func (f *FakeStore) ListUserFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error) {
-	return nil, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.UserFilter
+	for _, uf := range f.userFiltersByID {
+		if uf.AccountID == accountID {
+			out = append(out, *copyUserFilter(uf))
+		}
+	}
+	return out, nil
 }
 
 func (f *FakeStore) UpdateUserFilter(ctx context.Context, in store.UpdateUserFilterInput) (*domain.UserFilter, error) {
-	return nil, domain.ErrNotFound
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	uf, ok := f.userFiltersByID[in.ID]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	uf.Phrase = in.Phrase
+	uf.Context = append([]string(nil), in.Context...)
+	uf.WholeWord = in.WholeWord
+	uf.ExpiresAt = in.ExpiresAt
+	uf.Irreversible = in.Irreversible
+	return copyUserFilter(uf), nil
 }
 
 func (f *FakeStore) DeleteUserFilter(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.userFiltersByID, id)
 	return nil
 }
 
@@ -1041,6 +1245,14 @@ func (f *FakeStore) DeleteBlock(ctx context.Context, accountID, targetID string)
 	defer f.mu.Unlock()
 	delete(f.blocksByKey, followKey(accountID, targetID))
 	return nil
+}
+
+func (f *FakeStore) IsBlockedEitherDirection(ctx context.Context, accountID, targetID string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, aBlocksB := f.blocksByKey[followKey(accountID, targetID)]
+	_, bBlocksA := f.blocksByKey[followKey(targetID, accountID)]
+	return aBlocksB || bBlocksA, nil
 }
 func (f *FakeStore) CreateMute(ctx context.Context, in store.CreateMuteInput) error {
 	f.mu.Lock()

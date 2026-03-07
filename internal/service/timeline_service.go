@@ -42,12 +42,13 @@ type TimelineService interface {
 }
 
 type timelineService struct {
-	store store.Store
+	store   store.Store
+	visible StatusVisibilityChecker
 }
 
-// NewTimelineService returns a TimelineService that uses the given store.
-func NewTimelineService(s store.Store) TimelineService {
-	return &timelineService{store: s}
+// NewTimelineService returns a TimelineService that uses the given store and visibility checker.
+func NewTimelineService(s store.Store, visible StatusVisibilityChecker) TimelineService {
+	return &timelineService{store: s, visible: visible}
 }
 
 // enrichStatuses loads author, mentions, tags, and media for each status.
@@ -118,6 +119,18 @@ func (svc *timelineService) HomeEnriched(ctx context.Context, accountID string, 
 	if err != nil {
 		return nil, err
 	}
+	viewerID := &accountID
+	filtered := make([]EnrichedStatus, 0, len(out))
+	for i := range out {
+		ok, err := svc.visible.CanViewStatus(ctx, out[i].Status, viewerID)
+		if err != nil {
+			return nil, fmt.Errorf("CanViewStatus: %w", err)
+		}
+		if ok {
+			filtered = append(filtered, out[i])
+		}
+	}
+	out = filtered
 	filters, err := svc.store.GetActiveUserFiltersByContext(ctx, accountID, domain.FilterContextHome)
 	if err != nil {
 		slog.WarnContext(ctx, "failed to load user filters, returning unfiltered timeline", slog.Any("error", err))
@@ -193,7 +206,18 @@ func (svc *timelineService) ListTimelineEnriched(ctx context.Context, accountID,
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	viewerID := &accountID
+	filtered := make([]EnrichedStatus, 0, len(out))
+	for i := range out {
+		ok, err := svc.visible.CanViewStatus(ctx, out[i].Status, viewerID)
+		if err != nil {
+			return nil, fmt.Errorf("CanViewStatus: %w", err)
+		}
+		if ok {
+			filtered = append(filtered, out[i])
+		}
+	}
+	return filtered, nil
 }
 
 // PublicLocal returns the public timeline. localOnly true restricts to local statuses.

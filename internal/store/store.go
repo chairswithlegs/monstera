@@ -97,6 +97,7 @@ type Store interface {
 
 	CreateBlock(ctx context.Context, in CreateBlockInput) error
 	DeleteBlock(ctx context.Context, accountID, targetID string) error
+	IsBlockedEitherDirection(ctx context.Context, accountID, targetID string) (bool, error)
 	CreateMute(ctx context.Context, in CreateMuteInput) error
 	DeleteMute(ctx context.Context, accountID, targetID string) error
 	CreateFavourite(ctx context.Context, in CreateFavouriteInput) (*domain.Favourite, error)

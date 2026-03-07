@@ -125,7 +125,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := createResultToAPIModel(result, h.instanceDomain)
+	out := enrichedStatusToAPIModel(result, h.instanceDomain)
 	body, _ := json.Marshal(out)
 	if idemKey != "" && h.cache != nil {
 		cacheKey := "idempotency:" + account.ID + ":" + idemKey
@@ -144,12 +144,16 @@ func (h *StatusesHandler) GETStatuses(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	result, err := h.statuses.GetByIDEnriched(r.Context(), id)
+	var viewerID *string
+	if account := middleware.AccountFromContext(r.Context()); account != nil {
+		viewerID = &account.ID
+	}
+	result, err := h.statuses.GetByIDEnriched(r.Context(), id, viewerID)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
-	out := createResultToAPIModel(result, h.instanceDomain)
+	out := enrichedStatusToAPIModel(result, h.instanceDomain)
 	if account := middleware.AccountFromContext(r.Context()); account != nil {
 		if ok, err := h.statuses.IsBookmarked(r.Context(), account.ID, id); err == nil {
 			out.Bookmarked = ok
@@ -179,7 +183,7 @@ func (h *StatusesHandler) DELETEStatuses(w http.ResponseWriter, r *http.Request)
 		api.HandleError(w, r, api.ErrForbidden)
 		return
 	}
-	result, err := h.statuses.GetByIDEnriched(r.Context(), id)
+	result, err := h.statuses.GetByIDEnriched(r.Context(), id, &account.ID)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -188,7 +192,7 @@ func (h *StatusesHandler) DELETEStatuses(w http.ResponseWriter, r *http.Request)
 		api.HandleError(w, r, err)
 		return
 	}
-	out := createResultToAPIModel(result, h.instanceDomain)
+	out := enrichedStatusToAPIModel(result, h.instanceDomain)
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -257,7 +261,7 @@ func (h *StatusesHandler) POSTReblog(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	out := createResultToAPIModelWithReblog(r.Context(), result, id, h)
+	out := enrichedStatusToAPIModelWithReblog(r.Context(), result, id, &account.ID, h)
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -278,7 +282,7 @@ func (h *StatusesHandler) POSTUnreblog(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	api.WriteJSON(w, http.StatusOK, createResultToAPIModel(result, h.instanceDomain))
+	api.WriteJSON(w, http.StatusOK, enrichedStatusToAPIModel(result, h.instanceDomain))
 }
 
 // POSTFavourite handles POST /api/v1/statuses/:id/favourite.
@@ -302,7 +306,7 @@ func (h *StatusesHandler) POSTFavourite(w http.ResponseWriter, r *http.Request) 
 		api.HandleError(w, r, err)
 		return
 	}
-	out := createResultToAPIModel(result, h.instanceDomain)
+	out := enrichedStatusToAPIModel(result, h.instanceDomain)
 	out.Favourited = true
 	api.WriteJSON(w, http.StatusOK, out)
 }
@@ -324,7 +328,7 @@ func (h *StatusesHandler) POSTUnfavourite(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, err)
 		return
 	}
-	out := createResultToAPIModel(result, h.instanceDomain)
+	out := enrichedStatusToAPIModel(result, h.instanceDomain)
 	out.Favourited = false
 	api.WriteJSON(w, http.StatusOK, out)
 }
@@ -350,7 +354,7 @@ func (h *StatusesHandler) POSTBookmark(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	out := createResultToAPIModel(result, h.instanceDomain)
+	out := enrichedStatusToAPIModel(result, h.instanceDomain)
 	out.Bookmarked = true
 	api.WriteJSON(w, http.StatusOK, out)
 }
@@ -376,7 +380,7 @@ func (h *StatusesHandler) POSTUnbookmark(w http.ResponseWriter, r *http.Request)
 		api.HandleError(w, r, err)
 		return
 	}
-	out := createResultToAPIModel(result, h.instanceDomain)
+	out := enrichedStatusToAPIModel(result, h.instanceDomain)
 	out.Bookmarked = false
 	api.WriteJSON(w, http.StatusOK, out)
 }
@@ -399,19 +403,19 @@ func (h *StatusesHandler) GETContext(w http.ResponseWriter, r *http.Request) {
 	}
 	ancestors := make([]apimodel.Status, 0, len(ctxResult.Ancestors))
 	for i := range ctxResult.Ancestors {
-		enriched, err := h.statuses.GetByIDEnriched(r.Context(), ctxResult.Ancestors[i].ID)
+		enriched, err := h.statuses.GetByIDEnriched(r.Context(), ctxResult.Ancestors[i].ID, viewerID)
 		if err != nil {
 			continue
 		}
-		ancestors = append(ancestors, createResultToAPIModel(enriched, h.instanceDomain))
+		ancestors = append(ancestors, enrichedStatusToAPIModel(enriched, h.instanceDomain))
 	}
 	descendants := make([]apimodel.Status, 0, len(ctxResult.Descendants))
 	for i := range ctxResult.Descendants {
-		enriched, err := h.statuses.GetByIDEnriched(r.Context(), ctxResult.Descendants[i].ID)
+		enriched, err := h.statuses.GetByIDEnriched(r.Context(), ctxResult.Descendants[i].ID, viewerID)
 		if err != nil {
 			continue
 		}
-		descendants = append(descendants, createResultToAPIModel(enriched, h.instanceDomain))
+		descendants = append(descendants, enrichedStatusToAPIModel(enriched, h.instanceDomain))
 	}
 	api.WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"ancestors":   ancestors,
@@ -426,8 +430,12 @@ func (h *StatusesHandler) GETFavouritedBy(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
+	var viewerID *string
+	if account := middleware.AccountFromContext(r.Context()); account != nil {
+		viewerID = &account.ID
+	}
 	params := PageParamsFromRequest(r)
-	list, err := h.statuses.GetFavouritedBy(r.Context(), id, optionalString(params.MaxID), params.Limit)
+	list, err := h.statuses.GetFavouritedBy(r.Context(), id, viewerID, optionalString(params.MaxID), params.Limit)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -454,8 +462,12 @@ func (h *StatusesHandler) GETRebloggedBy(w http.ResponseWriter, r *http.Request)
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
+	var viewerID *string
+	if account := middleware.AccountFromContext(r.Context()); account != nil {
+		viewerID = &account.ID
+	}
 	params := PageParamsFromRequest(r)
-	list, err := h.statuses.GetRebloggedBy(r.Context(), id, optionalString(params.MaxID), params.Limit)
+	list, err := h.statuses.GetRebloggedBy(r.Context(), id, viewerID, optionalString(params.MaxID), params.Limit)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -482,21 +494,21 @@ func firstLastAccountIDs(list []*domain.Account) (firstID, lastID string) {
 	return list[0].ID, list[len(list)-1].ID
 }
 
-// createResultToAPIModelWithReblog returns the boost status with nested reblog (original status).
-func createResultToAPIModelWithReblog(ctx context.Context, result service.CreateResult, originalID string, h *StatusesHandler) apimodel.Status {
-	boost := createResultToAPIModel(result, h.instanceDomain)
+// enrichedStatusToAPIModelWithReblog returns the boost status with nested reblog (original status).
+func enrichedStatusToAPIModelWithReblog(ctx context.Context, result service.EnrichedStatus, originalID string, viewerID *string, h *StatusesHandler) apimodel.Status {
+	boost := enrichedStatusToAPIModel(result, h.instanceDomain)
 	if result.Status.ReblogOfID != nil && *result.Status.ReblogOfID == originalID {
-		origResult, err := h.statuses.GetByIDEnriched(ctx, *result.Status.ReblogOfID)
+		origResult, err := h.statuses.GetByIDEnriched(ctx, *result.Status.ReblogOfID, viewerID)
 		if err == nil {
-			reblogAPI := createResultToAPIModel(origResult, h.instanceDomain)
+			reblogAPI := enrichedStatusToAPIModel(origResult, h.instanceDomain)
 			boost.Reblog = &reblogAPI
 		}
 	}
 	return boost
 }
 
-// createResultToAPIModel maps service.CreateResult to apimodel.Status.
-func createResultToAPIModel(result service.CreateResult, instanceDomain string) apimodel.Status {
+// enrichedStatusToAPIModel maps service.EnrichedStatus to apimodel.Status.
+func enrichedStatusToAPIModel(result service.EnrichedStatus, instanceDomain string) apimodel.Status {
 	authorAcc := apimodel.ToAccount(result.Author, instanceDomain)
 	mentionsResp := make([]apimodel.Mention, 0, len(result.Mentions))
 	for _, a := range result.Mentions {

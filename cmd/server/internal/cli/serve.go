@@ -151,7 +151,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	signatureService := ap.NewHTTPSignatureService(cfg, cacheStore, accountSvc)
 	outbox := ap.NewOutbox(s, natsClient.JS, blocklistCache, signatureService, cfg)
 	statusSvc := service.NewStatusService(s, outbox, eventBus, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars, logger)
-	timelineSvc := service.NewTimelineService(s)
+	timelineSvc := service.NewTimelineService(s, statusSvc)
 	instanceSvc := service.NewInstanceService(s)
 	followSvc := service.NewFollowService(s, outbox, nil)
 	notificationSvc := service.NewNotificationService(s)

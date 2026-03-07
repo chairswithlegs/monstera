@@ -17,12 +17,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type allowAllVisibilityChecker struct{}
+
+func (*allowAllVisibilityChecker) CanViewStatus(context.Context, *domain.Status, *string) (bool, error) {
+	return true, nil
+}
+
 func TestTimelinesHandler_Home(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	timelineSvc := service.NewTimelineService(st)
+	timelineSvc := service.NewTimelineService(st, &allowAllVisibilityChecker{})
 	handler := NewTimelinesHandler(timelineSvc, "example.com")
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
@@ -108,7 +114,7 @@ func TestTimelinesHandler_Home(t *testing.T) {
 func TestTimelinesHandler_GETTag(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
-	timelineSvc := service.NewTimelineService(st)
+	timelineSvc := service.NewTimelineService(st, &allowAllVisibilityChecker{})
 	handler := NewTimelinesHandler(timelineSvc, "example.com")
 
 	t.Run("empty hashtag returns 404", func(t *testing.T) {
@@ -136,7 +142,7 @@ func TestTimelinesHandler_GETFavourites(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	timelineSvc := service.NewTimelineService(st)
+	timelineSvc := service.NewTimelineService(st, &allowAllVisibilityChecker{})
 	handler := NewTimelinesHandler(timelineSvc, "example.com")
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {

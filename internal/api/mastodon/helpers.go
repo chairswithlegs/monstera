@@ -41,7 +41,9 @@ func PageParamsFromRequest(r *http.Request) PageParams {
 	}
 }
 
-// LinkHeader builds an RFC 5988 Link header for pagination.
+// LinkHeader builds an RFC 5988 Link header for cursor-based pagination.
+// Clients use the Link response header to discover next/prev page URLs: rel="next"
+// (max_id=lastID for older items) and rel="prev" (min_id=firstID for newer items).
 func LinkHeader(requestURL string, firstID, lastID string) string {
 	if firstID == "" && lastID == "" {
 		return ""

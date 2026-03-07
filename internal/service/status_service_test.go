@@ -7,10 +7,13 @@ import (
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/events"
+	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+const privatePostText = "private post"
 
 func TestStatusService_Create(t *testing.T) {
 	t.Parallel()
@@ -201,4 +204,77 @@ func TestStatusService_CreateWithContent_success_returns_result_with_author(t *t
 	assert.Empty(t, result.Tags)
 	assert.Empty(t, result.Media)
 	assert.Contains(t, result.Status.URI, "/users/alice/statuses/")
+}
+
+func TestStatusService_GetByIDEnriched_private_returns_ErrNotFound_when_unauthenticated(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+
+	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	text := privatePostText
+	st, err := statusSvc.Create(ctx, CreateStatusInput{
+		AccountID:  acc.ID,
+		Text:       &text,
+		Visibility: domain.VisibilityPrivate,
+	})
+	require.NoError(t, err)
+
+	_, err = statusSvc.GetByIDEnriched(ctx, st.ID, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+}
+
+func TestStatusService_GetByIDEnriched_private_returns_success_when_viewer_is_author(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+
+	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	text := privatePostText
+	st, err := statusSvc.Create(ctx, CreateStatusInput{
+		AccountID:  acc.ID,
+		Text:       &text,
+		Visibility: domain.VisibilityPrivate,
+	})
+	require.NoError(t, err)
+	viewerID := acc.ID
+
+	result, err := statusSvc.GetByIDEnriched(ctx, st.ID, &viewerID)
+	require.NoError(t, err)
+	require.NotNil(t, result.Status)
+	assert.Equal(t, domain.VisibilityPrivate, result.Status.Visibility)
+	assert.Equal(t, privatePostText, *result.Status.Text)
+}
+
+func TestStatusService_GetByIDEnriched_returns_ErrNotFound_when_viewer_blocked_by_author(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+
+	author, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	viewer, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
+	require.NoError(t, err)
+	text := "public post"
+	st, err := statusSvc.Create(ctx, CreateStatusInput{
+		AccountID:  author.ID,
+		Text:       &text,
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+	err = fake.CreateBlock(ctx, store.CreateBlockInput{ID: "01block", AccountID: author.ID, TargetID: viewer.ID})
+	require.NoError(t, err)
+
+	_, err = statusSvc.GetByIDEnriched(ctx, st.ID, &viewer.ID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
 }

@@ -377,14 +377,52 @@ func TestStatusesHandler_GETContext(t *testing.T) {
 	})
 }
 
-func TestStatusesHandler_GETFavouritedBy(t *testing.T) {
+func TestStatusesHandler_GETStatuses_private_returns_404_when_unauthenticated(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
 	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
 
-	statusID := "01status"
+	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	statusID := uid.New()
+	content := "<p>private</p>"
+	_, err = st.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         statusID,
+		URI:        "https://example.com/statuses/" + statusID,
+		AccountID:  acc.ID,
+		Text:       testutil.StrPtr("private"),
+		Content:    &content,
+		Visibility: domain.VisibilityPrivate,
+		APID:       "https://example.com/statuses/" + statusID,
+		Local:      true,
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/statuses/"+statusID, nil)
+	req = testutil.AddChiURLParam(req, "id", statusID)
+	rec := httptest.NewRecorder()
+	handler.GETStatuses(rec, req)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestStatusesHandler_GETFavouritedBy(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+
+	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	text := "post"
+	status, err := statusSvc.Create(ctx, service.CreateStatusInput{AccountID: acc.ID, Text: &text, Visibility: domain.VisibilityPublic})
+	require.NoError(t, err)
+	statusID := status.ID
+
 	t.Run("returns 200 and empty list", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/statuses/"+statusID+"/favourited_by", nil)
 		req = testutil.AddChiURLParam(req, "id", statusID)
@@ -399,12 +437,19 @@ func TestStatusesHandler_GETFavouritedBy(t *testing.T) {
 
 func TestStatusesHandler_GETRebloggedBy(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
 	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
 
-	statusID := "01status"
+	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	text := "post"
+	status, err := statusSvc.Create(ctx, service.CreateStatusInput{AccountID: acc.ID, Text: &text, Visibility: domain.VisibilityPublic})
+	require.NoError(t, err)
+	statusID := status.ID
+
 	t.Run("returns 200 and empty list", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/statuses/"+statusID+"/reblogged_by", nil)
 		req = testutil.AddChiURLParam(req, "id", statusID)

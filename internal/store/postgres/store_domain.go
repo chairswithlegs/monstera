@@ -915,6 +915,14 @@ func (s *PostgresStore) DeleteBlock(ctx context.Context, accountID, targetID str
 	return mapErr(s.q.DeleteBlock(ctx, db.DeleteBlockParams{AccountID: accountID, TargetID: targetID}))
 }
 
+func (s *PostgresStore) IsBlockedEitherDirection(ctx context.Context, accountID, targetID string) (bool, error) {
+	ok, err := s.q.IsBlockedEitherDirection(ctx, db.IsBlockedEitherDirectionParams{AccountID: accountID, TargetID: targetID})
+	if err != nil {
+		return false, mapErr(err)
+	}
+	return ok, nil
+}
+
 func (s *PostgresStore) CreateMute(ctx context.Context, in store.CreateMuteInput) error {
 	_, err := s.q.CreateMute(ctx, db.CreateMuteParams{
 		ID:                in.ID,
