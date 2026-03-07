@@ -46,7 +46,7 @@ func (h *NotificationsHandler) GETNotifications(w http.ResponseWriter, r *http.R
 		out = append(out, apimodel.ToNotification(n, fromAcc, nil, h.instanceDomain))
 	}
 	firstID, lastID := firstLastNotificationIDs(list)
-	if link := LinkHeader(r.URL.String(), firstID, lastID); link != "" {
+	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
 		w.Header().Set("Link", link)
 	}
 	api.WriteJSON(w, http.StatusOK, out)

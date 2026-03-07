@@ -21,6 +21,13 @@ type PageParams struct {
 	Limit   int
 }
 
+// AbsoluteRequestURL returns the full request URL for the instance (scheme + instance domain + path + query).
+// Link headers must use the instance's canonical URL so clients get valid absolute URLs (e.g. https://monstera.local/...).
+func AbsoluteRequestURL(r *http.Request, instanceDomain string) string {
+	base := "https://" + strings.TrimSuffix(instanceDomain, "/")
+	return base + r.URL.RequestURI()
+}
+
 // PageParamsFromRequest parses max_id, min_id, since_id, and limit from the query string.
 func PageParamsFromRequest(r *http.Request) PageParams {
 	q := r.URL.Query()

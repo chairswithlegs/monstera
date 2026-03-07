@@ -449,7 +449,7 @@ func (h *StatusesHandler) GETFavouritedBy(w http.ResponseWriter, r *http.Request
 		out = append(out, apimodel.ToAccount(a, h.instanceDomain))
 	}
 	firstID, lastID := firstLastAccountIDs(list)
-	if link := LinkHeader(r.URL.String(), firstID, lastID); link != "" {
+	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
 		w.Header().Set("Link", link)
 	}
 	api.WriteJSON(w, http.StatusOK, out)
@@ -481,7 +481,7 @@ func (h *StatusesHandler) GETRebloggedBy(w http.ResponseWriter, r *http.Request)
 		out = append(out, apimodel.ToAccount(a, h.instanceDomain))
 	}
 	firstID, lastID := firstLastAccountIDs(list)
-	if link := LinkHeader(r.URL.String(), firstID, lastID); link != "" {
+	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
 		w.Header().Set("Link", link)
 	}
 	api.WriteJSON(w, http.StatusOK, out)

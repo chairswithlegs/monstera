@@ -258,24 +258,58 @@ func (h *Handler) POSTLogin(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusOK, map[string]string{"redirect_url": redirectURL.String()})
 }
 
-// POSTToken handles POST /oauth/token.
-func (h *Handler) POSTToken(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid request body"))
-		return
-	}
+// tokenRequestBody is the JSON body for POST /oauth/token (some clients send JSON instead of form).
+type tokenRequestBody struct {
+	GrantType    string `json:"grant_type"`
+	Code         string `json:"code"`
+	RedirectURI  string `json:"redirect_uri"`
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+	CodeVerifier string `json:"code_verifier"`
+	Scope        string `json:"scope"`
+}
 
-	grantType := r.FormValue("grant_type")
+// POSTToken handles POST /oauth/token. Accepts application/x-www-form-urlencoded or application/json.
+func (h *Handler) POSTToken(w http.ResponseWriter, r *http.Request) {
+	var grantType, code, redirectURI, clientID, clientSecret, codeVerifier, scope string
+
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "application/json") {
+		var body tokenRequestBody
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			api.HandleError(w, r, api.NewBadRequestError("invalid request body"))
+			return
+		}
+		grantType = strings.TrimSpace(body.GrantType)
+		code = body.Code
+		redirectURI = body.RedirectURI
+		clientID = body.ClientID
+		clientSecret = body.ClientSecret
+		codeVerifier = body.CodeVerifier
+		scope = body.Scope
+	} else {
+		if err := r.ParseForm(); err != nil {
+			api.HandleError(w, r, api.NewBadRequestError("invalid request body"))
+			return
+		}
+		grantType = r.FormValue("grant_type")
+		code = r.FormValue("code")
+		redirectURI = r.FormValue("redirect_uri")
+		clientID = r.FormValue("client_id")
+		clientSecret = r.FormValue("client_secret")
+		codeVerifier = r.FormValue("code_verifier")
+		scope = r.FormValue("scope")
+	}
 
 	switch grantType {
 	case "authorization_code":
 		resp, err := h.oauth.ExchangeCode(r.Context(), oauth.TokenRequest{
 			GrantType:    grantType,
-			Code:         r.FormValue("code"),
-			RedirectURI:  r.FormValue("redirect_uri"),
-			ClientID:     r.FormValue("client_id"),
-			ClientSecret: r.FormValue("client_secret"),
-			CodeVerifier: r.FormValue("code_verifier"),
+			Code:         code,
+			RedirectURI:  redirectURI,
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			CodeVerifier: codeVerifier,
 		})
 		if err != nil {
 			api.HandleError(w, r, err)
@@ -286,9 +320,9 @@ func (h *Handler) POSTToken(w http.ResponseWriter, r *http.Request) {
 	case "client_credentials":
 		resp, err := h.oauth.ExchangeClientCredentials(r.Context(), oauth.TokenRequest{
 			GrantType:    grantType,
-			ClientID:     r.FormValue("client_id"),
-			ClientSecret: r.FormValue("client_secret"),
-			Scopes:       r.FormValue("scope"),
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			Scopes:       scope,
 		})
 		if err != nil {
 			api.HandleError(w, r, err)
