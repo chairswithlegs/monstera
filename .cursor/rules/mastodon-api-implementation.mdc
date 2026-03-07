@@ -1,0 +1,36 @@
+---
+description: When implementing Mastodon API from the remainder plan, follow one-section-at-a-time, tests/lint after each batch, and Store/FakeStore convention
+alwaysApply: true
+---
+
+# Mastodon API implementation (from plan)
+
+When implementing from **docs/mastodon-api-remainder-implementation-plan.md**:
+
+## One section (or batch) at a time
+
+- Implement exactly one section from §3 (Feature sections), or one batch from §2.3, before starting the next.
+- Do not start another section until the current one is complete and its **Acceptance** criteria are met.
+- Work in the order given by the Phase sequence (§2.2).
+
+## Tests and lint after each section/batch
+
+- After completing a section: run `make test` and `golangci-lint run` for the code you changed; fix any failures before continuing.
+- After completing a **batch** (see §2.4 Checkpoints in the plan): run the full `make test` and `golangci-lint run`; fix regressions before starting the next batch.
+- Do not skip tests or leave linter errors for “later.”
+
+## Store and FakeStore convention
+
+- When adding a **new Store method**: add it to the Store interface (`internal/store/store.go`), implement it in the postgres store (`internal/store/postgres/store_domain.go`), and implement it in FakeStore (`internal/testutil/fakestore.go`) in the same coherent change. Then add callers (service, etc.).
+- Do not add a method to the Store interface without implementing it in both postgres and FakeStore.
+- Do not implement a Store method in only one of postgres or FakeStore.
+
+## Before coding a section
+
+- Read the full section: Goal, Spec, **Pattern**, **Files to read first**, **Convention**, Steps, Acceptance.
+- Open and skim the listed “Files to read first” so you follow existing patterns (handlers, pagination, auth, etc.).
+
+## Other rules
+
+- Follow existing project rules: `api-handler-patterns.mdc`, `error-handling.mdc`, `testing.mdc`, `store.mdc`, and the security/architecture guidance in the plan (§5).
+- When in doubt, match the plan’s **Convention** and **Steps** for that section.

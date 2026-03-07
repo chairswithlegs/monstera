@@ -17,6 +17,7 @@ import (
 type StatusFederationPublisher interface {
 	PublishStatus(ctx context.Context, status *domain.Status) error
 	DeleteStatus(ctx context.Context, status *domain.Status) error
+	PublishUpdate(ctx context.Context, status *domain.Status) error
 }
 
 // NoopFederationPublisher is a StatusFederationPublisher that does nothing.
@@ -27,6 +28,7 @@ type noopFederationPublisher struct{}
 
 func (*noopFederationPublisher) PublishStatus(context.Context, *domain.Status) error { return nil }
 func (*noopFederationPublisher) DeleteStatus(context.Context, *domain.Status) error  { return nil }
+func (*noopFederationPublisher) PublishUpdate(context.Context, *domain.Status) error { return nil }
 
 // StatusVisibilityChecker allows callers to check if a viewer can see a status (visibility + blocks).
 // TimelineService depends on this narrow interface to filter list timelines.
@@ -66,6 +68,12 @@ type StatusService interface {
 	Bookmark(ctx context.Context, accountID, statusID string) (EnrichedStatus, error)
 	Unbookmark(ctx context.Context, accountID, statusID string) (EnrichedStatus, error)
 	IsBookmarked(ctx context.Context, accountID, statusID string) (bool, error)
+	Pin(ctx context.Context, accountID, statusID string) (EnrichedStatus, error)
+	Unpin(ctx context.Context, accountID, statusID string) (EnrichedStatus, error)
+	ListPinnedStatusIDs(ctx context.Context, accountID string) ([]string, error)
+	UpdateStatusFromAPI(ctx context.Context, accountID, statusID string, text, spoilerText string, sensitive bool) (EnrichedStatus, error)
+	GetStatusHistory(ctx context.Context, statusID string, viewerAccountID *string) ([]domain.StatusEdit, error)
+	GetStatusSource(ctx context.Context, statusID string, viewerAccountID *string) (text, spoilerText string, err error)
 }
 
 type statusService struct {
@@ -162,7 +170,13 @@ func (svc *statusService) Create(ctx context.Context, in CreateStatusInput) (*do
 		if err != nil {
 			return fmt.Errorf("CreateStatus: %w", err)
 		}
-		return tx.IncrementStatusesCount(ctx, in.AccountID)
+		if err := tx.IncrementStatusesCount(ctx, in.AccountID); err != nil {
+			return fmt.Errorf("IncrementStatusesCount: %w", err)
+		}
+		if err := tx.UpdateAccountLastStatusAt(ctx, in.AccountID); err != nil {
+			return fmt.Errorf("UpdateAccountLastStatusAt: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("CreateStatus: %w", err)
@@ -687,6 +701,9 @@ func createStatusWithContentTx(
 	if err := tx.IncrementStatusesCount(ctx, accountID); err != nil {
 		return nil, fmt.Errorf("IncrementStatusesCount: %w", err)
 	}
+	if err := tx.UpdateAccountLastStatusAt(ctx, accountID); err != nil {
+		return nil, fmt.Errorf("UpdateAccountLastStatusAt: %w", err)
+	}
 	for _, m := range renderResult.Mentions {
 		mentioned, _ := tx.GetAccountByID(ctx, m.AccountID)
 		if mentioned == nil || (mentioned.Domain != nil && *mentioned.Domain != "") {
@@ -944,6 +961,204 @@ func (svc *statusService) IsBookmarked(ctx context.Context, accountID, statusID 
 		return false, fmt.Errorf("IsBookmarked: %w", err)
 	}
 	return ok, nil
+}
+
+const maxPinsPerAccount = 5
+
+func (svc *statusService) Pin(ctx context.Context, accountID, statusID string) (EnrichedStatus, error) {
+	st, err := svc.store.GetStatusByID(ctx, statusID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return EnrichedStatus{}, fmt.Errorf("Pin: %w", domain.ErrNotFound)
+		}
+		return EnrichedStatus{}, fmt.Errorf("Pin: %w", err)
+	}
+	if st.AccountID != accountID {
+		return EnrichedStatus{}, fmt.Errorf("Pin: %w", domain.ErrForbidden)
+	}
+	if st.Visibility != "public" && st.Visibility != "unlisted" {
+		return EnrichedStatus{}, fmt.Errorf("Pin: %w", domain.ErrUnprocessable)
+	}
+	if st.ReblogOfID != nil && *st.ReblogOfID != "" {
+		return EnrichedStatus{}, fmt.Errorf("Pin: %w", domain.ErrUnprocessable)
+	}
+	count, err := svc.store.CountAccountPins(ctx, accountID)
+	if err != nil {
+		return EnrichedStatus{}, fmt.Errorf("Pin: %w", err)
+	}
+	if count >= maxPinsPerAccount {
+		return EnrichedStatus{}, fmt.Errorf("Pin: %w", domain.ErrUnprocessable)
+	}
+	if err := svc.store.CreateAccountPin(ctx, accountID, statusID); err != nil {
+		return EnrichedStatus{}, fmt.Errorf("Pin: %w", err)
+	}
+	return svc.GetByIDEnriched(ctx, statusID, &accountID)
+}
+
+func (svc *statusService) Unpin(ctx context.Context, accountID, statusID string) (EnrichedStatus, error) {
+	st, err := svc.store.GetStatusByID(ctx, statusID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return EnrichedStatus{}, fmt.Errorf("Unpin: %w", domain.ErrNotFound)
+		}
+		return EnrichedStatus{}, fmt.Errorf("Unpin: %w", err)
+	}
+	if st.AccountID != accountID {
+		return EnrichedStatus{}, fmt.Errorf("Unpin: %w", domain.ErrForbidden)
+	}
+	if err := svc.store.DeleteAccountPin(ctx, accountID, statusID); err != nil {
+		return EnrichedStatus{}, fmt.Errorf("Unpin: %w", err)
+	}
+	return svc.GetByIDEnriched(ctx, statusID, &accountID)
+}
+
+func (svc *statusService) ListPinnedStatusIDs(ctx context.Context, accountID string) ([]string, error) {
+	ids, err := svc.store.ListPinnedStatusIDs(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("ListPinnedStatusIDs: %w", err)
+	}
+	return ids, nil
+}
+
+// UpdateStatusFromAPI updates a status by its owner: snapshots current to status_edits, re-renders content, updates mentions/hashtags, persists, and federates Update(Note).
+func (svc *statusService) UpdateStatusFromAPI(ctx context.Context, accountID, statusID string, text, spoilerText string, sensitive bool) (EnrichedStatus, error) {
+	st, err := svc.store.GetStatusByID(ctx, statusID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return EnrichedStatus{}, fmt.Errorf("UpdateStatusFromAPI: %w", domain.ErrNotFound)
+		}
+		return EnrichedStatus{}, fmt.Errorf("UpdateStatusFromAPI: %w", err)
+	}
+	if st.AccountID != accountID {
+		return EnrichedStatus{}, fmt.Errorf("UpdateStatusFromAPI: %w", domain.ErrForbidden)
+	}
+	if st.ReblogOfID != nil && *st.ReblogOfID != "" {
+		return EnrichedStatus{}, fmt.Errorf("UpdateStatusFromAPI: %w", domain.ErrUnprocessable)
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return EnrichedStatus{}, fmt.Errorf("UpdateStatusFromAPI: %w", domain.ErrValidation)
+	}
+	if CountStatusCharacters(text) > svc.maxStatusChars {
+		return EnrichedStatus{}, fmt.Errorf("UpdateStatusFromAPI: %w", domain.ErrValidation)
+	}
+	resolver := svc.mentionResolver(ctx)
+	renderResult, err := Render(text, svc.instanceDomain, resolver)
+	if err != nil {
+		return EnrichedStatus{}, fmt.Errorf("UpdateStatusFromAPI Render: %w", err)
+	}
+	err = svc.store.WithTx(ctx, func(tx store.Store) error {
+		if err := tx.CreateStatusEdit(ctx, store.CreateStatusEditInput{
+			ID:             uid.New(),
+			StatusID:       statusID,
+			AccountID:      accountID,
+			Text:           st.Text,
+			Content:        st.Content,
+			ContentWarning: st.ContentWarning,
+			Sensitive:      st.Sensitive,
+		}); err != nil {
+			return fmt.Errorf("CreateStatusEdit: %w", err)
+		}
+		contentWarningPtr := &spoilerText
+		if spoilerText == "" {
+			contentWarningPtr = nil
+		}
+		if err := tx.UpdateStatus(ctx, store.UpdateStatusInput{
+			ID:             statusID,
+			Text:           &text,
+			Content:        &renderResult.HTML,
+			ContentWarning: contentWarningPtr,
+			Sensitive:      sensitive,
+		}); err != nil {
+			return fmt.Errorf("UpdateStatus: %w", err)
+		}
+		if err := tx.DeleteStatusMentions(ctx, statusID); err != nil {
+			return fmt.Errorf("DeleteStatusMentions: %w", err)
+		}
+		for _, m := range renderResult.Mentions {
+			if err := tx.CreateStatusMention(ctx, statusID, m.AccountID); err != nil {
+				return fmt.Errorf("CreateStatusMention: %w", err)
+			}
+		}
+		if err := tx.DeleteStatusHashtags(ctx, statusID); err != nil {
+			return fmt.Errorf("DeleteStatusHashtags: %w", err)
+		}
+		var hashtagIDs []string
+		for _, tagName := range renderResult.Tags {
+			ht, err := tx.GetOrCreateHashtag(ctx, tagName)
+			if err != nil {
+				return fmt.Errorf("GetOrCreateHashtag: %w", err)
+			}
+			hashtagIDs = append(hashtagIDs, ht.ID)
+		}
+		if len(hashtagIDs) > 0 {
+			if err := tx.AttachHashtagsToStatus(ctx, statusID, hashtagIDs); err != nil {
+				return fmt.Errorf("AttachHashtagsToStatus: %w", err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return EnrichedStatus{}, fmt.Errorf("UpdateStatusFromAPI: %w", err)
+	}
+	updated, err := svc.store.GetStatusByID(ctx, statusID)
+	if err != nil {
+		return EnrichedStatus{}, fmt.Errorf("UpdateStatusFromAPI GetStatusByID: %w", err)
+	}
+	if err := svc.fed.PublishUpdate(ctx, updated); err != nil && svc.logger != nil {
+		svc.logger.WarnContext(ctx, "federation publish update failed", slog.Any("error", err), slog.String("status_id", statusID))
+	}
+	return svc.GetByIDEnriched(ctx, statusID, &accountID)
+}
+
+// GetStatusHistory returns edit history for a status. Applies same visibility as GET status.
+func (svc *statusService) GetStatusHistory(ctx context.Context, statusID string, viewerAccountID *string) ([]domain.StatusEdit, error) {
+	st, err := svc.store.GetStatusByID(ctx, statusID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, fmt.Errorf("GetStatusHistory: %w", domain.ErrNotFound)
+		}
+		return nil, fmt.Errorf("GetStatusHistory: %w", err)
+	}
+	ok, err := svc.canViewStatus(ctx, st, viewerAccountID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("GetStatusHistory: %w", domain.ErrNotFound)
+	}
+	edits, err := svc.store.ListStatusEdits(ctx, statusID)
+	if err != nil {
+		return nil, fmt.Errorf("GetStatusHistory: %w", err)
+	}
+	return edits, nil
+}
+
+// GetStatusSource returns the plain text and spoiler for a status. Applies same visibility as GET status.
+func (svc *statusService) GetStatusSource(ctx context.Context, statusID string, viewerAccountID *string) (text, spoilerText string, err error) {
+	st, err := svc.store.GetStatusByID(ctx, statusID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return "", "", fmt.Errorf("GetStatusSource: %w", domain.ErrNotFound)
+		}
+		return "", "", fmt.Errorf("GetStatusSource: %w", err)
+	}
+	ok, err := svc.canViewStatus(ctx, st, viewerAccountID)
+	if err != nil {
+		return "", "", err
+	}
+	if !ok {
+		return "", "", fmt.Errorf("GetStatusSource: %w", domain.ErrNotFound)
+	}
+	t := ""
+	if st.Text != nil {
+		t = *st.Text
+	}
+	spoiler := ""
+	if st.ContentWarning != nil {
+		spoiler = *st.ContentWarning
+	}
+	return t, spoiler, nil
 }
 
 // ContextResult holds ancestors and descendants for a status thread.

@@ -313,3 +313,6 @@ func (f *fakeAccountService) ListLocalUsers(context.Context, int, int) ([]domain
 func (f *fakeAccountService) GetUserByID(context.Context, string) (*domain.User, error) {
 	panic("unused")
 }
+func (f *fakeAccountService) ListDirectory(context.Context, string, bool, int, int) ([]domain.Account, error) {
+	panic("unused")
+}

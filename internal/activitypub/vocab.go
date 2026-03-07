@@ -215,13 +215,15 @@ func (a *Activity) ObjectType() string {
 }
 
 // OrderedCollection represents an AP OrderedCollection.
-// Used for outbox, followers, and following endpoints.
+// Used for outbox, followers, following, and featured endpoints.
+// When OrderedItems is non-nil, it is serialized (inline items); otherwise First may point to a page.
 type OrderedCollection struct {
-	Context    interface{} `json:"@context,omitempty"`
-	ID         string      `json:"id"`
-	Type       string      `json:"type"` // "OrderedCollection"
-	TotalItems int         `json:"totalItems"`
-	First      string      `json:"first,omitempty"` // URL of first page
+	Context      interface{}       `json:"@context,omitempty"`
+	ID           string            `json:"id"`
+	Type         string            `json:"type"` // "OrderedCollection"
+	TotalItems   int               `json:"totalItems"`
+	First        string            `json:"first,omitempty"`        // URL of first page
+	OrderedItems []json.RawMessage `json:"orderedItems,omitempty"` // inline items when present
 }
 
 // OrderedCollectionPage represents a page within an OrderedCollection.
@@ -333,5 +335,20 @@ func WrapInCreate(activityID string, note *Note) (*Activity, error) {
 		To:        note.To,
 		Cc:        note.Cc,
 		Published: note.Published,
+	}, nil
+}
+
+// WrapInUpdate wraps a Note in an Update activity for federation.
+func WrapInUpdate(activityID, actorID string, note *Note) (*Activity, error) {
+	raw, err := json.Marshal(note)
+	if err != nil {
+		return nil, fmt.Errorf("marshal note: %w", err)
+	}
+	return &Activity{
+		Context:   DefaultContext,
+		ID:        activityID,
+		Type:      "Update",
+		Actor:     actorID,
+		ObjectRaw: raw,
 	}, nil
 }

@@ -249,6 +249,289 @@ func TestStatusesHandler_POSTUnreblog(t *testing.T) {
 	})
 }
 
+func TestStatusesHandler_POSTPin(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+
+	acc, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	statusID := uid.New()
+	_, err = st.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         statusID,
+		URI:        "https://example.com/statuses/" + statusID,
+		AccountID:  acc.ID,
+		Text:       testutil.StrPtr("pin me"),
+		Content:    testutil.StrPtr("<p>pin me</p>"),
+		Visibility: domain.VisibilityPublic,
+		APID:       "https://example.com/statuses/" + statusID,
+		Local:      true,
+	})
+	require.NoError(t, err)
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+statusID+"/pin", nil)
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.POSTPin(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("pin own public status returns 200 and pinned true", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+statusID+"/pin", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.POSTPin(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.True(t, body["pinned"].(bool))
+	})
+
+	t.Run("pin other account status returns 403", func(t *testing.T) {
+		otherAcc, err := accountSvc.Register(ctx, service.RegisterInput{
+			Username:     "bob",
+			Email:        "bob@example.com",
+			PasswordHash: "hash",
+			Role:         domain.RoleUser,
+		})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+statusID+"/pin", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), otherAcc))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.POSTPin(rec, req)
+		assert.Equal(t, http.StatusForbidden, rec.Code)
+	})
+}
+
+func TestStatusesHandler_POSTUnpin(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+
+	acc, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	statusID := uid.New()
+	_, err = st.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         statusID,
+		URI:        "https://example.com/statuses/" + statusID,
+		AccountID:  acc.ID,
+		Text:       testutil.StrPtr("post"),
+		Content:    testutil.StrPtr("<p>post</p>"),
+		Visibility: domain.VisibilityPublic,
+		APID:       "https://example.com/statuses/" + statusID,
+		Local:      true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, st.CreateAccountPin(ctx, acc.ID, statusID))
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+statusID+"/unpin", nil)
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.POSTUnpin(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("unpin own pinned status returns 200", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+statusID+"/unpin", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.POSTUnpin(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.False(t, body["pinned"].(bool))
+	})
+}
+
+func TestStatusesHandler_PUTStatuses(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+
+	acc, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	statusID := uid.New()
+	_, err = st.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         statusID,
+		URI:        "https://example.com/statuses/" + statusID,
+		AccountID:  acc.ID,
+		Text:       testutil.StrPtr("original"),
+		Content:    testutil.StrPtr("<p>original</p>"),
+		Visibility: domain.VisibilityPublic,
+		APID:       "https://example.com/statuses/" + statusID,
+		Local:      true,
+	})
+	require.NoError(t, err)
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"status":"updated"}`)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/statuses/"+statusID, body)
+		req.Header.Set("Content-Type", "application/json")
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.PUTStatuses(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("edit own status returns 200 and updated content", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"status":"updated text","spoiler_text":"cw","sensitive":true}`)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/statuses/"+statusID, body)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.PUTStatuses(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var out map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
+		assert.Contains(t, out["content"], "updated text")
+		assert.True(t, out["sensitive"].(bool))
+		assert.Equal(t, "cw", out["spoiler_text"])
+	})
+
+	t.Run("edit other account status returns 403", func(t *testing.T) {
+		otherAcc, err := accountSvc.Register(ctx, service.RegisterInput{
+			Username:     "bob",
+			Email:        "bob@example.com",
+			PasswordHash: "hash",
+			Role:         domain.RoleUser,
+		})
+		require.NoError(t, err)
+		body := bytes.NewBufferString(`{"status":"hacked"}`)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/statuses/"+statusID, body)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), otherAcc))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.PUTStatuses(rec, req)
+		assert.Equal(t, http.StatusForbidden, rec.Code)
+	})
+}
+
+func TestStatusesHandler_GETStatusHistory(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+
+	acc, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	statusID := uid.New()
+	_, err = st.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         statusID,
+		URI:        "https://example.com/statuses/" + statusID,
+		AccountID:  acc.ID,
+		Text:       testutil.StrPtr("post"),
+		Content:    testutil.StrPtr("<p>post</p>"),
+		Visibility: domain.VisibilityPublic,
+		APID:       "https://example.com/statuses/" + statusID,
+		Local:      true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, st.CreateStatusEdit(ctx, store.CreateStatusEditInput{
+		ID:             "edit1",
+		StatusID:       statusID,
+		AccountID:      acc.ID,
+		Text:           testutil.StrPtr("first"),
+		Content:        testutil.StrPtr("<p>first</p>"),
+		ContentWarning: nil,
+		Sensitive:      false,
+	}))
+
+	t.Run("returns edits in order", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/statuses/"+statusID+"/history", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.GETStatusHistory(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var edits []map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&edits))
+		require.Len(t, edits, 1)
+		assert.Equal(t, "<p>first</p>", edits[0]["content"])
+	})
+}
+
+func TestStatusesHandler_GETStatusSource(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil)
+
+	acc, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	statusID := uid.New()
+	_, err = st.CreateStatus(ctx, store.CreateStatusInput{
+		ID:             statusID,
+		URI:            "https://example.com/statuses/" + statusID,
+		AccountID:      acc.ID,
+		Text:           testutil.StrPtr("plain text"),
+		Content:        testutil.StrPtr("<p>plain text</p>"),
+		ContentWarning: testutil.StrPtr("spoiler"),
+		Visibility:     domain.VisibilityPublic,
+		APID:           "https://example.com/statuses/" + statusID,
+		Local:          true,
+	})
+	require.NoError(t, err)
+
+	t.Run("returns id text spoiler_text", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/statuses/"+statusID+"/source", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.GETStatusSource(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var src map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&src))
+		assert.Equal(t, statusID, src["id"])
+		assert.Equal(t, "plain text", src["text"])
+		assert.Equal(t, "spoiler", src["spoiler_text"])
+	})
+}
+
 func TestStatusesHandler_POSTFavourite(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

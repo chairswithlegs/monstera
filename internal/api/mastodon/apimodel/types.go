@@ -85,6 +85,21 @@ type Tag struct {
 	URL  string `json:"url"`
 }
 
+// StatusEdit is one revision in a status's edit history (GET .../history).
+type StatusEdit struct {
+	Content     string `json:"content"`
+	SpoilerText string `json:"spoiler_text"`
+	Sensitive   bool   `json:"sensitive"`
+	CreatedAt   string `json:"created_at"`
+}
+
+// StatusSource is the plain-text source for a status (GET .../source).
+type StatusSource struct {
+	ID          string `json:"id"`
+	Text        string `json:"text"`
+	SpoilerText string `json:"spoiler_text"`
+}
+
 // MediaAttachment is the Mastodon API media attachment shape.
 type MediaAttachment struct {
 	ID          string `json:"id"`

@@ -289,6 +289,10 @@ func (s *PostgresStore) IncrementStatusesCount(ctx context.Context, accountID st
 	return mapErr(s.q.IncrementStatusesCount(ctx, accountID))
 }
 
+func (s *PostgresStore) UpdateAccountLastStatusAt(ctx context.Context, accountID string) error {
+	return mapErr(s.q.UpdateAccountLastStatusAt(ctx, accountID))
+}
+
 func (s *PostgresStore) DecrementStatusesCount(ctx context.Context, accountID string) error {
 	return mapErr(s.q.DecrementStatusesCount(ctx, accountID))
 }
@@ -436,7 +440,7 @@ func (s *PostgresStore) GetRebloggedBy(ctx context.Context, statusID string, max
 	}
 	out := make([]domain.Account, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, ToDomainAccount(r))
+		out = append(out, RebloggedByRowToDomainAccount(r))
 	}
 	return out, nil
 }
@@ -532,6 +536,10 @@ func (s *PostgresStore) CreateStatusMention(ctx context.Context, statusID, accou
 	}))
 }
 
+func (s *PostgresStore) DeleteStatusMentions(ctx context.Context, statusID string) error {
+	return mapErr(s.q.DeleteStatusMentions(ctx, statusID))
+}
+
 func (s *PostgresStore) GetStatusMentions(ctx context.Context, statusID string) ([]*domain.Account, error) {
 	rows, err := s.q.GetStatusMentions(ctx, statusID)
 	if err != nil {
@@ -582,6 +590,10 @@ func (s *PostgresStore) GetStatusHashtags(ctx context.Context, statusID string) 
 		out = append(out, ToDomainHashtag(r))
 	}
 	return out, nil
+}
+
+func (s *PostgresStore) DeleteStatusHashtags(ctx context.Context, statusID string) error {
+	return mapErr(s.q.DeleteStatusHashtags(ctx, statusID))
 }
 
 func (s *PostgresStore) SearchHashtagsByPrefix(ctx context.Context, prefix string, limit int) ([]domain.Hashtag, error) {
@@ -915,6 +927,30 @@ func (s *PostgresStore) DeleteBlock(ctx context.Context, accountID, targetID str
 	return mapErr(s.q.DeleteBlock(ctx, db.DeleteBlockParams{AccountID: accountID, TargetID: targetID}))
 }
 
+func (s *PostgresStore) ListBlockedAccounts(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, *string, error) {
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	rows, err := s.q.ListBlockedAccountsPaginated(ctx, db.ListBlockedAccountsPaginatedParams{
+		AccountID: accountID,
+		Column2:   cursor,
+		Limit:     int32(limit), //nolint:gosec // limit clamped by caller
+	})
+	if err != nil {
+		return nil, nil, mapErr(err)
+	}
+	out := make([]domain.Account, 0, len(rows))
+	var nextCursor *string
+	for i, r := range rows {
+		out = append(out, BlockedAccountRowToDomainAccount(r))
+		if i == len(rows)-1 && len(rows) == limit {
+			nextCursor = &r.Cursor
+		}
+	}
+	return out, nextCursor, nil
+}
+
 func (s *PostgresStore) IsBlockedEitherDirection(ctx context.Context, accountID, targetID string) (bool, error) {
 	ok, err := s.q.IsBlockedEitherDirection(ctx, db.IsBlockedEitherDirectionParams{AccountID: accountID, TargetID: targetID})
 	if err != nil {
@@ -935,6 +971,30 @@ func (s *PostgresStore) CreateMute(ctx context.Context, in store.CreateMuteInput
 
 func (s *PostgresStore) DeleteMute(ctx context.Context, accountID, targetID string) error {
 	return mapErr(s.q.DeleteMute(ctx, db.DeleteMuteParams{AccountID: accountID, TargetID: targetID}))
+}
+
+func (s *PostgresStore) ListMutedAccounts(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, *string, error) {
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	rows, err := s.q.ListMutedAccountsPaginated(ctx, db.ListMutedAccountsPaginatedParams{
+		AccountID: accountID,
+		Column2:   cursor,
+		Limit:     int32(limit), //nolint:gosec // limit clamped by caller
+	})
+	if err != nil {
+		return nil, nil, mapErr(err)
+	}
+	out := make([]domain.Account, 0, len(rows))
+	var nextCursor *string
+	for i, r := range rows {
+		out = append(out, MutedAccountRowToDomainAccount(r))
+		if i == len(rows)-1 && len(rows) == limit {
+			nextCursor = &r.Cursor
+		}
+	}
+	return out, nextCursor, nil
 }
 
 func toDbCreateFavouriteParams(in store.CreateFavouriteInput) db.CreateFavouriteParams {
@@ -1062,6 +1122,36 @@ func (s *PostgresStore) GetReblogByAccountAndTarget(ctx context.Context, account
 	return &d, nil
 }
 
+func (s *PostgresStore) CreateAccountPin(ctx context.Context, accountID, statusID string) error {
+	return mapErr(s.q.CreateAccountPin(ctx, db.CreateAccountPinParams{
+		AccountID: accountID,
+		StatusID:  statusID,
+	}))
+}
+
+func (s *PostgresStore) DeleteAccountPin(ctx context.Context, accountID, statusID string) error {
+	return mapErr(s.q.DeleteAccountPin(ctx, db.DeleteAccountPinParams{
+		AccountID: accountID,
+		StatusID:  statusID,
+	}))
+}
+
+func (s *PostgresStore) ListPinnedStatusIDs(ctx context.Context, accountID string) ([]string, error) {
+	ids, err := s.q.ListPinnedStatusIDs(ctx, accountID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return ids, nil
+}
+
+func (s *PostgresStore) CountAccountPins(ctx context.Context, accountID string) (int64, error) {
+	n, err := s.q.CountAccountPins(ctx, accountID)
+	if err != nil {
+		return 0, mapErr(err)
+	}
+	return n, nil
+}
+
 func toDbUpdateAccountParams(in store.UpdateAccountInput) db.UpdateAccountParams {
 	fields := []byte(in.Fields)
 	return db.UpdateAccountParams{
@@ -1137,6 +1227,18 @@ func toDbCreateStatusEditParams(in store.CreateStatusEditInput) db.CreateStatusE
 func (s *PostgresStore) CreateStatusEdit(ctx context.Context, in store.CreateStatusEditInput) error {
 	_, err := s.q.CreateStatusEdit(ctx, toDbCreateStatusEditParams(in))
 	return mapErr(err)
+}
+
+func (s *PostgresStore) ListStatusEdits(ctx context.Context, statusID string) ([]domain.StatusEdit, error) {
+	rows, err := s.q.ListStatusEdits(ctx, statusID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.StatusEdit, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainStatusEdit(r))
+	}
+	return out, nil
 }
 
 func toDbUpdateStatusParams(in store.UpdateStatusInput) db.UpdateStatusParams {
@@ -1374,6 +1476,14 @@ func (s *PostgresStore) ListKnownInstances(ctx context.Context, limit, offset in
 		out = append(out, ListKnownInstancesRowToDomain(r))
 	}
 	return out, nil
+}
+
+func (s *PostgresStore) CountKnownInstances(ctx context.Context) (int64, error) {
+	n, err := s.q.CountKnownInstances(ctx)
+	if err != nil {
+		return 0, mapErr(err)
+	}
+	return n, nil
 }
 
 func (s *PostgresStore) CreateServerFilter(ctx context.Context, in store.CreateServerFilterInput) (*domain.ServerFilter, error) {
@@ -1669,6 +1779,49 @@ func (s *PostgresStore) GetListTimeline(ctx context.Context, listID string, maxI
 	out := make([]domain.Status, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, ToDomainStatus(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetMarkers(ctx context.Context, accountID string, timelines []string) (map[string]domain.Marker, error) {
+	if len(timelines) == 0 {
+		return map[string]domain.Marker{}, nil
+	}
+	rows, err := s.q.GetMarkers(ctx, db.GetMarkersParams{
+		AccountID: accountID,
+		Column2:   timelines,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make(map[string]domain.Marker, len(rows))
+	for _, r := range rows {
+		out[r.Timeline] = ToDomainMarker(r)
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) SetMarker(ctx context.Context, accountID, timeline, lastReadID string) error {
+	return mapErr(s.q.SetMarker(ctx, db.SetMarkerParams{
+		AccountID:  accountID,
+		Timeline:   timeline,
+		LastReadID: lastReadID,
+	}))
+}
+
+func (s *PostgresStore) ListDirectoryAccounts(ctx context.Context, order string, localOnly bool, offset, limit int) ([]domain.Account, error) {
+	rows, err := s.q.ListDirectoryAccounts(ctx, db.ListDirectoryAccountsParams{
+		Column1: localOnly,
+		Column2: order,
+		Limit:   int32(limit),  //nolint:gosec // clamped by caller
+		Offset:  int32(offset), //nolint:gosec // caller-controlled
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.Account, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainAccount(r))
 	}
 	return out, nil
 }

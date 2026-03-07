@@ -531,15 +531,43 @@ type GetRebloggedByParams struct {
 	Limit      int32   `json:"limit"`
 }
 
-func (q *Queries) GetRebloggedBy(ctx context.Context, arg GetRebloggedByParams) ([]Account, error) {
+type GetRebloggedByRow struct {
+	ID             string             `json:"id"`
+	Username       string             `json:"username"`
+	Domain         *string            `json:"domain"`
+	DisplayName    *string            `json:"display_name"`
+	Note           *string            `json:"note"`
+	PublicKey      string             `json:"public_key"`
+	PrivateKey     *string            `json:"private_key"`
+	InboxUrl       string             `json:"inbox_url"`
+	OutboxUrl      string             `json:"outbox_url"`
+	FollowersUrl   string             `json:"followers_url"`
+	FollowingUrl   string             `json:"following_url"`
+	ApID           string             `json:"ap_id"`
+	ApRaw          []byte             `json:"ap_raw"`
+	Bot            bool               `json:"bot"`
+	Locked         bool               `json:"locked"`
+	Suspended      bool               `json:"suspended"`
+	Silenced       bool               `json:"silenced"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	AvatarMediaID  *string            `json:"avatar_media_id"`
+	HeaderMediaID  *string            `json:"header_media_id"`
+	FollowersCount int32              `json:"followers_count"`
+	FollowingCount int32              `json:"following_count"`
+	StatusesCount  int32              `json:"statuses_count"`
+	Fields         []byte             `json:"fields"`
+}
+
+func (q *Queries) GetRebloggedBy(ctx context.Context, arg GetRebloggedByParams) ([]GetRebloggedByRow, error) {
 	rows, err := q.db.Query(ctx, getRebloggedBy, arg.ReblogOfID, arg.Column2, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Account{}
+	items := []GetRebloggedByRow{}
 	for rows.Next() {
-		var i Account
+		var i GetRebloggedByRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Username,

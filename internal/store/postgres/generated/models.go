@@ -34,6 +34,13 @@ type Account struct {
 	FollowingCount int32              `json:"following_count"`
 	StatusesCount  int32              `json:"statuses_count"`
 	Fields         []byte             `json:"fields"`
+	LastStatusAt   pgtype.Timestamptz `json:"last_status_at"`
+}
+
+type AccountPin struct {
+	AccountID string             `json:"account_id"`
+	StatusID  string             `json:"status_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
 type AdminAction struct {
@@ -151,6 +158,14 @@ type List struct {
 type ListAccount struct {
 	ListID    string `json:"list_id"`
 	AccountID string `json:"account_id"`
+}
+
+type Marker struct {
+	AccountID  string             `json:"account_id"`
+	Timeline   string             `json:"timeline"`
+	LastReadID string             `json:"last_read_id"`
+	Version    int32              `json:"version"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
 type MediaAttachment struct {

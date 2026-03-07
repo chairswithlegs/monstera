@@ -185,7 +185,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	accountsHandler := mastodon.NewAccountsHandler(accountSvc, followSvc, timelineSvc, cfg.InstanceDomain)
 	statusesHandler := mastodon.NewStatusesHandler(accountSvc, statusSvc, cfg.InstanceDomain, cacheStore)
 	timelinesHandler := mastodon.NewTimelinesHandler(timelineSvc, cfg.InstanceDomain)
-	instanceHandler := mastodon.NewInstanceHandler(cfg.InstanceDomain, cfg.InstanceName, cfg.MaxStatusChars, cfg.MediaMaxBytes, nil)
+	instanceHandler := mastodon.NewInstanceHandler(cfg.InstanceDomain, cfg.InstanceName, cfg.MaxStatusChars, cfg.MediaMaxBytes, nil, instanceSvc)
 	notificationsHandler := mastodon.NewNotificationsHandler(notificationSvc, accountSvc, cfg.InstanceDomain)
 	mediaHandler := mastodon.NewMediaHandler(mediaSvc)
 	searchHandler := mastodon.NewSearchHandler(searchSvc, cfg.InstanceDomain)
@@ -194,7 +194,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	nodeInfoPtrHandler := activitypub.NewNodeInfoPointerHandler(cfg)
 	nodeInfoHandler := activitypub.NewNodeInfoHandler(instanceSvc, cfg)
 	actorHandler := activitypub.NewActorHandler(accountSvc, cfg)
-	collectionsHandler := activitypub.NewCollectionsHandler(accountSvc, cfg)
+	collectionsHandler := activitypub.NewCollectionsHandler(accountSvc, statusSvc, cfg)
 	outboxHandler := activitypub.NewOutbox(accountSvc, timelineSvc, cfg)
 	inboxHandler := activitypub.NewInboxHandler(inboxProcessor, cacheStore, cfg, signatureService)
 	userHandler := monstera.NewUserHandler(accountSvc)
@@ -206,6 +206,9 @@ func runServe(_ *cobra.Command, _ []string) error {
 	listsHandler := mastodon.NewListsHandler(listSvc, accountSvc, cfg.InstanceDomain)
 	userFilterSvc := service.NewUserFilterService(s)
 	filtersHandler := mastodon.NewFiltersHandler(userFilterSvc)
+	preferencesHandler := mastodon.NewPreferencesHandler(accountSvc)
+	markerSvc := service.NewMarkerService(s)
+	markersHandler := mastodon.NewMarkersHandler(markerSvc)
 	registrationSvc := service.NewRegistrationService(s, registrationMailer, registrationMailer, instanceBaseURL, cfg.InstanceName)
 	serverFilterSvc := service.NewServerFilterService(s)
 	moderatorDashboard := monstera.NewModeratorDashboardHandler(instanceSvc, moderationSvc)
@@ -235,6 +238,8 @@ func runServe(_ *cobra.Command, _ []string) error {
 		FollowRequests:         followRequestsHandler,
 		Lists:                  listsHandler,
 		Filters:                filtersHandler,
+		Preferences:            preferencesHandler,
+		Markers:                markersHandler,
 		WebFinger:              webFingerHandler,
 		NodeInfoPtr:            nodeInfoPtrHandler,
 		NodeInfo:               nodeInfoHandler,

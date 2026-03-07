@@ -25,6 +25,15 @@ func (q *Queries) AttachHashtagsToStatus(ctx context.Context, arg AttachHashtags
 	return err
 }
 
+const deleteStatusHashtags = `-- name: DeleteStatusHashtags :exec
+DELETE FROM status_hashtags WHERE status_id = $1
+`
+
+func (q *Queries) DeleteStatusHashtags(ctx context.Context, statusID string) error {
+	_, err := q.db.Exec(ctx, deleteStatusHashtags, statusID)
+	return err
+}
+
 const getHashtagByName = `-- name: GetHashtagByName :one
 SELECT id, name, created_at, updated_at FROM hashtags WHERE name = lower($1)
 `

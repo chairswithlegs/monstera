@@ -78,6 +78,24 @@ func TagFromName(name, instanceDomain string) Tag {
 	}
 }
 
+// StatusEditFromDomain converts a domain status edit to the API model.
+func StatusEditFromDomain(e domain.StatusEdit) StatusEdit {
+	content := ""
+	if e.Content != nil {
+		content = *e.Content
+	}
+	spoiler := ""
+	if e.ContentWarning != nil {
+		spoiler = *e.ContentWarning
+	}
+	return StatusEdit{
+		Content:     content,
+		SpoilerText: spoiler,
+		Sensitive:   e.Sensitive,
+		CreatedAt:   e.CreatedAt.UTC().Format(time.RFC3339),
+	}
+}
+
 // MediaFromDomain converts a domain media attachment to the API model shape.
 func MediaFromDomain(m *domain.MediaAttachment) MediaAttachment {
 	preview := ""

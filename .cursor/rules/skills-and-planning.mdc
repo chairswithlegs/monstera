@@ -1,0 +1,23 @@
+---
+description: Review existing skills and use them when developing plans
+alwaysApply: true
+---
+
+# Skills and Planning
+
+When developing a plan or tackling a task:
+
+1. **Review available skills first.** Before outlining steps or writing code, check the listed Agent Skills for any that match the task (ActivityPub, Mastodon API, code review, documentation, architecture, UI, etc.).
+
+2. **Use matching skills.** If a skill’s description says to use it for this kind of work (e.g. “Use when implementing…” or “Use when the user asks…”), read that skill and follow its instructions as part of the plan.
+
+3. **Invoke skills early.** Prefer reading and applying the relevant skill at the start of the task rather than only when stuck.
+
+## Examples
+
+- **Federation / inbox / signatures** → Use the ActivityPub skill.
+- **Mastodon client compatibility / OAuth / timelines** → Use the Mastodon API skill.
+- **Docs or README** → Use the repository-documentation skill.
+- **Coupling, layers, structure** → Use the system-architect skill.
+
+Do not mention skills without using them: if a skill is relevant, read it and apply it.

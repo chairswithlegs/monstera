@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createBlock = `-- name: CreateBlock :one
@@ -103,7 +105,7 @@ func (q *Queries) IsBlockedEitherDirection(ctx context.Context, arg IsBlockedEit
 }
 
 const listBlockedAccounts = `-- name: ListBlockedAccounts :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.ap_raw, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields FROM accounts a
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.ap_raw, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at FROM accounts a
 INNER JOIN blocks b ON b.target_id = a.id
 WHERE b.account_id = $1
 ORDER BY b.id DESC
@@ -126,6 +128,99 @@ func (q *Queries) ListBlockedAccounts(ctx context.Context, arg ListBlockedAccoun
 	for rows.Next() {
 		var i Account
 		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.Domain,
+			&i.DisplayName,
+			&i.Note,
+			&i.PublicKey,
+			&i.PrivateKey,
+			&i.InboxUrl,
+			&i.OutboxUrl,
+			&i.FollowersUrl,
+			&i.FollowingUrl,
+			&i.ApID,
+			&i.ApRaw,
+			&i.Bot,
+			&i.Locked,
+			&i.Suspended,
+			&i.Silenced,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AvatarMediaID,
+			&i.HeaderMediaID,
+			&i.FollowersCount,
+			&i.FollowingCount,
+			&i.StatusesCount,
+			&i.Fields,
+			&i.LastStatusAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listBlockedAccountsPaginated = `-- name: ListBlockedAccountsPaginated :many
+SELECT b.id AS cursor, a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.ap_raw, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields
+FROM accounts a
+INNER JOIN blocks b ON b.target_id = a.id
+WHERE b.account_id = $1
+  AND ($2::text IS NULL OR b.id < $2)
+ORDER BY b.id DESC
+LIMIT $3
+`
+
+type ListBlockedAccountsPaginatedParams struct {
+	AccountID string `json:"account_id"`
+	Column2   string `json:"column_2"`
+	Limit     int32  `json:"limit"`
+}
+
+type ListBlockedAccountsPaginatedRow struct {
+	Cursor         string             `json:"cursor"`
+	ID             string             `json:"id"`
+	Username       string             `json:"username"`
+	Domain         *string            `json:"domain"`
+	DisplayName    *string            `json:"display_name"`
+	Note           *string            `json:"note"`
+	PublicKey      string             `json:"public_key"`
+	PrivateKey     *string            `json:"private_key"`
+	InboxUrl       string             `json:"inbox_url"`
+	OutboxUrl      string             `json:"outbox_url"`
+	FollowersUrl   string             `json:"followers_url"`
+	FollowingUrl   string             `json:"following_url"`
+	ApID           string             `json:"ap_id"`
+	ApRaw          []byte             `json:"ap_raw"`
+	Bot            bool               `json:"bot"`
+	Locked         bool               `json:"locked"`
+	Suspended      bool               `json:"suspended"`
+	Silenced       bool               `json:"silenced"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	AvatarMediaID  *string            `json:"avatar_media_id"`
+	HeaderMediaID  *string            `json:"header_media_id"`
+	FollowersCount int32              `json:"followers_count"`
+	FollowingCount int32              `json:"following_count"`
+	StatusesCount  int32              `json:"statuses_count"`
+	Fields         []byte             `json:"fields"`
+}
+
+func (q *Queries) ListBlockedAccountsPaginated(ctx context.Context, arg ListBlockedAccountsPaginatedParams) ([]ListBlockedAccountsPaginatedRow, error) {
+	rows, err := q.db.Query(ctx, listBlockedAccountsPaginated, arg.AccountID, arg.Column2, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListBlockedAccountsPaginatedRow{}
+	for rows.Next() {
+		var i ListBlockedAccountsPaginatedRow
+		if err := rows.Scan(
+			&i.Cursor,
 			&i.ID,
 			&i.Username,
 			&i.Domain,

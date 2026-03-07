@@ -15,9 +15,17 @@ type NodeInfoStats struct {
 	OpenRegistrations bool
 }
 
+// InstanceStats holds counts for the Mastodon instance API (v1 stats block).
+type InstanceStats struct {
+	UserCount   int64
+	StatusCount int64
+	DomainCount int64
+}
+
 // InstanceService provides instance-level discovery data (NodeInfo) and instance settings.
 type InstanceService interface {
 	GetNodeInfoStats(ctx context.Context) (*NodeInfoStats, error)
+	GetInstanceStats(ctx context.Context) (*InstanceStats, error)
 	GetAllSettings(ctx context.Context) (map[string]string, error)
 	SetSetting(ctx context.Context, key, value string) error
 	ListKnownInstances(ctx context.Context, limit, offset int) ([]domain.KnownInstance, error)
@@ -47,6 +55,27 @@ func (svc *instanceService) GetNodeInfoStats(ctx context.Context) (*NodeInfoStat
 		UserCount:         userCount,
 		LocalPostCount:    postCount,
 		OpenRegistrations: regMode == "open",
+	}, nil
+}
+
+// GetInstanceStats returns user, status, and domain counts for the Mastodon instance API.
+func (svc *instanceService) GetInstanceStats(ctx context.Context) (*InstanceStats, error) {
+	userCount, err := svc.store.CountLocalAccounts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("CountLocalAccounts: %w", err)
+	}
+	statusCount, err := svc.store.CountLocalStatuses(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("CountLocalStatuses: %w", err)
+	}
+	domainCount, err := svc.store.CountKnownInstances(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("CountKnownInstances: %w", err)
+	}
+	return &InstanceStats{
+		UserCount:   userCount,
+		StatusCount: statusCount,
+		DomainCount: domainCount,
 	}, nil
 }
 

@@ -113,6 +113,42 @@ func (h *AccountsHandler) GETAccountsLookup(w http.ResponseWriter, r *http.Reque
 	api.WriteJSON(w, http.StatusOK, apimodel.ToAccount(acc, h.instanceDomain))
 }
 
+// GETDirectory handles GET /api/v1/directory. Auth optional. Returns discoverable/local accounts.
+func (h *AccountsHandler) GETDirectory(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	limit := DefaultListLimit
+	if l := q.Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+			if limit > MaxListLimit {
+				limit = MaxListLimit
+			}
+		}
+	}
+	offset := 0
+	if o := q.Get("offset"); o != "" {
+		if n, err := strconv.Atoi(o); err == nil && n > 0 {
+			offset = n
+		}
+	}
+	order := q.Get("order")
+	if order != "active" && order != "new" {
+		order = "active"
+	}
+	localOnly := q.Get("local") == "true"
+
+	accounts, err := h.accounts.ListDirectory(r.Context(), order, localOnly, offset, limit)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	out := make([]apimodel.Account, 0, len(accounts))
+	for i := range accounts {
+		out = append(out, apimodel.ToAccount(&accounts[i], h.instanceDomain))
+	}
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
 // POSTFollow handles POST /api/v1/accounts/:id/follow. Auth required.
 func (h *AccountsHandler) POSTFollow(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
@@ -454,6 +490,74 @@ func (h *AccountsHandler) GETFollowing(w http.ResponseWriter, r *http.Request) {
 	firstID, lastID := firstLastIDsFromAccounts(list)
 	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
 		w.Header().Set("Link", link)
+	}
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// GETBlocks handles GET /api/v1/blocks. Returns paginated blocked accounts for the authenticated user.
+func (h *AccountsHandler) GETBlocks(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	params := PageParamsFromRequest(r)
+	limit := DefaultListLimit
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+			if limit > MaxListLimit {
+				limit = MaxListLimit
+			}
+		}
+	}
+	blocks, nextCursor, err := h.follows.ListBlockedAccounts(r.Context(), account.ID, optionalString(params.MaxID), limit)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	out := make([]apimodel.Account, 0, len(blocks))
+	for i := range blocks {
+		out = append(out, apimodel.ToAccount(&blocks[i], h.instanceDomain))
+	}
+	if nextCursor != nil && *nextCursor != "" {
+		if link := linkHeaderWithNext(AbsoluteRequestURL(r, h.instanceDomain), *nextCursor); link != "" {
+			w.Header().Set("Link", link)
+		}
+	}
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// GETMutes handles GET /api/v1/mutes. Returns paginated muted accounts for the authenticated user.
+func (h *AccountsHandler) GETMutes(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	params := PageParamsFromRequest(r)
+	limit := DefaultListLimit
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+			if limit > MaxListLimit {
+				limit = MaxListLimit
+			}
+		}
+	}
+	mutes, nextCursor, err := h.follows.ListMutedAccounts(r.Context(), account.ID, optionalString(params.MaxID), limit)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	out := make([]apimodel.Account, 0, len(mutes))
+	for i := range mutes {
+		out = append(out, apimodel.ToAccount(&mutes[i], h.instanceDomain))
+	}
+	if nextCursor != nil && *nextCursor != "" {
+		if link := linkHeaderWithNext(AbsoluteRequestURL(r, h.instanceDomain), *nextCursor); link != "" {
+			w.Header().Set("Link", link)
+		}
 	}
 	api.WriteJSON(w, http.StatusOK, out)
 }

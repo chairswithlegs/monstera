@@ -4,7 +4,36 @@ import (
 	"net/http"
 
 	"github.com/chairswithlegs/monstera/internal/api"
+	"github.com/chairswithlegs/monstera/internal/api/mastodon/apimodel"
+	"github.com/chairswithlegs/monstera/internal/service"
 )
+
+// InstanceV1Response is the Mastodon API v1 instance response.
+type InstanceV1Response struct {
+	URI              string            `json:"uri"`
+	Title            string            `json:"title"`
+	ShortDescription string            `json:"short_description"`
+	Description      string            `json:"description"`
+	Email            string            `json:"email"`
+	Version          string            `json:"version"`
+	URLs             InstanceV1URLs    `json:"urls"`
+	Stats            InstanceV1Stats   `json:"stats"`
+	Languages        []string          `json:"languages"`
+	ContactAccount   *apimodel.Account `json:"contact_account"`
+	Rules            []any             `json:"rules"`
+}
+
+// InstanceV1URLs holds streaming_api URL for v1 instance.
+type InstanceV1URLs struct {
+	StreamingAPI string `json:"streaming_api"`
+}
+
+// InstanceV1Stats holds instance counts for v1.
+type InstanceV1Stats struct {
+	UserCount   int64 `json:"user_count"`
+	StatusCount int64 `json:"status_count"`
+	DomainCount int64 `json:"domain_count"`
+}
 
 // InstanceConfig is the configuration sub-object in the instance response.
 type InstanceConfig struct {
@@ -44,17 +73,50 @@ type InstanceHandler struct {
 	maxStatusChars     int
 	mediaMaxBytes      int64
 	supportedMimeTypes []string
+	instanceSvc        service.InstanceService
 }
 
-// NewInstanceHandler returns a new InstanceHandler.
-func NewInstanceHandler(instanceDomain, instanceName string, maxStatusChars int, mediaMaxBytes int64, supportedMimeTypes []string) *InstanceHandler {
+// NewInstanceHandler returns a new InstanceHandler. instanceSvc is used for v1 stats; may be nil for tests that only need v2.
+func NewInstanceHandler(instanceDomain, instanceName string, maxStatusChars int, mediaMaxBytes int64, supportedMimeTypes []string, instanceSvc service.InstanceService) *InstanceHandler {
 	return &InstanceHandler{
 		instanceDomain:     instanceDomain,
 		instanceName:       instanceName,
 		maxStatusChars:     maxStatusChars,
 		mediaMaxBytes:      mediaMaxBytes,
 		supportedMimeTypes: supportedMimeTypes,
+		instanceSvc:        instanceSvc,
 	}
+}
+
+const instanceVersion = "4.1.0"
+
+// GETInstanceV1 handles GET /api/v1/instance (Mastodon v1 entity shape).
+func (h *InstanceHandler) GETInstanceV1(w http.ResponseWriter, r *http.Request) {
+	stats := InstanceV1Stats{}
+	if h.instanceSvc != nil {
+		s, err := h.instanceSvc.GetInstanceStats(r.Context())
+		if err == nil {
+			stats.UserCount = s.UserCount
+			stats.StatusCount = s.StatusCount
+			stats.DomainCount = s.DomainCount
+		}
+	}
+	resp := InstanceV1Response{
+		URI:              h.instanceDomain,
+		Title:            h.instanceName,
+		ShortDescription: "",
+		Description:      "",
+		Email:            "",
+		Version:          instanceVersion,
+		URLs: InstanceV1URLs{
+			StreamingAPI: "wss://" + h.instanceDomain,
+		},
+		Stats:          stats,
+		Languages:      []string{"en"},
+		ContactAccount: nil,
+		Rules:          []any{},
+	}
+	api.WriteJSON(w, http.StatusOK, resp)
 }
 
 // GETInstance handles GET /api/v2/instance.
@@ -66,7 +128,7 @@ func (h *InstanceHandler) GETInstance(w http.ResponseWriter, r *http.Request) {
 	resp := InstanceResponse{
 		Domain:      h.instanceDomain,
 		Title:       h.instanceName,
-		Version:     "0.1.0 (compatible; Monstera)",
+		Version:     instanceVersion,
 		SourceURL:   "",
 		Description: "",
 		Languages:   []string{"en"},

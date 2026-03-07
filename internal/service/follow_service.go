@@ -40,6 +40,8 @@ type FollowService interface {
 	GetFollowers(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error)
 	GetFollowing(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error)
 	ListPendingFollowRequests(ctx context.Context, targetAccountID string, maxID *string, limit int) ([]domain.Account, *string, error)
+	ListBlockedAccounts(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, *string, error)
+	ListMutedAccounts(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, *string, error)
 	AuthorizeFollowRequest(ctx context.Context, targetAccountID, requesterAccountID string) error
 	RejectFollowRequest(ctx context.Context, targetAccountID, requesterAccountID string) error
 }
@@ -400,6 +402,36 @@ func (svc *followService) ListPendingFollowRequests(ctx context.Context, targetA
 	accounts, nextCursor, err := svc.store.GetPendingFollowRequests(ctx, targetAccountID, maxID, limit)
 	if err != nil {
 		return nil, nil, fmt.Errorf("GetPendingFollowRequests: %w", err)
+	}
+	return accounts, nextCursor, nil
+}
+
+// ListBlockedAccounts returns blocked accounts for the given account (paginated by block id).
+func (svc *followService) ListBlockedAccounts(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, *string, error) {
+	if limit <= 0 {
+		limit = DefaultServiceListLimit
+	}
+	if limit > MaxServicePageLimit {
+		limit = MaxServicePageLimit
+	}
+	accounts, nextCursor, err := svc.store.ListBlockedAccounts(ctx, accountID, maxID, limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("ListBlockedAccounts: %w", err)
+	}
+	return accounts, nextCursor, nil
+}
+
+// ListMutedAccounts returns muted accounts for the given account (paginated by mute id).
+func (svc *followService) ListMutedAccounts(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, *string, error) {
+	if limit <= 0 {
+		limit = DefaultServiceListLimit
+	}
+	if limit > MaxServicePageLimit {
+		limit = MaxServicePageLimit
+	}
+	accounts, nextCursor, err := svc.store.ListMutedAccounts(ctx, accountID, maxID, limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("ListMutedAccounts: %w", err)
 	}
 	return accounts, nextCursor, nil
 }

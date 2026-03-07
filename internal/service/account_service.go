@@ -31,6 +31,7 @@ type AccountService interface {
 	Register(ctx context.Context, in RegisterInput) (*domain.Account, error)
 	ListLocalUsers(ctx context.Context, limit, offset int) ([]domain.User, error)
 	GetUserByID(ctx context.Context, userID string) (*domain.User, error)
+	ListDirectory(ctx context.Context, order string, localOnly bool, offset, limit int) ([]domain.Account, error)
 }
 
 // AccountService handles account creation and lookup.
@@ -456,4 +457,24 @@ func (svc *accountService) GetUserByID(ctx context.Context, userID string) (*dom
 		return nil, fmt.Errorf("GetUserByID(%s): %w", userID, err)
 	}
 	return u, nil
+}
+
+func (svc *accountService) ListDirectory(ctx context.Context, order string, localOnly bool, offset, limit int) ([]domain.Account, error) {
+	if limit <= 0 {
+		limit = DefaultServiceListLimit
+	}
+	if limit > MaxServicePageLimit {
+		limit = MaxServicePageLimit
+	}
+	if order != "active" && order != "new" {
+		order = "active"
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	accounts, err := svc.store.ListDirectoryAccounts(ctx, order, localOnly, offset, limit)
+	if err != nil {
+		return nil, fmt.Errorf("ListDirectoryAccounts: %w", err)
+	}
+	return accounts, nil
 }

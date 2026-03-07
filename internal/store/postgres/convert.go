@@ -49,6 +49,20 @@ func ToDomainUserFilter(u db.UserFilter) domain.UserFilter {
 	return d
 }
 
+// ToDomainStatusEdit converts a sqlc db.StatusEdit to a domain.StatusEdit.
+func ToDomainStatusEdit(e db.StatusEdit) domain.StatusEdit {
+	return domain.StatusEdit{
+		ID:             e.ID,
+		StatusID:       e.StatusID,
+		AccountID:      e.AccountID,
+		Text:           e.Text,
+		Content:        e.Content,
+		ContentWarning: e.ContentWarning,
+		Sensitive:      e.Sensitive,
+		CreatedAt:      pgTime(e.CreatedAt),
+	}
+}
+
 // ToDomainList converts a sqlc db.List to a domain.List.
 func ToDomainList(l db.List) domain.List {
 	return domain.List{
@@ -95,6 +109,102 @@ func ToDomainAccount(a db.Account) domain.Account {
 		d.Fields = json.RawMessage(a.Fields)
 	}
 	return d
+}
+
+// MutedAccountRowToDomainAccount converts ListMutedAccountsPaginatedRow to domain.Account.
+func MutedAccountRowToDomainAccount(r db.ListMutedAccountsPaginatedRow) domain.Account {
+	a := db.Account{
+		ID:             r.ID,
+		Username:       r.Username,
+		Domain:         r.Domain,
+		DisplayName:    r.DisplayName,
+		Note:           r.Note,
+		PublicKey:      r.PublicKey,
+		PrivateKey:     r.PrivateKey,
+		InboxUrl:       r.InboxUrl,
+		OutboxUrl:      r.OutboxUrl,
+		FollowersUrl:   r.FollowersUrl,
+		FollowingUrl:   r.FollowingUrl,
+		ApID:           r.ApID,
+		ApRaw:          r.ApRaw,
+		Bot:            r.Bot,
+		Locked:         r.Locked,
+		Suspended:      r.Suspended,
+		Silenced:       r.Silenced,
+		CreatedAt:      r.CreatedAt,
+		UpdatedAt:      r.UpdatedAt,
+		AvatarMediaID:  r.AvatarMediaID,
+		HeaderMediaID:  r.HeaderMediaID,
+		FollowersCount: r.FollowersCount,
+		FollowingCount: r.FollowingCount,
+		StatusesCount:  r.StatusesCount,
+		Fields:         r.Fields,
+	}
+	return ToDomainAccount(a)
+}
+
+// RebloggedByRowToDomainAccount converts GetRebloggedByRow to domain.Account (row omits last_status_at).
+func RebloggedByRowToDomainAccount(r db.GetRebloggedByRow) domain.Account {
+	a := db.Account{
+		ID:             r.ID,
+		Username:       r.Username,
+		Domain:         r.Domain,
+		DisplayName:    r.DisplayName,
+		Note:           r.Note,
+		PublicKey:      r.PublicKey,
+		PrivateKey:     r.PrivateKey,
+		InboxUrl:       r.InboxUrl,
+		OutboxUrl:      r.OutboxUrl,
+		FollowersUrl:   r.FollowersUrl,
+		FollowingUrl:   r.FollowingUrl,
+		ApID:           r.ApID,
+		ApRaw:          r.ApRaw,
+		Bot:            r.Bot,
+		Locked:         r.Locked,
+		Suspended:      r.Suspended,
+		Silenced:       r.Silenced,
+		CreatedAt:      r.CreatedAt,
+		UpdatedAt:      r.UpdatedAt,
+		AvatarMediaID:  r.AvatarMediaID,
+		HeaderMediaID:  r.HeaderMediaID,
+		FollowersCount: r.FollowersCount,
+		FollowingCount: r.FollowingCount,
+		StatusesCount:  r.StatusesCount,
+		Fields:         r.Fields,
+	}
+	return ToDomainAccount(a)
+}
+
+// BlockedAccountRowToDomainAccount converts ListBlockedAccountsPaginatedRow to domain.Account.
+func BlockedAccountRowToDomainAccount(r db.ListBlockedAccountsPaginatedRow) domain.Account {
+	a := db.Account{
+		ID:             r.ID,
+		Username:       r.Username,
+		Domain:         r.Domain,
+		DisplayName:    r.DisplayName,
+		Note:           r.Note,
+		PublicKey:      r.PublicKey,
+		PrivateKey:     r.PrivateKey,
+		InboxUrl:       r.InboxUrl,
+		OutboxUrl:      r.OutboxUrl,
+		FollowersUrl:   r.FollowersUrl,
+		FollowingUrl:   r.FollowingUrl,
+		ApID:           r.ApID,
+		ApRaw:          r.ApRaw,
+		Bot:            r.Bot,
+		Locked:         r.Locked,
+		Suspended:      r.Suspended,
+		Silenced:       r.Silenced,
+		CreatedAt:      r.CreatedAt,
+		UpdatedAt:      r.UpdatedAt,
+		AvatarMediaID:  r.AvatarMediaID,
+		HeaderMediaID:  r.HeaderMediaID,
+		FollowersCount: r.FollowersCount,
+		FollowingCount: r.FollowingCount,
+		StatusesCount:  r.StatusesCount,
+		Fields:         r.Fields,
+	}
+	return ToDomainAccount(a)
 }
 
 // PendingFollowRequestRowToDomainAccount converts GetPendingFollowRequestsPaginatedRow to domain.Account.
@@ -313,6 +423,15 @@ func ToDomainHashtag(h db.Hashtag) domain.Hashtag {
 		Name:      h.Name,
 		CreatedAt: pgTime(h.CreatedAt),
 		UpdatedAt: pgTime(h.UpdatedAt),
+	}
+}
+
+// ToDomainMarker converts a sqlc db.Marker to a domain.Marker.
+func ToDomainMarker(m db.Marker) domain.Marker {
+	return domain.Marker{
+		LastReadID: m.LastReadID,
+		Version:    int(m.Version),
+		UpdatedAt:  pgTime(m.UpdatedAt),
 	}
 }
 

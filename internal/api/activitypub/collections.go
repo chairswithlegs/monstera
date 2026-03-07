@@ -1,6 +1,7 @@
 package activitypub
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -15,12 +16,13 @@ import (
 // Returns OrderedCollections with totalItems only (no item enumeration).
 type CollectionsHandler struct {
 	accounts service.AccountService
+	statuses service.StatusService
 	config   *config.Config
 }
 
 // NewCollectionsHandler returns a new CollectionsHandler.
-func NewCollectionsHandler(accounts service.AccountService, config *config.Config) *CollectionsHandler {
-	return &CollectionsHandler{accounts: accounts, config: config}
+func NewCollectionsHandler(accounts service.AccountService, statuses service.StatusService, config *config.Config) *CollectionsHandler {
+	return &CollectionsHandler{accounts: accounts, statuses: statuses, config: config}
 }
 
 // GETFollowers handles GET /users/{username}/followers.
@@ -82,25 +84,44 @@ func (h *CollectionsHandler) GETFollowing(w http.ResponseWriter, r *http.Request
 }
 
 // GETFeatured handles GET /users/{username}/collections/featured.
-// Phase 1: stub with totalItems 0 (no pinned posts enumeration).
+// Returns pinned statuses as an OrderedCollection of Notes.
 func (h *CollectionsHandler) GETFeatured(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
 	if err := api.ValidateRequiredString(username); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
-	_, err := h.accounts.GetLocalActorForFederation(r.Context(), username)
+	account, err := h.accounts.GetLocalActorForFederation(r.Context(), username)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
+	pinnedIDs, err := h.statuses.ListPinnedStatusIDs(r.Context(), account.ID)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	orderedItems := make([]json.RawMessage, 0, len(pinnedIDs))
+	for _, statusID := range pinnedIDs {
+		st, err := h.statuses.GetByID(r.Context(), statusID)
+		if err != nil || st == nil {
+			continue
+		}
+		note := ap.StatusToNote(st, account, h.config.InstanceDomain)
+		raw, err := json.Marshal(note)
+		if err != nil {
+			continue
+		}
+		orderedItems = append(orderedItems, raw)
+	}
 	base := "https://" + h.config.InstanceDomain
 	id := base + "/users/" + username + "/collections/featured"
 	coll := ap.OrderedCollection{
-		Context:    ap.DefaultContext,
-		ID:         id,
-		Type:       "OrderedCollection",
-		TotalItems: 0,
+		Context:      ap.DefaultContext,
+		ID:           id,
+		Type:         "OrderedCollection",
+		TotalItems:   len(orderedItems),
+		OrderedItems: orderedItems,
 	}
 	w.Header().Set("Cache-Control", "max-age=300")
 	api.WriteActivityJSON(w, http.StatusOK, coll)

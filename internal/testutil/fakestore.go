@@ -26,7 +26,9 @@ type FakeStore struct {
 	publicTimeline         []*domain.Status
 	followsByKey           map[string]*domain.Follow // "accountID:targetID"
 	blocksByKey            map[string]struct{}       // "accountID:targetID"
+	blocksList             []blockEntry              // for ListBlockedAccounts order
 	mutesByKey             map[string]struct{}       // "accountID:targetID"
+	mutesList              []muteEntry               // for ListMutedAccounts order
 	suspendedAccountIDs    map[string]struct{}
 	mediaByID              map[string]*domain.MediaAttachment
 	notificationsByAccount map[string][]*domain.Notification
@@ -44,6 +46,19 @@ type FakeStore struct {
 	listAccountIDs map[string][]string
 
 	mentionsByStatusID map[string][]string // statusID -> accountIDs mentioned
+
+	markersByKey map[string]*domain.Marker // "accountID:timeline"
+
+	lastStatusAtByAccount map[string]time.Time // for ListDirectoryAccounts "active" order
+
+	accountPins []pinEntry          // accountID, statusID, created_at for ListPinnedStatusIDs order
+	statusEdits []domain.StatusEdit // for ListStatusEdits
+}
+
+type pinEntry struct {
+	accountID string
+	statusID  string
+	createdAt time.Time
 }
 
 // NewFakeStore returns a new FakeStore for use in tests.
@@ -70,6 +85,10 @@ func NewFakeStore() *FakeStore {
 		listsByID:              make(map[string]*domain.List),
 		listAccountIDs:         make(map[string][]string),
 		mentionsByStatusID:     make(map[string][]string),
+		markersByKey:           make(map[string]*domain.Marker),
+		lastStatusAtByAccount:  make(map[string]time.Time),
+		accountPins:            nil,
+		statusEdits:            nil,
 	}
 }
 
@@ -77,6 +96,18 @@ func NewFakeStore() *FakeStore {
 var _ store.Store = (*FakeStore)(nil)
 
 const noCursorSentinel = "ZZZZZZZZZZZZZZZZZZZZZZZZZZ"
+
+type blockEntry struct {
+	ID        string
+	AccountID string
+	TargetID  string
+}
+
+type muteEntry struct {
+	ID        string
+	AccountID string
+	TargetID  string
+}
 
 func (f *FakeStore) WithTx(ctx context.Context, fn func(store.Store) error) error {
 	return fn(f)
@@ -725,6 +756,15 @@ func (f *FakeStore) GetOrCreateHashtag(ctx context.Context, name string) (*domai
 func (f *FakeStore) AttachHashtagsToStatus(ctx context.Context, statusID string, hashtagIDs []string) error {
 	return nil
 }
+
+func (f *FakeStore) DeleteStatusMentions(ctx context.Context, statusID string) error {
+	return nil
+}
+
+func (f *FakeStore) DeleteStatusHashtags(ctx context.Context, statusID string) error {
+	return nil
+}
+
 func (f *FakeStore) GetStatusHashtags(ctx context.Context, statusID string) ([]domain.Hashtag, error) {
 	return nil, nil
 }
@@ -973,6 +1013,55 @@ func (f *FakeStore) GetBookmarks(ctx context.Context, accountID string, maxID *s
 
 func (f *FakeStore) IsBookmarked(ctx context.Context, accountID, statusID string) (bool, error) {
 	return false, nil
+}
+
+func (f *FakeStore) CreateAccountPin(ctx context.Context, accountID, statusID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, p := range f.accountPins {
+		if p.accountID == accountID && p.statusID == statusID {
+			return nil
+		}
+	}
+	f.accountPins = append(f.accountPins, pinEntry{accountID: accountID, statusID: statusID, createdAt: time.Now()})
+	return nil
+}
+
+func (f *FakeStore) DeleteAccountPin(ctx context.Context, accountID, statusID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var newPins []pinEntry
+	for _, p := range f.accountPins {
+		if p.accountID != accountID || p.statusID != statusID {
+			newPins = append(newPins, p)
+		}
+	}
+	f.accountPins = newPins
+	return nil
+}
+
+func (f *FakeStore) ListPinnedStatusIDs(ctx context.Context, accountID string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var ids []string
+	for _, p := range f.accountPins {
+		if p.accountID == accountID {
+			ids = append(ids, p.statusID)
+		}
+	}
+	return ids, nil
+}
+
+func (f *FakeStore) CountAccountPins(ctx context.Context, accountID string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for _, p := range f.accountPins {
+		if p.accountID == accountID {
+			n++
+		}
+	}
+	return n, nil
 }
 
 func copyList(l *domain.List) *domain.List {
@@ -1225,6 +1314,92 @@ func (f *FakeStore) GetActiveUserFiltersByContext(ctx context.Context, accountID
 	return nil, nil
 }
 
+func (f *FakeStore) GetMarkers(ctx context.Context, accountID string, timelines []string) (map[string]domain.Marker, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make(map[string]domain.Marker, len(timelines))
+	for _, t := range timelines {
+		k := followKey(accountID, t)
+		if m := f.markersByKey[k]; m != nil {
+			out[t] = *m
+		}
+	}
+	return out, nil
+}
+
+func (f *FakeStore) SetMarker(ctx context.Context, accountID, timeline, lastReadID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	k := followKey(accountID, timeline)
+	m := f.markersByKey[k]
+	if m == nil {
+		f.markersByKey[k] = &domain.Marker{LastReadID: lastReadID, Version: 0, UpdatedAt: time.Now()}
+		return nil
+	}
+	m.LastReadID = lastReadID
+	m.Version++
+	m.UpdatedAt = time.Now()
+	return nil
+}
+
+func (f *FakeStore) UpdateAccountLastStatusAt(ctx context.Context, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lastStatusAtByAccount[accountID] = time.Now()
+	return nil
+}
+
+func (f *FakeStore) ListDirectoryAccounts(ctx context.Context, order string, localOnly bool, offset, limit int) ([]domain.Account, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var candidates []*domain.Account
+	for _, a := range f.accountsByID {
+		if a.Suspended {
+			continue
+		}
+		if localOnly && a.Domain != nil && *a.Domain != "" {
+			continue
+		}
+		candidates = append(candidates, a)
+	}
+	if order == "active" {
+		sort.Slice(candidates, func(i, j int) bool {
+			a, b := candidates[i], candidates[j]
+			ta := f.lastStatusAtByAccount[a.ID]
+			tb := f.lastStatusAtByAccount[b.ID]
+			if ta.IsZero() && tb.IsZero() {
+				return a.CreatedAt.Before(b.CreatedAt)
+			}
+			if ta.IsZero() {
+				return false
+			}
+			if tb.IsZero() {
+				return true
+			}
+			return ta.After(tb)
+		})
+	} else {
+		sort.Slice(candidates, func(i, j int) bool {
+			return candidates[i].CreatedAt.After(candidates[j].CreatedAt)
+		})
+	}
+	start := offset
+	if start > len(candidates) {
+		start = len(candidates)
+	}
+	end := start + limit
+	if end > len(candidates) {
+		end = len(candidates)
+	}
+	slice := candidates[start:end]
+	out := make([]domain.Account, 0, len(slice))
+	for _, a := range slice {
+		ac := *a
+		out = append(out, ac)
+	}
+	return out, nil
+}
+
 func (f *FakeStore) SoftDeleteStatus(ctx context.Context, id string) error {
 	return f.DeleteStatus(ctx, id)
 }
@@ -1238,13 +1413,52 @@ func (f *FakeStore) CreateBlock(ctx context.Context, in store.CreateBlockInput) 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.blocksByKey[followKey(in.AccountID, in.TargetID)] = struct{}{}
+	f.blocksList = append(f.blocksList, blockEntry{ID: in.ID, AccountID: in.AccountID, TargetID: in.TargetID})
 	return nil
 }
 func (f *FakeStore) DeleteBlock(ctx context.Context, accountID, targetID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	delete(f.blocksByKey, followKey(accountID, targetID))
+	for i, b := range f.blocksList {
+		if b.AccountID == accountID && b.TargetID == targetID {
+			f.blocksList = append(f.blocksList[:i], f.blocksList[i+1:]...)
+			break
+		}
+	}
 	return nil
+}
+
+// ListBlockedAccounts returns blocked accounts (cursor = block id; next page: id < max_id). Matches postgres semantics.
+func (f *FakeStore) ListBlockedAccounts(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, *string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var entries []blockEntry
+	for _, b := range f.blocksList {
+		if b.AccountID == accountID {
+			if maxID != nil && *maxID != "" && b.ID >= *maxID {
+				continue
+			}
+			entries = append(entries, b)
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].ID > entries[j].ID })
+	if limit <= 0 {
+		limit = 40
+	}
+	var nextCursor *string
+	if len(entries) > limit {
+		nextCursor = &entries[limit-1].ID
+		entries = entries[:limit]
+	}
+	out := make([]domain.Account, 0, len(entries))
+	for _, e := range entries {
+		acc, ok := f.accountsByID[e.TargetID]
+		if ok && acc != nil {
+			out = append(out, *acc)
+		}
+	}
+	return out, nextCursor, nil
 }
 
 func (f *FakeStore) IsBlockedEitherDirection(ctx context.Context, accountID, targetID string) (bool, error) {
@@ -1258,13 +1472,52 @@ func (f *FakeStore) CreateMute(ctx context.Context, in store.CreateMuteInput) er
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.mutesByKey[followKey(in.AccountID, in.TargetID)] = struct{}{}
+	f.mutesList = append(f.mutesList, muteEntry{ID: in.ID, AccountID: in.AccountID, TargetID: in.TargetID})
 	return nil
 }
 func (f *FakeStore) DeleteMute(ctx context.Context, accountID, targetID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	delete(f.mutesByKey, followKey(accountID, targetID))
+	for i, m := range f.mutesList {
+		if m.AccountID == accountID && m.TargetID == targetID {
+			f.mutesList = append(f.mutesList[:i], f.mutesList[i+1:]...)
+			break
+		}
+	}
 	return nil
+}
+
+// ListMutedAccounts returns muted accounts (cursor = mute id; next page: id < max_id). Matches postgres semantics.
+func (f *FakeStore) ListMutedAccounts(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, *string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var entries []muteEntry
+	for _, m := range f.mutesList {
+		if m.AccountID == accountID {
+			if maxID != nil && *maxID != "" && m.ID >= *maxID {
+				continue
+			}
+			entries = append(entries, m)
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].ID > entries[j].ID })
+	if limit <= 0 {
+		limit = 40
+	}
+	var nextCursor *string
+	if len(entries) > limit {
+		nextCursor = &entries[limit-1].ID
+		entries = entries[:limit]
+	}
+	out := make([]domain.Account, 0, len(entries))
+	for _, e := range entries {
+		acc, ok := f.accountsByID[e.TargetID]
+		if ok && acc != nil {
+			out = append(out, *acc)
+		}
+	}
+	return out, nextCursor, nil
 }
 func (f *FakeStore) CreateFavourite(ctx context.Context, in store.CreateFavouriteInput) (*domain.Favourite, error) {
 	return nil, domain.ErrNotFound
@@ -1368,9 +1621,53 @@ func (f *FakeStore) UpdateMediaAttachment(ctx context.Context, in store.UpdateMe
 }
 
 func (f *FakeStore) CreateStatusEdit(ctx context.Context, in store.CreateStatusEditInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.statusEdits = append(f.statusEdits, domain.StatusEdit{
+		ID:             in.ID,
+		StatusID:       in.StatusID,
+		AccountID:      in.AccountID,
+		Text:           in.Text,
+		Content:        in.Content,
+		ContentWarning: in.ContentWarning,
+		Sensitive:      in.Sensitive,
+		CreatedAt:      time.Now(),
+	})
 	return nil
 }
+
+func (f *FakeStore) ListStatusEdits(ctx context.Context, statusID string) ([]domain.StatusEdit, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.StatusEdit
+	for _, e := range f.statusEdits {
+		if e.StatusID == statusID {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
 func (f *FakeStore) UpdateStatus(ctx context.Context, in store.UpdateStatusInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	st := f.statusesByID[in.ID]
+	if st == nil {
+		return domain.ErrNotFound
+	}
+	if in.Text != nil {
+		st.Text = in.Text
+	}
+	if in.Content != nil {
+		st.Content = in.Content
+	}
+	if in.ContentWarning != nil {
+		st.ContentWarning = in.ContentWarning
+	}
+	st.Sensitive = in.Sensitive
+	now := time.Now()
+	st.EditedAt = &now
+	st.UpdatedAt = now
 	return nil
 }
 func (f *FakeStore) GetFollowerInboxURLs(ctx context.Context, accountID string) ([]string, error) {
@@ -1525,6 +1822,9 @@ func (f *FakeStore) UpsertKnownInstance(ctx context.Context, id, domain string) 
 }
 func (f *FakeStore) ListKnownInstances(ctx context.Context, limit, offset int) ([]domain.KnownInstance, error) {
 	return nil, nil
+}
+func (f *FakeStore) CountKnownInstances(ctx context.Context) (int64, error) {
+	return 0, nil
 }
 func (f *FakeStore) CreateServerFilter(ctx context.Context, in store.CreateServerFilterInput) (*domain.ServerFilter, error) {
 	return &domain.ServerFilter{ID: in.ID, Phrase: in.Phrase, Scope: in.Scope, Action: in.Action, CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil

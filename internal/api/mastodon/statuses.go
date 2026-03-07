@@ -158,8 +158,190 @@ func (h *StatusesHandler) GETStatuses(w http.ResponseWriter, r *http.Request) {
 		if ok, err := h.statuses.IsBookmarked(r.Context(), account.ID, id); err == nil {
 			out.Bookmarked = ok
 		}
+		if result.Status.AccountID == account.ID {
+			pinnedIDs, _ := h.statuses.ListPinnedStatusIDs(r.Context(), account.ID)
+			for _, pid := range pinnedIDs {
+				if pid == id {
+					out.Pinned = true
+					break
+				}
+			}
+		}
 	}
 	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// POSTPin handles POST /api/v1/statuses/:id/pin.
+func (h *StatusesHandler) POSTPin(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	result, err := h.statuses.Pin(r.Context(), account.ID, id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		if errors.Is(err, domain.ErrForbidden) {
+			api.HandleError(w, r, api.ErrForbidden)
+			return
+		}
+		if errors.Is(err, domain.ErrUnprocessable) {
+			api.HandleError(w, r, api.NewUnprocessableError("Only public and unlisted statuses can be pinned"))
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	out.Pinned = true
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// POSTUnpin handles POST /api/v1/statuses/:id/unpin.
+func (h *StatusesHandler) POSTUnpin(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	result, err := h.statuses.Unpin(r.Context(), account.ID, id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		if errors.Is(err, domain.ErrForbidden) {
+			api.HandleError(w, r, api.ErrForbidden)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// UpdateStatusRequest is the request body for PUT /api/v1/statuses/:id.
+type UpdateStatusRequest struct {
+	Status      string `json:"status"`
+	SpoilerText string `json:"spoiler_text"`
+	Sensitive   bool   `json:"sensitive"`
+}
+
+// PUTStatuses handles PUT /api/v1/statuses/:id.
+func (h *StatusesHandler) PUTStatuses(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	var req UpdateStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		api.HandleError(w, r, api.NewUnprocessableError("invalid JSON"))
+		return
+	}
+	result, err := h.statuses.UpdateStatusFromAPI(r.Context(), account.ID, id, strings.TrimSpace(req.Status), req.SpoilerText, req.Sensitive)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		if errors.Is(err, domain.ErrForbidden) {
+			api.HandleError(w, r, api.ErrForbidden)
+			return
+		}
+		if errors.Is(err, domain.ErrUnprocessable) {
+			api.HandleError(w, r, api.NewUnprocessableError("cannot edit this status"))
+			return
+		}
+		if errors.Is(err, domain.ErrValidation) {
+			api.HandleError(w, r, api.NewUnprocessableError("invalid or empty status"))
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	pinnedIDs, _ := h.statuses.ListPinnedStatusIDs(r.Context(), account.ID)
+	for _, pid := range pinnedIDs {
+		if pid == id {
+			out.Pinned = true
+			break
+		}
+	}
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// GETStatusHistory handles GET /api/v1/statuses/:id/history.
+func (h *StatusesHandler) GETStatusHistory(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	var viewerID *string
+	if account := middleware.AccountFromContext(r.Context()); account != nil {
+		viewerID = &account.ID
+	}
+	edits, err := h.statuses.GetStatusHistory(r.Context(), id, viewerID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	out := make([]apimodel.StatusEdit, 0, len(edits))
+	for _, e := range edits {
+		out = append(out, apimodel.StatusEditFromDomain(e))
+	}
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// GETStatusSource handles GET /api/v1/statuses/:id/source.
+func (h *StatusesHandler) GETStatusSource(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	var viewerID *string
+	if account := middleware.AccountFromContext(r.Context()); account != nil {
+		viewerID = &account.ID
+	}
+	text, spoiler, err := h.statuses.GetStatusSource(r.Context(), id, viewerID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, apimodel.StatusSource{
+		ID:          id,
+		Text:        text,
+		SpoilerText: spoiler,
+	})
 }
 
 // DELETEStatuses handles DELETE /api/v1/statuses/:id. Auth required.
@@ -214,7 +396,7 @@ func parseCreateStatusRequest(r *http.Request) (CreateStatusRequest, error) {
 		req.Status = r.FormValue("status")
 		req.Visibility = r.FormValue("visibility")
 		req.SpoilerText = r.FormValue("spoiler_text")
-		req.Sensitive = r.FormValue("sensitive") == "true" || r.FormValue("sensitive") == "1"
+		req.Sensitive = r.FormValue("sensitive") == resolveQueryTrue || r.FormValue("sensitive") == "1"
 		req.Language = r.FormValue("language")
 		req.InReplyToID = r.FormValue("in_reply_to_id")
 		req.ScheduledAt = r.FormValue("scheduled_at")
