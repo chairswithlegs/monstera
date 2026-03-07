@@ -254,9 +254,9 @@ func (p *inbox) handleFollow(ctx context.Context, activity *Activity) error {
 		return fmt.Errorf("inbox: resolve actor %q: %w", activity.Actor, err)
 	}
 	if activity.ID != "" {
+		// Ignore duplicate Follows
 		existing, _ := p.follows.GetFollowByAPID(ctx, activity.ID)
 		if existing != nil {
-			slog.Debug("inbox: duplicate Follow ignored", slog.String("ap_id", activity.ID))
 			return nil
 		}
 	}
@@ -284,43 +284,61 @@ func (p *inbox) handleFollow(ctx context.Context, activity *Activity) error {
 	return nil
 }
 
-func (p *inbox) handleAcceptFollow(ctx context.Context, activity *Activity) error {
+// resolveFollowFromObject resolves a Follow from an activity's object (IRI or embedded Follow activity).
+func (p *inbox) resolveFollowFromObject(ctx context.Context, activity *Activity) (*domain.Follow, error) {
 	inner, err := activity.ObjectActivity()
 	if err != nil {
 		objectID, ok := activity.ObjectID()
 		if !ok {
-			return fmt.Errorf("%w: accept object is not a follow activity or IRI", ErrFatal)
+			return nil, fmt.Errorf("%w: object is not a follow activity or IRI", ErrFatal)
 		}
 		follow, err := p.follows.GetFollowByAPID(ctx, objectID)
 		if err != nil {
-			return fmt.Errorf("%w: accept: follow not found for ap_id %q", ErrFatal, objectID)
+			return nil, fmt.Errorf("inbox: GetFollowByAPID: %w", err)
 		}
-		if acceptErr := p.follows.AcceptFollow(ctx, follow.ID); acceptErr != nil {
-			return fmt.Errorf("inbox: AcceptFollow by objectID: %w", acceptErr)
-		}
-		return nil
+		return follow, nil
 	}
 	if inner.ID != "" {
 		follow, err := p.follows.GetFollowByAPID(ctx, inner.ID)
 		if err == nil {
-			if acceptErr := p.follows.AcceptFollow(ctx, follow.ID); acceptErr != nil {
-				return fmt.Errorf("inbox: AcceptFollow by inner.ID: %w", acceptErr)
-			}
-			return nil
+			return follow, nil
 		}
 	}
 	actorAccount, err := p.accounts.GetByAPID(ctx, inner.Actor)
 	if err != nil {
-		return fmt.Errorf("%w: accept: actor not found %q", ErrFatal, inner.Actor)
+		return nil, fmt.Errorf("%w: actor not found %q", ErrFatal, inner.Actor)
 	}
 	targetID, _ := inner.ObjectID()
 	targetAccount, err := p.accounts.GetByAPID(ctx, targetID)
 	if err != nil {
-		return fmt.Errorf("%w: accept: target not found %q", ErrFatal, targetID)
+		return nil, fmt.Errorf("%w: target not found %q", ErrFatal, targetID)
 	}
 	follow, err := p.follows.GetFollow(ctx, actorAccount.ID, targetAccount.ID)
 	if err != nil {
-		return fmt.Errorf("%w: accept: follow relationship not found", ErrFatal)
+		return nil, fmt.Errorf("%w: follow relationship not found", ErrFatal)
+	}
+	return follow, nil
+}
+
+// acceptRejectActorIsFollowTarget ensures the activity actor is the follow target (the account that may accept/reject).
+func (p *inbox) acceptRejectActorIsFollowTarget(ctx context.Context, activity *Activity, follow *domain.Follow) error {
+	targetAccount, err := p.accounts.GetByID(ctx, follow.TargetID)
+	if err != nil {
+		return fmt.Errorf("inbox: GetByID target (Accept/Reject): %w", err)
+	}
+	if targetAccount.APID != activity.Actor {
+		return fmt.Errorf("%w: accept/reject: actor %q is not the follow target", ErrFatal, activity.Actor)
+	}
+	return nil
+}
+
+func (p *inbox) handleAcceptFollow(ctx context.Context, activity *Activity) error {
+	follow, err := p.resolveFollowFromObject(ctx, activity)
+	if err != nil {
+		return err
+	}
+	if err := p.acceptRejectActorIsFollowTarget(ctx, activity, follow); err != nil {
+		return err
 	}
 	if acceptErr := p.follows.AcceptFollow(ctx, follow.ID); acceptErr != nil {
 		return fmt.Errorf("inbox: AcceptFollow: %w", acceptErr)
@@ -329,37 +347,60 @@ func (p *inbox) handleAcceptFollow(ctx context.Context, activity *Activity) erro
 }
 
 func (p *inbox) handleRejectFollow(ctx context.Context, activity *Activity) error {
-	inner, err := activity.ObjectActivity()
+	follow, err := p.resolveFollowFromObject(ctx, activity)
 	if err != nil {
-		objectID, ok := activity.ObjectID()
-		if !ok {
-			return fmt.Errorf("%w: reject object is not a follow activity or IRI", ErrFatal)
-		}
-		follow, err := p.follows.GetFollowByAPID(ctx, objectID)
-		if err != nil {
-			return fmt.Errorf("inbox: GetFollowByAPID for reject: %w", err)
-		}
-		if delErr := p.follows.DeleteFollowFromInbox(ctx, follow.AccountID, follow.TargetID); delErr != nil {
-			return fmt.Errorf("inbox: DeleteFollow (reject by objectID): %w", delErr)
-		}
-		return nil
+		return err
 	}
-	if inner.ID != "" {
-		follow, err := p.follows.GetFollowByAPID(ctx, inner.ID)
-		if err == nil {
-			if delErr := p.follows.DeleteFollowFromInbox(ctx, follow.AccountID, follow.TargetID); delErr != nil {
-				return fmt.Errorf("inbox: DeleteFollow (reject by inner.ID): %w", delErr)
-			}
-			return nil
-		}
+	if err := p.acceptRejectActorIsFollowTarget(ctx, activity, follow); err != nil {
+		return err
 	}
-	actorAccount, _ := p.accounts.GetByAPID(ctx, inner.Actor)
-	targetID, _ := inner.ObjectID()
-	targetAccount, _ := p.accounts.GetByAPID(ctx, targetID)
-	if actorAccount != nil && targetAccount != nil {
-		_ = p.follows.DeleteFollowFromInbox(ctx, actorAccount.ID, targetAccount.ID)
+	if delErr := p.follows.DeleteFollowFromInbox(ctx, follow.AccountID, follow.TargetID); delErr != nil {
+		return fmt.Errorf("inbox: DeleteFollow (Reject): %w", delErr)
 	}
 	return nil
+}
+
+// undoActorMatchesAccount returns an error if the Undo's actor is not the account that
+// performed the original action. Prevents forged Undo from removing another user's follow/like/boost.
+func (p *inbox) undoActorMatchesAccount(ctx context.Context, activity *Activity, performerAccountID string) error {
+	undoActor, err := p.accounts.GetByAPID(ctx, activity.Actor)
+	if err != nil || undoActor == nil {
+		return fmt.Errorf("%w: undo actor %q not found or invalid", ErrFatal, activity.Actor)
+	}
+	if undoActor.ID != performerAccountID {
+		return fmt.Errorf("%w: undo actor %q is not the performer", ErrFatal, activity.Actor)
+	}
+	return nil
+}
+
+// resolveUndoTarget resolves the target of an Undo by APID or by inner actor+object, and verifies the activity actor.
+func resolveUndoTarget[T any](p *inbox, ctx context.Context, activity *Activity, inner *Activity,
+	getByAPID func(context.Context, string) (T, string, error),
+	getByActorAndObject func(context.Context, string, string) (T, string, error),
+) (T, error) {
+	var zero T
+	if inner.ID != "" {
+		res, performerID, err := getByAPID(ctx, inner.ID)
+		if err == nil {
+			if err := p.undoActorMatchesAccount(ctx, activity, performerID); err != nil {
+				return zero, err
+			}
+			return res, nil
+		}
+	}
+	actorAccount, err := p.accounts.GetByAPID(ctx, inner.Actor)
+	if err != nil {
+		return zero, fmt.Errorf("inbox: GetByAPID actor (Undo): %w", err)
+	}
+	if err := p.undoActorMatchesAccount(ctx, activity, actorAccount.ID); err != nil {
+		return zero, err
+	}
+	objectID, _ := inner.ObjectID()
+	res, _, err := getByActorAndObject(ctx, actorAccount.ID, objectID)
+	if err != nil {
+		return zero, err
+	}
+	return res, nil
 }
 
 func (p *inbox) handleUndo(ctx context.Context, activity *Activity) error {
@@ -372,18 +413,27 @@ func (p *inbox) handleUndo(ctx context.Context, activity *Activity) error {
 	case "Announce":
 		return p.handleUndoAnnounce(ctx, activity)
 	default:
-		if objectID, ok := activity.ObjectID(); ok {
-			if follow, err := p.follows.GetFollowByAPID(ctx, objectID); err == nil {
-				if delErr := p.follows.DeleteFollowFromInbox(ctx, follow.AccountID, follow.TargetID); delErr != nil {
-					return fmt.Errorf("inbox: DeleteFollow (Undo default): %w", delErr)
-				}
-				return nil
-			}
-			if fav, err := p.statuses.GetFavouriteByAPID(ctx, objectID); err == nil {
-				return p.undoFavourite(ctx, fav)
-			}
+		objectID, ok := activity.ObjectID()
+		if !ok {
+			slog.DebugContext(ctx, "inbox: unsupported Undo object type", slog.String("type", innerType), slog.String("id", activity.ID))
+			return nil
 		}
-		slog.Debug("inbox: unsupported Undo object type", slog.String("type", innerType), slog.String("id", activity.ID))
+		if follow, err := p.follows.GetFollowByAPID(ctx, objectID); err == nil {
+			if err := p.undoActorMatchesAccount(ctx, activity, follow.AccountID); err != nil {
+				return err
+			}
+			if delErr := p.follows.DeleteFollowFromInbox(ctx, follow.AccountID, follow.TargetID); delErr != nil {
+				return fmt.Errorf("inbox: DeleteFollow (Undo default): %w", delErr)
+			}
+			return nil
+		}
+		if fav, err := p.statuses.GetFavouriteByAPID(ctx, objectID); err == nil {
+			if err := p.undoActorMatchesAccount(ctx, activity, fav.AccountID); err != nil {
+				return err
+			}
+			return p.undoFavourite(ctx, fav)
+		}
+		slog.DebugContext(ctx, "inbox: unsupported Undo object type", slog.String("type", innerType), slog.String("id", activity.ID))
 		return nil
 	}
 }
@@ -393,25 +443,29 @@ func (p *inbox) handleUndoFollow(ctx context.Context, activity *Activity) error 
 	if err != nil {
 		return fmt.Errorf("%w: undo{Follow} object is not a follow activity", ErrFatal)
 	}
-	if inner.ID != "" {
-		follow, err := p.follows.GetFollowByAPID(ctx, inner.ID)
-		if err == nil {
-			if delErr := p.follows.DeleteFollowFromInbox(ctx, follow.AccountID, follow.TargetID); delErr != nil {
-				return fmt.Errorf("inbox: DeleteFollow (UndoFollow): %w", delErr)
-			}
-			return nil
+	getByAPID := func(ctx context.Context, id string) (*domain.Follow, string, error) {
+		follow, err := p.follows.GetFollowByAPID(ctx, id)
+		if err != nil {
+			return nil, "", fmt.Errorf("inbox: GetFollowByAPID (UndoFollow): %w", err)
 		}
+		return follow, follow.AccountID, nil
 	}
-	actorAccount, err := p.accounts.GetByAPID(ctx, inner.Actor)
+	getByActorAndObject := func(ctx context.Context, actorAccountID, objectID string) (*domain.Follow, string, error) {
+		targetAccount, err := p.accounts.GetByAPID(ctx, objectID)
+		if err != nil {
+			return nil, "", fmt.Errorf("inbox: GetByAPID target (UndoFollow): %w", err)
+		}
+		follow, err := p.follows.GetFollow(ctx, actorAccountID, targetAccount.ID)
+		if err != nil {
+			return nil, "", fmt.Errorf("inbox: GetFollow (UndoFollow): %w", err)
+		}
+		return follow, actorAccountID, nil
+	}
+	follow, err := resolveUndoTarget(p, ctx, activity, inner, getByAPID, getByActorAndObject)
 	if err != nil {
-		return fmt.Errorf("inbox: GetAccountByAPID actor (UndoFollow): %w", err)
+		return err
 	}
-	targetID, _ := inner.ObjectID()
-	targetAccount, err := p.accounts.GetByAPID(ctx, targetID)
-	if err != nil {
-		return fmt.Errorf("inbox: GetAccountByAPID target (UndoFollow): %w", err)
-	}
-	if delErr := p.follows.DeleteFollowFromInbox(ctx, actorAccount.ID, targetAccount.ID); delErr != nil {
+	if delErr := p.follows.DeleteFollowFromInbox(ctx, follow.AccountID, follow.TargetID); delErr != nil {
 		return fmt.Errorf("inbox: DeleteFollow (UndoFollow): %w", delErr)
 	}
 	return nil
@@ -432,23 +486,27 @@ func (p *inbox) handleUndoLike(ctx context.Context, activity *Activity) error {
 	if err != nil {
 		return fmt.Errorf("%w: undo{Like} object is not a like activity", ErrFatal)
 	}
-	if inner.ID != "" {
-		if fav, err := p.statuses.GetFavouriteByAPID(ctx, inner.ID); err == nil {
-			return p.undoFavourite(ctx, fav)
+	getByAPID := func(ctx context.Context, id string) (*domain.Favourite, string, error) {
+		fav, err := p.statuses.GetFavouriteByAPID(ctx, id)
+		if err != nil {
+			return nil, "", fmt.Errorf("inbox: GetFavouriteByAPID (UndoLike): %w", err)
 		}
+		return fav, fav.AccountID, nil
 	}
-	actorAccount, err := p.accounts.GetByAPID(ctx, inner.Actor)
-	if err != nil {
-		return fmt.Errorf("inbox: GetAccountByAPID (UndoLike): %w", err)
+	getByActorAndObject := func(ctx context.Context, actorAccountID, objectID string) (*domain.Favourite, string, error) {
+		status, err := p.statuses.GetByAPID(ctx, objectID)
+		if err != nil {
+			return nil, "", fmt.Errorf("inbox: GetStatusByAPID (UndoLike): %w", err)
+		}
+		fav, err := p.statuses.GetFavouriteByAccountAndStatus(ctx, actorAccountID, status.ID)
+		if err != nil {
+			return nil, "", fmt.Errorf("inbox: GetFavouriteByAccountAndStatus (UndoLike): %w", err)
+		}
+		return fav, actorAccountID, nil
 	}
-	objectID, _ := inner.ObjectID()
-	status, err := p.statuses.GetByAPID(ctx, objectID)
+	fav, err := resolveUndoTarget(p, ctx, activity, inner, getByAPID, getByActorAndObject)
 	if err != nil {
-		return fmt.Errorf("inbox: GetStatusByAPID (UndoLike): %w", err)
-	}
-	fav, err := p.statuses.GetFavouriteByAccountAndStatus(ctx, actorAccount.ID, status.ID)
-	if err != nil {
-		return fmt.Errorf("inbox: GetFavouriteByAccountAndStatus (UndoLike): %w", err)
+		return err
 	}
 	return p.undoFavourite(ctx, fav)
 }
@@ -458,35 +516,35 @@ func (p *inbox) handleUndoAnnounce(ctx context.Context, activity *Activity) erro
 	if err != nil {
 		return fmt.Errorf("%w: undo{Announce} object is not an announce activity", ErrFatal)
 	}
-	if inner.ID != "" {
-		boost, err := p.statuses.GetByAPID(ctx, inner.ID)
-		if err == nil && boost.ReblogOfID != nil {
-			if err := p.statuses.SoftDelete(ctx, boost.ID); err != nil {
-				return fmt.Errorf("inbox: SoftDelete (UndoAnnounce): %w", err)
-			}
-			if err := p.statuses.DecrementReblogsCount(ctx, *boost.ReblogOfID); err != nil {
-				return fmt.Errorf("inbox: DecrementReblogsCount (UndoAnnounce): %w", err)
-			}
-			return nil
+	getByAPID := func(ctx context.Context, id string) (*domain.Status, string, error) {
+		boost, err := p.statuses.GetByAPID(ctx, id)
+		if err != nil {
+			return nil, "", fmt.Errorf("inbox: GetByAPID (UndoAnnounce): %w", err)
 		}
+		if boost == nil || boost.ReblogOfID == nil {
+			return nil, "", domain.ErrNotFound
+		}
+		return boost, boost.AccountID, nil
 	}
-	actorAccount, err := p.accounts.GetByAPID(ctx, inner.Actor)
-	if err != nil {
-		return fmt.Errorf("inbox: GetAccountByAPID (UndoAnnounce): %w", err)
+	getByActorAndObject := func(ctx context.Context, actorAccountID, objectID string) (*domain.Status, string, error) {
+		originalStatus, err := p.statuses.GetByAPID(ctx, objectID)
+		if err != nil {
+			return nil, "", fmt.Errorf("inbox: GetStatusByAPID (UndoAnnounce): %w", err)
+		}
+		boost, err := p.statuses.GetReblogByAccountAndTarget(ctx, actorAccountID, originalStatus.ID)
+		if err != nil {
+			return nil, "", fmt.Errorf("inbox: GetReblogByAccountAndTarget (UndoAnnounce): %w", err)
+		}
+		return boost, actorAccountID, nil
 	}
-	objectID, _ := inner.ObjectID()
-	originalStatus, err := p.statuses.GetByAPID(ctx, objectID)
+	boost, err := resolveUndoTarget(p, ctx, activity, inner, getByAPID, getByActorAndObject)
 	if err != nil {
-		return fmt.Errorf("inbox: GetStatusByAPID (UndoAnnounce): %w", err)
-	}
-	boost, err := p.statuses.GetReblogByAccountAndTarget(ctx, actorAccount.ID, originalStatus.ID)
-	if err != nil {
-		return fmt.Errorf("inbox: GetReblogByAccountAndTarget (UndoAnnounce): %w", err)
+		return err
 	}
 	if err := p.statuses.SoftDelete(ctx, boost.ID); err != nil {
 		return fmt.Errorf("inbox: SoftDelete (UndoAnnounce): %w", err)
 	}
-	if err := p.statuses.DecrementReblogsCount(ctx, originalStatus.ID); err != nil {
+	if err := p.statuses.DecrementReblogsCount(ctx, *boost.ReblogOfID); err != nil {
 		return fmt.Errorf("inbox: DecrementReblogsCount (UndoAnnounce): %w", err)
 	}
 	return nil
@@ -578,6 +636,64 @@ func (p *inbox) processMentionNotifications(ctx context.Context, tags []Tag, sta
 	}
 }
 
+// createStatusInput holds the result of buildCreateStatusInput.
+type createStatusInput struct {
+	in          service.CreateStatusFromInboxInput
+	mediaIDs    []string
+	inReplyToID *string
+}
+
+func (p *inbox) buildCreateStatusInput(ctx context.Context, note *Note, author *domain.Account, visibility string) createStatusInput {
+	var inReplyToID *string
+	if note.InReplyTo != nil && *note.InReplyTo != "" {
+		if parent, err := p.statuses.GetByAPID(ctx, *note.InReplyTo); err == nil {
+			inReplyToID = &parent.ID
+		}
+	}
+	mediaIDs := p.storeRemoteMedia(ctx, note.Attachment, author.ID)
+	var contentWarning *string
+	if note.Summary != nil && *note.Summary != "" {
+		contentWarning = note.Summary
+	}
+	apRaw, _ := json.Marshal(note)
+	content := note.Content
+	in := service.CreateStatusFromInboxInput{
+		AccountID:      author.ID,
+		URI:            note.ID,
+		Text:           &content,
+		Content:        &content,
+		ContentWarning: contentWarning,
+		Visibility:     visibility,
+		Language:       noteLanguage(note),
+		InReplyToID:    inReplyToID,
+		APID:           note.ID,
+		ApRaw:          apRaw,
+		Sensitive:      note.Sensitive,
+	}
+	return createStatusInput{in: in, mediaIDs: mediaIDs, inReplyToID: inReplyToID}
+}
+
+func (p *inbox) publishStatusCreatedEvent(ctx context.Context, statusID string) {
+	enriched, err := p.statuses.GetByIDEnriched(ctx, statusID)
+	if err != nil || enriched.Status == nil {
+		return
+	}
+	mentionedIDs := make([]string, 0, len(enriched.Mentions))
+	for _, m := range enriched.Mentions {
+		if m != nil {
+			mentionedIDs = append(mentionedIDs, m.ID)
+		}
+	}
+	p.eventBus.PublishStatusCreated(ctx, events.StatusCreatedEvent{
+		Status:              enriched.Status,
+		Author:              enriched.Author,
+		Mentions:            enriched.Mentions,
+		Tags:                enriched.Tags,
+		Media:               enriched.Media,
+		MentionedAccountIDs: mentionedIDs,
+	})
+}
+
 func (p *inbox) handleCreate(ctx context.Context, activity *Activity, _ string) error {
 	note, err := activity.ObjectNote()
 	if err != nil {
@@ -610,63 +726,22 @@ func (p *inbox) handleCreate(ctx context.Context, activity *Activity, _ string) 
 			return nil
 		}
 	}
-	var inReplyToID *string
-	if note.InReplyTo != nil && *note.InReplyTo != "" {
-		if parent, err := p.statuses.GetByAPID(ctx, *note.InReplyTo); err == nil {
-			inReplyToID = &parent.ID
-		}
-	}
-	mediaIDs := p.storeRemoteMedia(ctx, note.Attachment, author.ID)
-	var contentWarning *string
-	if note.Summary != nil && *note.Summary != "" {
-		contentWarning = note.Summary
-	}
-	apRaw, _ := json.Marshal(note)
-	content := note.Content
-	in := service.CreateStatusFromInboxInput{
-		AccountID:      author.ID,
-		URI:            note.ID,
-		Text:           &content,
-		Content:        &content,
-		ContentWarning: contentWarning,
-		Visibility:     visibility,
-		Language:       noteLanguage(note),
-		InReplyToID:    inReplyToID,
-		APID:           note.ID,
-		ApRaw:          apRaw,
-		Sensitive:      note.Sensitive,
-	}
-	status, err := p.statuses.CreateFromInbox(ctx, in)
+	createInput := p.buildCreateStatusInput(ctx, note, author, visibility)
+	status, err := p.statuses.CreateFromInbox(ctx, createInput.in)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil
 		}
 		return fmt.Errorf("inbox: create status: %w", err)
 	}
-	for _, mediaID := range mediaIDs {
+	for _, mediaID := range createInput.mediaIDs {
 		_ = p.statuses.AttachMediaToStatus(ctx, mediaID, status.ID, author.ID)
 	}
-	if inReplyToID != nil {
-		_ = p.statuses.IncrementRepliesCount(ctx, *inReplyToID)
+	if createInput.inReplyToID != nil {
+		_ = p.statuses.IncrementRepliesCount(ctx, *createInput.inReplyToID)
 	}
 	p.processMentionNotifications(ctx, note.Tag, status.ID, author)
-	enriched, err := p.statuses.GetByIDEnriched(ctx, status.ID)
-	if err == nil {
-		mentionedIDs := make([]string, 0, len(enriched.Mentions))
-		for _, m := range enriched.Mentions {
-			if m != nil {
-				mentionedIDs = append(mentionedIDs, m.ID)
-			}
-		}
-		p.eventBus.PublishStatusCreated(ctx, events.StatusCreatedEvent{
-			Status:              enriched.Status,
-			Author:              enriched.Author,
-			Mentions:            enriched.Mentions,
-			Tags:                enriched.Tags,
-			Media:               enriched.Media,
-			MentionedAccountIDs: mentionedIDs,
-		})
-	}
+	p.publishStatusCreatedEvent(ctx, status.ID)
 	return nil
 }
 
@@ -682,7 +757,7 @@ func (p *inbox) handleAnnounce(ctx context.Context, activity *Activity, _ string
 	}
 	original, err := p.statuses.GetByAPID(ctx, objectID)
 	if err != nil {
-		slog.Debug("inbox: Announce of unknown status", slog.String("object", objectID))
+		slog.DebugContext(ctx, "inbox: Announce of unknown status", slog.String("object", objectID))
 		return fmt.Errorf("inbox: GetByAPID (Announce): %w", err)
 	}
 	actor, err := p.resolveRemoteAccount(ctx, activity.Actor)
@@ -711,7 +786,7 @@ func (p *inbox) handleLike(ctx context.Context, activity *Activity) error {
 	}
 	status, err := p.statuses.GetByAPID(ctx, objectID)
 	if err != nil {
-		slog.Debug("inbox: Like of unknown status", slog.String("object", objectID))
+		slog.DebugContext(ctx, "inbox: Like of unknown status", slog.String("object", objectID))
 		return fmt.Errorf("inbox: GetByAPID (Like): %w", err)
 	}
 	actor, err := p.resolveRemoteAccount(ctx, activity.Actor)
@@ -736,6 +811,31 @@ func (p *inbox) handleLike(ctx context.Context, activity *Activity) error {
 	return nil
 }
 
+// publishStatusDeletedEvent builds StatusEventOpts from enriched status and publishes the deleted event.
+func (p *inbox) publishStatusDeletedEvent(ctx context.Context, status *domain.Status) {
+	enriched, err := p.statuses.GetByIDEnriched(ctx, status.ID)
+	if err != nil || enriched.Status == nil {
+		return
+	}
+	hashtagNames := make([]string, 0, len(enriched.Tags))
+	for _, t := range enriched.Tags {
+		hashtagNames = append(hashtagNames, t.Name)
+	}
+	mentionedIDs := make([]string, 0, len(enriched.Mentions))
+	for _, m := range enriched.Mentions {
+		if m != nil {
+			mentionedIDs = append(mentionedIDs, m.ID)
+		}
+	}
+	p.sseEvents.PublishStatusDeletedRaw(ctx, status.ID, StatusEventOpts{
+		AccountID:           status.AccountID,
+		Visibility:          status.Visibility,
+		Local:               status.Local,
+		HashtagNames:        hashtagNames,
+		MentionedAccountIDs: mentionedIDs,
+	})
+}
+
 func (p *inbox) handleDelete(ctx context.Context, activity *Activity) error {
 	objectType := activity.ObjectType()
 	switch objectType {
@@ -757,30 +857,14 @@ func (p *inbox) handleDelete(ctx context.Context, activity *Activity) error {
 		if err != nil {
 			return fmt.Errorf("inbox: GetByAPID (Delete): %w", err)
 		}
-		statusAuthor, _ := p.accounts.GetByID(ctx, status.AccountID)
-		if statusAuthor != nil && statusAuthor.APID != activity.Actor {
+		statusAuthor, err := p.accounts.GetByID(ctx, status.AccountID)
+		if err != nil {
+			return fmt.Errorf("inbox: GetByID author (Delete): %w", err)
+		}
+		if statusAuthor.APID != activity.Actor {
 			return fmt.Errorf("%w: delete: actor %q is not the author", ErrFatal, activity.Actor)
 		}
-		enriched, _ := p.statuses.GetByIDEnriched(ctx, status.ID)
-		if enriched.Status != nil {
-			hashtagNames := make([]string, 0, len(enriched.Tags))
-			for _, t := range enriched.Tags {
-				hashtagNames = append(hashtagNames, t.Name)
-			}
-			mentionedIDs := make([]string, 0, len(enriched.Mentions))
-			for _, m := range enriched.Mentions {
-				if m != nil {
-					mentionedIDs = append(mentionedIDs, m.ID)
-				}
-			}
-			p.sseEvents.PublishStatusDeletedRaw(ctx, status.ID, StatusEventOpts{
-				AccountID:           status.AccountID,
-				Visibility:          status.Visibility,
-				Local:               status.Local,
-				HashtagNames:        hashtagNames,
-				MentionedAccountIDs: mentionedIDs,
-			})
-		}
+		p.publishStatusDeletedEvent(ctx, status)
 		if delErr := p.statuses.SoftDelete(ctx, status.ID); delErr != nil {
 			return fmt.Errorf("inbox: SoftDelete (Delete): %w", delErr)
 		}
@@ -795,7 +879,7 @@ func (p *inbox) handleDelete(ctx context.Context, activity *Activity) error {
 		}
 		return nil
 	default:
-		slog.Debug("inbox: unsupported Delete object type", slog.String("type", objectType))
+		slog.DebugContext(ctx, "inbox: unsupported Delete object type", slog.String("type", objectType))
 		return nil
 	}
 }
@@ -812,8 +896,11 @@ func (p *inbox) handleUpdate(ctx context.Context, activity *Activity) error {
 		if err != nil {
 			return fmt.Errorf("inbox: GetByAPID (Update Note): %w", err)
 		}
-		author, _ := p.accounts.GetByID(ctx, status.AccountID)
-		if author != nil && author.APID != activity.Actor {
+		author, err := p.accounts.GetByID(ctx, status.AccountID)
+		if err != nil {
+			return fmt.Errorf("inbox: GetByID author (Update Note): %w", err)
+		}
+		if author.APID != activity.Actor {
 			return fmt.Errorf("%w: update: actor is not the author", ErrFatal)
 		}
 		var cw *string
@@ -835,10 +922,13 @@ func (p *inbox) handleUpdate(ctx context.Context, activity *Activity) error {
 		if err != nil {
 			return fmt.Errorf("%w: Update{Person}: %w", ErrFatal, err)
 		}
+		if activity.Actor != actor.ID {
+			return fmt.Errorf("%w: update: actor %q is not the object being updated", ErrFatal, activity.Actor)
+		}
 		_, err = p.syncRemoteActorFromDoc(ctx, actor)
 		return err
 	default:
-		slog.Debug("inbox: unsupported Update object type", slog.String("type", objectType))
+		slog.DebugContext(ctx, "inbox: unsupported Update object type", slog.String("type", objectType))
 		return nil
 	}
 }

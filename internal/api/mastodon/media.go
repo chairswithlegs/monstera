@@ -1,11 +1,17 @@
 package mastodon
 
 import (
+	"errors"
 	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/chairswithlegs/monstera/internal/api"
 	"github.com/chairswithlegs/monstera/internal/api/mastodon/apimodel"
 	"github.com/chairswithlegs/monstera/internal/api/middleware"
+	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
 )
 
@@ -51,4 +57,71 @@ func (h *MediaHandler) POSTMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	out := apimodel.MediaFromDomain(result.Attachment)
 	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// PUTMedia handles PUT /api/v1/media/:id (update description and/or focus).
+func (h *MediaHandler) PUTMedia(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if err := api.ValidateRequiredString(id); err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	// Accept either multipart/form-data or application/x-www-form-urlencoded.
+	// If multipart parsing fails (e.g. not multipart), try ParseForm so urlencoded
+	// bodies are still read. ParseForm errors are ignored so we proceed with nil
+	// description/focus when the body is neither form type.
+	if err := r.ParseMultipartForm(0); err != nil {
+		_ = r.ParseForm()
+	}
+	description := optionalFormString(r, "description")
+	focusX, focusY, err := parseFocusParam(r.FormValue("focus"))
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	attachment, err := h.media.Update(r.Context(), account.ID, id, description, focusX, focusY)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	out := apimodel.MediaFromDomain(attachment)
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+func optionalFormString(r *http.Request, key string) *string {
+	if s := strings.TrimSpace(r.FormValue(key)); s != "" {
+		return &s
+	}
+	return nil
+}
+
+// parseFocusParam parses the "focus" form value ("x,y" in range -1.0 to 1.0).
+// Returns (nil, nil, nil) when s is empty, (focusX, focusY, err) with a validation error on failure.
+func parseFocusParam(s string) (*float64, *float64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil, nil
+	}
+	parts := strings.Split(s, ",")
+	if len(parts) != 2 {
+		return nil, nil, api.NewUnprocessableError("focus must be two comma-separated numbers (x,y) in range -1.0 to 1.0")
+	}
+	x, errX := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+	y, errY := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	if errX != nil || errY != nil {
+		return nil, nil, api.NewUnprocessableError("focus must be two comma-separated numbers (x,y) in range -1.0 to 1.0")
+	}
+	if x < -1 || x > 1 || y < -1 || y > 1 {
+		return nil, nil, api.NewUnprocessableError("focus x and y must be in range -1.0 to 1.0")
+	}
+	return &x, &y, nil
 }

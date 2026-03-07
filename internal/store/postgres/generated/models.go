@@ -53,6 +53,13 @@ type Block struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type Bookmark struct {
+	ID        string             `json:"id"`
+	AccountID string             `json:"account_id"`
+	StatusID  string             `json:"status_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type CustomEmoji struct {
 	ID              string             `json:"id"`
 	Shortcode       string             `json:"shortcode"`
@@ -130,6 +137,20 @@ type KnownInstance struct {
 	SoftwareVersion *string            `json:"software_version"`
 	FirstSeenAt     pgtype.Timestamptz `json:"first_seen_at"`
 	LastSeenAt      pgtype.Timestamptz `json:"last_seen_at"`
+}
+
+type List struct {
+	ID            string             `json:"id"`
+	AccountID     string             `json:"account_id"`
+	Title         string             `json:"title"`
+	RepliesPolicy string             `json:"replies_policy"`
+	Exclusive     bool               `json:"exclusive"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+type ListAccount struct {
+	ListID    string `json:"list_id"`
+	AccountID string `json:"account_id"`
 }
 
 type MediaAttachment struct {
@@ -283,4 +304,15 @@ type User struct {
 	DefaultPrivacy     string             `json:"default_privacy"`
 	DefaultSensitive   bool               `json:"default_sensitive"`
 	DefaultLanguage    string             `json:"default_language"`
+}
+
+type UserFilter struct {
+	ID           string             `json:"id"`
+	AccountID    string             `json:"account_id"`
+	Phrase       string             `json:"phrase"`
+	Context      []string           `json:"context"`
+	WholeWord    bool               `json:"whole_word"`
+	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
+	Irreversible bool               `json:"irreversible"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }

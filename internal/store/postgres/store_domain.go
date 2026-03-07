@@ -297,6 +297,30 @@ func (s *PostgresStore) GetHomeTimeline(ctx context.Context, accountID string, m
 	return out, nil
 }
 
+func (s *PostgresStore) GetFavouritesTimeline(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, *string, error) {
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	dbRows, err := s.q.GetFavouritesTimeline(ctx, db.GetFavouritesTimelineParams{
+		AccountID: accountID,
+		Column2:   cursor,
+		Limit:     int32(limit), //nolint:gosec // clamped by TimelineService before reaching this layer
+	})
+	if err != nil {
+		return nil, nil, mapErr(err)
+	}
+	out := make([]domain.Status, 0, len(dbRows))
+	var nextCursor *string
+	for i, r := range dbRows {
+		out = append(out, FavouritesTimelineRowToDomain(r))
+		if i == len(dbRows)-1 && len(dbRows) == limit {
+			nextCursor = &r.Cursor
+		}
+	}
+	return out, nextCursor, nil
+}
+
 func (s *PostgresStore) GetPublicTimeline(ctx context.Context, localOnly bool, maxID *string, limit int) ([]domain.Status, error) {
 	cursor := noCursorSentinel
 	if maxID != nil && *maxID != "" {
@@ -637,6 +661,20 @@ func (s *PostgresStore) GetMediaAttachment(ctx context.Context, id string) (*dom
 	return &att, nil
 }
 
+func (s *PostgresStore) UpdateMediaAttachment(ctx context.Context, in store.UpdateMediaAttachmentInput) (*domain.MediaAttachment, error) {
+	m, err := s.q.UpdateMediaAttachment(ctx, db.UpdateMediaAttachmentParams{
+		ID:          in.ID,
+		Description: in.Description,
+		Meta:        in.Meta,
+		AccountID:   in.AccountID,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	att := ToDomainMediaAttachment(m)
+	return &att, nil
+}
+
 func (s *PostgresStore) CountFollowers(ctx context.Context, accountID string) (int64, error) {
 	n, err := s.q.CountFollowers(ctx, accountID)
 	return n, mapErr(err)
@@ -816,6 +854,30 @@ func (s *PostgresStore) GetFollowing(ctx context.Context, accountID string, maxI
 	return out, nil
 }
 
+func (s *PostgresStore) GetPendingFollowRequests(ctx context.Context, targetID string, maxID *string, limit int) ([]domain.Account, *string, error) {
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	rows, err := s.q.GetPendingFollowRequestsPaginated(ctx, db.GetPendingFollowRequestsPaginatedParams{
+		TargetID: targetID,
+		Column2:  cursor,
+		Limit:    int32(limit), //nolint:gosec // limit clamped by caller
+	})
+	if err != nil {
+		return nil, nil, mapErr(err)
+	}
+	out := make([]domain.Account, 0, len(rows))
+	var nextCursor *string
+	for i, r := range rows {
+		out = append(out, PendingFollowRequestRowToDomainAccount(r))
+		if i == len(rows)-1 && len(rows) == limit {
+			nextCursor = &r.Cursor
+		}
+	}
+	return out, nextCursor, nil
+}
+
 func (s *PostgresStore) SoftDeleteStatus(ctx context.Context, id string) error {
 	return mapErr(s.q.SoftDeleteStatus(ctx, id))
 }
@@ -892,6 +954,56 @@ func (s *PostgresStore) GetFavouriteByAccountAndStatus(ctx context.Context, acco
 	}
 	d := ToDomainFavourite(f)
 	return &d, nil
+}
+
+func (s *PostgresStore) CreateBookmark(ctx context.Context, in store.CreateBookmarkInput) error {
+	return mapErr(s.q.CreateBookmark(ctx, db.CreateBookmarkParams{
+		ID:        in.ID,
+		AccountID: in.AccountID,
+		StatusID:  in.StatusID,
+	}))
+}
+
+func (s *PostgresStore) DeleteBookmark(ctx context.Context, accountID, statusID string) error {
+	return mapErr(s.q.DeleteBookmark(ctx, db.DeleteBookmarkParams{
+		AccountID: accountID,
+		StatusID:  statusID,
+	}))
+}
+
+func (s *PostgresStore) GetBookmarks(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, *string, error) {
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	rows, err := s.q.GetBookmarksTimeline(ctx, db.GetBookmarksTimelineParams{
+		AccountID: accountID,
+		Column2:   cursor,
+		Limit:     int32(limit), //nolint:gosec // clamped by caller
+	})
+	if err != nil {
+		return nil, nil, mapErr(err)
+	}
+	out := make([]domain.Status, 0, len(rows))
+	var nextCursor *string
+	for i, r := range rows {
+		out = append(out, BookmarksTimelineRowToDomain(r))
+		if i == len(rows)-1 && len(rows) == limit {
+			nextCursor = &r.Cursor
+		}
+	}
+	return out, nextCursor, nil
+}
+
+func (s *PostgresStore) IsBookmarked(ctx context.Context, accountID, statusID string) (bool, error) {
+	ok, err := s.q.IsBookmarked(ctx, db.IsBookmarkedParams{
+		AccountID: accountID,
+		StatusID:  statusID,
+	})
+	if err != nil {
+		return false, mapErr(err)
+	}
+	return ok, nil
 }
 
 func (s *PostgresStore) IncrementFavouritesCount(ctx context.Context, statusID string) error {
@@ -1364,6 +1476,175 @@ func (s *PostgresStore) ListLocalAccounts(ctx context.Context, limit, offset int
 	return out, nil
 }
 
+func (s *PostgresStore) CreateUserFilter(ctx context.Context, in store.CreateUserFilterInput) (*domain.UserFilter, error) {
+	u, err := s.q.CreateUserFilter(ctx, db.CreateUserFilterParams{
+		ID:           in.ID,
+		AccountID:    in.AccountID,
+		Phrase:       in.Phrase,
+		Context:      in.Context,
+		WholeWord:    in.WholeWord,
+		ExpiresAt:    timePtrToPg(in.ExpiresAt),
+		Irreversible: in.Irreversible,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainUserFilter(u)
+	return &d, nil
+}
+
+func (s *PostgresStore) GetUserFilterByID(ctx context.Context, id string) (*domain.UserFilter, error) {
+	u, err := s.q.GetUserFilter(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainUserFilter(u)
+	return &d, nil
+}
+
+func (s *PostgresStore) ListUserFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error) {
+	rows, err := s.q.ListUserFilters(ctx, accountID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.UserFilter, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainUserFilter(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) UpdateUserFilter(ctx context.Context, in store.UpdateUserFilterInput) (*domain.UserFilter, error) {
+	u, err := s.q.UpdateUserFilter(ctx, db.UpdateUserFilterParams{
+		ID:           in.ID,
+		Phrase:       in.Phrase,
+		Context:      in.Context,
+		WholeWord:    in.WholeWord,
+		ExpiresAt:    timePtrToPg(in.ExpiresAt),
+		Irreversible: in.Irreversible,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainUserFilter(u)
+	return &d, nil
+}
+
+func (s *PostgresStore) DeleteUserFilter(ctx context.Context, id string) error {
+	return mapErr(s.q.DeleteUserFilter(ctx, id))
+}
+
+func (s *PostgresStore) GetActiveUserFiltersByContext(ctx context.Context, accountID, filterContext string) ([]domain.UserFilter, error) {
+	rows, err := s.q.GetActiveUserFiltersByContext(ctx, db.GetActiveUserFiltersByContextParams{
+		AccountID: accountID,
+		Column2:   filterContext,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.UserFilter, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainUserFilter(r))
+	}
+	return out, nil
+}
+
 func (s *PostgresStore) DeleteFollowsByDomain(ctx context.Context, domain string) error {
 	return mapErr(s.q.DeleteFollowsByDomain(ctx, &domain))
+}
+
+func (s *PostgresStore) CreateList(ctx context.Context, in store.CreateListInput) (*domain.List, error) {
+	l, err := s.q.CreateList(ctx, db.CreateListParams{
+		ID:            in.ID,
+		AccountID:     in.AccountID,
+		Title:         in.Title,
+		RepliesPolicy: in.RepliesPolicy,
+		Exclusive:     in.Exclusive,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainList(l)
+	return &d, nil
+}
+
+func (s *PostgresStore) GetListByID(ctx context.Context, id string) (*domain.List, error) {
+	l, err := s.q.GetListByID(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainList(l)
+	return &d, nil
+}
+
+func (s *PostgresStore) ListLists(ctx context.Context, accountID string) ([]domain.List, error) {
+	rows, err := s.q.ListListsByAccount(ctx, accountID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.List, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainList(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) UpdateList(ctx context.Context, in store.UpdateListInput) (*domain.List, error) {
+	l, err := s.q.UpdateList(ctx, db.UpdateListParams{
+		ID:            in.ID,
+		Title:         in.Title,
+		RepliesPolicy: in.RepliesPolicy,
+		Exclusive:     in.Exclusive,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainList(l)
+	return &d, nil
+}
+
+func (s *PostgresStore) DeleteList(ctx context.Context, id string) error {
+	return mapErr(s.q.DeleteList(ctx, id))
+}
+
+func (s *PostgresStore) ListListAccountIDs(ctx context.Context, listID string) ([]string, error) {
+	ids, err := s.q.ListListAccountIDs(ctx, listID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return ids, nil
+}
+
+func (s *PostgresStore) AddAccountToList(ctx context.Context, listID, accountID string) error {
+	return mapErr(s.q.AddAccountToList(ctx, db.AddAccountToListParams{
+		ListID:    listID,
+		AccountID: accountID,
+	}))
+}
+
+func (s *PostgresStore) RemoveAccountFromList(ctx context.Context, listID, accountID string) error {
+	return mapErr(s.q.RemoveAccountFromList(ctx, db.RemoveAccountFromListParams{
+		ListID:    listID,
+		AccountID: accountID,
+	}))
+}
+
+func (s *PostgresStore) GetListTimeline(ctx context.Context, listID string, maxID *string, limit int) ([]domain.Status, error) {
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	rows, err := s.q.GetListTimeline(ctx, db.GetListTimelineParams{
+		ListID:  listID,
+		Column2: cursor,
+		Limit:   int32(limit), //nolint:gosec // clamped by caller
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.Status, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainStatus(r))
+	}
+	return out, nil
 }

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -55,6 +56,9 @@ type StatusService interface {
 	GetContext(ctx context.Context, statusID string, viewerAccountID *string) (ContextResult, error)
 	GetFavouritedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]*domain.Account, error)
 	GetRebloggedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]*domain.Account, error)
+	Bookmark(ctx context.Context, accountID, statusID string) (CreateResult, error)
+	Unbookmark(ctx context.Context, accountID, statusID string) (CreateResult, error)
+	IsBookmarked(ctx context.Context, accountID, statusID string) (bool, error)
 }
 
 type statusService struct {
@@ -808,6 +812,38 @@ func (svc *statusService) Unfavourite(ctx context.Context, accountID, statusID s
 	_ = svc.store.DeleteFavourite(ctx, accountID, statusID)
 	_ = svc.store.DecrementFavouritesCount(ctx, statusID)
 	return svc.GetByIDEnriched(ctx, statusID)
+}
+
+// Bookmark adds the status to the account's bookmarks. Idempotent if already bookmarked.
+func (svc *statusService) Bookmark(ctx context.Context, accountID, statusID string) (CreateResult, error) {
+	st, err := svc.store.GetStatusByID(ctx, statusID)
+	if err != nil || st.DeletedAt != nil {
+		return CreateResult{}, fmt.Errorf("Bookmark: %w", domain.ErrNotFound)
+	}
+	err = svc.store.CreateBookmark(ctx, store.CreateBookmarkInput{
+		ID:        uid.New(),
+		AccountID: accountID,
+		StatusID:  statusID,
+	})
+	if err != nil && !errors.Is(err, domain.ErrConflict) {
+		return CreateResult{}, fmt.Errorf("CreateBookmark: %w", err)
+	}
+	return svc.GetByIDEnriched(ctx, statusID)
+}
+
+// Unbookmark removes the status from the account's bookmarks.
+func (svc *statusService) Unbookmark(ctx context.Context, accountID, statusID string) (CreateResult, error) {
+	_ = svc.store.DeleteBookmark(ctx, accountID, statusID)
+	return svc.GetByIDEnriched(ctx, statusID)
+}
+
+// IsBookmarked returns whether the account has bookmarked the status.
+func (svc *statusService) IsBookmarked(ctx context.Context, accountID, statusID string) (bool, error) {
+	ok, err := svc.store.IsBookmarked(ctx, accountID, statusID)
+	if err != nil {
+		return false, fmt.Errorf("IsBookmarked: %w", err)
+	}
+	return ok, nil
 }
 
 // ContextResult holds ancestors and descendants for a status thread.

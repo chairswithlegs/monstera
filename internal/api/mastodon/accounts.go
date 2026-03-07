@@ -358,7 +358,7 @@ func (h *AccountsHandler) GETAccountStatuses(w http.ResponseWriter, r *http.Requ
 		for j := range e.Media {
 			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
 		}
-		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain))
+		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain, false))
 	}
 	firstID, lastID := firstLastIDsFromAccountStatuses(enriched)
 	if link := LinkHeader(r.URL.String(), firstID, lastID); link != "" {

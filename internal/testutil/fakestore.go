@@ -443,6 +443,10 @@ func (f *FakeStore) GetHomeTimeline(ctx context.Context, accountID string, maxID
 	return out, nil
 }
 
+func (f *FakeStore) GetFavouritesTimeline(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, *string, error) {
+	return nil, nil, nil
+}
+
 func (f *FakeStore) GetPublicTimeline(ctx context.Context, localOnly bool, maxID *string, limit int) ([]domain.Status, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -897,6 +901,105 @@ func (f *FakeStore) GetFollowers(ctx context.Context, accountID string, maxID *s
 func (f *FakeStore) GetFollowing(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error) {
 	return nil, nil
 }
+
+func (f *FakeStore) GetPendingFollowRequests(ctx context.Context, targetID string, maxID *string, limit int) ([]domain.Account, *string, error) {
+	return nil, nil, nil
+}
+
+func (f *FakeStore) CreateBookmark(ctx context.Context, in store.CreateBookmarkInput) error {
+	return nil
+}
+
+func (f *FakeStore) DeleteBookmark(ctx context.Context, accountID, statusID string) error {
+	return nil
+}
+
+func (f *FakeStore) GetBookmarks(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, *string, error) {
+	return nil, nil, nil
+}
+
+func (f *FakeStore) IsBookmarked(ctx context.Context, accountID, statusID string) (bool, error) {
+	return false, nil
+}
+
+func (f *FakeStore) CreateList(ctx context.Context, in store.CreateListInput) (*domain.List, error) {
+	l := &domain.List{
+		ID:            in.ID,
+		AccountID:     in.AccountID,
+		Title:         in.Title,
+		RepliesPolicy: in.RepliesPolicy,
+		Exclusive:     in.Exclusive,
+		CreatedAt:     time.Now().UTC(),
+	}
+	return l, nil
+}
+
+func (f *FakeStore) GetListByID(ctx context.Context, id string) (*domain.List, error) {
+	return nil, domain.ErrNotFound
+}
+
+func (f *FakeStore) ListLists(ctx context.Context, accountID string) ([]domain.List, error) {
+	return nil, nil
+}
+
+func (f *FakeStore) UpdateList(ctx context.Context, in store.UpdateListInput) (*domain.List, error) {
+	return nil, domain.ErrNotFound
+}
+
+func (f *FakeStore) DeleteList(ctx context.Context, id string) error {
+	return nil
+}
+
+func (f *FakeStore) ListListAccountIDs(ctx context.Context, listID string) ([]string, error) {
+	return nil, nil
+}
+
+func (f *FakeStore) AddAccountToList(ctx context.Context, listID, accountID string) error {
+	return nil
+}
+
+func (f *FakeStore) RemoveAccountFromList(ctx context.Context, listID, accountID string) error {
+	return nil
+}
+
+func (f *FakeStore) GetListTimeline(ctx context.Context, listID string, maxID *string, limit int) ([]domain.Status, error) {
+	return nil, nil
+}
+
+func (f *FakeStore) CreateUserFilter(ctx context.Context, in store.CreateUserFilterInput) (*domain.UserFilter, error) {
+	uf := &domain.UserFilter{
+		ID:           in.ID,
+		AccountID:    in.AccountID,
+		Phrase:       in.Phrase,
+		Context:      in.Context,
+		WholeWord:    in.WholeWord,
+		ExpiresAt:    in.ExpiresAt,
+		Irreversible: in.Irreversible,
+		CreatedAt:    time.Now().UTC(),
+	}
+	return uf, nil
+}
+
+func (f *FakeStore) GetUserFilterByID(ctx context.Context, id string) (*domain.UserFilter, error) {
+	return nil, domain.ErrNotFound
+}
+
+func (f *FakeStore) ListUserFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error) {
+	return nil, nil
+}
+
+func (f *FakeStore) UpdateUserFilter(ctx context.Context, in store.UpdateUserFilterInput) (*domain.UserFilter, error) {
+	return nil, domain.ErrNotFound
+}
+
+func (f *FakeStore) DeleteUserFilter(ctx context.Context, id string) error {
+	return nil
+}
+
+func (f *FakeStore) GetActiveUserFiltersByContext(ctx context.Context, accountID, filterContext string) ([]domain.UserFilter, error) {
+	return nil, nil
+}
+
 func (f *FakeStore) SoftDeleteStatus(ctx context.Context, id string) error {
 	return f.DeleteStatus(ctx, id)
 }
@@ -1011,6 +1114,26 @@ func (f *FakeStore) CreateMediaAttachment(ctx context.Context, in store.CreateMe
 	f.mediaByID[in.ID] = att
 	return att, nil
 }
+
+func (f *FakeStore) UpdateMediaAttachment(ctx context.Context, in store.UpdateMediaAttachmentInput) (*domain.MediaAttachment, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	att, ok := f.mediaByID[in.ID]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	if att.AccountID != in.AccountID {
+		return nil, domain.ErrNotFound
+	}
+	if in.Description != nil {
+		att.Description = in.Description
+	}
+	if in.Meta != nil {
+		att.Meta = json.RawMessage(in.Meta)
+	}
+	return att, nil
+}
+
 func (f *FakeStore) CreateStatusEdit(ctx context.Context, in store.CreateStatusEditInput) error {
 	return nil
 }

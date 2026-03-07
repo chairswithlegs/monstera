@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createFavourite = `-- name: CreateFavourite :one
@@ -89,6 +91,92 @@ func (q *Queries) GetFavouriteByAccountAndStatus(ctx context.Context, arg GetFav
 		&i.ApID,
 	)
 	return i, err
+}
+
+const getFavouritesTimeline = `-- name: GetFavouritesTimeline :many
+SELECT f.id AS cursor, s.id, s.uri, s.account_id, s.text, s.content, s.content_warning, s.visibility, s.language, s.in_reply_to_id, s.reblog_of_id, s.ap_id, s.ap_raw, s.sensitive, s.local, s.edited_at, s.replies_count, s.reblogs_count, s.favourites_count, s.created_at, s.updated_at, s.deleted_at, s.in_reply_to_account_id
+FROM favourites f
+INNER JOIN statuses s ON s.id = f.status_id
+WHERE f.account_id = $1 AND s.deleted_at IS NULL
+  AND ($2::text IS NULL OR f.id < $2)
+ORDER BY f.id DESC
+LIMIT $3
+`
+
+type GetFavouritesTimelineParams struct {
+	AccountID string `json:"account_id"`
+	Column2   string `json:"column_2"`
+	Limit     int32  `json:"limit"`
+}
+
+type GetFavouritesTimelineRow struct {
+	Cursor             string             `json:"cursor"`
+	ID                 string             `json:"id"`
+	Uri                string             `json:"uri"`
+	AccountID          string             `json:"account_id"`
+	Text               *string            `json:"text"`
+	Content            *string            `json:"content"`
+	ContentWarning     *string            `json:"content_warning"`
+	Visibility         string             `json:"visibility"`
+	Language           *string            `json:"language"`
+	InReplyToID        *string            `json:"in_reply_to_id"`
+	ReblogOfID         *string            `json:"reblog_of_id"`
+	ApID               string             `json:"ap_id"`
+	ApRaw              []byte             `json:"ap_raw"`
+	Sensitive          bool               `json:"sensitive"`
+	Local              bool               `json:"local"`
+	EditedAt           pgtype.Timestamptz `json:"edited_at"`
+	RepliesCount       int32              `json:"replies_count"`
+	ReblogsCount       int32              `json:"reblogs_count"`
+	FavouritesCount    int32              `json:"favourites_count"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `json:"deleted_at"`
+	InReplyToAccountID *string            `json:"in_reply_to_account_id"`
+}
+
+func (q *Queries) GetFavouritesTimeline(ctx context.Context, arg GetFavouritesTimelineParams) ([]GetFavouritesTimelineRow, error) {
+	rows, err := q.db.Query(ctx, getFavouritesTimeline, arg.AccountID, arg.Column2, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetFavouritesTimelineRow{}
+	for rows.Next() {
+		var i GetFavouritesTimelineRow
+		if err := rows.Scan(
+			&i.Cursor,
+			&i.ID,
+			&i.Uri,
+			&i.AccountID,
+			&i.Text,
+			&i.Content,
+			&i.ContentWarning,
+			&i.Visibility,
+			&i.Language,
+			&i.InReplyToID,
+			&i.ReblogOfID,
+			&i.ApID,
+			&i.ApRaw,
+			&i.Sensitive,
+			&i.Local,
+			&i.EditedAt,
+			&i.RepliesCount,
+			&i.ReblogsCount,
+			&i.FavouritesCount,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.InReplyToAccountID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getStatusFavouritedBy = `-- name: GetStatusFavouritedBy :many

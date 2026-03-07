@@ -150,6 +150,11 @@ func (h *StatusesHandler) GETStatuses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := createResultToAPIModel(result, h.instanceDomain)
+	if account := middleware.AccountFromContext(r.Context()); account != nil {
+		if ok, err := h.statuses.IsBookmarked(r.Context(), account.ID, id); err == nil {
+			out.Bookmarked = ok
+		}
+	}
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -324,6 +329,58 @@ func (h *StatusesHandler) POSTUnfavourite(w http.ResponseWriter, r *http.Request
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
+// POSTBookmark handles POST /api/v1/statuses/:id/bookmark.
+func (h *StatusesHandler) POSTBookmark(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	result, err := h.statuses.Bookmark(r.Context(), account.ID, id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	out := createResultToAPIModel(result, h.instanceDomain)
+	out.Bookmarked = true
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// POSTUnbookmark handles POST /api/v1/statuses/:id/unbookmark.
+func (h *StatusesHandler) POSTUnbookmark(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	result, err := h.statuses.Unbookmark(r.Context(), account.ID, id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	out := createResultToAPIModel(result, h.instanceDomain)
+	out.Bookmarked = false
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
 // GETContext handles GET /api/v1/statuses/:id/context.
 func (h *StatusesHandler) GETContext(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -453,5 +510,5 @@ func createResultToAPIModel(result service.CreateResult, instanceDomain string) 
 	for i := range result.Media {
 		mediaResp = append(mediaResp, apimodel.MediaFromDomain(&result.Media[i]))
 	}
-	return apimodel.ToStatus(result.Status, authorAcc, mentionsResp, tagsResp, mediaResp, instanceDomain)
+	return apimodel.ToStatus(result.Status, authorAcc, mentionsResp, tagsResp, mediaResp, instanceDomain, false)
 }

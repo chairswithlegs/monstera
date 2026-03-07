@@ -200,6 +200,12 @@ func runServe(_ *cobra.Command, _ []string) error {
 	userHandler := monstera.NewUserHandler(accountSvc)
 
 	moderationSvc := service.NewModerationService(s)
+	reportsHandler := mastodon.NewReportsHandler(moderationSvc, accountSvc, cfg.InstanceDomain)
+	followRequestsHandler := mastodon.NewFollowRequestsHandler(followSvc, accountSvc, cfg.InstanceDomain)
+	listSvc := service.NewListService(s)
+	listsHandler := mastodon.NewListsHandler(listSvc, accountSvc, cfg.InstanceDomain)
+	userFilterSvc := service.NewUserFilterService(s)
+	filtersHandler := mastodon.NewFiltersHandler(userFilterSvc)
 	registrationSvc := service.NewRegistrationService(s, registrationMailer, registrationMailer, instanceBaseURL, cfg.InstanceName)
 	serverFilterSvc := service.NewServerFilterService(s)
 	moderatorDashboard := monstera.NewModeratorDashboardHandler(instanceSvc, moderationSvc)
@@ -225,6 +231,10 @@ func runServe(_ *cobra.Command, _ []string) error {
 		Media:                  mediaHandler,
 		Search:                 searchHandler,
 		Streaming:              streamingHandler,
+		Reports:                reportsHandler,
+		FollowRequests:         followRequestsHandler,
+		Lists:                  listsHandler,
+		Filters:                filtersHandler,
 		WebFinger:              webFingerHandler,
 		NodeInfoPtr:            nodeInfoPtrHandler,
 		NodeInfo:               nodeInfoHandler,

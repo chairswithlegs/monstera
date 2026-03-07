@@ -34,6 +34,33 @@ func timePtrToPg(t *time.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: *t, Valid: true}
 }
 
+// ToDomainUserFilter converts a sqlc db.UserFilter to a domain.UserFilter.
+func ToDomainUserFilter(u db.UserFilter) domain.UserFilter {
+	d := domain.UserFilter{
+		ID:           u.ID,
+		AccountID:    u.AccountID,
+		Phrase:       u.Phrase,
+		Context:      u.Context,
+		WholeWord:    u.WholeWord,
+		Irreversible: u.Irreversible,
+		CreatedAt:    pgTime(u.CreatedAt),
+	}
+	d.ExpiresAt = pgTimePtr(u.ExpiresAt)
+	return d
+}
+
+// ToDomainList converts a sqlc db.List to a domain.List.
+func ToDomainList(l db.List) domain.List {
+	return domain.List{
+		ID:            l.ID,
+		AccountID:     l.AccountID,
+		Title:         l.Title,
+		RepliesPolicy: l.RepliesPolicy,
+		Exclusive:     l.Exclusive,
+		CreatedAt:     pgTime(l.CreatedAt),
+	}
+}
+
 // ToDomainAccount converts a sqlc db.Account to a domain.Account.
 func ToDomainAccount(a db.Account) domain.Account {
 	d := domain.Account{
@@ -68,6 +95,38 @@ func ToDomainAccount(a db.Account) domain.Account {
 		d.Fields = json.RawMessage(a.Fields)
 	}
 	return d
+}
+
+// PendingFollowRequestRowToDomainAccount converts GetPendingFollowRequestsPaginatedRow to domain.Account.
+func PendingFollowRequestRowToDomainAccount(r db.GetPendingFollowRequestsPaginatedRow) domain.Account {
+	a := db.Account{
+		ID:             r.ID,
+		Username:       r.Username,
+		Domain:         r.Domain,
+		DisplayName:    r.DisplayName,
+		Note:           r.Note,
+		PublicKey:      r.PublicKey,
+		PrivateKey:     r.PrivateKey,
+		InboxUrl:       r.InboxUrl,
+		OutboxUrl:      r.OutboxUrl,
+		FollowersUrl:   r.FollowersUrl,
+		FollowingUrl:   r.FollowingUrl,
+		ApID:           r.ApID,
+		ApRaw:          r.ApRaw,
+		Bot:            r.Bot,
+		Locked:         r.Locked,
+		Suspended:      r.Suspended,
+		Silenced:       r.Silenced,
+		CreatedAt:      r.CreatedAt,
+		UpdatedAt:      r.UpdatedAt,
+		AvatarMediaID:  r.AvatarMediaID,
+		HeaderMediaID:  r.HeaderMediaID,
+		FollowersCount: r.FollowersCount,
+		FollowingCount: r.FollowingCount,
+		StatusesCount:  r.StatusesCount,
+		Fields:         r.Fields,
+	}
+	return ToDomainAccount(a)
 }
 
 // ToDomainStatus converts a sqlc db.Status to a domain.Status.
@@ -144,6 +203,26 @@ func AncestorRowToDomain(r db.GetStatusAncestorsRow) domain.Status {
 
 // DescendantRowToDomain converts GetStatusDescendantsRow to domain.Status.
 func DescendantRowToDomain(r db.GetStatusDescendantsRow) domain.Status {
+	return statusRowToDomain(
+		r.ID, r.Uri, r.AccountID, r.Text, r.Content, r.ContentWarning,
+		r.Visibility, r.Language, r.InReplyToID, r.ReblogOfID, r.ApID, r.ApRaw,
+		r.Sensitive, r.Local, r.EditedAt, r.CreatedAt, r.UpdatedAt, r.DeletedAt,
+		r.RepliesCount, r.ReblogsCount, r.FavouritesCount, r.InReplyToAccountID,
+	)
+}
+
+// FavouritesTimelineRowToDomain converts GetFavouritesTimelineRow to domain.Status.
+func FavouritesTimelineRowToDomain(r db.GetFavouritesTimelineRow) domain.Status {
+	return statusRowToDomain(
+		r.ID, r.Uri, r.AccountID, r.Text, r.Content, r.ContentWarning,
+		r.Visibility, r.Language, r.InReplyToID, r.ReblogOfID, r.ApID, r.ApRaw,
+		r.Sensitive, r.Local, r.EditedAt, r.CreatedAt, r.UpdatedAt, r.DeletedAt,
+		r.RepliesCount, r.ReblogsCount, r.FavouritesCount, r.InReplyToAccountID,
+	)
+}
+
+// BookmarksTimelineRowToDomain converts GetBookmarksTimelineRow to domain.Status.
+func BookmarksTimelineRowToDomain(r db.GetBookmarksTimelineRow) domain.Status {
 	return statusRowToDomain(
 		r.ID, r.Uri, r.AccountID, r.Text, r.Content, r.ContentWarning,
 		r.Visibility, r.Language, r.InReplyToID, r.ReblogOfID, r.ApID, r.ApRaw,

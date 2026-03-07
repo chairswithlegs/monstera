@@ -130,3 +130,37 @@ func TestTimelinesHandler_GETTag(t *testing.T) {
 		assert.NotNil(t, body)
 	})
 }
+
+func TestTimelinesHandler_GETFavourites(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	timelineSvc := service.NewTimelineService(st)
+	handler := NewTimelinesHandler(timelineSvc, "example.com")
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/favourites", nil)
+		rec := httptest.NewRecorder()
+		handler.GETFavourites(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("authenticated returns 200 and empty array", func(t *testing.T) {
+		acc, err := accountSvc.Register(ctx, service.RegisterInput{
+			Username:     "alice",
+			Email:        "alice@example.com",
+			PasswordHash: "hash",
+			Role:         domain.RoleUser,
+		})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/favourites", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		rec := httptest.NewRecorder()
+		handler.GETFavourites(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body []any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Empty(t, body)
+	})
+}

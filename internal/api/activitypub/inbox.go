@@ -77,8 +77,7 @@ func (h *InboxHandler) POSTInbox(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	slog.DebugContext(r.Context(), "inbox: received activity",
-		slog.String("type", activity.Type), slog.String("id", activity.ID), slog.String("actor", activity.Actor))
+
 	err = h.inbox.Process(r.Context(), &activity)
 	if err != nil {
 		if errors.Is(err, ap.ErrFatal) {

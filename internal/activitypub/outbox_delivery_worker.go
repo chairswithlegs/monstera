@@ -120,6 +120,8 @@ func (w *outboxDeliveryWorker) start(ctx context.Context) error {
 // publish sends a delivery message to the stream for processing.
 // activityType is used as the subject suffix (e.g. "create" -> "federation.deliver.create").
 func (w *outboxDeliveryWorker) publish(ctx context.Context, activityType string, msg outboxDeliveryMessage) (err error) {
+	slog.DebugContext(ctx, "outbox delivery worker: publishing message", slog.String("activity_type", activityType), slog.String("activity_id", msg.ActivityID))
+
 	subject := subjectPrefixDeliver + strings.ToLower(activityType)
 
 	defer func() {
@@ -142,6 +144,8 @@ func (w *outboxDeliveryWorker) publish(ctx context.Context, activityType string,
 }
 
 func (w *outboxDeliveryWorker) processMessage(ctx context.Context, msg jetstream.Msg) {
+	slog.DebugContext(ctx, "outbox delivery worker: processing message", slog.String("subject", msg.Subject()))
+
 	var delivery outboxDeliveryMessage
 	if err := json.Unmarshal(msg.Data(), &delivery); err != nil {
 		slog.Warn("activitypub worker: invalid payload", slog.Any("error", err))

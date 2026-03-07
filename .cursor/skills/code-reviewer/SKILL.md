@@ -24,9 +24,12 @@ Reviews uncommitted changes in the workspace, then runs linter and tests.
 
 ### 2. Code quality
 
-- **Errors**: Use `%w` when wrapping; never `%v`. Sentinels in owning package (e.g. `internal/domain/errors.go`). Store translates `pgx.ErrNoRows` → `domain.ErrNotFound`; unique violations → `domain.ErrConflict`. No double logging (service/store return; handler logs in `HandleError`).
-- **Style**: No narrative comments; use `slog` for logging, no `fmt.Printf`/`log.Println`.
-- **Handlers**: Pattern `svc call → if err { api.HandleError(...); return }; write response`.
+- **Correctness**: Does the code achieve its stated purpose without bugs or logical errors?
+- **Maintainability**: Is the code clean, well-structured, and easy to understand and modify in the future? Consider factors like code clarity, modularity, and adherence to established design patterns.
+- **Readability**: Is the code well-commented (where necessary) and consistently formatted according to our project's coding style guidelines?
+- **Efficiency**: Are there any obvious performance bottlenecks or resource inefficiencies introduced by the changes?
+- **Security**: Are there any potential security vulnerabilities or insecure coding practices?
+- **Edge Cases and Error Handling**: Does the code appropriately handle edge cases and potential errors?
 
 ### 3. Tests
 

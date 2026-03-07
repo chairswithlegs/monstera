@@ -428,3 +428,95 @@ func (q *Queries) GetPendingFollowRequests(ctx context.Context, targetID string)
 	}
 	return items, nil
 }
+
+const getPendingFollowRequestsPaginated = `-- name: GetPendingFollowRequestsPaginated :many
+SELECT f.id AS cursor, a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.ap_raw, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields
+FROM follows f
+INNER JOIN accounts a ON a.id = f.account_id
+WHERE f.target_id = $1 AND f.state = 'pending'
+  AND ($2::text IS NULL OR f.id < $2)
+ORDER BY f.id DESC
+LIMIT $3
+`
+
+type GetPendingFollowRequestsPaginatedParams struct {
+	TargetID string `json:"target_id"`
+	Column2  string `json:"column_2"`
+	Limit    int32  `json:"limit"`
+}
+
+type GetPendingFollowRequestsPaginatedRow struct {
+	Cursor         string             `json:"cursor"`
+	ID             string             `json:"id"`
+	Username       string             `json:"username"`
+	Domain         *string            `json:"domain"`
+	DisplayName    *string            `json:"display_name"`
+	Note           *string            `json:"note"`
+	PublicKey      string             `json:"public_key"`
+	PrivateKey     *string            `json:"private_key"`
+	InboxUrl       string             `json:"inbox_url"`
+	OutboxUrl      string             `json:"outbox_url"`
+	FollowersUrl   string             `json:"followers_url"`
+	FollowingUrl   string             `json:"following_url"`
+	ApID           string             `json:"ap_id"`
+	ApRaw          []byte             `json:"ap_raw"`
+	Bot            bool               `json:"bot"`
+	Locked         bool               `json:"locked"`
+	Suspended      bool               `json:"suspended"`
+	Silenced       bool               `json:"silenced"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	AvatarMediaID  *string            `json:"avatar_media_id"`
+	HeaderMediaID  *string            `json:"header_media_id"`
+	FollowersCount int32              `json:"followers_count"`
+	FollowingCount int32              `json:"following_count"`
+	StatusesCount  int32              `json:"statuses_count"`
+	Fields         []byte             `json:"fields"`
+}
+
+func (q *Queries) GetPendingFollowRequestsPaginated(ctx context.Context, arg GetPendingFollowRequestsPaginatedParams) ([]GetPendingFollowRequestsPaginatedRow, error) {
+	rows, err := q.db.Query(ctx, getPendingFollowRequestsPaginated, arg.TargetID, arg.Column2, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetPendingFollowRequestsPaginatedRow{}
+	for rows.Next() {
+		var i GetPendingFollowRequestsPaginatedRow
+		if err := rows.Scan(
+			&i.Cursor,
+			&i.ID,
+			&i.Username,
+			&i.Domain,
+			&i.DisplayName,
+			&i.Note,
+			&i.PublicKey,
+			&i.PrivateKey,
+			&i.InboxUrl,
+			&i.OutboxUrl,
+			&i.FollowersUrl,
+			&i.FollowingUrl,
+			&i.ApID,
+			&i.ApRaw,
+			&i.Bot,
+			&i.Locked,
+			&i.Suspended,
+			&i.Silenced,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AvatarMediaID,
+			&i.HeaderMediaID,
+			&i.FollowersCount,
+			&i.FollowingCount,
+			&i.StatusesCount,
+			&i.Fields,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
