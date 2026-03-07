@@ -11,18 +11,19 @@ Runs two Monstera instances (**app-a** and **app-b**) behind Caddy so you can te
 
 ## Start the stack
 
-From this directory (`federation-testing`):
+From the repo root:
 
 ```bash
-docker compose up -d
+docker compose -f federation-testing/docker-compose.yaml up --build -d
 ```
 
-## Migrations and seed
+**Init containers** (`init-a` and `init-b`) run automatically before the app servers start: they apply migrations and seed each database (default users: admin, moderator, alice; password: `password`). No separate migrate/seed step is required.
 
-From this directory, run the script:
+To **reset the databases** and start from scratch (drops all data), remove volumes then bring the stack back up:
 
 ```bash
-./migrate-and-seed.sh
+docker compose -f federation-testing/docker-compose.yaml down -v
+docker compose -f federation-testing/docker-compose.yaml up --build -d
 ```
 
 ## Use
@@ -35,7 +36,7 @@ Open your browser and navigate to:
 
 ## Use a client to connect to the app
 
-Using a client such a Pinafore or tusky, connect to the app at monstera.local. Federation should work between the two instances.
+The docker compose stack brings up a local instance of Elk at localhost:5314. Navigate to the URL and trying signing in. Federation should work between the two instances.
 
 ## TLS and self-signed certs
 
@@ -44,7 +45,5 @@ Caddy uses `local_certs`, so it serves self-signed certificates for `monstera.lo
 ## Stop
 
 ```bash
-docker compose down
+docker compose -f federation-testing/docker-compose.yaml down
 ```
-
-Data in named volumes (`pg_a_data`, `pg_b_data`, `app_a_media`, `app_b_media`, `nats_data`) persists. Use `docker compose down -v` to remove volumes.
