@@ -125,6 +125,22 @@ func (s *PostgresStore) GetAccountByID(ctx context.Context, id string) (*domain.
 	return &acc, nil
 }
 
+func (s *PostgresStore) GetAccountsByIDs(ctx context.Context, ids []string) ([]*domain.Account, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	dbAccs, err := s.q.GetAccountsByIDs(ctx, ids)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]*domain.Account, 0, len(dbAccs))
+	for i := range dbAccs {
+		acc := ToDomainAccount(dbAccs[i])
+		out = append(out, &acc)
+	}
+	return out, nil
+}
+
 func (s *PostgresStore) GetLocalAccountByUsername(ctx context.Context, username string) (*domain.Account, error) {
 	dbAcc, err := s.q.GetLocalAccountByUsername(ctx, username)
 	if err != nil {

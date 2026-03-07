@@ -510,5 +510,5 @@ func createResultToAPIModel(result service.CreateResult, instanceDomain string) 
 	for i := range result.Media {
 		mediaResp = append(mediaResp, apimodel.MediaFromDomain(&result.Media[i]))
 	}
-	return apimodel.ToStatus(result.Status, authorAcc, mentionsResp, tagsResp, mediaResp, instanceDomain, false)
+	return apimodel.ToStatus(result.Status, authorAcc, mentionsResp, tagsResp, mediaResp, instanceDomain)
 }

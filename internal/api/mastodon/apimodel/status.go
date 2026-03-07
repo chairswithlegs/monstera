@@ -7,8 +7,7 @@ import (
 )
 
 // ToStatus converts a domain status to the Mastodon API status shape.
-// bookmarked is set from viewer context when the authenticated user has bookmarked this status.
-func ToStatus(s *domain.Status, author Account, mentions []Mention, tags []Tag, media []MediaAttachment, instanceDomain string, bookmarked bool) Status {
+func ToStatus(s *domain.Status, author Account, mentions []Mention, tags []Tag, media []MediaAttachment, instanceDomain string) Status {
 	spoiler := ""
 	if s.ContentWarning != nil {
 		spoiler = *s.ContentWarning
@@ -47,7 +46,7 @@ func ToStatus(s *domain.Status, author Account, mentions []Mention, tags []Tag, 
 		Favourited:         false,
 		Reblogged:          false,
 		Muted:              false,
-		Bookmarked:         bookmarked,
+		Bookmarked:         false,
 		Pinned:             false,
 	}
 	return st

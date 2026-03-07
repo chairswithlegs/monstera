@@ -424,12 +424,15 @@ func (svc *followService) AuthorizeFollowRequest(ctx context.Context, targetAcco
 
 // RejectFollowRequest rejects a pending follow request.
 func (svc *followService) RejectFollowRequest(ctx context.Context, targetAccountID, requesterAccountID string) error {
-	_, err := svc.store.GetFollow(ctx, requesterAccountID, targetAccountID)
+	follow, err := svc.store.GetFollow(ctx, requesterAccountID, targetAccountID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return fmt.Errorf("follow request: %w", domain.ErrNotFound)
 		}
 		return fmt.Errorf("GetFollow: %w", err)
+	}
+	if follow.State != domain.FollowStatePending {
+		return nil
 	}
 	if err := svc.store.DeleteFollow(ctx, requesterAccountID, targetAccountID); err != nil {
 		return fmt.Errorf("DeleteFollow: %w", err)

@@ -7,6 +7,28 @@ import (
 	"github.com/chairswithlegs/monstera/internal/domain"
 )
 
+// compiledFilter holds a pre-compiled matcher for one filter (regex for whole-word, or phrase for substring).
+type compiledFilter struct {
+	re          *regexp.Regexp // non-nil when whole-word
+	phraseLower string         // for substring match fallback
+}
+
+func compileFilters(filters []domain.UserFilter) []compiledFilter {
+	out := make([]compiledFilter, 0, len(filters))
+	for _, f := range filters {
+		phrase := strings.TrimSpace(f.Phrase)
+		if phrase == "" {
+			continue
+		}
+		cf := compiledFilter{phraseLower: strings.ToLower(phrase)}
+		if f.WholeWord {
+			cf.re, _ = regexp.Compile(`(?i)\b` + regexp.QuoteMeta(phrase) + `\b`)
+		}
+		out = append(out, cf)
+	}
+	return out
+}
+
 // ApplyUserFiltersToEnriched filters out statuses whose content or content_warning
 // matches any of the viewer's active filters (phrase, whole_word). Returns the
 // slice of enriched statuses that pass the filters.
@@ -21,16 +43,20 @@ func ApplyUserFiltersToEnriched(enriched []EnrichedStatus, filters []domain.User
 	if len(filters) == 0 {
 		return enriched
 	}
+	compiled := compileFilters(filters)
+	if len(compiled) == 0 {
+		return enriched
+	}
 	out := make([]EnrichedStatus, 0, len(enriched))
 	for i := range enriched {
-		if !statusMatchesAnyFilter(enriched[i].Status, filters) {
+		if !statusMatchesAnyFilter(enriched[i].Status, compiled) {
 			out = append(out, enriched[i])
 		}
 	}
 	return out
 }
 
-func statusMatchesAnyFilter(s *domain.Status, filters []domain.UserFilter) bool {
+func statusMatchesAnyFilter(s *domain.Status, compiled []compiledFilter) bool {
 	content := ""
 	if s.Content != nil {
 		content = *s.Content
@@ -40,28 +66,17 @@ func statusMatchesAnyFilter(s *domain.Status, filters []domain.UserFilter) bool 
 		cw = *s.ContentWarning
 	}
 	text := cw + " " + content
-	for _, f := range filters {
-		if phraseMatchesText(f.Phrase, text, f.WholeWord) {
-			return true
+	textLower := strings.ToLower(text)
+	for _, cf := range compiled {
+		if cf.re != nil {
+			if cf.re.MatchString(text) {
+				return true
+			}
+		} else {
+			if strings.Contains(textLower, cf.phraseLower) {
+				return true
+			}
 		}
 	}
 	return false
-}
-
-func phraseMatchesText(phrase, text string, wholeWord bool) bool {
-	phrase = strings.TrimSpace(phrase)
-	if phrase == "" {
-		return false
-	}
-	textLower := strings.ToLower(text)
-	phraseLower := strings.ToLower(phrase)
-	if wholeWord {
-		// Word boundary match: phrase must appear as a whole word.
-		re, err := regexp.Compile(`(?i)\b` + regexp.QuoteMeta(phrase) + `\b`)
-		if err != nil {
-			return strings.Contains(textLower, phraseLower)
-		}
-		return re.MatchString(text)
-	}
-	return strings.Contains(textLower, phraseLower)
 }

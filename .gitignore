@@ -1,3 +1,4 @@
+.cursor/mcp.json
 bin/
 
 # local dev (make start-dev)

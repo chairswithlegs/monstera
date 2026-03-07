@@ -177,7 +177,7 @@ func New(deps Deps) http.Handler {
 				r.Method("GET", "/timelines/home", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.Timelines.GETHome)))
 				r.Method("GET", "/favourites", middleware.RequiredScopes("read:favourites")(http.HandlerFunc(deps.Timelines.GETFavourites)))
 				r.Method("GET", "/bookmarks", middleware.RequiredScopes("read:bookmarks")(http.HandlerFunc(deps.Timelines.GETBookmarks)))
-				r.Method("GET", "/timelines/list/:id", middleware.RequiredScopes("read:lists")(http.HandlerFunc(deps.Timelines.GETListTimeline)))
+				r.Method("GET", "/timelines/list/{id}", middleware.RequiredScopes("read:lists")(http.HandlerFunc(deps.Timelines.GETListTimeline)))
 				r.Method("GET", "/lists", middleware.RequiredScopes("read:lists")(http.HandlerFunc(deps.Lists.GETLists)))
 				r.Method("POST", "/lists", middleware.RequiredScopes("write:lists")(http.HandlerFunc(deps.Lists.POSTLists)))
 				r.Route("/lists/{id}", func(r chi.Router) {

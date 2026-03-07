@@ -58,7 +58,7 @@ func (h *TimelinesHandler) GETHome(w http.ResponseWriter, r *http.Request) {
 		for j := range e.Media {
 			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
 		}
-		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain, false))
+		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain))
 	}
 
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
@@ -94,7 +94,7 @@ func (h *TimelinesHandler) GETPublic(w http.ResponseWriter, r *http.Request) {
 		for j := range e.Media {
 			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
 		}
-		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain, false))
+		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain))
 	}
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
 	if link := LinkHeader(r.URL.String(), firstID, lastID); link != "" {
@@ -136,7 +136,7 @@ func (h *TimelinesHandler) GETFavourites(w http.ResponseWriter, r *http.Request)
 		for j := range e.Media {
 			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
 		}
-		st := apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain, false)
+		st := apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain)
 		st.Favourited = true
 		out = append(out, st)
 	}
@@ -183,7 +183,8 @@ func (h *TimelinesHandler) GETBookmarks(w http.ResponseWriter, r *http.Request) 
 		for j := range e.Media {
 			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
 		}
-		st := apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain, true)
+		st := apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain)
+		st.Bookmarked = true
 		out = append(out, st)
 	}
 
@@ -239,7 +240,7 @@ func (h *TimelinesHandler) GETListTimeline(w http.ResponseWriter, r *http.Reques
 		for j := range e.Media {
 			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
 		}
-		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain, false))
+		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain))
 	}
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
 	if link := LinkHeader(r.URL.String(), firstID, lastID); link != "" {
@@ -278,7 +279,7 @@ func (h *TimelinesHandler) GETTag(w http.ResponseWriter, r *http.Request) {
 		for j := range e.Media {
 			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
 		}
-		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain, false))
+		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain))
 	}
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
 	if link := LinkHeader(r.URL.String(), firstID, lastID); link != "" {

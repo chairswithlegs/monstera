@@ -120,6 +120,27 @@ func (f *FakeStore) GetAccountByID(ctx context.Context, id string) (*domain.Acco
 	return &out, nil
 }
 
+func (f *FakeStore) GetAccountsByIDs(ctx context.Context, ids []string) ([]*domain.Account, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*domain.Account, 0, len(ids))
+	for _, id := range ids {
+		a, ok := f.accountsByID[id]
+		if !ok {
+			continue
+		}
+		acc := *a
+		if _, suspended := f.suspendedAccountIDs[id]; suspended {
+			acc.Suspended = true
+		}
+		out = append(out, &acc)
+	}
+	return out, nil
+}
+
 func (f *FakeStore) GetAccountByAPID(ctx context.Context, apID string) (*domain.Account, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

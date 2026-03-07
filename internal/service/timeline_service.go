@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
@@ -49,6 +50,38 @@ func NewTimelineService(s store.Store) TimelineService {
 	return &timelineService{store: s}
 }
 
+// enrichStatuses loads author, mentions, tags, and media for each status.
+func (svc *timelineService) enrichStatuses(ctx context.Context, statuses []domain.Status) ([]EnrichedStatus, error) {
+	out := make([]EnrichedStatus, 0, len(statuses))
+	for i := range statuses {
+		s := &statuses[i]
+		author, err := svc.store.GetAccountByID(ctx, s.AccountID)
+		if err != nil {
+			return nil, fmt.Errorf("GetAccountByID(%s): %w", s.AccountID, err)
+		}
+		mentions, err := svc.store.GetStatusMentions(ctx, s.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetStatusMentions(%s): %w", s.ID, err)
+		}
+		tags, err := svc.store.GetStatusHashtags(ctx, s.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetStatusHashtags(%s): %w", s.ID, err)
+		}
+		media, err := svc.store.GetStatusAttachments(ctx, s.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetStatusAttachments(%s): %w", s.ID, err)
+		}
+		out = append(out, EnrichedStatus{
+			Status:   s,
+			Author:   author,
+			Mentions: mentions,
+			Tags:     tags,
+			Media:    media,
+		})
+	}
+	return out, nil
+}
+
 // Home returns the home timeline for the given account (self + accepted follows), ordered by id desc.
 // maxID is optional (cursor); limit defaults to defaultTimelineLimit if <= 0, capped at maxTimelineLimit.
 // TODO: confirm that this function is needed
@@ -81,38 +114,16 @@ func (svc *timelineService) HomeEnriched(ctx context.Context, accountID string, 
 	if err != nil {
 		return nil, fmt.Errorf("GetHomeTimeline: %w", err)
 	}
-	out := make([]EnrichedStatus, 0, len(statuses))
-	for i := range statuses {
-		s := &statuses[i]
-		author, err := svc.store.GetAccountByID(ctx, s.AccountID)
-		if err != nil {
-			return nil, fmt.Errorf("GetAccountByID(%s): %w", s.AccountID, err)
-		}
-		mentions, err := svc.store.GetStatusMentions(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusMentions(%s): %w", s.ID, err)
-		}
-		tags, err := svc.store.GetStatusHashtags(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusHashtags(%s): %w", s.ID, err)
-		}
-		media, err := svc.store.GetStatusAttachments(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusAttachments(%s): %w", s.ID, err)
-		}
-		out = append(out, EnrichedStatus{
-			Status:   s,
-			Author:   author,
-			Mentions: mentions,
-			Tags:     tags,
-			Media:    media,
-		})
+	out, err := svc.enrichStatuses(ctx, statuses)
+	if err != nil {
+		return nil, err
 	}
 	filters, err := svc.store.GetActiveUserFiltersByContext(ctx, accountID, domain.FilterContextHome)
 	if err != nil {
-		return nil, fmt.Errorf("GetActiveUserFiltersByContext: %w", err)
+		slog.WarnContext(ctx, "failed to load user filters, returning unfiltered timeline", slog.Any("error", err))
+	} else {
+		out = ApplyUserFiltersToEnriched(out, filters)
 	}
-	out = ApplyUserFiltersToEnriched(out, filters)
 	return out, nil
 }
 
@@ -130,32 +141,9 @@ func (svc *timelineService) FavouritesEnriched(ctx context.Context, accountID st
 	if err != nil {
 		return nil, nil, fmt.Errorf("GetFavouritesTimeline: %w", err)
 	}
-	out := make([]EnrichedStatus, 0, len(statuses))
-	for i := range statuses {
-		s := &statuses[i]
-		author, err := svc.store.GetAccountByID(ctx, s.AccountID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("GetAccountByID(%s): %w", s.AccountID, err)
-		}
-		mentions, err := svc.store.GetStatusMentions(ctx, s.ID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("GetStatusMentions(%s): %w", s.ID, err)
-		}
-		tags, err := svc.store.GetStatusHashtags(ctx, s.ID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("GetStatusHashtags(%s): %w", s.ID, err)
-		}
-		media, err := svc.store.GetStatusAttachments(ctx, s.ID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("GetStatusAttachments(%s): %w", s.ID, err)
-		}
-		out = append(out, EnrichedStatus{
-			Status:   s,
-			Author:   author,
-			Mentions: mentions,
-			Tags:     tags,
-			Media:    media,
-		})
+	out, err := svc.enrichStatuses(ctx, statuses)
+	if err != nil {
+		return nil, nil, err
 	}
 	return out, nextCursor, nil
 }
@@ -173,32 +161,9 @@ func (svc *timelineService) BookmarksEnriched(ctx context.Context, accountID str
 	if err != nil {
 		return nil, nil, fmt.Errorf("GetBookmarks: %w", err)
 	}
-	out := make([]EnrichedStatus, 0, len(statuses))
-	for i := range statuses {
-		s := &statuses[i]
-		author, err := svc.store.GetAccountByID(ctx, s.AccountID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("GetAccountByID(%s): %w", s.AccountID, err)
-		}
-		mentions, err := svc.store.GetStatusMentions(ctx, s.ID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("GetStatusMentions(%s): %w", s.ID, err)
-		}
-		tags, err := svc.store.GetStatusHashtags(ctx, s.ID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("GetStatusHashtags(%s): %w", s.ID, err)
-		}
-		media, err := svc.store.GetStatusAttachments(ctx, s.ID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("GetStatusAttachments(%s): %w", s.ID, err)
-		}
-		out = append(out, EnrichedStatus{
-			Status:   s,
-			Author:   author,
-			Mentions: mentions,
-			Tags:     tags,
-			Media:    media,
-		})
+	out, err := svc.enrichStatuses(ctx, statuses)
+	if err != nil {
+		return nil, nil, err
 	}
 	return out, nextCursor, nil
 }
@@ -224,32 +189,9 @@ func (svc *timelineService) ListTimelineEnriched(ctx context.Context, accountID,
 	if err != nil {
 		return nil, fmt.Errorf("GetListTimeline: %w", err)
 	}
-	out := make([]EnrichedStatus, 0, len(statuses))
-	for i := range statuses {
-		s := &statuses[i]
-		author, err := svc.store.GetAccountByID(ctx, s.AccountID)
-		if err != nil {
-			return nil, fmt.Errorf("GetAccountByID(%s): %w", s.AccountID, err)
-		}
-		mentions, err := svc.store.GetStatusMentions(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusMentions(%s): %w", s.ID, err)
-		}
-		tags, err := svc.store.GetStatusHashtags(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusHashtags(%s): %w", s.ID, err)
-		}
-		media, err := svc.store.GetStatusAttachments(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusAttachments(%s): %w", s.ID, err)
-		}
-		out = append(out, EnrichedStatus{
-			Status:   s,
-			Author:   author,
-			Mentions: mentions,
-			Tags:     tags,
-			Media:    media,
-		})
+	out, err := svc.enrichStatuses(ctx, statuses)
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -284,32 +226,9 @@ func (svc *timelineService) PublicLocalEnriched(ctx context.Context, localOnly b
 	if err != nil {
 		return nil, fmt.Errorf("GetPublicTimeline: %w", err)
 	}
-	out := make([]EnrichedStatus, 0, len(statuses))
-	for i := range statuses {
-		s := &statuses[i]
-		author, err := svc.store.GetAccountByID(ctx, s.AccountID)
-		if err != nil {
-			return nil, fmt.Errorf("GetAccountByID(%s): %w", s.AccountID, err)
-		}
-		mentions, err := svc.store.GetStatusMentions(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusMentions(%s): %w", s.ID, err)
-		}
-		tags, err := svc.store.GetStatusHashtags(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusHashtags(%s): %w", s.ID, err)
-		}
-		media, err := svc.store.GetStatusAttachments(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusAttachments(%s): %w", s.ID, err)
-		}
-		out = append(out, EnrichedStatus{
-			Status:   s,
-			Author:   author,
-			Mentions: mentions,
-			Tags:     tags,
-			Media:    media,
-		})
+	out, err := svc.enrichStatuses(ctx, statuses)
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -333,32 +252,9 @@ func (svc *timelineService) AccountStatusesEnriched(ctx context.Context, account
 	if err != nil {
 		return nil, fmt.Errorf("GetAccountStatuses/GetAccountPublicStatuses: %w", err)
 	}
-	out := make([]EnrichedStatus, 0, len(statuses))
-	for i := range statuses {
-		s := &statuses[i]
-		author, err := svc.store.GetAccountByID(ctx, s.AccountID)
-		if err != nil {
-			return nil, fmt.Errorf("GetAccountByID(%s): %w", s.AccountID, err)
-		}
-		mentions, err := svc.store.GetStatusMentions(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusMentions(%s): %w", s.ID, err)
-		}
-		tags, err := svc.store.GetStatusHashtags(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusHashtags(%s): %w", s.ID, err)
-		}
-		media, err := svc.store.GetStatusAttachments(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusAttachments(%s): %w", s.ID, err)
-		}
-		out = append(out, EnrichedStatus{
-			Status:   s,
-			Author:   author,
-			Mentions: mentions,
-			Tags:     tags,
-			Media:    media,
-		})
+	out, err := svc.enrichStatuses(ctx, statuses)
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -410,32 +306,5 @@ func (svc *timelineService) HashtagTimelineEnriched(ctx context.Context, tagName
 	if err != nil {
 		return nil, err
 	}
-	out := make([]EnrichedStatus, 0, len(statuses))
-	for i := range statuses {
-		s := &statuses[i]
-		author, err := svc.store.GetAccountByID(ctx, s.AccountID)
-		if err != nil {
-			return nil, fmt.Errorf("GetAccountByID(%s): %w", s.AccountID, err)
-		}
-		mentions, err := svc.store.GetStatusMentions(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusMentions(%s): %w", s.ID, err)
-		}
-		tags, err := svc.store.GetStatusHashtags(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusHashtags(%s): %w", s.ID, err)
-		}
-		media, err := svc.store.GetStatusAttachments(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusAttachments(%s): %w", s.ID, err)
-		}
-		out = append(out, EnrichedStatus{
-			Status:   s,
-			Author:   author,
-			Mentions: mentions,
-			Tags:     tags,
-			Media:    media,
-		})
-	}
-	return out, nil
+	return svc.enrichStatuses(ctx, statuses)
 }

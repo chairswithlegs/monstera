@@ -12,6 +12,7 @@ import (
 type Store interface {
 	CreateAccount(ctx context.Context, in CreateAccountInput) (*domain.Account, error)
 	GetAccountByID(ctx context.Context, id string) (*domain.Account, error)
+	GetAccountsByIDs(ctx context.Context, ids []string) ([]*domain.Account, error)
 	GetAccountByAPID(ctx context.Context, apID string) (*domain.Account, error)
 	SearchAccounts(ctx context.Context, query string, limit int) ([]*domain.Account, error)
 	GetLocalAccountByUsername(ctx context.Context, username string) (*domain.Account, error)

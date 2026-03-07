@@ -76,6 +76,7 @@ type Querier interface {
 	GetAccountPublicStatuses(ctx context.Context, arg GetAccountPublicStatusesParams) ([]Status, error)
 	GetAccountStatuses(ctx context.Context, arg GetAccountStatusesParams) ([]Status, error)
 	GetAccountStatusesWithBoosts(ctx context.Context, arg GetAccountStatusesWithBoostsParams) ([]Status, error)
+	GetAccountsByIDs(ctx context.Context, dollar_1 []string) ([]Account, error)
 	GetActiveUserFiltersByContext(ctx context.Context, arg GetActiveUserFiltersByContextParams) ([]UserFilter, error)
 	GetApplicationByClientID(ctx context.Context, clientID string) (OauthApplication, error)
 	GetAuthorizationCode(ctx context.Context, code string) (OauthAuthorizationCode, error)

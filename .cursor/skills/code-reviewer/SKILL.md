@@ -41,7 +41,7 @@ Reviews uncommitted changes in the workspace, then runs linter and tests.
 
 - **Critical**: Must fix (architecture violation, missing error handling, no tests for new behavior, or linter/test failure).
 - **Suggestion**: Should consider (convention drift, weak tests, style).
-- **Nice to have**: Optional improvement.
+- **Nice to have**: Minor optional improvements that could be made.
 
 ## After the review
 

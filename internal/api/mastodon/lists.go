@@ -205,13 +205,23 @@ func (h *ListsHandler) GETListAccounts(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
+	if len(accountIDs) == 0 {
+		api.WriteJSON(w, http.StatusOK, []apimodel.Account{})
+		return
+	}
+	accounts, err := h.accounts.GetAccountsByIDs(r.Context(), accountIDs)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	byID := make(map[string]*domain.Account, len(accounts))
+	for _, acc := range accounts {
+		byID[acc.ID] = acc
+	}
 	out := make([]apimodel.Account, 0, len(accountIDs))
 	for _, aid := range accountIDs {
-		acc, err := h.accounts.GetByID(r.Context(), aid)
-		if err != nil {
-			continue
-		}
-		if acc.Suspended {
+		acc := byID[aid]
+		if acc == nil || acc.Suspended {
 			continue
 		}
 		out = append(out, apimodel.ToAccount(acc, h.instanceDomain))

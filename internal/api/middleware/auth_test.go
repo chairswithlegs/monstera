@@ -271,6 +271,9 @@ func (f *fakeAccountService) GetAccountWithUser(ctx context.Context, accountID s
 func (f *fakeAccountService) GetByID(context.Context, string) (*domain.Account, error) {
 	panic("unused")
 }
+func (f *fakeAccountService) GetAccountsByIDs(context.Context, []string) ([]*domain.Account, error) {
+	panic("unused")
+}
 func (f *fakeAccountService) GetByAPID(context.Context, string) (*domain.Account, error) {
 	panic("unused")
 }

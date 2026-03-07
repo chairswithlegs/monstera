@@ -103,7 +103,7 @@ func (p *Publisher) PublishStatusCreated(ctx context.Context, data events.Status
 	for i := range data.Media {
 		media = append(media, apimodel.MediaFromDomain(&data.Media[i]))
 	}
-	apiStatus := apimodel.ToStatus(data.Status, author, mentions, tags, media, p.instanceDomain, false)
+	apiStatus := apimodel.ToStatus(data.Status, author, mentions, tags, media, p.instanceDomain)
 	statusJSON, err := json.Marshal(apiStatus)
 	if err != nil {
 		p.logger.Error("sse: marshal status", slog.Any("error", err))
@@ -260,7 +260,7 @@ func (p *Publisher) PublishNotificationCreated(ctx context.Context, data events.
 			for i := range media {
 				mediaList = append(mediaList, apimodel.MediaFromDomain(&media[i]))
 			}
-			s := apimodel.ToStatus(st, authorAcc, mentionList, tagList, mediaList, p.instanceDomain, false)
+			s := apimodel.ToStatus(st, authorAcc, mentionList, tagList, mediaList, p.instanceDomain)
 			status = &s
 		}
 	}
