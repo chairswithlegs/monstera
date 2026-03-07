@@ -122,118 +122,52 @@ func (p *inbox) Process(ctx context.Context, activity *Activity) error {
 	}
 }
 
-func usernameFromActorIRI(actorIRI, instanceDomain string) string {
-	if instanceDomain == "" {
-		return ""
-	}
-	prefix := "https://" + instanceDomain + "/users/"
-	if !strings.HasPrefix(actorIRI, prefix) {
-		return ""
-	}
-	suffix := strings.TrimPrefix(actorIRI, prefix)
-	if idx := strings.Index(suffix, "/"); idx >= 0 {
-		suffix = suffix[:idx]
-	}
-	return suffix
-}
-
-func (p *inbox) resolveRemoteAccount(ctx context.Context, actorIRI string) (*domain.Account, error) {
-	existing, err := p.accounts.GetByAPID(ctx, actorIRI)
-	if err == nil {
-		return existing, nil
-	}
-	dom := DomainFromActorID(actorIRI)
-	username := usernameFromActorIRI(actorIRI, dom)
-	if username == "" {
-		username = defaultUsernameUnknown
-	}
-	actor, err := p.remoteResolver.FetchActor(ctx, actorIRI)
-	if err == nil {
-		return p.syncRemoteActorFromDoc(ctx, actor)
-	}
-	in := service.CreateOrUpdateRemoteInput{
-		APID:         actorIRI,
-		Username:     username,
-		Domain:       dom,
-		PublicKey:    "",
-		InboxURL:     actorIRI + "/inbox",
-		OutboxURL:    actorIRI + "/outbox",
-		FollowersURL: actorIRI + "/followers",
-		FollowingURL: actorIRI + "/following",
-	}
-	acc, err := p.accounts.CreateOrUpdateRemoteAccount(ctx, in)
+// resolveFollowFromObject resolves a Follow from an activity's object (IRI or embedded Follow activity).
+func (p *inbox) resolveFollowFromObject(ctx context.Context, activity *Activity) (*domain.Follow, error) {
+	inner, err := activity.ObjectActivity()
 	if err != nil {
-		if errors.Is(err, domain.ErrConflict) {
-			existing, getErr := p.accounts.GetByAPID(ctx, actorIRI)
-			if getErr != nil {
-				return nil, fmt.Errorf("resolveRemoteAccount conflict GetByAPID: %w", getErr)
-			}
-			return existing, nil
+		objectID, ok := activity.ObjectID()
+		if !ok {
+			return nil, fmt.Errorf("%w: object is not a follow activity or IRI", ErrFatal)
 		}
-		return nil, fmt.Errorf("resolveRemoteAccount CreateOrUpdateRemoteAccount: %w", err)
+		follow, err := p.follows.GetFollowByAPID(ctx, objectID)
+		if err != nil {
+			return nil, fmt.Errorf("inbox: GetFollowByAPID: %w", err)
+		}
+		return follow, nil
 	}
-	return acc, nil
-}
-
-func (p *inbox) syncRemoteActorFromDoc(ctx context.Context, actor *Actor) (*domain.Account, error) {
-	apRaw, _ := json.Marshal(actor)
-	dom := DomainFromActorID(actor.ID)
-	username := usernameFromActorIRI(actor.ID, dom)
-	if username == "" {
-		username = defaultUsernameUnknown
+	if inner.ID != "" {
+		follow, err := p.follows.GetFollowByAPID(ctx, inner.ID)
+		if err == nil {
+			return follow, nil
+		}
 	}
-	in := service.CreateOrUpdateRemoteInput{
-		APID:         actor.ID,
-		Username:     username,
-		Domain:       dom,
-		DisplayName:  &actor.Name,
-		Note:         &actor.Summary,
-		PublicKey:    actor.PublicKey.PublicKeyPem,
-		InboxURL:     actor.Inbox,
-		OutboxURL:    actor.Outbox,
-		FollowersURL: actor.Followers,
-		FollowingURL: actor.Following,
-		Bot:          actor.Type == actorTypeService,
-		Locked:       actor.ManuallyApprovesFollowers,
-		ApRaw:        apRaw,
-	}
-	acc, err := p.accounts.CreateOrUpdateRemoteAccount(ctx, in)
+	actorAccount, err := p.accounts.GetByAPID(ctx, inner.Actor)
 	if err != nil {
-		return nil, fmt.Errorf("syncRemoteActorFromDoc: %w", err)
+		return nil, fmt.Errorf("%w: actor not found %q", ErrFatal, inner.Actor)
 	}
-	return acc, nil
+	targetID, _ := inner.ObjectID()
+	targetAccount, err := p.accounts.GetByAPID(ctx, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: target not found %q", ErrFatal, targetID)
+	}
+	follow, err := p.follows.GetFollow(ctx, actorAccount.ID, targetAccount.ID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: follow relationship not found", ErrFatal)
+	}
+	return follow, nil
 }
 
-func isUniqueViolation(err error) bool {
-	return errors.Is(err, domain.ErrConflict)
-}
-
-func (p *inbox) createNotification(ctx context.Context, accountID, fromID, notifType string, statusID *string) {
-	_ = p.notifications.Create(ctx, accountID, fromID, notifType, statusID)
-}
-
-func (p *inbox) createNotificationAndPublish(ctx context.Context, recipientID string, fromAccount *domain.Account, notifType string, statusID *string) {
-	p.createNotification(ctx, recipientID, fromAccount.ID, notifType, statusID)
-	list, _ := p.notifications.List(ctx, recipientID, nil, 1)
-	if len(list) == 0 {
-		return
+// acceptRejectActorIsFollowTarget ensures the activity actor is the follow target (the account that may accept/reject).
+func (p *inbox) acceptRejectActorIsFollowTarget(ctx context.Context, activity *Activity, follow *domain.Follow) error {
+	targetAccount, err := p.accounts.GetByID(ctx, follow.TargetID)
+	if err != nil {
+		return fmt.Errorf("inbox: GetByID target (Accept/Reject): %w", err)
 	}
-	n := &list[0]
-	if n.FromID != fromAccount.ID || n.Type != notifType {
-		return
+	if targetAccount.APID != activity.Actor {
+		return fmt.Errorf("%w: accept/reject: actor %q is not the follow target", ErrFatal, activity.Actor)
 	}
-	if statusID != nil && (n.StatusID == nil || *n.StatusID != *statusID) {
-		return
-	}
-	if statusID == nil && n.StatusID != nil {
-		return
-	}
-	p.eventBus.PublishNotificationCreated(ctx, events.NotificationCreatedEvent{
-		RecipientAccountID: recipientID,
-		Notification:       n,
-		FromAccount:        fromAccount,
-		StatusID:           statusID,
-	})
+	return nil
 }
 
 func (p *inbox) handleFollow(ctx context.Context, activity *Activity) error {
@@ -280,54 +214,6 @@ func (p *inbox) handleFollow(ctx context.Context, activity *Activity) error {
 	p.createNotificationAndPublish(ctx, target.ID, actor, notifType, nil)
 	if state == domain.FollowStateAccepted {
 		_ = p.outbox.SendAcceptFollow(ctx, target, actor, follow.ID)
-	}
-	return nil
-}
-
-// resolveFollowFromObject resolves a Follow from an activity's object (IRI or embedded Follow activity).
-func (p *inbox) resolveFollowFromObject(ctx context.Context, activity *Activity) (*domain.Follow, error) {
-	inner, err := activity.ObjectActivity()
-	if err != nil {
-		objectID, ok := activity.ObjectID()
-		if !ok {
-			return nil, fmt.Errorf("%w: object is not a follow activity or IRI", ErrFatal)
-		}
-		follow, err := p.follows.GetFollowByAPID(ctx, objectID)
-		if err != nil {
-			return nil, fmt.Errorf("inbox: GetFollowByAPID: %w", err)
-		}
-		return follow, nil
-	}
-	if inner.ID != "" {
-		follow, err := p.follows.GetFollowByAPID(ctx, inner.ID)
-		if err == nil {
-			return follow, nil
-		}
-	}
-	actorAccount, err := p.accounts.GetByAPID(ctx, inner.Actor)
-	if err != nil {
-		return nil, fmt.Errorf("%w: actor not found %q", ErrFatal, inner.Actor)
-	}
-	targetID, _ := inner.ObjectID()
-	targetAccount, err := p.accounts.GetByAPID(ctx, targetID)
-	if err != nil {
-		return nil, fmt.Errorf("%w: target not found %q", ErrFatal, targetID)
-	}
-	follow, err := p.follows.GetFollow(ctx, actorAccount.ID, targetAccount.ID)
-	if err != nil {
-		return nil, fmt.Errorf("%w: follow relationship not found", ErrFatal)
-	}
-	return follow, nil
-}
-
-// acceptRejectActorIsFollowTarget ensures the activity actor is the follow target (the account that may accept/reject).
-func (p *inbox) acceptRejectActorIsFollowTarget(ctx context.Context, activity *Activity, follow *domain.Follow) error {
-	targetAccount, err := p.accounts.GetByID(ctx, follow.TargetID)
-	if err != nil {
-		return fmt.Errorf("inbox: GetByID target (Accept/Reject): %w", err)
-	}
-	if targetAccount.APID != activity.Actor {
-		return fmt.Errorf("%w: accept/reject: actor %q is not the follow target", ErrFatal, activity.Actor)
 	}
 	return nil
 }
@@ -952,4 +838,118 @@ func (p *inbox) handleBlock(ctx context.Context, activity *Activity) error {
 	}
 	_, _ = p.follows.Block(ctx, actor.ID, target.ID)
 	return nil
+}
+
+func usernameFromActorIRI(actorIRI, instanceDomain string) string {
+	if instanceDomain == "" {
+		return ""
+	}
+	prefix := "https://" + instanceDomain + "/users/"
+	if !strings.HasPrefix(actorIRI, prefix) {
+		return ""
+	}
+	suffix := strings.TrimPrefix(actorIRI, prefix)
+	if idx := strings.Index(suffix, "/"); idx >= 0 {
+		suffix = suffix[:idx]
+	}
+	return suffix
+}
+
+func (p *inbox) resolveRemoteAccount(ctx context.Context, actorIRI string) (*domain.Account, error) {
+	existing, err := p.accounts.GetByAPID(ctx, actorIRI)
+	if err == nil {
+		return existing, nil
+	}
+	dom := DomainFromActorID(actorIRI)
+	username := usernameFromActorIRI(actorIRI, dom)
+	if username == "" {
+		username = defaultUsernameUnknown
+	}
+	actor, err := p.remoteResolver.FetchActor(ctx, actorIRI)
+	if err == nil {
+		return p.syncRemoteActorFromDoc(ctx, actor)
+	}
+	in := service.CreateOrUpdateRemoteInput{
+		APID:         actorIRI,
+		Username:     username,
+		Domain:       dom,
+		PublicKey:    "",
+		InboxURL:     actorIRI + "/inbox",
+		OutboxURL:    actorIRI + "/outbox",
+		FollowersURL: actorIRI + "/followers",
+		FollowingURL: actorIRI + "/following",
+	}
+	acc, err := p.accounts.CreateOrUpdateRemoteAccount(ctx, in)
+	if err != nil {
+		if errors.Is(err, domain.ErrConflict) {
+			existing, getErr := p.accounts.GetByAPID(ctx, actorIRI)
+			if getErr != nil {
+				return nil, fmt.Errorf("resolveRemoteAccount conflict GetByAPID: %w", getErr)
+			}
+			return existing, nil
+		}
+		return nil, fmt.Errorf("resolveRemoteAccount CreateOrUpdateRemoteAccount: %w", err)
+	}
+	return acc, nil
+}
+
+func (p *inbox) syncRemoteActorFromDoc(ctx context.Context, actor *Actor) (*domain.Account, error) {
+	apRaw, _ := json.Marshal(actor)
+	dom := DomainFromActorID(actor.ID)
+	username := usernameFromActorIRI(actor.ID, dom)
+	if username == "" {
+		username = defaultUsernameUnknown
+	}
+	in := service.CreateOrUpdateRemoteInput{
+		APID:         actor.ID,
+		Username:     username,
+		Domain:       dom,
+		DisplayName:  &actor.Name,
+		Note:         &actor.Summary,
+		PublicKey:    actor.PublicKey.PublicKeyPem,
+		InboxURL:     actor.Inbox,
+		OutboxURL:    actor.Outbox,
+		FollowersURL: actor.Followers,
+		FollowingURL: actor.Following,
+		Bot:          actor.Type == actorTypeService,
+		Locked:       actor.ManuallyApprovesFollowers,
+		ApRaw:        apRaw,
+	}
+	acc, err := p.accounts.CreateOrUpdateRemoteAccount(ctx, in)
+	if err != nil {
+		return nil, fmt.Errorf("syncRemoteActorFromDoc: %w", err)
+	}
+	return acc, nil
+}
+
+func isUniqueViolation(err error) bool {
+	return errors.Is(err, domain.ErrConflict)
+}
+
+func (p *inbox) createNotification(ctx context.Context, accountID, fromID, notifType string, statusID *string) {
+	_ = p.notifications.Create(ctx, accountID, fromID, notifType, statusID)
+}
+
+func (p *inbox) createNotificationAndPublish(ctx context.Context, recipientID string, fromAccount *domain.Account, notifType string, statusID *string) {
+	p.createNotification(ctx, recipientID, fromAccount.ID, notifType, statusID)
+	list, _ := p.notifications.List(ctx, recipientID, nil, 1)
+	if len(list) == 0 {
+		return
+	}
+	n := &list[0]
+	if n.FromID != fromAccount.ID || n.Type != notifType {
+		return
+	}
+	if statusID != nil && (n.StatusID == nil || *n.StatusID != *statusID) {
+		return
+	}
+	if statusID == nil && n.StatusID != nil {
+		return
+	}
+	p.eventBus.PublishNotificationCreated(ctx, events.NotificationCreatedEvent{
+		RecipientAccountID: recipientID,
+		Notification:       n,
+		FromAccount:        fromAccount,
+		StatusID:           statusID,
+	})
 }

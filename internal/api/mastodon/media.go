@@ -2,6 +2,7 @@ package mastodon
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -113,15 +114,15 @@ func parseFocusParam(s string) (*float64, *float64, error) {
 	}
 	parts := strings.Split(s, ",")
 	if len(parts) != 2 {
-		return nil, nil, api.NewUnprocessableError("focus must be two comma-separated numbers (x,y) in range -1.0 to 1.0")
+		return nil, nil, fmt.Errorf("parse focus: %w", api.NewUnprocessableError("focus must be two comma-separated numbers (x,y) in range -1.0 to 1.0"))
 	}
 	x, errX := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
 	y, errY := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
 	if errX != nil || errY != nil {
-		return nil, nil, api.NewUnprocessableError("focus must be two comma-separated numbers (x,y) in range -1.0 to 1.0")
+		return nil, nil, fmt.Errorf("parse focus: %w", api.NewUnprocessableError("focus must be two comma-separated numbers (x,y) in range -1.0 to 1.0"))
 	}
 	if x < -1 || x > 1 || y < -1 || y > 1 {
-		return nil, nil, api.NewUnprocessableError("focus x and y must be in range -1.0 to 1.0")
+		return nil, nil, fmt.Errorf("parse focus: %w", api.NewUnprocessableError("focus x and y must be in range -1.0 to 1.0"))
 	}
 	return &x, &y, nil
 }
