@@ -62,7 +62,7 @@ func (h *TimelinesHandler) GETHome(w http.ResponseWriter, r *http.Request) {
 	}
 
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
-	if link := LinkHeader(r.URL.String(), firstID, lastID); link != "" {
+	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
 		w.Header().Set("Link", link)
 	}
 	api.WriteJSON(w, http.StatusOK, out)
@@ -97,7 +97,7 @@ func (h *TimelinesHandler) GETPublic(w http.ResponseWriter, r *http.Request) {
 		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain))
 	}
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
-	if link := LinkHeader(r.URL.String(), firstID, lastID); link != "" {
+	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
 		w.Header().Set("Link", link)
 	}
 	api.WriteJSON(w, http.StatusOK, out)
@@ -143,7 +143,7 @@ func (h *TimelinesHandler) GETFavourites(w http.ResponseWriter, r *http.Request)
 
 	if len(enriched) > 0 {
 		firstID := enriched[0].Status.ID
-		if link := linkHeaderFavourites(r.URL.String(), firstID, nextCursor); link != "" {
+		if link := linkHeaderFavourites(AbsoluteRequestURL(r, h.instanceDomain), firstID, nextCursor); link != "" {
 			w.Header().Set("Link", link)
 		}
 	}
@@ -190,7 +190,7 @@ func (h *TimelinesHandler) GETBookmarks(w http.ResponseWriter, r *http.Request) 
 
 	if len(enriched) > 0 {
 		firstID := enriched[0].Status.ID
-		if link := linkHeaderFavourites(r.URL.String(), firstID, nextCursor); link != "" {
+		if link := linkHeaderFavourites(AbsoluteRequestURL(r, h.instanceDomain), firstID, nextCursor); link != "" {
 			w.Header().Set("Link", link)
 		}
 	}
@@ -243,7 +243,7 @@ func (h *TimelinesHandler) GETListTimeline(w http.ResponseWriter, r *http.Reques
 		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain))
 	}
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
-	if link := LinkHeader(r.URL.String(), firstID, lastID); link != "" {
+	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
 		w.Header().Set("Link", link)
 	}
 	api.WriteJSON(w, http.StatusOK, out)
@@ -282,7 +282,7 @@ func (h *TimelinesHandler) GETTag(w http.ResponseWriter, r *http.Request) {
 		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain))
 	}
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
-	if link := LinkHeader(r.URL.String(), firstID, lastID); link != "" {
+	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
 		w.Header().Set("Link", link)
 	}
 	api.WriteJSON(w, http.StatusOK, out)

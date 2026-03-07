@@ -4,3 +4,6 @@
 
 # Build artifacts
 bin/
+
+# Federation testing
+/federation-testing/elk-storage

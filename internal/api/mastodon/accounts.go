@@ -361,7 +361,7 @@ func (h *AccountsHandler) GETAccountStatuses(w http.ResponseWriter, r *http.Requ
 		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, h.instanceDomain))
 	}
 	firstID, lastID := firstLastIDsFromAccountStatuses(enriched)
-	if link := LinkHeader(r.URL.String(), firstID, lastID); link != "" {
+	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
 		w.Header().Set("Link", link)
 	}
 	api.WriteJSON(w, http.StatusOK, out)
@@ -407,7 +407,7 @@ func (h *AccountsHandler) GETFollowers(w http.ResponseWriter, r *http.Request) {
 		out = append(out, apimodel.ToAccount(&a, h.instanceDomain))
 	}
 	firstID, lastID := firstLastIDsFromAccounts(followers)
-	if link := LinkHeader(r.URL.String(), firstID, lastID); link != "" {
+	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
 		w.Header().Set("Link", link)
 	}
 	api.WriteJSON(w, http.StatusOK, out)
@@ -452,7 +452,7 @@ func (h *AccountsHandler) GETFollowing(w http.ResponseWriter, r *http.Request) {
 		out = append(out, apimodel.ToAccount(&a, h.instanceDomain))
 	}
 	firstID, lastID := firstLastIDsFromAccounts(list)
-	if link := LinkHeader(r.URL.String(), firstID, lastID); link != "" {
+	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
 		w.Header().Set("Link", link)
 	}
 	api.WriteJSON(w, http.StatusOK, out)
