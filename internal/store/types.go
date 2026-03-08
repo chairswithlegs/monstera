@@ -135,6 +135,15 @@ type CreateBookmarkInput struct {
 	StatusID  string
 }
 
+// UpsertAccountConversationInput is the input for creating or updating an account_conversations row.
+type UpsertAccountConversationInput struct {
+	ID             string
+	AccountID      string
+	ConversationID string
+	LastStatusID   string
+	Unread         bool
+}
+
 // CreateListInput is the input for creating a list.
 type CreateListInput struct {
 	ID            string

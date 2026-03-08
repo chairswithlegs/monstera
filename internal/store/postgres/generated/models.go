@@ -39,6 +39,16 @@ type Account struct {
 	LastStatusAt   pgtype.Timestamptz `json:"last_status_at"`
 }
 
+type AccountConversation struct {
+	ID             string             `json:"id"`
+	AccountID      string             `json:"account_id"`
+	ConversationID string             `json:"conversation_id"`
+	LastStatusID   *string            `json:"last_status_id"`
+	Unread         bool               `json:"unread"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
 type AccountFeaturedTag struct {
 	ID        string             `json:"id"`
 	AccountID string             `json:"account_id"`
@@ -103,6 +113,11 @@ type Bookmark struct {
 	ID        string             `json:"id"`
 	AccountID string             `json:"account_id"`
 	StatusID  string             `json:"status_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type Conversation struct {
+	ID        string             `json:"id"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
@@ -361,6 +376,7 @@ type Status struct {
 	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 	DeletedAt          pgtype.Timestamptz `json:"deleted_at"`
 	InReplyToAccountID *string            `json:"in_reply_to_account_id"`
+	ConversationID     *string            `json:"conversation_id"`
 }
 
 type StatusEdit struct {

@@ -25,7 +25,7 @@ func TestScheduledStatusesHandler_GETScheduledStatuses(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
-	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
 	handler := NewScheduledStatusesHandler(statusSvc)
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
@@ -71,7 +71,7 @@ func TestScheduledStatusesHandler_GETScheduledStatus(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
-	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
 	handler := NewScheduledStatusesHandler(statusSvc)
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
@@ -134,7 +134,7 @@ func TestScheduledStatusesHandler_PUTScheduledStatus(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
-	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
 	handler := NewScheduledStatusesHandler(statusSvc)
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
@@ -222,7 +222,7 @@ func TestScheduledStatusesHandler_DELETEScheduledStatus(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
-	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
 	handler := NewScheduledStatusesHandler(statusSvc)
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{

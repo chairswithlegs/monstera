@@ -798,6 +798,85 @@ func (s *PostgresStore) ListMutedConversationIDs(ctx context.Context, accountID 
 	return rows, nil
 }
 
+func (s *PostgresStore) CreateConversation(ctx context.Context, id string) error {
+	return mapErr(s.q.CreateConversation(ctx, id))
+}
+
+func (s *PostgresStore) SetStatusConversationID(ctx context.Context, statusID, conversationID string) error {
+	return mapErr(s.q.SetStatusConversationID(ctx, db.SetStatusConversationIDParams{
+		ID:             statusID,
+		ConversationID: &conversationID,
+	}))
+}
+
+func (s *PostgresStore) GetStatusConversationID(ctx context.Context, statusID string) (*string, error) {
+	cid, err := s.q.GetStatusConversationID(ctx, statusID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return cid, nil
+}
+
+func (s *PostgresStore) UpsertAccountConversation(ctx context.Context, in store.UpsertAccountConversationInput) error {
+	return mapErr(s.q.UpsertAccountConversation(ctx, db.UpsertAccountConversationParams{
+		ID:             in.ID,
+		AccountID:      in.AccountID,
+		ConversationID: in.ConversationID,
+		LastStatusID:   &in.LastStatusID,
+		Unread:         in.Unread,
+	}))
+}
+
+func (s *PostgresStore) ListAccountConversations(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.AccountConversation, *string, error) {
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	rows, err := s.q.ListAccountConversationsPaginated(ctx, db.ListAccountConversationsPaginatedParams{
+		AccountID: accountID,
+		Column2:   cursor,
+		Limit:     int32(limit), //nolint:gosec // limit clamped by caller
+	})
+	if err != nil {
+		return nil, nil, mapErr(err)
+	}
+	out := make([]domain.AccountConversation, 0, len(rows))
+	var nextCursor *string
+	for i, r := range rows {
+		out = append(out, ToDomainAccountConversation(r))
+		if i == len(rows)-1 && len(rows) == limit {
+			nextCursor = &r.ID
+		}
+	}
+	return out, nextCursor, nil
+}
+
+func (s *PostgresStore) GetAccountConversation(ctx context.Context, accountID, conversationID string) (*domain.AccountConversation, error) {
+	ac, err := s.q.GetAccountConversation(ctx, db.GetAccountConversationParams{
+		AccountID:      accountID,
+		ConversationID: conversationID,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainAccountConversation(ac)
+	return &d, nil
+}
+
+func (s *PostgresStore) MarkAccountConversationRead(ctx context.Context, accountID, conversationID string) error {
+	return mapErr(s.q.MarkAccountConversationRead(ctx, db.MarkAccountConversationReadParams{
+		AccountID:      accountID,
+		ConversationID: conversationID,
+	}))
+}
+
+func (s *PostgresStore) DeleteAccountConversation(ctx context.Context, accountID, conversationID string) error {
+	return mapErr(s.q.DeleteAccountConversation(ctx, db.DeleteAccountConversationParams{
+		AccountID:      accountID,
+		ConversationID: conversationID,
+	}))
+}
+
 func (s *PostgresStore) CreateNotification(ctx context.Context, in store.CreateNotificationInput) (*domain.Notification, error) {
 	n, err := s.q.CreateNotification(ctx, db.CreateNotificationParams{
 		ID:        in.ID,

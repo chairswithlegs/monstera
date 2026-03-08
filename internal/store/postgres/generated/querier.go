@@ -35,6 +35,7 @@ type Querier interface {
 	CreateAuthorizationCode(ctx context.Context, arg CreateAuthorizationCodeParams) (OauthAuthorizationCode, error)
 	CreateBlock(ctx context.Context, arg CreateBlockParams) (Block, error)
 	CreateBookmark(ctx context.Context, arg CreateBookmarkParams) error
+	CreateConversation(ctx context.Context, id string) error
 	CreateConversationMute(ctx context.Context, arg CreateConversationMuteParams) error
 	CreateDomainBlock(ctx context.Context, arg CreateDomainBlockParams) (DomainBlock, error)
 	CreateEmailToken(ctx context.Context, arg CreateEmailTokenParams) (EmailToken, error)
@@ -64,6 +65,7 @@ type Querier interface {
 	DecrementRepliesCount(ctx context.Context, id string) error
 	DecrementStatusesCount(ctx context.Context, id string) error
 	DeleteAccount(ctx context.Context, id string) error
+	DeleteAccountConversation(ctx context.Context, arg DeleteAccountConversationParams) error
 	DeleteAccountPin(ctx context.Context, arg DeleteAccountPinParams) error
 	DeleteAuthorizationCode(ctx context.Context, code string) error
 	DeleteBlock(ctx context.Context, arg DeleteBlockParams) error
@@ -92,6 +94,7 @@ type Querier interface {
 	GetAccessToken(ctx context.Context, token string) (OauthAccessToken, error)
 	GetAccountByAPID(ctx context.Context, apID string) (Account, error)
 	GetAccountByID(ctx context.Context, id string) (Account, error)
+	GetAccountConversation(ctx context.Context, arg GetAccountConversationParams) (AccountConversation, error)
 	GetAccountPublicStatuses(ctx context.Context, arg GetAccountPublicStatusesParams) ([]Status, error)
 	GetAccountStatuses(ctx context.Context, arg GetAccountStatusesParams) ([]Status, error)
 	GetAccountStatusesWithBoosts(ctx context.Context, arg GetAccountStatusesWithBoostsParams) ([]Status, error)
@@ -145,6 +148,7 @@ type Querier interface {
 	GetStatusAncestors(ctx context.Context, id string) ([]GetStatusAncestorsRow, error)
 	GetStatusByAPID(ctx context.Context, apID string) (Status, error)
 	GetStatusByID(ctx context.Context, id string) (Status, error)
+	GetStatusConversationID(ctx context.Context, id string) (*string, error)
 	GetStatusDescendants(ctx context.Context, inReplyToID *string) ([]GetStatusDescendantsRow, error)
 	GetStatusFavouritedBy(ctx context.Context, arg GetStatusFavouritedByParams) ([]Account, error)
 	GetStatusHashtags(ctx context.Context, statusID string) ([]Hashtag, error)
@@ -170,6 +174,7 @@ type Querier interface {
 	IsFavourited(ctx context.Context, arg IsFavouritedParams) (bool, error)
 	IsMuted(ctx context.Context, arg IsMutedParams) (bool, error)
 	ListAccountAnnouncementReactionNames(ctx context.Context, arg ListAccountAnnouncementReactionNamesParams) ([]string, error)
+	ListAccountConversationsPaginated(ctx context.Context, arg ListAccountConversationsPaginatedParams) ([]AccountConversation, error)
 	ListAccountTagSuggestions(ctx context.Context, arg ListAccountTagSuggestionsParams) ([]ListAccountTagSuggestionsRow, error)
 	ListActiveAnnouncements(ctx context.Context) ([]Announcement, error)
 	ListAdminActions(ctx context.Context, arg ListAdminActionsParams) ([]AdminAction, error)
@@ -205,6 +210,7 @@ type Querier interface {
 	ListStatusEdits(ctx context.Context, statusID string) ([]StatusEdit, error)
 	ListUnattachedMedia(ctx context.Context, accountID string) ([]MediaAttachment, error)
 	ListUserFilters(ctx context.Context, accountID string) ([]UserFilter, error)
+	MarkAccountConversationRead(ctx context.Context, arg MarkAccountConversationReadParams) error
 	MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) error
 	RemoveAccountFromList(ctx context.Context, arg RemoveAccountFromListParams) error
 	RemoveAnnouncementReaction(ctx context.Context, arg RemoveAnnouncementReactionParams) error
@@ -215,6 +221,7 @@ type Querier interface {
 	SearchHashtagsByPrefix(ctx context.Context, arg SearchHashtagsByPrefixParams) ([]Hashtag, error)
 	SetMarker(ctx context.Context, arg SetMarkerParams) error
 	SetSetting(ctx context.Context, arg SetSettingParams) error
+	SetStatusConversationID(ctx context.Context, arg SetStatusConversationIDParams) error
 	SilenceAccount(ctx context.Context, id string) error
 	SoftDeleteStatus(ctx context.Context, id string) error
 	SuspendAccount(ctx context.Context, id string) error
@@ -235,6 +242,7 @@ type Querier interface {
 	UpdateUserFilter(ctx context.Context, arg UpdateUserFilterParams) (UserFilter, error)
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error
+	UpsertAccountConversation(ctx context.Context, arg UpsertAccountConversationParams) error
 	UpsertKnownInstance(ctx context.Context, arg UpsertKnownInstanceParams) error
 }
 

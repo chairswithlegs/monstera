@@ -194,3 +194,11 @@ type Reaction struct {
 	URL       string `json:"url,omitempty"`
 	StaticURL string `json:"static_url,omitempty"`
 }
+
+// Conversation is the Mastodon API conversation entity (GET /api/v1/conversations).
+type Conversation struct {
+	ID         string    `json:"id"`
+	Unread     bool      `json:"unread"`
+	Accounts   []Account `json:"accounts"`
+	LastStatus *Status   `json:"last_status"`
+}

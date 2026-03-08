@@ -38,6 +38,9 @@ type FakeStore struct {
 	featuredTagsList       []featuredTagEntry      // for ListFeaturedTags order
 	conversationMutesByKey map[string]struct{}     // "accountID:conversationID"
 	conversationMutesList  []conversationMuteEntry // for ListMutedConversationIDs
+	conversationIDs        map[string]struct{}     // for CreateConversation
+	statusConversationIDs  map[string]string       // statusID -> conversationID
+	accountConversations   []accountConversationEntry
 	announcementsByID      map[string]*domain.Announcement
 	announcementReads      map[string]struct{} // "accountID:announcementID"
 	announcementReactions  []announcementReactionEntry
@@ -98,6 +101,16 @@ type conversationMuteEntry struct {
 	ConversationID string
 }
 
+type accountConversationEntry struct {
+	ID             string
+	AccountID      string
+	ConversationID string
+	LastStatusID   string
+	Unread         bool
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
 type announcementReactionEntry struct {
 	AnnouncementID string
 	AccountID      string
@@ -139,6 +152,10 @@ func NewFakeStore() *FakeStore {
 		pollOptions:            make(map[string][]domain.PollOption),
 		pollVotes:              nil,
 		conversationMutesByKey: make(map[string]struct{}),
+		conversationMutesList:  nil,
+		conversationIDs:        make(map[string]struct{}),
+		statusConversationIDs:  make(map[string]string),
+		accountConversations:   nil,
 		announcementsByID:      make(map[string]*domain.Announcement),
 		announcementReads:      make(map[string]struct{}),
 		announcementReactions:  nil,
@@ -1039,6 +1056,145 @@ func (f *FakeStore) ListMutedConversationIDs(ctx context.Context, accountID stri
 		}
 	}
 	return out, nil
+}
+
+func (f *FakeStore) CreateConversation(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.conversationIDs[id] = struct{}{}
+	return nil
+}
+
+func (f *FakeStore) SetStatusConversationID(ctx context.Context, statusID, conversationID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.statusConversationIDs[statusID] = conversationID
+	return nil
+}
+
+func (f *FakeStore) GetStatusConversationID(ctx context.Context, statusID string) (*string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cid, ok := f.statusConversationIDs[statusID]
+	if !ok {
+		if _, hasStatus := f.statusesByID[statusID]; hasStatus {
+			return nil, nil
+		}
+		return nil, domain.ErrNotFound
+	}
+	return &cid, nil
+}
+
+func (f *FakeStore) UpsertAccountConversation(ctx context.Context, in store.UpsertAccountConversationInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	now := time.Now()
+	for i := range f.accountConversations {
+		if f.accountConversations[i].AccountID == in.AccountID && f.accountConversations[i].ConversationID == in.ConversationID {
+			f.accountConversations[i].LastStatusID = in.LastStatusID
+			f.accountConversations[i].Unread = in.Unread
+			f.accountConversations[i].UpdatedAt = now
+			return nil
+		}
+	}
+	f.accountConversations = append(f.accountConversations, accountConversationEntry{
+		ID:             in.ID,
+		AccountID:      in.AccountID,
+		ConversationID: in.ConversationID,
+		LastStatusID:   in.LastStatusID,
+		Unread:         in.Unread,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+	return nil
+}
+
+func (f *FakeStore) ListAccountConversations(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.AccountConversation, *string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var filtered []accountConversationEntry
+	for _, e := range f.accountConversations {
+		if e.AccountID == accountID {
+			if maxID != nil && *maxID != "" && e.ID >= *maxID {
+				continue
+			}
+			filtered = append(filtered, e)
+		}
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		if !filtered[i].UpdatedAt.Equal(filtered[j].UpdatedAt) {
+			return filtered[i].UpdatedAt.After(filtered[j].UpdatedAt)
+		}
+		return filtered[i].ID > filtered[j].ID
+	})
+	if limit <= 0 {
+		limit = 40
+	}
+	var nextCursor *string
+	page := filtered
+	if len(filtered) > limit {
+		page = filtered[:limit]
+		nextCursor = &page[len(page)-1].ID
+	}
+	out := make([]domain.AccountConversation, 0, len(page))
+	for _, e := range page {
+		lastID := e.LastStatusID
+		out = append(out, domain.AccountConversation{
+			ID:             e.ID,
+			AccountID:      e.AccountID,
+			ConversationID: e.ConversationID,
+			LastStatusID:   &lastID,
+			Unread:         e.Unread,
+			CreatedAt:      e.CreatedAt,
+			UpdatedAt:      e.UpdatedAt,
+		})
+	}
+	return out, nextCursor, nil
+}
+
+func (f *FakeStore) GetAccountConversation(ctx context.Context, accountID, conversationID string) (*domain.AccountConversation, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, e := range f.accountConversations {
+		if e.AccountID == accountID && e.ConversationID == conversationID {
+			lastID := e.LastStatusID
+			return &domain.AccountConversation{
+				ID:             e.ID,
+				AccountID:      e.AccountID,
+				ConversationID: e.ConversationID,
+				LastStatusID:   &lastID,
+				Unread:         e.Unread,
+				CreatedAt:      e.CreatedAt,
+				UpdatedAt:      e.UpdatedAt,
+			}, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
+func (f *FakeStore) MarkAccountConversationRead(ctx context.Context, accountID, conversationID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.accountConversations {
+		if f.accountConversations[i].AccountID == accountID && f.accountConversations[i].ConversationID == conversationID {
+			f.accountConversations[i].Unread = false
+			f.accountConversations[i].UpdatedAt = time.Now()
+			return nil
+		}
+	}
+	return domain.ErrNotFound
+}
+
+func (f *FakeStore) DeleteAccountConversation(ctx context.Context, accountID, conversationID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, e := range f.accountConversations {
+		if e.AccountID == accountID && e.ConversationID == conversationID {
+			f.accountConversations = append(f.accountConversations[:i], f.accountConversations[i+1:]...)
+			return nil
+		}
+	}
+	return nil
 }
 
 func announcementReadKey(accountID, announcementID string) string {

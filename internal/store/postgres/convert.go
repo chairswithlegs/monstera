@@ -468,6 +468,22 @@ func ToDomainMarker(m db.Marker) domain.Marker {
 	}
 }
 
+// ToDomainAccountConversation converts a sqlc db.AccountConversation to a domain.AccountConversation.
+func ToDomainAccountConversation(a db.AccountConversation) domain.AccountConversation {
+	d := domain.AccountConversation{
+		ID:             a.ID,
+		AccountID:      a.AccountID,
+		ConversationID: a.ConversationID,
+		Unread:         a.Unread,
+		CreatedAt:      pgTime(a.CreatedAt),
+		UpdatedAt:      pgTime(a.UpdatedAt),
+	}
+	if a.LastStatusID != nil {
+		d.LastStatusID = a.LastStatusID
+	}
+	return d
+}
+
 // ToDomainAnnouncement converts a sqlc db.Announcement to a domain.Announcement.
 func ToDomainAnnouncement(a db.Announcement) domain.Announcement {
 	out := domain.Announcement{

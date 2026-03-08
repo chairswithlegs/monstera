@@ -75,6 +75,14 @@ type Store interface {
 	DeleteConversationMute(ctx context.Context, accountID, conversationID string) error
 	IsConversationMuted(ctx context.Context, accountID, conversationID string) (bool, error)
 	ListMutedConversationIDs(ctx context.Context, accountID string) ([]string, error)
+	CreateConversation(ctx context.Context, id string) error
+	SetStatusConversationID(ctx context.Context, statusID, conversationID string) error
+	GetStatusConversationID(ctx context.Context, statusID string) (*string, error)
+	UpsertAccountConversation(ctx context.Context, in UpsertAccountConversationInput) error
+	ListAccountConversations(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.AccountConversation, *string, error)
+	GetAccountConversation(ctx context.Context, accountID, conversationID string) (*domain.AccountConversation, error)
+	MarkAccountConversationRead(ctx context.Context, accountID, conversationID string) error
+	DeleteAccountConversation(ctx context.Context, accountID, conversationID string) error
 	AttachHashtagsToStatus(ctx context.Context, statusID string, hashtagIDs []string) error
 	DeleteStatusHashtags(ctx context.Context, statusID string) error
 	GetStatusHashtags(ctx context.Context, statusID string) ([]domain.Hashtag, error)

@@ -26,7 +26,7 @@ func TestPollsHandler_GETPoll(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
 	handler := NewPollsHandler(statusSvc)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
@@ -98,7 +98,7 @@ func TestPollsHandler_POSTVotes(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
 	handler := NewPollsHandler(statusSvc)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{

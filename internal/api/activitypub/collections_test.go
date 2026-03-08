@@ -33,7 +33,7 @@ func TestCollectionsHandler_GETFollowers(t *testing.T) {
 	require.NoError(t, fake.ConfirmUser(ctx, "01USERALICE"))
 	cfg := &config.Config{InstanceDomain: "example.com"}
 	accountSvc := service.NewAccountService(fake, "https://"+cfg.InstanceDomain)
-	statusSvc := service.NewStatusService(fake, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", cfg.InstanceDomain, 5000, nil)
+	statusSvc := service.NewStatusService(fake, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", cfg.InstanceDomain, 5000, nil)
 	h := NewCollectionsHandler(accountSvc, statusSvc, cfg)
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/followers", nil)
 	r = r.WithContext(ctx)
@@ -65,7 +65,7 @@ func TestCollectionsHandler_GETFeatured(t *testing.T) {
 	require.NoError(t, fake.ConfirmUser(ctx, "01USERALICE"))
 	cfg := &config.Config{InstanceDomain: "example.com"}
 	accountSvc := service.NewAccountService(fake, "https://"+cfg.InstanceDomain)
-	statusSvc := service.NewStatusService(fake, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", cfg.InstanceDomain, 5000, nil)
+	statusSvc := service.NewStatusService(fake, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", cfg.InstanceDomain, 5000, nil)
 	h := NewCollectionsHandler(accountSvc, statusSvc, cfg)
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/collections/featured", nil)
 	r = r.WithContext(ctx)

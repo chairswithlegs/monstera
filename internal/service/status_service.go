@@ -92,12 +92,22 @@ type StatusService interface {
 	GetConversationRoot(ctx context.Context, statusID string) (string, error)
 	IsConversationMutedForViewer(ctx context.Context, viewerAccountID, statusID string) (bool, error)
 	ListMutedConversationIDs(ctx context.Context, accountID string) ([]string, error)
+
+	// SetDirectStatusConversationUpdater sets the optional updater for direct statuses (used by wiring to break circular dependency).
+	SetDirectStatusConversationUpdater(DirectStatusConversationUpdater)
+}
+
+// DirectStatusConversationUpdater is called when a direct-visibility status is created so the conversation list can be updated.
+// Implemented by ConversationService; may be nil to skip.
+type DirectStatusConversationUpdater interface {
+	UpdateForDirectStatus(ctx context.Context, status *domain.Status, authorID string, mentionedAccountIDs []string) error
 }
 
 type statusService struct {
 	store           store.Store
 	fed             StatusFederationPublisher
 	eventBus        events.EventBus
+	convUpdater     DirectStatusConversationUpdater
 	instanceBaseURL string
 	instanceDomain  string
 	maxStatusChars  int
@@ -107,7 +117,8 @@ type statusService struct {
 // NewStatusService returns a StatusService that uses the given store and instance URLs.
 // fed must be non-nil; use NoopFederationPublisher when federation is disabled.
 // eventBus must be non-nil; use events.NoopEventBus in tests or when SSE is disabled. logger may be nil (federation failures will not be logged).
-func NewStatusService(s store.Store, fed StatusFederationPublisher, eventBus events.EventBus, instanceBaseURL, instanceDomain string, maxStatusChars int, logger *slog.Logger) StatusService {
+// convUpdater may be nil; when set, direct statuses will update the conversations list.
+func NewStatusService(s store.Store, fed StatusFederationPublisher, eventBus events.EventBus, convUpdater DirectStatusConversationUpdater, instanceBaseURL, instanceDomain string, maxStatusChars int, logger *slog.Logger) StatusService {
 	if fed == nil {
 		panic("StatusService: fed must be non-nil. Use NoopFederationPublisher when federation is disabled")
 	}
@@ -116,11 +127,17 @@ func NewStatusService(s store.Store, fed StatusFederationPublisher, eventBus eve
 		store:           s,
 		fed:             fed,
 		eventBus:        eventBus,
+		convUpdater:     convUpdater,
 		instanceBaseURL: base,
 		instanceDomain:  instanceDomain,
 		maxStatusChars:  maxStatusChars,
 		logger:          logger,
 	}
+}
+
+// SetDirectStatusConversationUpdater sets the optional conversation updater for direct statuses.
+func (svc *statusService) SetDirectStatusConversationUpdater(u DirectStatusConversationUpdater) {
+	svc.convUpdater = u
 }
 
 // CreateWithContentInput is the input for creating a status with plain text (content is rendered in-service).
@@ -273,6 +290,12 @@ func (svc *statusService) CreateFromInbox(ctx context.Context, in CreateStatusFr
 	})
 	if err != nil {
 		return nil, fmt.Errorf("CreateFromInbox: %w", err)
+	}
+	if in.Visibility == domain.VisibilityDirect && svc.convUpdater != nil {
+		mentionedIDs, _ := svc.store.GetStatusMentionAccountIDs(ctx, st.ID)
+		if updErr := svc.convUpdater.UpdateForDirectStatus(ctx, st, st.AccountID, mentionedIDs); updErr != nil && svc.logger != nil {
+			svc.logger.WarnContext(ctx, "conversation update failed after direct status from inbox", slog.Any("error", updErr), slog.String("status_id", st.ID))
+		}
 	}
 	return st, nil
 }
@@ -689,6 +712,11 @@ func (svc *statusService) CreateWithContent(ctx context.Context, in CreateWithCo
 		Media:               media,
 		MentionedAccountIDs: mentionedAccountIDs,
 	})
+	if created.Visibility == domain.VisibilityDirect && svc.convUpdater != nil {
+		if updErr := svc.convUpdater.UpdateForDirectStatus(ctx, created, in.AccountID, mentionedAccountIDs); updErr != nil && svc.logger != nil {
+			svc.logger.WarnContext(ctx, "conversation update failed after direct status create", slog.Any("error", updErr), slog.String("status_id", created.ID))
+		}
+	}
 	out := EnrichedStatus{
 		Status:   created,
 		Author:   author,

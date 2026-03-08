@@ -25,7 +25,7 @@ func TestTimelineService_Home(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
 	timelineSvc := NewTimelineService(fake, statusSvc)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
@@ -70,7 +70,7 @@ func TestTimelineService_Home_respects_limit(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
 	timelineSvc := NewTimelineService(fake, statusSvc)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
@@ -95,7 +95,7 @@ func TestTimelineService_PublicLocal(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
 	timelineSvc := NewTimelineService(fake, statusSvc)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
@@ -145,7 +145,7 @@ func TestTimelineService_HomeEnriched_one_status(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
 	timelineSvc := NewTimelineService(fake, statusSvc)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
@@ -180,7 +180,7 @@ func TestTimelineService_ListTimelineEnriched_excludes_private_status_when_list_
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
 	timelineSvc := NewTimelineService(fake, statusSvc)
 
 	alice, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
@@ -218,7 +218,7 @@ func TestTimelineService_ListTimelineEnriched_includes_private_status_when_list_
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
 	timelineSvc := NewTimelineService(fake, statusSvc)
 
 	alice, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})

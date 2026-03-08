@@ -237,6 +237,10 @@ func New(deps Deps) http.Handler {
 					r.Method("DELETE", "/accounts", middleware.RequiredScopes("write:lists")(http.HandlerFunc(deps.Lists.DELETEListAccounts)))
 				})
 				r.Method("GET", "/conversations", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.Conversations.GETConversations)))
+				r.Route("/conversations/{id}", func(r chi.Router) {
+					r.Method("DELETE", "/", middleware.RequiredScopes("write:conversations")(http.HandlerFunc(deps.Conversations.DELETEConversation)))
+					r.Method("POST", "/read", middleware.RequiredScopes("write:conversations")(http.HandlerFunc(deps.Conversations.POSTConversationRead)))
+				})
 				r.Method("GET", "/suggestions", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Suggestions.GETSuggestions)))
 				r.Method("GET", "/notifications", middleware.RequiredScopes("read:notifications")(http.HandlerFunc(deps.Notifications.GETNotifications)))
 				r.Method("GET", "/notifications/{id}", middleware.RequiredScopes("read:notifications")(http.HandlerFunc(deps.Notifications.GETNotification)))
