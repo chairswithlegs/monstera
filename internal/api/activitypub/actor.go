@@ -32,7 +32,8 @@ func (h *ActorHandler) GETActor(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	withMedia, err := h.accounts.GetLocalActorWithMedia(r.Context(), username)
+	// Domain account -> AP Actor document
+	withMedia, err := h.accounts.GetActiveLocalAccountWithMedia(r.Context(), username)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return

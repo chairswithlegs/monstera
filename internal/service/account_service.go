@@ -18,12 +18,12 @@ type AccountService interface {
 	GetAccountsByIDs(ctx context.Context, ids []string) ([]*domain.Account, error)
 	GetByAPID(ctx context.Context, apID string) (*domain.Account, error)
 	GetLocalByUsername(ctx context.Context, username string) (*domain.Account, error)
+	GetActiveLocalAccount(ctx context.Context, username string) (*domain.Account, error)
+	GetByUsername(ctx context.Context, username string, accountDomain *string) (*domain.Account, error)
 	Create(ctx context.Context, in CreateAccountInput) (*domain.Account, error)
 	CreateOrUpdateRemoteAccount(ctx context.Context, in CreateOrUpdateRemoteInput) (*domain.Account, error)
 	Suspend(ctx context.Context, accountID string) error
-	GetByUsername(ctx context.Context, username string, accountDomain *string) (*domain.Account, error)
-	GetLocalActorForFederation(ctx context.Context, username string) (*domain.Account, error)
-	GetLocalActorWithMedia(ctx context.Context, username string) (*LocalActorWithMedia, error)
+	GetActiveLocalAccountWithMedia(ctx context.Context, username string) (*LocalAccountWithMedia, error)
 	CountFollowers(ctx context.Context, accountID string) (int64, error)
 	CountFollowing(ctx context.Context, accountID string) (int64, error)
 	GetRelationship(ctx context.Context, accountID, targetID string) (*domain.Relationship, error)
@@ -313,38 +313,38 @@ func (svc *accountService) GetByUsername(ctx context.Context, username string, a
 	return acc, nil
 }
 
-// GetLocalActorForFederation returns the local account by username for federation (WebFinger, Actor, collections).
-// Returns ErrNotFound if the account does not exist, is suspended, or the user is pending (unconfirmed).
-func (svc *accountService) GetLocalActorForFederation(ctx context.Context, username string) (*domain.Account, error) {
+// GetActiveLocalAccount returns the local account by username if it exists, is not suspended, and the user is confirmed.
+// Returns ErrNotFound otherwise.
+func (svc *accountService) GetActiveLocalAccount(ctx context.Context, username string) (*domain.Account, error) {
 	acc, err := svc.store.GetLocalAccountByUsername(ctx, username)
 	if err != nil {
-		return nil, fmt.Errorf("GetLocalActorForFederation(%s): %w", username, err)
+		return nil, fmt.Errorf("GetActiveLocalAccount(%s): %w", username, err)
 	}
 	if acc.Suspended {
-		return nil, fmt.Errorf("GetLocalActorForFederation(%s): %w", username, domain.ErrNotFound)
+		return nil, fmt.Errorf("GetActiveLocalAccount(%s): %w", username, domain.ErrNotFound)
 	}
 	user, err := svc.store.GetUserByAccountID(ctx, acc.ID)
 	if err != nil || user == nil || user.ConfirmedAt == nil {
-		return nil, fmt.Errorf("GetLocalActorForFederation(%s): %w", username, domain.ErrNotFound)
+		return nil, fmt.Errorf("GetActiveLocalAccount(%s): %w", username, domain.ErrNotFound)
 	}
 	return acc, nil
 }
 
-// LocalActorWithMedia is the result of resolving a local actor with avatar/header URLs.
-type LocalActorWithMedia struct {
+// LocalAccountWithMedia is the result of resolving a local account with avatar/header URLs.
+type LocalAccountWithMedia struct {
 	Account   *domain.Account
 	AvatarURL string
 	HeaderURL string
 }
 
-// GetLocalActorWithMedia returns the local account and resolved avatar/header URLs for federation (Actor document).
+// GetActiveLocalAccountWithMedia returns the local account and resolved avatar/header URLs.
 // Returns ErrNotFound if the account does not exist, is suspended, or the user is pending (unconfirmed).
-func (svc *accountService) GetLocalActorWithMedia(ctx context.Context, username string) (*LocalActorWithMedia, error) {
-	acc, err := svc.GetLocalActorForFederation(ctx, username)
+func (svc *accountService) GetActiveLocalAccountWithMedia(ctx context.Context, username string) (*LocalAccountWithMedia, error) {
+	acc, err := svc.GetActiveLocalAccount(ctx, username)
 	if err != nil {
 		return nil, err
 	}
-	out := &LocalActorWithMedia{Account: acc}
+	out := &LocalAccountWithMedia{Account: acc}
 	if acc.AvatarMediaID != nil {
 		if att, err := svc.store.GetMediaAttachment(ctx, *acc.AvatarMediaID); err == nil && att.URL != "" {
 			out.AvatarURL = att.URL

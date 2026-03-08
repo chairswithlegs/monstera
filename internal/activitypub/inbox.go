@@ -206,7 +206,7 @@ func (p *inbox) handleFollow(ctx context.Context, activity *Activity) error {
 	if activity.ID != "" {
 		apID = &activity.ID
 	}
-	follow, err := p.follows.CreateFollowFromInbox(ctx, actor.ID, target.ID, state, apID)
+	follow, err := p.follows.CreateRemoteFollow(ctx, actor.ID, target.ID, state, apID)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil
@@ -244,8 +244,8 @@ func (p *inbox) handleRejectFollow(ctx context.Context, activity *Activity) erro
 	if err := p.ensureActorIsFollowTarget(ctx, activity, follow); err != nil {
 		return err
 	}
-	if delErr := p.follows.DeleteFollowFromInbox(ctx, follow.AccountID, follow.TargetID); delErr != nil {
-		return fmt.Errorf("inbox: DeleteFollow (Reject): %w", delErr)
+	if delErr := p.follows.DeleteRemoteFollow(ctx, follow.AccountID, follow.TargetID); delErr != nil {
+		return fmt.Errorf("inbox: DeleteRemoteFollow (Reject): %w", delErr)
 	}
 	return nil
 }
@@ -282,7 +282,7 @@ func (p *inbox) handleUndo(ctx context.Context, activity *Activity) error {
 			if err := p.undoActorMatchesAccount(ctx, activity, follow.AccountID); err != nil {
 				return err
 			}
-			if delErr := p.follows.DeleteFollowFromInbox(ctx, follow.AccountID, follow.TargetID); delErr != nil {
+			if delErr := p.follows.DeleteRemoteFollow(ctx, follow.AccountID, follow.TargetID); delErr != nil {
 				return fmt.Errorf("inbox: DeleteFollow (Undo default): %w", delErr)
 			}
 			return nil
@@ -334,18 +334,16 @@ func (p *inbox) handleUndoFollow(ctx context.Context, activity *Activity) error 
 		}
 	}
 
-	if delErr := p.follows.DeleteFollowFromInbox(ctx, follow.AccountID, follow.TargetID); delErr != nil {
+	if delErr := p.follows.DeleteRemoteFollow(ctx, follow.AccountID, follow.TargetID); delErr != nil {
 		return fmt.Errorf("inbox: DeleteFollow (UndoFollow): %w", delErr)
 	}
 	return nil
 }
 
+// undoFavourite handles AP Undo{Like} -> domain delete favourite.
 func (p *inbox) undoFavourite(ctx context.Context, fav *domain.Favourite) error {
-	if err := p.statuses.DeleteFavourite(ctx, fav.AccountID, fav.StatusID); err != nil {
-		return fmt.Errorf("inbox: DeleteFavourite: %w", err)
-	}
-	if err := p.statuses.DecrementFavouritesCount(ctx, fav.StatusID); err != nil {
-		return fmt.Errorf("inbox: DecrementFavouritesCount: %w", err)
+	if err := p.statuses.DeleteRemoteFavourite(ctx, fav.AccountID, fav.StatusID); err != nil {
+		return fmt.Errorf("inbox: DeleteRemoteFavourite: %w", err)
 	}
 	return nil
 }
@@ -394,42 +392,20 @@ func (p *inbox) handleUndoAnnounce(ctx context.Context, activity *Activity) erro
 	if err != nil {
 		return fmt.Errorf("%w: undo{Announce} object is not an announce activity", ErrFatal)
 	}
-
-	var boost *domain.Status
-
-	if inner.ID != "" {
-		if b, err := p.statuses.GetByAPID(ctx, inner.ID); err == nil && b != nil && b.ReblogOfID != nil {
-			if err := p.undoActorMatchesAccount(ctx, activity, b.AccountID); err != nil {
-				return err
-			}
-			boost = b
-		}
+	actorAccount, err := p.accounts.GetByAPID(ctx, inner.Actor)
+	if err != nil {
+		return fmt.Errorf("inbox: GetByAPID actor (UndoAnnounce): %w", err)
 	}
-
-	if boost == nil {
-		actorAccount, err := p.accounts.GetByAPID(ctx, inner.Actor)
-		if err != nil {
-			return fmt.Errorf("inbox: GetByAPID actor (UndoAnnounce): %w", err)
-		}
-		if err := p.undoActorMatchesAccount(ctx, activity, actorAccount.ID); err != nil {
-			return err
-		}
-		objectID, _ := inner.ObjectID()
-		originalStatus, err := p.statuses.GetByAPID(ctx, objectID)
-		if err != nil {
-			return fmt.Errorf("inbox: GetStatusByAPID (UndoAnnounce): %w", err)
-		}
-		boost, err = p.statuses.GetReblogByAccountAndTarget(ctx, actorAccount.ID, originalStatus.ID)
-		if err != nil {
-			return fmt.Errorf("inbox: GetReblogByAccountAndTarget (UndoAnnounce): %w", err)
-		}
+	if err := p.undoActorMatchesAccount(ctx, activity, actorAccount.ID); err != nil {
+		return err
 	}
-
-	if err := p.statuses.SoftDelete(ctx, boost.ID); err != nil {
-		return fmt.Errorf("inbox: SoftDelete (UndoAnnounce): %w", err)
+	objectID, _ := inner.ObjectID()
+	originalStatus, err := p.statuses.GetByAPID(ctx, objectID)
+	if err != nil {
+		return fmt.Errorf("inbox: GetStatusByAPID (UndoAnnounce): %w", err)
 	}
-	if err := p.statuses.DecrementReblogsCount(ctx, *boost.ReblogOfID); err != nil {
-		return fmt.Errorf("inbox: DecrementReblogsCount (UndoAnnounce): %w", err)
+	if err := p.statuses.Unreblog(ctx, actorAccount.ID, originalStatus.ID); err != nil {
+		return fmt.Errorf("inbox: Unreblog (UndoAnnounce): %w", err)
 	}
 	return nil
 }
@@ -522,9 +498,7 @@ func (p *inbox) processMentionNotifications(ctx context.Context, tags []Tag, sta
 
 // createStatusInput holds the result of buildCreateStatusInput.
 type createStatusInput struct {
-	in          service.CreateStatusFromInboxInput
-	mediaIDs    []string
-	inReplyToID *string
+	in service.CreateRemoteStatusInput
 }
 
 func (p *inbox) buildCreateStatusInput(ctx context.Context, note *Note, author *domain.Account, visibility string) createStatusInput {
@@ -541,7 +515,7 @@ func (p *inbox) buildCreateStatusInput(ctx context.Context, note *Note, author *
 	}
 	apRaw, _ := json.Marshal(note)
 	content := note.Content
-	in := service.CreateStatusFromInboxInput{
+	in := service.CreateRemoteStatusInput{
 		AccountID:      author.ID,
 		URI:            note.ID,
 		Text:           &content,
@@ -550,11 +524,12 @@ func (p *inbox) buildCreateStatusInput(ctx context.Context, note *Note, author *
 		Visibility:     visibility,
 		Language:       noteLanguage(note),
 		InReplyToID:    inReplyToID,
+		MediaIDs:       mediaIDs,
 		APID:           note.ID,
 		ApRaw:          apRaw,
 		Sensitive:      note.Sensitive,
 	}
-	return createStatusInput{in: in, mediaIDs: mediaIDs, inReplyToID: inReplyToID}
+	return createStatusInput{in: in}
 }
 
 func (p *inbox) publishStatusCreatedEvent(ctx context.Context, statusID string) {
@@ -616,18 +591,13 @@ func (p *inbox) handleCreate(ctx context.Context, activity *Activity, _ string) 
 		}
 	}
 	createInput := p.buildCreateStatusInput(ctx, note, author, visibility)
-	status, err := p.statuses.CreateFromInbox(ctx, createInput.in)
+	// AP Note -> domain status
+	status, err := p.statuses.CreateRemote(ctx, createInput.in)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil
 		}
 		return fmt.Errorf("inbox: create status: %w", err)
-	}
-	for _, mediaID := range createInput.mediaIDs {
-		_ = p.statuses.AttachMediaToStatus(ctx, mediaID, status.ID, author.ID)
-	}
-	if createInput.inReplyToID != nil {
-		_ = p.statuses.IncrementRepliesCount(ctx, *createInput.inReplyToID)
 	}
 	p.processMentionNotifications(ctx, note.Tag, status.ID, author)
 	p.publishStatusCreatedEvent(ctx, status.ID)
@@ -654,13 +624,20 @@ func (p *inbox) handleAnnounce(ctx context.Context, activity *Activity, _ string
 		return fmt.Errorf("inbox: resolve actor %q: %w", activity.Actor, err)
 	}
 	apRaw, _ := json.Marshal(activity)
-	_, err = p.statuses.CreateBoostFromInbox(ctx, actor.ID, activity.ID, objectID, apRaw)
+	// AP Announce -> domain reblog
+	_, err = p.statuses.CreateRemoteReblog(ctx, service.CreateRemoteReblogInput{
+		AccountID:        actor.ID,
+		ActivityAPID:     activity.ID,
+		ObjectStatusAPID: objectID,
+		ApRaw:            apRaw,
+	})
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil
 		}
-		return fmt.Errorf("inbox: create boost: %w", err)
+		return fmt.Errorf("inbox: create reblog: %w", err)
 	}
+	// AP Announce -> "reblog" notification for the original status author
 	if original.Local {
 		origID := original.ID
 		p.createNotificationAndPublish(ctx, original.AccountID, actor, "reblog", &origID)
@@ -686,44 +663,20 @@ func (p *inbox) handleLike(ctx context.Context, activity *Activity) error {
 	if activity.ID != "" {
 		apID = &activity.ID
 	}
-	_, err = p.statuses.CreateFavouriteFromInbox(ctx, actor.ID, status.ID, apID)
+	// AP Like -> domain favourite
+	_, err = p.statuses.CreateRemoteFavourite(ctx, actor.ID, status.ID, apID)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil
 		}
 		return fmt.Errorf("inbox: create favourite: %w", err)
 	}
+	// AP Like -> "favourite" notification for the status author
 	if status.Local {
 		statusID := status.ID
 		p.createNotificationAndPublish(ctx, status.AccountID, actor, "favourite", &statusID)
 	}
 	return nil
-}
-
-// publishStatusDeletedEvent builds StatusEventOpts from enriched status and publishes the deleted event.
-func (p *inbox) publishStatusDeletedEvent(ctx context.Context, status *domain.Status) {
-	authorID := status.AccountID
-	enriched, err := p.statuses.GetByIDEnriched(ctx, status.ID, &authorID)
-	if err != nil || enriched.Status == nil {
-		return
-	}
-	hashtagNames := make([]string, 0, len(enriched.Tags))
-	for _, t := range enriched.Tags {
-		hashtagNames = append(hashtagNames, t.Name)
-	}
-	mentionedIDs := make([]string, 0, len(enriched.Mentions))
-	for _, m := range enriched.Mentions {
-		if m != nil {
-			mentionedIDs = append(mentionedIDs, m.ID)
-		}
-	}
-	p.sseEvents.PublishStatusDeletedRaw(ctx, status.ID, StatusEventOpts{
-		AccountID:           status.AccountID,
-		Visibility:          status.Visibility,
-		Local:               status.Local,
-		HashtagNames:        hashtagNames,
-		MentionedAccountIDs: mentionedIDs,
-	})
 }
 
 func (p *inbox) handleDelete(ctx context.Context, activity *Activity) error {
@@ -754,9 +707,9 @@ func (p *inbox) handleDelete(ctx context.Context, activity *Activity) error {
 		if statusAuthor.APID != activity.Actor {
 			return fmt.Errorf("%w: delete: actor %q is not the author", ErrFatal, activity.Actor)
 		}
-		p.publishStatusDeletedEvent(ctx, status)
-		if delErr := p.statuses.SoftDelete(ctx, status.ID); delErr != nil {
-			return fmt.Errorf("inbox: SoftDelete (Delete): %w", delErr)
+		// AP Delete{Note/Tombstone} -> domain delete status
+		if err := p.statuses.DeleteRemote(ctx, status.ID); err != nil {
+			return fmt.Errorf("inbox: DeleteRemote (Delete): %w", err)
 		}
 		return nil
 	case "Person":
@@ -764,6 +717,7 @@ func (p *inbox) handleDelete(ctx context.Context, activity *Activity) error {
 		if err != nil {
 			return fmt.Errorf("inbox: GetByAPID (Delete Person): %w", err)
 		}
+		// AP Delete{Person} -> domain suspend account (AP account deletion treated as suspension)
 		if suspendErr := p.accounts.Suspend(ctx, account.ID); suspendErr != nil {
 			return fmt.Errorf("inbox: Suspend: %w", suspendErr)
 		}
@@ -798,13 +752,14 @@ func (p *inbox) handleUpdate(ctx context.Context, activity *Activity) error {
 			cw = note.Summary
 		}
 		content := note.Content
-		if updateErr := p.statuses.UpdateFromInbox(ctx, status.ID, status, service.UpdateStatusFromInboxInput{
+		// AP Update{Note} -> domain update status
+		if updateErr := p.statuses.UpdateRemote(ctx, status.ID, status, service.UpdateRemoteStatusInput{
 			Text:           &content,
 			Content:        &content,
 			ContentWarning: cw,
 			Sensitive:      note.Sensitive,
 		}); updateErr != nil {
-			return fmt.Errorf("inbox: UpdateFromInbox: %w", updateErr)
+			return fmt.Errorf("inbox: UpdateRemote: %w", updateErr)
 		}
 		return nil
 	case "Person", actorTypeService:
@@ -859,6 +814,7 @@ func usernameFromActorIRI(actorIRI, instanceDomain string) string {
 	return suffix
 }
 
+// resolveRemoteAccount maps an AP Actor IRI to a domain account, creating or updating the remote account as needed.
 func (p *inbox) resolveRemoteAccount(ctx context.Context, actorIRI string) (*domain.Account, error) {
 	existing, err := p.accounts.GetByAPID(ctx, actorIRI)
 	if err == nil {

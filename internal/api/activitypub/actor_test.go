@@ -65,7 +65,7 @@ func TestActorHandler_GETActor(t *testing.T) {
 func TestActorHandler_notFound(t *testing.T) {
 	t.Parallel()
 	h := NewActorHandler(&mockAccountService{
-		GetLocalActorWithMediaFunc: func(ctx context.Context, username string) (*service.LocalActorWithMedia, error) {
+		GetActiveLocalAccountWithMediaFunc: func(ctx context.Context, username string) (*service.LocalAccountWithMedia, error) {
 			return nil, domain.ErrNotFound
 		},
 	}, &config.Config{InstanceDomain: "example.com"})
@@ -78,9 +78,9 @@ func TestActorHandler_notFound(t *testing.T) {
 
 type mockAccountService struct {
 	service.AccountService
-	GetLocalActorWithMediaFunc func(ctx context.Context, username string) (*service.LocalActorWithMedia, error)
+	GetActiveLocalAccountWithMediaFunc func(ctx context.Context, username string) (*service.LocalAccountWithMedia, error)
 }
 
-func (m *mockAccountService) GetLocalActorWithMedia(ctx context.Context, username string) (*service.LocalActorWithMedia, error) {
-	return m.GetLocalActorWithMediaFunc(ctx, username)
+func (m *mockAccountService) GetActiveLocalAccountWithMedia(ctx context.Context, username string) (*service.LocalAccountWithMedia, error) {
+	return m.GetActiveLocalAccountWithMediaFunc(ctx, username)
 }

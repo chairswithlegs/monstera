@@ -38,7 +38,7 @@ func TestPollsHandler_GETPoll(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a status with a poll via the service
-	result, err := statusSvc.CreateWithContent(ctx, service.CreateWithContentInput{
+	result, err := statusSvc.Create(ctx, service.CreateWithContentInput{
 		AccountID:         acc.ID,
 		Username:          acc.Username,
 		Text:              "Poll?",
@@ -109,7 +109,7 @@ func TestPollsHandler_POSTVotes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	result, err := statusSvc.CreateWithContent(ctx, service.CreateWithContentInput{
+	result, err := statusSvc.Create(ctx, service.CreateWithContentInput{
 		AccountID:         acc.ID,
 		Username:          acc.Username,
 		Text:              "Vote?",

@@ -32,7 +32,7 @@ func (h *CollectionsHandler) GETFollowers(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, err)
 		return
 	}
-	account, err := h.accounts.GetLocalActorForFederation(r.Context(), username)
+	account, err := h.accounts.GetActiveLocalAccount(r.Context(), username)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -61,7 +61,7 @@ func (h *CollectionsHandler) GETFollowing(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, err)
 		return
 	}
-	account, err := h.accounts.GetLocalActorForFederation(r.Context(), username)
+	account, err := h.accounts.GetActiveLocalAccount(r.Context(), username)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -91,7 +91,7 @@ func (h *CollectionsHandler) GETFeatured(w http.ResponseWriter, r *http.Request)
 		api.HandleError(w, r, err)
 		return
 	}
-	account, err := h.accounts.GetLocalActorForFederation(r.Context(), username)
+	account, err := h.accounts.GetActiveLocalAccount(r.Context(), username)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return

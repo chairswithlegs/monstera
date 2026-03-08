@@ -41,7 +41,7 @@ func TestIntegration_RegisterUser_CreateStatus_HomeTimeline(t *testing.T) {
 	require.NotNil(t, acc)
 
 	text := "Hello from integration test"
-	st, err := statusSvc.Create(ctx, CreateStatusInput{
+	st, err := statusSvc.CreateLocal(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
 		Text:       &text,
 		Visibility: domain.VisibilityPublic,

@@ -41,7 +41,7 @@ func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	account, err := h.accounts.GetLocalActorForFederation(r.Context(), username)
+	account, err := h.accounts.GetActiveLocalAccount(r.Context(), username)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return

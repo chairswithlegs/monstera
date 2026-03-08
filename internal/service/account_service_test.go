@@ -194,7 +194,7 @@ func TestAccountService_GetAccountWithUser_user_not_found(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
 
-func TestAccountService_GetLocalActorForFederation_confirmed_returns_account(t *testing.T) {
+func TestAccountService_GetActiveLocalAccount_confirmed_returns_account(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
@@ -212,13 +212,13 @@ func TestAccountService_GetLocalActorForFederation_confirmed_returns_account(t *
 	require.NoError(t, err)
 	require.NoError(t, fake.ConfirmUser(ctx, "01USERBOB"))
 
-	got, err := svc.GetLocalActorForFederation(ctx, "bob")
+	got, err := svc.GetActiveLocalAccount(ctx, "bob")
 	require.NoError(t, err)
 	assert.Equal(t, "bob", got.Username)
 	assert.Equal(t, acc.ID, got.ID)
 }
 
-func TestAccountService_GetLocalActorForFederation_pending_returns_not_found(t *testing.T) {
+func TestAccountService_GetActiveLocalAccount_pending_returns_not_found(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
@@ -236,7 +236,7 @@ func TestAccountService_GetLocalActorForFederation_pending_returns_not_found(t *
 	require.NoError(t, err)
 	// Do not confirm — user remains pending.
 
-	_, err = svc.GetLocalActorForFederation(ctx, "pending")
+	_, err = svc.GetActiveLocalAccount(ctx, "pending")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }

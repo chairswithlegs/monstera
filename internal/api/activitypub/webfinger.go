@@ -51,7 +51,7 @@ func (h *WebFingerHandler) GETWebFinger(w http.ResponseWriter, r *http.Request) 
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	account, err := h.accounts.GetLocalActorForFederation(r.Context(), username)
+	account, err := h.accounts.GetActiveLocalAccount(r.Context(), username)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)

@@ -35,9 +35,9 @@ type FollowService interface {
 	Unmute(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error)
 	GetFollowByAPID(ctx context.Context, apID string) (*domain.Follow, error)
 	GetFollow(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Follow, error)
-	CreateFollowFromInbox(ctx context.Context, actorAccountID, targetAccountID string, state string, apID *string) (*domain.Follow, error)
+	CreateRemoteFollow(ctx context.Context, actorAccountID, targetAccountID string, state string, apID *string) (*domain.Follow, error)
 	AcceptFollow(ctx context.Context, followID string) error
-	DeleteFollowFromInbox(ctx context.Context, actorAccountID, targetAccountID string) error
+	DeleteRemoteFollow(ctx context.Context, actorAccountID, targetAccountID string) error
 	GetFollowers(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error)
 	GetFollowing(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error)
 	ListPendingFollowRequests(ctx context.Context, targetAccountID string, maxID *string, limit int) ([]domain.Account, *string, error)
@@ -317,9 +317,9 @@ func (svc *followService) GetFollow(ctx context.Context, actorAccountID, targetA
 	return f, nil
 }
 
-// CreateFollowFromInbox creates a follow from inbox (remote actor following local target).
+// CreateRemoteFollow creates a follow from a remote actor to a local target.
 // When state is accepted (e.g. target not locked), increments follower/following counts.
-func (svc *followService) CreateFollowFromInbox(ctx context.Context, actorAccountID, targetAccountID string, state string, apID *string) (*domain.Follow, error) {
+func (svc *followService) CreateRemoteFollow(ctx context.Context, actorAccountID, targetAccountID string, state string, apID *string) (*domain.Follow, error) {
 	var follow *domain.Follow
 	err := svc.store.WithTx(ctx, func(tx store.Store) error {
 		var txErr error
@@ -344,7 +344,7 @@ func (svc *followService) CreateFollowFromInbox(ctx context.Context, actorAccoun
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("CreateFollowFromInbox: %w", err)
+		return nil, fmt.Errorf("CreateRemoteFollow: %w", err)
 	}
 	return follow, nil
 }
@@ -376,10 +376,10 @@ func (svc *followService) AcceptFollow(ctx context.Context, followID string) err
 	return nil
 }
 
-// DeleteFollowFromInbox removes the follow (for inbox Reject/Undo). Does not decrement follower/following counts.
-func (svc *followService) DeleteFollowFromInbox(ctx context.Context, actorAccountID, targetAccountID string) error {
+// DeleteRemoteFollow removes the follow (e.g. Reject/Undo from federation). Does not decrement follower/following counts.
+func (svc *followService) DeleteRemoteFollow(ctx context.Context, actorAccountID, targetAccountID string) error {
 	if err := svc.store.DeleteFollow(ctx, actorAccountID, targetAccountID); err != nil {
-		return fmt.Errorf("DeleteFollowFromInbox: %w", err)
+		return fmt.Errorf("DeleteRemoteFollow: %w", err)
 	}
 	return nil
 }

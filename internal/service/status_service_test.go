@@ -18,7 +18,7 @@ import (
 
 const privatePostText = "private post"
 
-func TestStatusService_Create(t *testing.T) {
+func TestStatusService_CreateLocal(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
@@ -29,7 +29,7 @@ func TestStatusService_Create(t *testing.T) {
 	require.NoError(t, err)
 
 	text := "Hello world"
-	st, err := statusSvc.Create(ctx, CreateStatusInput{
+	st, err := statusSvc.CreateLocal(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
 		Text:       &text,
 		Visibility: domain.VisibilityPublic,
@@ -53,7 +53,7 @@ func TestStatusService_Create_nil_text_returns_validation(t *testing.T) {
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 
-	_, err = statusSvc.Create(ctx, CreateStatusInput{
+	_, err = statusSvc.CreateLocal(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
 		Text:       nil,
 		Visibility: domain.VisibilityPublic,
@@ -73,7 +73,7 @@ func TestStatusService_Create_invalid_visibility_returns_validation(t *testing.T
 	require.NoError(t, err)
 
 	text := "Hello"
-	_, err = statusSvc.Create(ctx, CreateStatusInput{
+	_, err = statusSvc.CreateLocal(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
 		Text:       &text,
 		Visibility: "invalid",
@@ -92,7 +92,7 @@ func TestStatusService_GetByID(t *testing.T) {
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 	text := "Hello"
-	created, err := statusSvc.Create(ctx, CreateStatusInput{
+	created, err := statusSvc.CreateLocal(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
 		Text:       &text,
 		Visibility: domain.VisibilityPublic,
@@ -126,7 +126,7 @@ func TestStatusService_Delete(t *testing.T) {
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 	text := "To be deleted"
-	st, err := statusSvc.Create(ctx, CreateStatusInput{
+	st, err := statusSvc.CreateLocal(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
 		Text:       &text,
 		Visibility: domain.VisibilityPublic,
@@ -141,7 +141,7 @@ func TestStatusService_Delete(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
 
-func TestStatusService_CreateWithContent_empty_text_returns_validation(t *testing.T) {
+func TestStatusService_Create_empty_text_returns_validation(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
@@ -151,7 +151,7 @@ func TestStatusService_CreateWithContent_empty_text_returns_validation(t *testin
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 
-	_, err = statusSvc.CreateWithContent(ctx, CreateWithContentInput{
+	_, err = statusSvc.Create(ctx, CreateWithContentInput{
 		AccountID:  acc.ID,
 		Username:   acc.Username,
 		Text:       "   ",
@@ -161,7 +161,7 @@ func TestStatusService_CreateWithContent_empty_text_returns_validation(t *testin
 	assert.ErrorIs(t, err, domain.ErrValidation)
 }
 
-func TestStatusService_CreateWithContent_over_char_limit_returns_validation(t *testing.T) {
+func TestStatusService_Create_over_char_limit_returns_validation(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
@@ -171,7 +171,7 @@ func TestStatusService_CreateWithContent_over_char_limit_returns_validation(t *t
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 
-	_, err = statusSvc.CreateWithContent(ctx, CreateWithContentInput{
+	_, err = statusSvc.Create(ctx, CreateWithContentInput{
 		AccountID:  acc.ID,
 		Username:   acc.Username,
 		Text:       "this is way over ten characters",
@@ -181,7 +181,7 @@ func TestStatusService_CreateWithContent_over_char_limit_returns_validation(t *t
 	assert.ErrorIs(t, err, domain.ErrValidation)
 }
 
-func TestStatusService_CreateWithContent_success_returns_result_with_author(t *testing.T) {
+func TestStatusService_Create_success_returns_result_with_author(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
@@ -191,7 +191,7 @@ func TestStatusService_CreateWithContent_success_returns_result_with_author(t *t
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 
-	result, err := statusSvc.CreateWithContent(ctx, CreateWithContentInput{
+	result, err := statusSvc.Create(ctx, CreateWithContentInput{
 		AccountID:  acc.ID,
 		Username:   acc.Username,
 		Text:       "Hello world",
@@ -209,7 +209,7 @@ func TestStatusService_CreateWithContent_success_returns_result_with_author(t *t
 	assert.Contains(t, result.Status.URI, "/users/alice/statuses/")
 }
 
-func TestStatusService_CreateWithContent_no_mention_notification_when_mentionee_muted_conversation(t *testing.T) {
+func TestStatusService_Create_no_mention_notification_when_mentionee_muted_conversation(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
@@ -231,7 +231,7 @@ func TestStatusService_CreateWithContent_no_mention_notification_when_mentionee_
 	})
 	require.NoError(t, err)
 
-	root, err := statusSvc.CreateWithContent(ctx, CreateWithContentInput{
+	root, err := statusSvc.Create(ctx, CreateWithContentInput{
 		AccountID:  alice.ID,
 		Username:   alice.Username,
 		Text:       "root post",
@@ -242,7 +242,7 @@ func TestStatusService_CreateWithContent_no_mention_notification_when_mentionee_
 	err = statusSvc.MuteConversation(ctx, bob.ID, root.Status.ID)
 	require.NoError(t, err)
 
-	_, err = statusSvc.CreateWithContent(ctx, CreateWithContentInput{
+	_, err = statusSvc.Create(ctx, CreateWithContentInput{
 		AccountID:   alice.ID,
 		Username:    alice.Username,
 		Text:        "hey @bob",
@@ -266,7 +266,7 @@ func TestStatusService_GetByIDEnriched_private_returns_ErrNotFound_when_unauthen
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 	text := privatePostText
-	st, err := statusSvc.Create(ctx, CreateStatusInput{
+	st, err := statusSvc.CreateLocal(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
 		Text:       &text,
 		Visibility: domain.VisibilityPrivate,
@@ -288,7 +288,7 @@ func TestStatusService_GetByIDEnriched_private_returns_success_when_viewer_is_au
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 	text := privatePostText
-	st, err := statusSvc.Create(ctx, CreateStatusInput{
+	st, err := statusSvc.CreateLocal(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
 		Text:       &text,
 		Visibility: domain.VisibilityPrivate,
@@ -315,7 +315,7 @@ func TestStatusService_GetByIDEnriched_returns_ErrNotFound_when_viewer_blocked_b
 	viewer, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
 	require.NoError(t, err)
 	text := "public post"
-	st, err := statusSvc.Create(ctx, CreateStatusInput{
+	st, err := statusSvc.CreateLocal(ctx, CreateStatusInput{
 		AccountID:  author.ID,
 		Text:       &text,
 		Visibility: domain.VisibilityPublic,
@@ -430,7 +430,7 @@ func TestStatusService_workerPublishScheduled(t *testing.T) {
 	assert.Contains(t, *statuses[0].Content, "due post")
 }
 
-func TestStatusService_CreateWithContent_quote(t *testing.T) {
+func TestStatusService_Create_quote(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
@@ -467,7 +467,7 @@ func TestStatusService_CreateWithContent_quote(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("success creates quote and approval", func(t *testing.T) {
-		enriched, err := statusSvc.CreateWithContent(ctx, CreateWithContentInput{
+		enriched, err := statusSvc.Create(ctx, CreateWithContentInput{
 			AccountID:      bob.ID,
 			Username:       "bob",
 			Text:           "quoting alice",
@@ -501,7 +501,7 @@ func TestStatusService_CreateWithContent_quote(t *testing.T) {
 			Local:               true,
 		})
 		require.NoError(t, err)
-		_, err = statusSvc.CreateWithContent(ctx, CreateWithContentInput{
+		_, err = statusSvc.Create(ctx, CreateWithContentInput{
 			AccountID:      bob.ID,
 			Username:       "bob",
 			Text:           "trying to quote",
@@ -547,7 +547,7 @@ func TestStatusService_ListQuotesOfStatus(t *testing.T) {
 	})
 
 	t.Run("after creating quote returns one status", func(t *testing.T) {
-		enriched, err := statusSvc.CreateWithContent(ctx, CreateWithContentInput{
+		enriched, err := statusSvc.Create(ctx, CreateWithContentInput{
 			AccountID:      acc.ID,
 			Username:       "alice",
 			Text:           "a quote",
@@ -706,7 +706,7 @@ func TestStatusService_UpdateQuoteApprovalPolicy(t *testing.T) {
 	})
 }
 
-func TestStatusService_UpdateStatusFromAPI_quoted_update_notification(t *testing.T) {
+func TestStatusService_Update_quoted_update_notification(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
@@ -756,7 +756,7 @@ func TestStatusService_UpdateStatusFromAPI_quoted_update_notification(t *testing
 	require.NoError(t, err)
 	require.NoError(t, fake.CreateQuoteApproval(ctx, quotingID, quotedID))
 
-	_, err = statusSvc.UpdateStatusFromAPI(ctx, alice.ID, quotedID, "edited text", "", false)
+	_, err = statusSvc.Update(ctx, alice.ID, quotedID, "edited text", "", false)
 	require.NoError(t, err)
 
 	notifications, err := fake.ListNotifications(ctx, bob.ID, nil, 20)

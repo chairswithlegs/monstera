@@ -290,10 +290,10 @@ func (f *fakeAccountService) Suspend(context.Context, string) error { panic("unu
 func (f *fakeAccountService) GetByUsername(context.Context, string, *string) (*domain.Account, error) {
 	panic("unused")
 }
-func (f *fakeAccountService) GetLocalActorForFederation(context.Context, string) (*domain.Account, error) {
+func (f *fakeAccountService) GetActiveLocalAccount(context.Context, string) (*domain.Account, error) {
 	panic("unused")
 }
-func (f *fakeAccountService) GetLocalActorWithMedia(context.Context, string) (*service.LocalActorWithMedia, error) {
+func (f *fakeAccountService) GetActiveLocalAccountWithMedia(context.Context, string) (*service.LocalAccountWithMedia, error) {
 	panic("unused")
 }
 func (f *fakeAccountService) CountFollowers(context.Context, string) (int64, error) { panic("unused") }

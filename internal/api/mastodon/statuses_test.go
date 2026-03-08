@@ -1076,7 +1076,7 @@ func TestStatusesHandler_GETFavouritedBy(t *testing.T) {
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 	text := "post"
-	status, err := statusSvc.Create(ctx, service.CreateStatusInput{AccountID: acc.ID, Text: &text, Visibility: domain.VisibilityPublic})
+	status, err := statusSvc.CreateLocal(ctx, service.CreateStatusInput{AccountID: acc.ID, Text: &text, Visibility: domain.VisibilityPublic})
 	require.NoError(t, err)
 	statusID := status.ID
 
@@ -1103,7 +1103,7 @@ func TestStatusesHandler_GETRebloggedBy(t *testing.T) {
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 	text := "post"
-	status, err := statusSvc.Create(ctx, service.CreateStatusInput{AccountID: acc.ID, Text: &text, Visibility: domain.VisibilityPublic})
+	status, err := statusSvc.CreateLocal(ctx, service.CreateStatusInput{AccountID: acc.ID, Text: &text, Visibility: domain.VisibilityPublic})
 	require.NoError(t, err)
 	statusID := status.ID
 

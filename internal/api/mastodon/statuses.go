@@ -191,7 +191,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 		}
 		createInput.PollLimits = h.pollLimits
 	}
-	result, err := h.statuses.CreateWithContent(ctx, createInput)
+	result, err := h.statuses.Create(ctx, createInput)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -452,7 +452,7 @@ func (h *StatusesHandler) PUTStatuses(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.NewUnprocessableError("invalid JSON"))
 		return
 	}
-	result, err := h.statuses.UpdateStatusFromAPI(r.Context(), account.ID, id, strings.TrimSpace(req.Status), req.SpoilerText, req.Sensitive)
+	result, err := h.statuses.Update(r.Context(), account.ID, id, strings.TrimSpace(req.Status), req.SpoilerText, req.Sensitive)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -734,7 +734,11 @@ func (h *StatusesHandler) POSTUnreblog(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	result, err := h.statuses.Unreblog(r.Context(), account.ID, id)
+	if err := h.statuses.Unreblog(r.Context(), account.ID, id); err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	result, err := h.statuses.GetByIDEnriched(r.Context(), id, &account.ID)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -951,17 +955,17 @@ func firstLastAccountIDs(list []*domain.Account) (firstID, lastID string) {
 	return list[0].ID, list[len(list)-1].ID
 }
 
-// enrichedStatusToAPIModelWithReblog returns the boost status with nested reblog (original status).
+// enrichedStatusToAPIModelWithReblog returns the reblog status with nested original status.
 func enrichedStatusToAPIModelWithReblog(ctx context.Context, result service.EnrichedStatus, originalID string, viewerID *string, h *StatusesHandler) apimodel.Status {
-	boost := enrichedStatusToAPIModel(result, h.instanceDomain)
+	reblog := enrichedStatusToAPIModel(result, h.instanceDomain)
 	if result.Status.ReblogOfID != nil && *result.Status.ReblogOfID == originalID {
 		origResult, err := h.statuses.GetByIDEnriched(ctx, *result.Status.ReblogOfID, viewerID)
 		if err == nil {
 			reblogAPI := enrichedStatusToAPIModel(origResult, h.instanceDomain)
-			boost.Reblog = &reblogAPI
+			reblog.Reblog = &reblogAPI
 		}
 	}
-	return boost
+	return reblog
 }
 
 // setQuoteApprovalOnStatus populates out.QuoteApproval when the status is a quote (has QuotedStatusID).

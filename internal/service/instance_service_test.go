@@ -55,7 +55,7 @@ func TestInstanceService_GetNodeInfoStats_local_post_count(t *testing.T) {
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 	text := "first post"
-	_, err = statusSvc.Create(ctx, CreateStatusInput{
+	_, err = statusSvc.CreateLocal(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
 		Text:       &text,
 		Visibility: domain.VisibilityPublic,
