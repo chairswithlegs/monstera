@@ -107,6 +107,7 @@ type Querier interface {
 	GetAuthorizationCode(ctx context.Context, code string) (OauthAuthorizationCode, error)
 	GetBlock(ctx context.Context, arg GetBlockParams) (Block, error)
 	GetBookmarksTimeline(ctx context.Context, arg GetBookmarksTimelineParams) ([]GetBookmarksTimelineRow, error)
+	GetConversationRoot(ctx context.Context, id string) (string, error)
 	GetDistinctFollowerInboxURLsPaginated(ctx context.Context, arg GetDistinctFollowerInboxURLsPaginatedParams) ([]string, error)
 	GetDomainBlock(ctx context.Context, domain string) (DomainBlock, error)
 	GetEmailToken(ctx context.Context, tokenHash string) (EmailToken, error)

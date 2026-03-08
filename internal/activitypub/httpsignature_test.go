@@ -147,7 +147,9 @@ func TestNewHTTPSignatureService(t *testing.T) {
 	cfg := &config.Config{InstanceDomain: "example.com"}
 	svc := NewHTTPSignatureService(cfg, c, nil)
 	require.NotNil(t, svc)
-	assert.Equal(t, testHost, svc.instanceDomain)
+	impl, ok := svc.(*httpSignatureService)
+	require.True(t, ok)
+	assert.Equal(t, testHost, impl.instanceDomain)
 }
 
 func TestSign_GET_setsHeaders(t *testing.T) {
@@ -156,7 +158,7 @@ func TestSign_GET_setsHeaders(t *testing.T) {
 	require.NoError(t, err)
 	c, _ := cache.New(cache.Config{Driver: "memory"})
 	defer func() { _ = c.Close() }()
-	svc := NewHTTPSignatureService(&config.Config{}, c, nil)
+	svc := NewHTTPSignatureService(&config.Config{}, c, nil).(*httpSignatureService)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://"+testHost+"/users/alice", nil)
 	require.NoError(t, err)
@@ -180,7 +182,7 @@ func TestSign_POST_withBody_setsDigest(t *testing.T) {
 	require.NoError(t, err)
 	c, _ := cache.New(cache.Config{Driver: "memory"})
 	defer func() { _ = c.Close() }()
-	svc := NewHTTPSignatureService(&config.Config{}, c, nil)
+	svc := NewHTTPSignatureService(&config.Config{}, c, nil).(*httpSignatureService)
 
 	body := []byte(`{"type":"Create"}`)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://"+testHost+"/inbox", bytes.NewReader(body))
@@ -211,11 +213,12 @@ func TestVerify_success(t *testing.T) {
 	time.Sleep(10 * time.Millisecond) // ristretto admits asynchronously
 
 	svc := NewHTTPSignatureService(&config.Config{}, c, nil)
+	impl := svc.(*httpSignatureService)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://"+testHost+"/users/alice", nil)
 	require.NoError(t, err)
 	req.Host = testHost
 
-	err = svc.sign(req, testKeyID, key)
+	err = impl.sign(req, testKeyID, key)
 	require.NoError(t, err)
 
 	got, err := svc.Verify(context.Background(), req)
@@ -290,11 +293,12 @@ func TestVerify_digestMismatch(t *testing.T) {
 	time.Sleep(10 * time.Millisecond) // ristretto admits asynchronously
 
 	svc := NewHTTPSignatureService(&config.Config{}, c, nil)
+	impl := svc.(*httpSignatureService)
 	body := []byte(`{"type":"Create"}`)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://"+testHost+"/inbox", bytes.NewReader(body))
 	require.NoError(t, err)
 	req.Host = testHost
-	err = svc.sign(req, testKeyID, key)
+	err = impl.sign(req, testKeyID, key)
 	require.NoError(t, err)
 
 	req.Header.Set("Digest", "SHA-256=wrong")
@@ -317,10 +321,11 @@ func TestVerify_replayDetected(t *testing.T) {
 	time.Sleep(10 * time.Millisecond) // ristretto admits asynchronously
 
 	svc := NewHTTPSignatureService(&config.Config{}, c, nil)
+	impl := svc.(*httpSignatureService)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://"+testHost+"/users/alice", nil)
 	require.NoError(t, err)
 	req.Host = testHost
-	err = svc.sign(req, testKeyID, key)
+	err = impl.sign(req, testKeyID, key)
 	require.NoError(t, err)
 
 	_, err = svc.Verify(context.Background(), req)
@@ -355,7 +360,8 @@ func TestFetchRemotePublicKey_success(t *testing.T) {
 	c, _ := cache.New(cache.Config{Driver: "memory"})
 	defer func() { _ = c.Close() }()
 	svc := NewHTTPSignatureService(&config.Config{}, c, nil)
-	svc.client = server.Client()
+	impl := svc.(*httpSignatureService)
+	impl.client = server.Client()
 
 	got, err := svc.FetchRemotePublicKey(context.Background(), keyID)
 	require.NoError(t, err)
@@ -383,8 +389,9 @@ func TestFetchRemotePublicKey_cacheHit(t *testing.T) {
 	time.Sleep(10 * time.Millisecond) // ristretto admits asynchronously
 
 	svc := NewHTTPSignatureService(&config.Config{}, c, nil)
+	impl := svc.(*httpSignatureService)
 	callCount := 0
-	svc.client = &http.Client{
+	impl.client = &http.Client{
 		Transport: &roundTripperFunc{fn: func(*http.Request) (*http.Response, error) {
 			callCount++
 			return nil, assert.AnError

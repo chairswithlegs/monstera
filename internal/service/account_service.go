@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -377,9 +378,54 @@ func (svc *accountService) CountFollowing(ctx context.Context, accountID string)
 
 // GetRelationship returns the relationship between accountID (viewer) and targetID.
 func (svc *accountService) GetRelationship(ctx context.Context, accountID, targetID string) (*domain.Relationship, error) {
-	rel, err := svc.store.GetRelationship(ctx, accountID, targetID)
-	if err != nil {
-		return nil, fmt.Errorf("GetRelationship: %w", err)
+	rel := &domain.Relationship{
+		TargetID:       targetID,
+		ShowingReblogs: true,
+		Notifying:      false,
+		Endorsed:       false,
+		Note:           "",
+	}
+	fw, err := svc.store.GetFollow(ctx, accountID, targetID)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return nil, fmt.Errorf("GetFollow(actor->target): %w", err)
+	}
+	if err == nil {
+		switch fw.State {
+		case domain.FollowStateAccepted:
+			rel.Following = true
+		case domain.FollowStatePending:
+			rel.Following = true
+			rel.Requested = true
+		}
+	}
+	bw, err := svc.store.GetFollow(ctx, targetID, accountID)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return nil, fmt.Errorf("GetFollow(target->actor): %w", err)
+	}
+	if err == nil && bw.State == domain.FollowStateAccepted {
+		rel.FollowedBy = true
+	}
+	_, err = svc.store.GetBlock(ctx, accountID, targetID)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return nil, fmt.Errorf("GetBlock(actor->target): %w", err)
+	}
+	if err == nil {
+		rel.Blocking = true
+	}
+	_, err = svc.store.GetBlock(ctx, targetID, accountID)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return nil, fmt.Errorf("GetBlock(target->actor): %w", err)
+	}
+	if err == nil {
+		rel.BlockedBy = true
+	}
+	m, err := svc.store.GetMute(ctx, accountID, targetID)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return nil, fmt.Errorf("GetMute: %w", err)
+	}
+	if err == nil {
+		rel.Muting = true
+		rel.MutingNotifications = m.HideNotifications
 	}
 	return rel, nil
 }

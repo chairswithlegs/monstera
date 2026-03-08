@@ -51,14 +51,15 @@ type FollowService interface {
 }
 
 type followService struct {
-	store store.Store
-	pub   FollowPublisher
-	block BlockPublisher
+	store    store.Store
+	accounts AccountService
+	pub      FollowPublisher
+	block    BlockPublisher
 }
 
 // NewFollowService returns a FollowService. pub and block may be nil.
-func NewFollowService(s store.Store, pub FollowPublisher, block BlockPublisher) FollowService {
-	return &followService{store: s, pub: pub, block: block}
+func NewFollowService(s store.Store, accounts AccountService, pub FollowPublisher, block BlockPublisher) FollowService {
+	return &followService{store: s, accounts: accounts, pub: pub, block: block}
 }
 
 // Follow creates a follow from actor to target. Returns the relationship after the change.
@@ -77,7 +78,7 @@ func (svc *followService) Follow(ctx context.Context, actorAccountID, targetAcco
 	if target.Suspended {
 		return nil, fmt.Errorf("Follow target: %w", domain.ErrNotFound)
 	}
-	rel, err := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+	rel, err := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("Follow GetRelationship: %w", err)
 	}
@@ -97,7 +98,7 @@ func (svc *followService) Follow(ctx context.Context, actorAccountID, targetAcco
 	existing, _ := svc.store.GetFollow(ctx, actorAccountID, targetAccountID)
 	if existing != nil {
 		if existing.State == domain.FollowStateAccepted || existing.State == domain.FollowStatePending {
-			rel, err := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+			rel, err := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 			if err != nil {
 				return nil, fmt.Errorf("Follow GetRelationship existing: %w", err)
 			}
@@ -148,7 +149,7 @@ func (svc *followService) Follow(ctx context.Context, actorAccountID, targetAcco
 		_ = svc.pub.PublishFollow(ctx, actor, target, follow.ID)
 	}
 
-	rel, err = svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+	rel, err = svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("Follow GetRelationship after: %w", err)
 	}
@@ -159,7 +160,7 @@ func (svc *followService) Follow(ctx context.Context, actorAccountID, targetAcco
 func (svc *followService) Unfollow(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error) {
 	follow, err := svc.store.GetFollow(ctx, actorAccountID, targetAccountID)
 	if err != nil {
-		rel, _ := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+		rel, _ := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 		if rel != nil {
 			return rel, nil
 		}
@@ -185,7 +186,7 @@ func (svc *followService) Unfollow(ctx context.Context, actorAccountID, targetAc
 		_ = svc.pub.PublishUndoFollow(ctx, actor, target, follow.ID)
 	}
 
-	rel, err := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+	rel, err := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("Unfollow GetRelationship: %w", err)
 	}
@@ -235,7 +236,7 @@ func (svc *followService) Block(ctx context.Context, actorAccountID, targetAccou
 	if svc.block != nil && target != nil && actor != nil && target.InboxURL != "" {
 		_ = svc.block.PublishBlock(ctx, actor, target)
 	}
-	rel, err := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+	rel, err := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("Block GetRelationship: %w", err)
 	}
@@ -254,7 +255,7 @@ func (svc *followService) Unblock(ctx context.Context, actorAccountID, targetAcc
 			_ = svc.block.PublishUndoBlock(ctx, actor, target)
 		}
 	}
-	rel, err := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+	rel, err := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("Unblock GetRelationship: %w", err)
 	}
@@ -281,7 +282,7 @@ func (svc *followService) Mute(ctx context.Context, actorAccountID, targetAccoun
 	}); err != nil {
 		return nil, fmt.Errorf("CreateMute: %w", err)
 	}
-	rel, err := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+	rel, err := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("Mute GetRelationship: %w", err)
 	}
@@ -291,7 +292,7 @@ func (svc *followService) Mute(ctx context.Context, actorAccountID, targetAccoun
 // Unmute removes the mute from actor to target. Returns the relationship.
 func (svc *followService) Unmute(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error) {
 	_ = svc.store.DeleteMute(ctx, actorAccountID, targetAccountID)
-	rel, err := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+	rel, err := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("Unmute GetRelationship: %w", err)
 	}

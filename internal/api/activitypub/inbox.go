@@ -21,11 +21,11 @@ import (
 type InboxHandler struct {
 	inbox    ap.Inbox
 	cache    cache.Store
-	verifier *ap.HTTPSignatureService
+	verifier ap.HTTPSignatureService
 }
 
 // NewInboxHandler returns a new InboxHandler.
-func NewInboxHandler(inbox ap.Inbox, cache cache.Store, cfg *config.Config, verifier *ap.HTTPSignatureService) *InboxHandler {
+func NewInboxHandler(inbox ap.Inbox, cache cache.Store, cfg *config.Config, verifier ap.HTTPSignatureService) *InboxHandler {
 	return &InboxHandler{inbox: inbox, cache: cache, verifier: verifier}
 }
 

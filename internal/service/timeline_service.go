@@ -17,13 +17,17 @@ const (
 
 // EnrichedStatus is a status with its author, mentions, tags, and media loaded.
 // Used by timeline endpoints to return Mastodon API response shape without handler store access.
+// Bookmarked, Pinned, and Muted are viewer-relative and set when viewerAccountID is provided.
 type EnrichedStatus struct {
-	Status   *domain.Status
-	Author   *domain.Account
-	Mentions []*domain.Account
-	Tags     []domain.Hashtag
-	Media    []domain.MediaAttachment
-	Poll     *EnrichedPoll // optional; set when status has an attached poll
+	Status     *domain.Status
+	Author     *domain.Account
+	Mentions   []*domain.Account
+	Tags       []domain.Hashtag
+	Media      []domain.MediaAttachment
+	Poll       *EnrichedPoll // optional; set when status has an attached poll
+	Bookmarked bool          // viewer has bookmarked this status
+	Pinned     bool          // author has pinned this status (only meaningful when viewer is author)
+	Muted      bool          // viewer has muted this status's conversation
 }
 
 // EnrichedPoll is a poll with options (and vote counts), plus viewer-relative voted/own_votes.

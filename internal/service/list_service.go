@@ -12,11 +12,12 @@ import (
 // ListService manages user lists and list membership.
 type ListService interface {
 	CreateList(ctx context.Context, accountID string, title, repliesPolicy string, exclusive bool) (*domain.List, error)
-	GetList(ctx context.Context, listID string) (*domain.List, error)
+	GetList(ctx context.Context, accountID, listID string) (*domain.List, error)
 	ListLists(ctx context.Context, accountID string) ([]domain.List, error)
 	UpdateList(ctx context.Context, accountID, listID string, title, repliesPolicy string, exclusive bool) (*domain.List, error)
 	DeleteList(ctx context.Context, accountID, listID string) error
 	ListListAccountIDs(ctx context.Context, listID string) ([]string, error)
+	GetListAccounts(ctx context.Context, ownerAccountID, listID string) ([]domain.Account, error)
 	AddAccountsToList(ctx context.Context, accountID, listID string, accountIDs []string) error
 	RemoveAccountsFromList(ctx context.Context, accountID, listID string, accountIDs []string) error
 }
@@ -56,10 +57,14 @@ func (svc *listService) CreateList(ctx context.Context, accountID string, title,
 	return l, nil
 }
 
-func (svc *listService) GetList(ctx context.Context, listID string) (*domain.List, error) {
+// GetList returns the list for the given account. Returns ErrForbidden if the list is not owned by the account.
+func (svc *listService) GetList(ctx context.Context, accountID, listID string) (*domain.List, error) {
 	l, err := svc.store.GetListByID(ctx, listID)
 	if err != nil {
-		return nil, fmt.Errorf("GetListByID: %w", err)
+		return nil, fmt.Errorf("GetList GetListByID: %w", err)
+	}
+	if l.AccountID != accountID {
+		return nil, fmt.Errorf("GetList: %w", domain.ErrForbidden)
 	}
 	return l, nil
 }
@@ -124,6 +129,42 @@ func (svc *listService) ListListAccountIDs(ctx context.Context, listID string) (
 		return nil, fmt.Errorf("ListListAccountIDs: %w", err)
 	}
 	return ids, nil
+}
+
+// GetListAccounts returns accounts in the list for the owner. Returns ErrForbidden if the caller is not the list owner.
+// Suspended accounts are omitted from the result.
+func (svc *listService) GetListAccounts(ctx context.Context, ownerAccountID, listID string) ([]domain.Account, error) {
+	l, err := svc.store.GetListByID(ctx, listID)
+	if err != nil {
+		return nil, fmt.Errorf("GetListAccounts GetListByID: %w", err)
+	}
+	if l.AccountID != ownerAccountID {
+		return nil, fmt.Errorf("GetListAccounts: %w", domain.ErrForbidden)
+	}
+	accountIDs, err := svc.store.ListListAccountIDs(ctx, listID)
+	if err != nil {
+		return nil, fmt.Errorf("GetListAccounts ListListAccountIDs: %w", err)
+	}
+	if len(accountIDs) == 0 {
+		return nil, nil
+	}
+	accounts, err := svc.store.GetAccountsByIDs(ctx, accountIDs)
+	if err != nil {
+		return nil, fmt.Errorf("GetListAccounts GetAccountsByIDs: %w", err)
+	}
+	byID := make(map[string]*domain.Account, len(accounts))
+	for _, acc := range accounts {
+		byID[acc.ID] = acc
+	}
+	out := make([]domain.Account, 0, len(accountIDs))
+	for _, aid := range accountIDs {
+		acc := byID[aid]
+		if acc == nil || acc.Suspended {
+			continue
+		}
+		out = append(out, *acc)
+	}
+	return out, nil
 }
 
 func (svc *listService) AddAccountsToList(ctx context.Context, accountID, listID string, accountIDs []string) error {

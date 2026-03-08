@@ -12,26 +12,25 @@ import (
 	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/oauth"
-	"github.com/chairswithlegs/monstera/internal/store"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/chairswithlegs/monstera/internal/service"
 )
 
 // Handler holds dependencies for the OAuth HTTP endpoints.
 type Handler struct {
 	oauth *oauth.Server
-	store store.Store
+	auth  service.AuthService
 	cfg   *config.Config
 }
 
 // NewHandler constructs an OAuth Handler.
 func NewHandler(
 	oauth *oauth.Server,
-	store store.Store,
+	auth service.AuthService,
 	cfg *config.Config,
 ) *Handler {
 	return &Handler{
 		oauth: oauth,
-		store: store,
+		auth:  auth,
 		cfg:   cfg,
 	}
 }
@@ -141,7 +140,7 @@ func (h *Handler) GETAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	app, err := h.store.GetApplicationByClientID(r.Context(), clientID)
+	app, err := h.auth.GetApplicationByClientID(r.Context(), clientID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.NewBadRequestError("invalid client_id"))
@@ -151,7 +150,7 @@ func (h *Handler) GETAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.isValidRedirectURI(redirectURI, app) {
+	if !h.auth.ValidateRedirectURI(redirectURI, app) {
 		api.HandleError(w, r, api.NewBadRequestError("redirect_uri is not registered"))
 		return
 	}
@@ -197,7 +196,7 @@ func (h *Handler) POSTLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	app, err := h.store.GetApplicationByClientID(r.Context(), body.ClientID)
+	app, err := h.auth.GetApplicationByClientID(r.Context(), body.ClientID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.NewBadRequestError("invalid client_id"))
@@ -207,36 +206,27 @@ func (h *Handler) POSTLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.isValidRedirectURI(body.RedirectURI, app) {
+	if !h.auth.ValidateRedirectURI(body.RedirectURI, app) {
 		api.HandleError(w, r, api.NewBadRequestError("redirect_uri is not registered"))
 		return
 	}
 
-	user, err := h.store.GetUserByEmail(r.Context(), body.Email)
+	accountID, err := h.auth.Authenticate(r.Context(), body.Email, body.Password)
 	if err != nil {
-		api.HandleError(w, r, api.NewUnauthorizedError("invalid email or password"))
-		return
-	}
-
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(body.Password)); err != nil {
-		api.HandleError(w, r, api.NewUnauthorizedError("invalid email or password"))
-		return
-	}
-
-	if user.ConfirmedAt == nil {
-		api.HandleError(w, r, api.NewUnauthorizedError("please confirm your email address before signing in"))
-		return
-	}
-
-	account, err := h.store.GetAccountByID(r.Context(), user.AccountID)
-	if err != nil || account.Suspended {
-		api.HandleError(w, r, api.NewUnauthorizedError("your account has been suspended"))
+		switch {
+		case errors.Is(err, service.ErrUnconfirmed):
+			api.HandleError(w, r, api.NewUnauthorizedError("please confirm your email address before signing in"))
+		case errors.Is(err, service.ErrSuspended):
+			api.HandleError(w, r, api.NewUnauthorizedError("your account has been suspended"))
+		default:
+			api.HandleError(w, r, api.NewUnauthorizedError("invalid email or password"))
+		}
 		return
 	}
 
 	code, err := h.oauth.AuthorizeRequest(r.Context(), oauth.AuthorizeRequest{
 		ApplicationID:       app.ID,
-		AccountID:           user.AccountID,
+		AccountID:           accountID,
 		RedirectURI:         body.RedirectURI,
 		Scopes:              body.Scope,
 		CodeChallenge:       body.CodeChallenge,
@@ -261,7 +251,7 @@ func (h *Handler) POSTLogin(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusOK, map[string]string{"redirect_url": redirectURL.String()})
 }
 
-// tokenRequestBody is the JSON body for POST /oauth/token (some clients send JSON instead of form).
+// tokenRequestBody is the JSON body for POST /oauth/token (some clients send JSON instead of form). (some clients send JSON instead of form).
 type tokenRequestBody struct {
 	GrantType    string `json:"grant_type"`
 	Code         string `json:"code"`
@@ -354,34 +344,4 @@ func (h *Handler) POSTRevoke(w http.ResponseWriter, r *http.Request) {
 	_ = h.oauth.RevokeToken(r.Context(), token)
 
 	api.WriteJSON(w, http.StatusOK, struct{}{})
-}
-
-func (h *Handler) isValidRedirectURI(uri string, app *domain.OAuthApplication) bool {
-	if app == nil {
-		slog.Error("application is nil")
-		return false
-	}
-
-	if uri == "urn:ietf:wg:oauth:2.0:oob" {
-		return true
-	}
-
-	parsedURI, err := url.Parse(uri)
-	if err != nil {
-		slog.Error("failed to parse redirect URI", slog.Any("error", err))
-		return false
-	}
-
-	if app.ClientID == oauth.MONSTERA_UI_APPLICATION_ID && parsedURI.Host == h.cfg.MonsteraUiUrl.Host {
-		slog.Info("valid internal redirect URI", slog.String("uri", uri))
-		return true
-	}
-
-	for _, r := range strings.Split(app.RedirectURIs, "\n") {
-		if strings.TrimSpace(r) == uri {
-			return true
-		}
-	}
-	slog.Info("Fall through case")
-	return false
 }

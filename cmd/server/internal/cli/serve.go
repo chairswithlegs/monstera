@@ -155,7 +155,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	conversationSvc := service.NewConversationService(s, statusSvc)
 	statusSvc.SetDirectStatusConversationUpdater(conversationSvc)
 	instanceSvc := service.NewInstanceService(s)
-	followSvc := service.NewFollowService(s, outbox, nil)
+	followSvc := service.NewFollowService(s, accountSvc, outbox, nil)
 	notificationSvc := service.NewNotificationService(s)
 	mediaSvc := service.NewMediaService(s, mediaStore, cfg.MediaMaxBytes)
 	remoteResolver := ap.NewRemoteAccountResolver(s, cfg.InstanceDomain, cfg)
@@ -183,7 +183,12 @@ func runServe(_ *cobra.Command, _ []string) error {
 
 	// Setup handlers
 	oauthServer := oauth.NewServer(s, cacheStore, logger)
-	oauthHandler := oauthhandlers.NewHandler(oauthServer, s, cfg)
+	monsteraUIHost := ""
+	if cfg.MonsteraUiUrl != nil {
+		monsteraUIHost = cfg.MonsteraUiUrl.Host
+	}
+	authSvc := service.NewAuthService(s, monsteraUIHost, oauth.MONSTERA_UI_APPLICATION_ID)
+	oauthHandler := oauthhandlers.NewHandler(oauthServer, authSvc, cfg)
 	health := api.NewHealthChecker(pool, natsClient.Conn)
 	accountsHandler := mastodon.NewAccountsHandler(accountSvc, followSvc, timelineSvc, cfg.InstanceDomain)
 	statusesHandler := mastodon.NewStatusesHandler(accountSvc, statusSvc, cfg.InstanceDomain, cacheStore, nil)

@@ -544,6 +544,27 @@ func ToDomainFollow(f db.Follow) domain.Follow {
 	}
 }
 
+// ToDomainBlock converts a sqlc db.Block to a domain.Block.
+func ToDomainBlock(b db.Block) domain.Block {
+	return domain.Block{
+		ID:        b.ID,
+		AccountID: b.AccountID,
+		TargetID:  b.TargetID,
+		CreatedAt: pgTime(b.CreatedAt),
+	}
+}
+
+// ToDomainMute converts a sqlc db.Mute to a domain.Mute.
+func ToDomainMute(m db.Mute) domain.Mute {
+	return domain.Mute{
+		ID:                m.ID,
+		AccountID:         m.AccountID,
+		TargetID:          m.TargetID,
+		HideNotifications: m.HideNotifications,
+		CreatedAt:         pgTime(m.CreatedAt),
+	}
+}
+
 // ToDomainFavourite converts a sqlc db.Favourite to a domain.Favourite.
 func ToDomainFavourite(f db.Favourite) domain.Favourite {
 	d := domain.Favourite{

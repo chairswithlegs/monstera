@@ -391,7 +391,7 @@ func TestListsHandler_DELETEList(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Empty(t, rec.Body.Bytes())
 
-		_, err = listSvc.GetList(ctx, l.ID)
+		_, err = listSvc.GetList(ctx, acc.ID, l.ID)
 		assert.Error(t, err)
 	})
 }

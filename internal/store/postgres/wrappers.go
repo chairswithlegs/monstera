@@ -9,11 +9,6 @@ import (
 // Wrapper methods translate pgx/pgconn errors to domain errors (ErrNotFound, ErrConflict).
 // They shadow the embedded *db.Queries methods so store callers receive domain errors.
 
-func (s *PostgresStore) GetBlock(ctx context.Context, arg db.GetBlockParams) (db.Block, error) {
-	b, err := s.q.GetBlock(ctx, arg)
-	return b, mapErr(err)
-}
-
 func (s *PostgresStore) GetEmailToken(ctx context.Context, tokenHash string) (db.EmailToken, error) {
 	t, err := s.q.GetEmailToken(ctx, tokenHash)
 	return t, mapErr(err)
@@ -22,11 +17,6 @@ func (s *PostgresStore) GetEmailToken(ctx context.Context, tokenHash string) (db
 func (s *PostgresStore) GetHashtagByName(ctx context.Context, lower string) (db.Hashtag, error) {
 	h, err := s.q.GetHashtagByName(ctx, lower)
 	return h, mapErr(err)
-}
-
-func (s *PostgresStore) GetMute(ctx context.Context, arg db.GetMuteParams) (db.Mute, error) {
-	m, err := s.q.GetMute(ctx, arg)
-	return m, mapErr(err)
 }
 
 func (s *PostgresStore) GetReport(ctx context.Context, id string) (db.Report, error) {

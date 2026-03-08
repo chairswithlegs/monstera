@@ -50,6 +50,38 @@ func TestCollectionsHandler_GETFollowers(t *testing.T) {
 	assert.Equal(t, 0, coll.TotalItems)
 }
 
+func TestCollectionsHandler_GETFollowing(t *testing.T) {
+	t.Parallel()
+	fake := testutil.NewFakeStore()
+	ctx := context.Background()
+	_, err := fake.CreateAccount(ctx, store.CreateAccountInput{
+		ID: "01HXXX", Username: "alice", APID: "https://example.com/users/alice",
+	})
+	require.NoError(t, err)
+	_, err = fake.CreateUser(ctx, store.CreateUserInput{
+		ID: "01USERALICE", AccountID: "01HXXX", Email: "alice@example.com", PasswordHash: "hash", Role: domain.RoleUser,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.ConfirmUser(ctx, "01USERALICE"))
+	cfg := &config.Config{InstanceDomain: "example.com"}
+	accountSvc := service.NewAccountService(fake, "https://"+cfg.InstanceDomain)
+	statusSvc := service.NewStatusService(fake, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", cfg.InstanceDomain, 5000, nil)
+	h := NewCollectionsHandler(accountSvc, statusSvc, cfg)
+	r := httptest.NewRequest(http.MethodGet, "/users/alice/following", nil)
+	r = r.WithContext(ctx)
+	r = testutil.AddChiURLParam(r, "username", "alice")
+	w := httptest.NewRecorder()
+	h.GETFollowing(w, r)
+	assert.Equal(t, http.StatusOK, w.Code)
+	var coll struct {
+		Type       string `json:"type"`
+		TotalItems int    `json:"totalItems"`
+	}
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&coll))
+	assert.Equal(t, "OrderedCollection", coll.Type)
+	assert.Equal(t, 0, coll.TotalItems)
+}
+
 func TestCollectionsHandler_GETFeatured(t *testing.T) {
 	t.Parallel()
 	fake := testutil.NewFakeStore()

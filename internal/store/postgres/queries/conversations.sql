@@ -31,3 +31,16 @@ WHERE account_id = $1 AND conversation_id = $2;
 
 -- name: DeleteAccountConversation :exec
 DELETE FROM account_conversations WHERE account_id = $1 AND conversation_id = $2;
+
+-- name: GetConversationRoot :one
+WITH RECURSIVE chain(depth, id, in_reply_to_id) AS (
+    SELECT 1::bigint, statuses.id, statuses.in_reply_to_id FROM statuses WHERE statuses.id = $1
+    UNION ALL
+    SELECT c.depth + 1, s.id, s.in_reply_to_id FROM statuses s
+    INNER JOIN chain c ON s.id = c.in_reply_to_id
+    WHERE c.in_reply_to_id IS NOT NULL AND c.in_reply_to_id != '' AND c.depth < 1000
+)
+SELECT chain.id FROM chain
+WHERE chain.in_reply_to_id IS NULL OR chain.in_reply_to_id = ''
+ORDER BY chain.depth DESC
+LIMIT 1;

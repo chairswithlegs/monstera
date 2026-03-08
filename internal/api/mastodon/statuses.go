@@ -151,7 +151,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	_, user, err := h.accounts.GetAccountWithUser(ctx, account.ID)
+	_, _, err = h.accounts.GetAccountWithUser(ctx, account.ID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrUnauthorized)
@@ -159,15 +159,6 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 		}
 		api.HandleError(w, r, err)
 		return
-	}
-
-	defaultVisibility := ""
-	defaultQuotePolicy := domain.QuotePolicyPublic
-	if user != nil {
-		defaultVisibility = user.DefaultPrivacy
-		if user.DefaultQuotePolicy != "" {
-			defaultQuotePolicy = user.DefaultQuotePolicy
-		}
 	}
 
 	var inReplyToID *string
@@ -178,36 +169,19 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 	if req.QuotedStatusID != "" {
 		quotedStatusID = &req.QuotedStatusID
 	}
-	quoteApprovalPolicy := req.QuoteApprovalPolicy
-	if quoteApprovalPolicy == "" {
-		quoteApprovalPolicy = defaultQuotePolicy
-	}
-	vis := req.Visibility
-	if vis == "" {
-		vis = defaultVisibility
-	}
-	if vis == "private" || vis == "direct" {
-		quoteApprovalPolicy = domain.QuotePolicyNobody
-	}
-
-	mediaIDs := req.MediaIDs
-	if len(mediaIDs) > 4 {
-		mediaIDs = mediaIDs[:4]
-	}
 
 	createInput := service.CreateWithContentInput{
 		AccountID:           account.ID,
 		Username:            account.Username,
 		Text:                req.Status,
 		Visibility:          req.Visibility,
-		DefaultVisibility:   defaultVisibility,
 		ContentWarning:      req.SpoilerText,
 		Language:            req.Language,
 		Sensitive:           req.Sensitive,
 		InReplyToID:         inReplyToID,
 		QuotedStatusID:      quotedStatusID,
-		QuoteApprovalPolicy: quoteApprovalPolicy,
-		MediaIDs:            mediaIDs,
+		QuoteApprovalPolicy: req.QuoteApprovalPolicy,
+		MediaIDs:            req.MediaIDs,
 	}
 	if req.Poll != nil && len(req.Poll.Options) > 0 {
 		createInput.Poll = &service.PollInput{
@@ -254,23 +228,6 @@ func (h *StatusesHandler) GETStatuses(w http.ResponseWriter, r *http.Request) {
 	}
 	out := enrichedStatusToAPIModel(result, h.instanceDomain)
 	h.setQuoteApprovalOnStatus(r.Context(), result, &out, viewerID)
-	if account := middleware.AccountFromContext(r.Context()); account != nil {
-		if ok, err := h.statuses.IsBookmarked(r.Context(), account.ID, id); err == nil {
-			out.Bookmarked = ok
-		}
-		if result.Status.AccountID == account.ID {
-			pinnedIDs, _ := h.statuses.ListPinnedStatusIDs(r.Context(), account.ID)
-			for _, pid := range pinnedIDs {
-				if pid == id {
-					out.Pinned = true
-					break
-				}
-			}
-		}
-		if muted, err := h.statuses.IsConversationMutedForViewer(r.Context(), account.ID, id); err == nil {
-			out.Muted = muted
-		}
-	}
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -1052,6 +1009,9 @@ func enrichedStatusToAPIModel(result service.EnrichedStatus, instanceDomain stri
 		p := enrichedPollToAPIModel(result.Poll)
 		out.Poll = &p
 	}
+	out.Bookmarked = result.Bookmarked
+	out.Pinned = result.Pinned
+	out.Muted = result.Muted
 	return out
 }
 

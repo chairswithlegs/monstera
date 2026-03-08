@@ -29,7 +29,6 @@ type Store interface {
 	GetAccountPublicStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error)
 	CountLocalStatuses(ctx context.Context) (int64, error)
 	CountAccountPublicStatuses(ctx context.Context, accountID string) (int64, error)
-	DeleteStatus(ctx context.Context, id string) error
 	IncrementStatusesCount(ctx context.Context, accountID string) error
 	DecrementStatusesCount(ctx context.Context, accountID string) error
 
@@ -103,9 +102,10 @@ type Store interface {
 	DecrementFollowingCount(ctx context.Context, accountID string) error
 
 	ListDomainBlocks(ctx context.Context) ([]domain.DomainBlock, error)
-	GetRelationship(ctx context.Context, accountID, targetID string) (*domain.Relationship, error)
 
 	GetFollow(ctx context.Context, accountID, targetID string) (*domain.Follow, error)
+	GetBlock(ctx context.Context, accountID, targetID string) (*domain.Block, error)
+	GetMute(ctx context.Context, accountID, targetID string) (*domain.Mute, error)
 	GetFollowByID(ctx context.Context, id string) (*domain.Follow, error)
 	GetFollowByAPID(ctx context.Context, apID string) (*domain.Follow, error)
 	CreateFollow(ctx context.Context, in CreateFollowInput) (*domain.Follow, error)

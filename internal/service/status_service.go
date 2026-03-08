@@ -149,19 +149,21 @@ func (svc *statusService) SetDirectStatusConversationUpdater(u DirectStatusConve
 }
 
 // CreateWithContentInput is the input for creating a status with plain text (content is rendered in-service).
+// When DefaultVisibility or DefaultQuotePolicy are empty, the service looks up the account's user for defaults.
 type CreateWithContentInput struct {
 	AccountID           string
 	Username            string
 	Text                string
 	Visibility          string
-	DefaultVisibility   string // used when Visibility is empty or invalid
+	DefaultVisibility   string // used when Visibility is empty or invalid; when empty, looked up from user
+	DefaultQuotePolicy  string // public | followers | nobody; when empty, looked up from user
 	ContentWarning      string
 	Language            string
 	Sensitive           bool
 	InReplyToID         *string     // optional parent status ID for replies
 	QuotedStatusID      *string     // optional status ID being quoted
-	QuoteApprovalPolicy string      // public | followers | nobody (for the new status)
-	MediaIDs            []string    // optional media attachment IDs (max 4)
+	QuoteApprovalPolicy string      // public | followers | nobody (for the new status); service applies private/direct -> nobody
+	MediaIDs            []string    // optional media attachment IDs (max 4; service caps at 4)
 	Poll                *PollInput  // optional; when set, status is created with an attached poll
 	PollLimits          *PollLimits // required when Poll is set (from instance configuration)
 }
@@ -284,19 +286,20 @@ type CreateStatusFromInboxInput struct {
 // CreateFromInbox creates a status from an incoming Note. Does not publish to federation or increment account statuses count.
 func (svc *statusService) CreateFromInbox(ctx context.Context, in CreateStatusFromInboxInput) (*domain.Status, error) {
 	st, err := svc.store.CreateStatus(ctx, store.CreateStatusInput{
-		ID:             uid.New(),
-		URI:            in.URI,
-		AccountID:      in.AccountID,
-		Text:           in.Text,
-		Content:        in.Content,
-		ContentWarning: in.ContentWarning,
-		Visibility:     in.Visibility,
-		Language:       in.Language,
-		InReplyToID:    in.InReplyToID,
-		APID:           in.APID,
-		ApRaw:          in.ApRaw,
-		Sensitive:      in.Sensitive,
-		Local:          false,
+		ID:                  uid.New(),
+		URI:                 in.URI,
+		AccountID:           in.AccountID,
+		Text:                in.Text,
+		Content:             in.Content,
+		ContentWarning:      in.ContentWarning,
+		Visibility:          in.Visibility,
+		Language:            in.Language,
+		InReplyToID:         in.InReplyToID,
+		APID:                in.APID,
+		ApRaw:               in.ApRaw,
+		Sensitive:           in.Sensitive,
+		Local:               false,
+		QuoteApprovalPolicy: domain.QuotePolicyPublic,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("CreateFromInbox: %w", err)
@@ -318,14 +321,15 @@ func (svc *statusService) CreateBoostFromInbox(ctx context.Context, accountID st
 	}
 	reblogOfID := original.ID
 	st, err := svc.store.CreateStatus(ctx, store.CreateStatusInput{
-		ID:         uid.New(),
-		URI:        activityAPID,
-		AccountID:  accountID,
-		Visibility: domain.VisibilityPublic,
-		ReblogOfID: &reblogOfID,
-		APID:       activityAPID,
-		ApRaw:      apRaw,
-		Local:      false,
+		ID:                  uid.New(),
+		URI:                 activityAPID,
+		AccountID:           accountID,
+		Visibility:          domain.VisibilityPublic,
+		ReblogOfID:          &reblogOfID,
+		APID:                activityAPID,
+		ApRaw:               apRaw,
+		Local:               false,
+		QuoteApprovalPolicy: domain.QuotePolicyPublic,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("CreateBoostFromInbox CreateStatus: %w", err)
@@ -578,6 +582,25 @@ func (svc *statusService) GetByIDEnriched(ctx context.Context, id string, viewer
 			out.Poll = enrichedPoll
 		}
 	}
+	if viewerAccountID != nil {
+		if ok, err := svc.store.IsBookmarked(ctx, *viewerAccountID, st.ID); err == nil {
+			out.Bookmarked = ok
+		}
+		if st.AccountID == *viewerAccountID {
+			pinnedIDs, err := svc.store.ListPinnedStatusIDs(ctx, *viewerAccountID)
+			if err == nil {
+				for _, pid := range pinnedIDs {
+					if pid == st.ID {
+						out.Pinned = true
+						break
+					}
+				}
+			}
+		}
+		if muted, err := svc.IsConversationMutedForViewer(ctx, *viewerAccountID, st.ID); err == nil {
+			out.Muted = muted
+		}
+	}
 	return out, nil
 }
 
@@ -586,11 +609,30 @@ func (svc *statusService) GetByIDEnriched(ctx context.Context, id string, viewer
 // Supports Mastodon-style quotes (quoted_status_id, quote approval, quote notification) when QuotedStatusID is set.
 // Then loads author, mentions, tags, and media for the response.
 func (svc *statusService) CreateWithContent(ctx context.Context, in CreateWithContentInput) (EnrichedStatus, error) {
+	defaultVisibility := in.DefaultVisibility
+	defaultQuotePolicy := in.DefaultQuotePolicy
+	if defaultVisibility == "" || defaultQuotePolicy == "" {
+		if user, err := svc.store.GetUserByAccountID(ctx, in.AccountID); err == nil {
+			if defaultVisibility == "" {
+				defaultVisibility = user.DefaultPrivacy
+			}
+			if defaultQuotePolicy == "" && user.DefaultQuotePolicy != "" {
+				defaultQuotePolicy = user.DefaultQuotePolicy
+			}
+		}
+		if defaultQuotePolicy == "" {
+			defaultQuotePolicy = domain.QuotePolicyPublic
+		}
+	}
+	mediaIDs := in.MediaIDs
+	if len(mediaIDs) > 4 {
+		mediaIDs = mediaIDs[:4]
+	}
 	text := strings.TrimSpace(in.Text)
-	if text == "" && len(in.MediaIDs) == 0 {
+	if text == "" && len(mediaIDs) == 0 {
 		return EnrichedStatus{}, fmt.Errorf("CreateWithContent: %w", domain.ErrValidation)
 	}
-	visibility := resolveVisibilityService(in.Visibility, in.DefaultVisibility)
+	visibility := resolveVisibilityService(in.Visibility, defaultVisibility)
 	if text != "" && CountStatusCharacters(text) > svc.maxStatusChars {
 		return EnrichedStatus{}, fmt.Errorf("CreateWithContent: %w", domain.ErrValidation)
 	}
@@ -605,7 +647,7 @@ func (svc *statusService) CreateWithContent(ctx context.Context, in CreateWithCo
 		}
 		inReplyToAccountID = &parent.AccountID
 	}
-	for _, mid := range in.MediaIDs {
+	for _, mid := range mediaIDs {
 		att, err := svc.store.GetMediaAttachment(ctx, mid)
 		if err != nil {
 			return EnrichedStatus{}, fmt.Errorf("CreateWithContent media %s: %w", mid, err)
@@ -616,7 +658,7 @@ func (svc *statusService) CreateWithContent(ctx context.Context, in CreateWithCo
 	}
 	var quotedAuthorID *string
 	if in.QuotedStatusID != nil && *in.QuotedStatusID != "" {
-		if (in.Poll != nil && len(in.Poll.Options) > 0) || len(in.MediaIDs) > 0 {
+		if (in.Poll != nil && len(in.Poll.Options) > 0) || len(mediaIDs) > 0 {
 			return EnrichedStatus{}, fmt.Errorf("CreateWithContent: %w", domain.ErrValidation)
 		}
 		quoted, err := svc.store.GetStatusByID(ctx, *in.QuotedStatusID)
@@ -680,7 +722,7 @@ func (svc *statusService) CreateWithContent(ctx context.Context, in CreateWithCo
 
 	quotePolicy := in.QuoteApprovalPolicy
 	if quotePolicy == "" {
-		quotePolicy = domain.QuotePolicyPublic
+		quotePolicy = defaultQuotePolicy
 	}
 	if visibility == domain.VisibilityPrivate || visibility == domain.VisibilityDirect {
 		quotePolicy = domain.QuotePolicyNobody
@@ -691,7 +733,7 @@ func (svc *statusService) CreateWithContent(ctx context.Context, in CreateWithCo
 	// Single transaction: status create, quote approval, quotes_count increment, and quote notification (Mastodon-style quotes) are atomic.
 	err := svc.store.WithTx(ctx, func(tx store.Store) error {
 		var txErr error
-		created, txErr = createStatusWithContentTx(ctx, tx, in.AccountID, in.Username, statusID, statusURI, visibility, text, renderResult.HTML, in.ContentWarning, language, in.Sensitive, renderResult, in.InReplyToID, inReplyToAccountID, in.QuotedStatusID, quotePolicy, quotedAuthorID, in.MediaIDs)
+		created, txErr = createStatusWithContentTx(ctx, tx, in.AccountID, in.Username, statusID, statusURI, visibility, text, renderResult.HTML, in.ContentWarning, language, in.Sensitive, renderResult, in.InReplyToID, inReplyToAccountID, in.QuotedStatusID, quotePolicy, quotedAuthorID, mediaIDs)
 		if txErr != nil {
 			return txErr
 		}
@@ -700,7 +742,7 @@ func (svc *statusService) CreateWithContent(ctx context.Context, in CreateWithCo
 				return fmt.Errorf("IncrementRepliesCount: %w", txErr)
 			}
 		}
-		for _, mid := range in.MediaIDs {
+		for _, mid := range mediaIDs {
 			if txErr = tx.AttachMediaToStatus(ctx, mid, statusID, in.AccountID); txErr != nil {
 				return fmt.Errorf("AttachMediaToStatus: %w", txErr)
 			}
@@ -1072,8 +1114,8 @@ func (svc *statusService) Delete(ctx context.Context, id string) error {
 		mentionedAccountIDs, _ = svc.store.GetStatusMentionAccountIDs(ctx, id)
 	}
 	err = svc.store.WithTx(ctx, func(tx store.Store) error {
-		if err := tx.DeleteStatus(ctx, id); err != nil {
-			return fmt.Errorf("DeleteStatus: %w", err)
+		if err := tx.SoftDeleteStatus(ctx, id); err != nil {
+			return fmt.Errorf("SoftDeleteStatus: %w", err)
 		}
 		return tx.DecrementStatusesCount(ctx, st.AccountID)
 	})
@@ -1122,19 +1164,20 @@ func (svc *statusService) Reblog(ctx context.Context, accountID, username, statu
 	boostURI := fmt.Sprintf("%s/users/%s/statuses/%s", svc.instanceBaseURL, username, boostID)
 	err = svc.store.WithTx(ctx, func(tx store.Store) error {
 		_, err := tx.CreateStatus(ctx, store.CreateStatusInput{
-			ID:          boostID,
-			URI:         boostURI,
-			AccountID:   accountID,
-			Text:        nil,
-			Content:     nil,
-			Visibility:  orig.Visibility,
-			Language:    nil,
-			InReplyToID: nil,
-			ReblogOfID:  &statusID,
-			Sensitive:   orig.Sensitive,
-			Local:       true,
-			APID:        boostURI,
-			ApRaw:       nil,
+			ID:                  boostID,
+			URI:                 boostURI,
+			AccountID:           accountID,
+			Text:                nil,
+			Content:             nil,
+			Visibility:          orig.Visibility,
+			Language:            nil,
+			InReplyToID:         nil,
+			ReblogOfID:          &statusID,
+			Sensitive:           orig.Sensitive,
+			Local:               true,
+			APID:                boostURI,
+			ApRaw:               nil,
+			QuoteApprovalPolicy: domain.QuotePolicyPublic,
 		})
 		if err != nil {
 			return fmt.Errorf("CreateStatus: %w", err)

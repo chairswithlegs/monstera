@@ -31,7 +31,7 @@ func NewOutbox(
 	s store.Store,
 	js jetstream.JetStream,
 	bl *BlocklistCache,
-	signer *HTTPSignatureService,
+	signer HTTPSignatureService,
 	cfg *config.Config,
 ) *Outbox {
 	dw := newOutboxDeliveryWorker(js, bl, signer, cfg)

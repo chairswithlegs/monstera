@@ -751,10 +751,20 @@ func TestStatusesHandler_POSTFavourite(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	})
 
-	t.Run("authenticated when favourite fails returns 404", func(t *testing.T) {
+	t.Run("authenticated happy path returns 200", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+statusID+"/favourite", nil)
 		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
 		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.POSTFavourite(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("authenticated when status not found returns 404", func(t *testing.T) {
+		nonexistentID := "01nonexistentstatusid"
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+nonexistentID+"/favourite", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", nonexistentID)
 		rec := httptest.NewRecorder()
 		handler.POSTFavourite(rec, req)
 		assert.Equal(t, http.StatusNotFound, rec.Code)
@@ -804,6 +814,187 @@ func TestStatusesHandler_POSTUnfavourite(t *testing.T) {
 		rec := httptest.NewRecorder()
 		handler.POSTUnfavourite(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+}
+
+func TestStatusesHandler_DELETEStatuses(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
+
+	alice, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	bob, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "bob",
+		Email:        "bob@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	statusID := uid.New()
+	_, err = st.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         statusID,
+		URI:        "https://example.com/statuses/" + statusID,
+		AccountID:  alice.ID,
+		Text:       testutil.StrPtr("alice post"),
+		Content:    testutil.StrPtr("<p>alice post</p>"),
+		Visibility: domain.VisibilityPublic,
+		APID:       "https://example.com/statuses/" + statusID,
+		Local:      true,
+	})
+	require.NoError(t, err)
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/statuses/"+statusID, nil)
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.DELETEStatuses(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("status not found returns 404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/statuses/01nonexistent", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), alice))
+		req = testutil.AddChiURLParam(req, "id", "01nonexistent")
+		rec := httptest.NewRecorder()
+		handler.DELETEStatuses(rec, req)
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("deleting another account status returns 403", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/statuses/"+statusID, nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), bob))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.DELETEStatuses(rec, req)
+		assert.Equal(t, http.StatusForbidden, rec.Code)
+	})
+
+	t.Run("owner deletes returns 200", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/statuses/"+statusID, nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), alice))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.DELETEStatuses(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Equal(t, statusID, body["id"])
+	})
+}
+
+func TestStatusesHandler_POSTBookmark(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
+
+	acc, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	statusID := uid.New()
+	_, err = st.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         statusID,
+		URI:        "https://example.com/statuses/" + statusID,
+		AccountID:  acc.ID,
+		Text:       testutil.StrPtr("post"),
+		Content:    testutil.StrPtr("<p>post</p>"),
+		Visibility: domain.VisibilityPublic,
+		APID:       "https://example.com/statuses/" + statusID,
+		Local:      true,
+	})
+	require.NoError(t, err)
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+statusID+"/bookmark", nil)
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.POSTBookmark(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("status not found returns 404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/01nonexistent/bookmark", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", "01nonexistent")
+		rec := httptest.NewRecorder()
+		handler.POSTBookmark(rec, req)
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("authenticated returns 200 and bookmarked true", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+statusID+"/bookmark", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.POSTBookmark(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.True(t, body["bookmarked"].(bool))
+	})
+}
+
+func TestStatusesHandler_POSTUnbookmark(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
+
+	acc, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	statusID := uid.New()
+	_, err = st.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         statusID,
+		URI:        "https://example.com/statuses/" + statusID,
+		AccountID:  acc.ID,
+		Text:       testutil.StrPtr("post"),
+		Content:    testutil.StrPtr("<p>post</p>"),
+		Visibility: domain.VisibilityPublic,
+		APID:       "https://example.com/statuses/" + statusID,
+		Local:      true,
+	})
+	require.NoError(t, err)
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+statusID+"/unbookmark", nil)
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.POSTUnbookmark(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("authenticated returns 200 and bookmarked false", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+statusID+"/unbookmark", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.POSTUnbookmark(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.False(t, body["bookmarked"].(bool))
 	})
 }
 

@@ -72,6 +72,12 @@ type FakeStore struct {
 	pollVotes       []pollVoteEntry                // poll_id, account_id, option_id
 
 	quoteApprovalsByQuoting map[string]*quoteApprovalEntry // quotingStatusID -> entry
+
+	domainBlocksByDomain map[string]*domain.DomainBlock // domain (normalized) -> block
+
+	favouritesByID            map[string]*domain.Favourite // id -> favourite
+	favouritesByAPID          map[string]*domain.Favourite // apID -> favourite (when set)
+	favouritesByAccountStatus map[string]*domain.Favourite // accountID+":"+statusID -> favourite
 }
 
 type quoteApprovalEntry struct {
@@ -127,46 +133,50 @@ type announcementReactionEntry struct {
 // NewFakeStore returns a new FakeStore for use in tests.
 func NewFakeStore() *FakeStore {
 	return &FakeStore{
-		accountsByID:            make(map[string]*domain.Account),
-		accountsByUsername:      make(map[string]*domain.Account),
-		usersByAccountID:        make(map[string]*domain.User),
-		statusesByID:            make(map[string]*domain.Status),
-		statusesCount:           make(map[string]int),
-		homeTimeline:            make(map[string][]*domain.Status),
-		followsByKey:            make(map[string]*domain.Follow),
-		blocksByKey:             make(map[string]struct{}),
-		mutesByKey:              make(map[string]struct{}),
-		suspendedAccountIDs:     make(map[string]struct{}),
-		mediaByID:               make(map[string]*domain.MediaAttachment),
-		notificationsByAccount:  make(map[string][]*domain.Notification),
-		hashtagsByName:          make(map[string]*domain.Hashtag),
-		hashtagsByID:            make(map[string]*domain.Hashtag),
-		applications:            make(map[string]*domain.OAuthApplication),
-		applicationsByID:        make(map[string]*domain.OAuthApplication),
-		authCodes:               make(map[string]*domain.OAuthAuthorizationCode),
-		tokens:                  make(map[string]*domain.OAuthAccessToken),
-		userFiltersByID:         make(map[string]*domain.UserFilter),
-		listsByID:               make(map[string]*domain.List),
-		listAccountIDs:          make(map[string][]string),
-		mentionsByStatusID:      make(map[string][]string),
-		markersByKey:            make(map[string]*domain.Marker),
-		lastStatusAtByAccount:   make(map[string]time.Time),
-		accountPins:             nil,
-		statusEdits:             nil,
-		scheduledStatuses:       make(map[string]*domain.ScheduledStatus),
-		pollsByID:               make(map[string]*domain.Poll),
-		pollsByStatusID:         make(map[string]*domain.Poll),
-		pollOptions:             make(map[string][]domain.PollOption),
-		pollVotes:               nil,
-		quoteApprovalsByQuoting: make(map[string]*quoteApprovalEntry),
-		conversationMutesByKey:  make(map[string]struct{}),
-		conversationMutesList:   nil,
-		conversationIDs:         make(map[string]struct{}),
-		statusConversationIDs:   make(map[string]string),
-		accountConversations:    nil,
-		announcementsByID:       make(map[string]*domain.Announcement),
-		announcementReads:       make(map[string]struct{}),
-		announcementReactions:   nil,
+		accountsByID:              make(map[string]*domain.Account),
+		accountsByUsername:        make(map[string]*domain.Account),
+		usersByAccountID:          make(map[string]*domain.User),
+		statusesByID:              make(map[string]*domain.Status),
+		statusesCount:             make(map[string]int),
+		homeTimeline:              make(map[string][]*domain.Status),
+		followsByKey:              make(map[string]*domain.Follow),
+		blocksByKey:               make(map[string]struct{}),
+		mutesByKey:                make(map[string]struct{}),
+		suspendedAccountIDs:       make(map[string]struct{}),
+		mediaByID:                 make(map[string]*domain.MediaAttachment),
+		notificationsByAccount:    make(map[string][]*domain.Notification),
+		hashtagsByName:            make(map[string]*domain.Hashtag),
+		hashtagsByID:              make(map[string]*domain.Hashtag),
+		applications:              make(map[string]*domain.OAuthApplication),
+		applicationsByID:          make(map[string]*domain.OAuthApplication),
+		authCodes:                 make(map[string]*domain.OAuthAuthorizationCode),
+		tokens:                    make(map[string]*domain.OAuthAccessToken),
+		userFiltersByID:           make(map[string]*domain.UserFilter),
+		listsByID:                 make(map[string]*domain.List),
+		listAccountIDs:            make(map[string][]string),
+		mentionsByStatusID:        make(map[string][]string),
+		markersByKey:              make(map[string]*domain.Marker),
+		lastStatusAtByAccount:     make(map[string]time.Time),
+		accountPins:               nil,
+		statusEdits:               nil,
+		scheduledStatuses:         make(map[string]*domain.ScheduledStatus),
+		pollsByID:                 make(map[string]*domain.Poll),
+		pollsByStatusID:           make(map[string]*domain.Poll),
+		pollOptions:               make(map[string][]domain.PollOption),
+		pollVotes:                 nil,
+		quoteApprovalsByQuoting:   make(map[string]*quoteApprovalEntry),
+		domainBlocksByDomain:      make(map[string]*domain.DomainBlock),
+		favouritesByID:            make(map[string]*domain.Favourite),
+		favouritesByAPID:          make(map[string]*domain.Favourite),
+		favouritesByAccountStatus: make(map[string]*domain.Favourite),
+		conversationMutesByKey:    make(map[string]struct{}),
+		conversationMutesList:     nil,
+		conversationIDs:           make(map[string]struct{}),
+		statusConversationIDs:     make(map[string]string),
+		accountConversations:      nil,
+		announcementsByID:         make(map[string]*domain.Announcement),
+		announcementReads:         make(map[string]struct{}),
+		announcementReactions:     nil,
 	}
 }
 
@@ -527,7 +537,7 @@ func (f *FakeStore) CountAccountPublicStatuses(ctx context.Context, accountID st
 	return n, nil
 }
 
-func (f *FakeStore) DeleteStatus(ctx context.Context, id string) error {
+func (f *FakeStore) SoftDeleteStatus(ctx context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	s, ok := f.statusesByID[id]
@@ -1493,31 +1503,45 @@ func (f *FakeStore) DecrementFollowingCount(ctx context.Context, accountID strin
 
 func followKey(accountID, targetID string) string { return accountID + ":" + targetID }
 
-func (f *FakeStore) GetRelationship(ctx context.Context, accountID, targetID string) (*domain.Relationship, error) {
+func (f *FakeStore) GetBlock(ctx context.Context, accountID, targetID string) (*domain.Block, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	rel := &domain.Relationship{TargetID: targetID, ShowingReblogs: true}
-	if follow, ok := f.followsByKey[followKey(accountID, targetID)]; ok {
-		rel.Following = true
-		rel.Requested = follow.State == domain.FollowStatePending
+	if _, ok := f.blocksByKey[followKey(accountID, targetID)]; !ok {
+		return nil, domain.ErrNotFound
 	}
-	if _, ok := f.followsByKey[followKey(targetID, accountID)]; ok {
-		rel.FollowedBy = true
+	for _, e := range f.blocksList {
+		if e.AccountID == accountID && e.TargetID == targetID {
+			return &domain.Block{ID: e.ID, AccountID: accountID, TargetID: targetID}, nil
+		}
 	}
-	if _, ok := f.blocksByKey[followKey(accountID, targetID)]; ok {
-		rel.Blocking = true
-	}
-	if _, ok := f.blocksByKey[followKey(targetID, accountID)]; ok {
-		rel.BlockedBy = true
-	}
-	if _, ok := f.mutesByKey[followKey(accountID, targetID)]; ok {
-		rel.Muting = true
-		rel.MutingNotifications = true
-	}
-	return rel, nil
+	return &domain.Block{AccountID: accountID, TargetID: targetID}, nil
 }
+
+func (f *FakeStore) GetMute(ctx context.Context, accountID, targetID string) (*domain.Mute, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.mutesByKey[followKey(accountID, targetID)]; !ok {
+		return nil, domain.ErrNotFound
+	}
+	for _, e := range f.mutesList {
+		if e.AccountID == accountID && e.TargetID == targetID {
+			return &domain.Mute{ID: e.ID, AccountID: accountID, TargetID: targetID, HideNotifications: true}, nil
+		}
+	}
+	return &domain.Mute{AccountID: accountID, TargetID: targetID, HideNotifications: true}, nil
+}
+
 func (f *FakeStore) ListDomainBlocks(ctx context.Context) ([]domain.DomainBlock, error) {
-	return nil, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]domain.DomainBlock, 0, len(f.domainBlocksByDomain))
+	for _, b := range f.domainBlocksByDomain {
+		if b != nil {
+			out = append(out, *b)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Domain < out[j].Domain })
+	return out, nil
 }
 
 func (f *FakeStore) GetFollow(ctx context.Context, accountID, targetID string) (*domain.Follow, error) {
@@ -1985,9 +2009,6 @@ func (f *FakeStore) ListDirectoryAccounts(ctx context.Context, order string, loc
 	return out, nil
 }
 
-func (f *FakeStore) SoftDeleteStatus(ctx context.Context, id string) error {
-	return f.DeleteStatus(ctx, id)
-}
 func (f *FakeStore) SuspendAccount(ctx context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -2104,19 +2125,65 @@ func (f *FakeStore) ListMutedAccounts(ctx context.Context, accountID string, max
 	}
 	return out, nextCursor, nil
 }
+func favouriteAccountStatusKey(accountID, statusID string) string { return accountID + ":" + statusID }
+
 func (f *FakeStore) CreateFavourite(ctx context.Context, in store.CreateFavouriteInput) (*domain.Favourite, error) {
-	return nil, domain.ErrNotFound
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	fav := &domain.Favourite{
+		ID:        in.ID,
+		AccountID: in.AccountID,
+		StatusID:  in.StatusID,
+		CreatedAt: time.Now(),
+	}
+	if in.APID != nil {
+		fav.APID = *in.APID
+	}
+	f.favouritesByID[fav.ID] = fav
+	if fav.APID != "" {
+		f.favouritesByAPID[fav.APID] = fav
+	}
+	f.favouritesByAccountStatus[favouriteAccountStatusKey(fav.AccountID, fav.StatusID)] = fav
+	return fav, nil
 }
 func (f *FakeStore) DeleteFavourite(ctx context.Context, accountID, statusID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := favouriteAccountStatusKey(accountID, statusID)
+	if fav, ok := f.favouritesByAccountStatus[key]; ok {
+		delete(f.favouritesByID, fav.ID)
+		if fav.APID != "" {
+			delete(f.favouritesByAPID, fav.APID)
+		}
+		delete(f.favouritesByAccountStatus, key)
+	}
 	return nil
 }
 func (f *FakeStore) GetFavouriteByAPID(ctx context.Context, apID string) (*domain.Favourite, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if fav, ok := f.favouritesByAPID[apID]; ok {
+		copy := *fav
+		return &copy, nil
+	}
 	return nil, domain.ErrNotFound
 }
 func (f *FakeStore) GetFavouriteByAccountAndStatus(ctx context.Context, accountID, statusID string) (*domain.Favourite, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := favouriteAccountStatusKey(accountID, statusID)
+	if fav, ok := f.favouritesByAccountStatus[key]; ok {
+		copy := *fav
+		return &copy, nil
+	}
 	return nil, domain.ErrNotFound
 }
 func (f *FakeStore) IncrementFavouritesCount(ctx context.Context, statusID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if s, ok := f.statusesByID[statusID]; ok {
+		s.FavouritesCount++
+	}
 	return nil
 }
 func (f *FakeStore) DecrementFavouritesCount(ctx context.Context, statusID string) error {
@@ -2528,19 +2595,40 @@ func (f *FakeStore) ResolveReport(ctx context.Context, reportID string, actionTa
 	return nil
 }
 func (f *FakeStore) CreateDomainBlock(ctx context.Context, in store.CreateDomainBlockInput) (*domain.DomainBlock, error) {
-	return &domain.DomainBlock{ID: in.ID, Domain: in.Domain, Severity: in.Severity, Reason: in.Reason, CreatedAt: time.Now()}, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := strings.ToLower(strings.TrimSpace(in.Domain))
+	b := &domain.DomainBlock{ID: in.ID, Domain: in.Domain, Severity: in.Severity, Reason: in.Reason, CreatedAt: time.Now()}
+	f.domainBlocksByDomain[key] = b
+	return b, nil
 }
 func (f *FakeStore) GetDomainBlock(ctx context.Context, domainName string) (*domain.DomainBlock, error) {
-	_ = domainName
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := strings.ToLower(strings.TrimSpace(domainName))
+	if b, ok := f.domainBlocksByDomain[key]; ok {
+		copy := *b
+		return &copy, nil
+	}
 	return nil, domain.ErrNotFound
 }
 func (f *FakeStore) UpdateDomainBlock(ctx context.Context, domainName string, severity string, reason *string) (*domain.DomainBlock, error) {
-	_ = domainName
-	_ = severity
-	_ = reason
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := strings.ToLower(strings.TrimSpace(domainName))
+	if b, ok := f.domainBlocksByDomain[key]; ok {
+		b.Severity = severity
+		b.Reason = reason
+		copy := *b
+		return &copy, nil
+	}
 	return nil, domain.ErrNotFound
 }
 func (f *FakeStore) DeleteDomainBlock(ctx context.Context, domain string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := strings.ToLower(strings.TrimSpace(domain))
+	delete(f.domainBlocksByDomain, key)
 	return nil
 }
 func (f *FakeStore) CreateAdminAction(ctx context.Context, in store.CreateAdminActionInput) error {

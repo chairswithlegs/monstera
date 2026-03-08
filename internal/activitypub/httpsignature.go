@@ -40,7 +40,14 @@ const pubkeyCacheTTL = 1 * time.Hour
 
 // HTTPSignatureService verifies HTTP Signatures and fetches remote public keys (with caching).
 // For outgoing federation it can sign requests using a local account's key (SignWithSenderID).
-type HTTPSignatureService struct {
+type HTTPSignatureService interface {
+	Verify(ctx context.Context, r *http.Request) (keyID string, err error)
+	FetchRemotePublicKey(ctx context.Context, keyID string) (*rsa.PublicKey, error)
+	SignWithSenderID(ctx context.Context, r *http.Request, senderID string) error
+}
+
+// httpSignatureService is the default in-package implementation of HTTPSignatureService.
+type httpSignatureService struct {
 	client         *http.Client
 	cache          cache.Store
 	accountService service.AccountService
@@ -49,8 +56,8 @@ type HTTPSignatureService struct {
 
 // NewHTTPSignatureService returns an HTTPSignatureService that builds its HTTP client from cfg.
 // When cfg.FederationInsecureSkipTLS is true, the client skips TLS verification (for development).
-func NewHTTPSignatureService(cfg *config.Config, c cache.Store, a service.AccountService) *HTTPSignatureService {
-	return &HTTPSignatureService{
+func NewHTTPSignatureService(cfg *config.Config, c cache.Store, a service.AccountService) HTTPSignatureService {
+	return &httpSignatureService{
 		client:         federationHTTPClient(cfg),
 		cache:          c,
 		accountService: a,
@@ -72,7 +79,7 @@ func NewHTTPSignatureService(cfg *config.Config, c cache.Store, a service.Accoun
 //  8. Check for replay: (keyId, Date, requestTarget) stored in cache with replayTTL.
 //
 // Returns the keyId (actor key IRI) on success; an error otherwise.
-func (s *HTTPSignatureService) Verify(ctx context.Context, r *http.Request) (keyID string, err error) {
+func (s *httpSignatureService) Verify(ctx context.Context, r *http.Request) (keyID string, err error) {
 	sig, err := parseSignatureHeader(r.Header.Get("Signature"))
 	if err != nil {
 		return "", fmt.Errorf("httpsig: parse header: %w", err)
@@ -146,7 +153,7 @@ func (s *HTTPSignatureService) Verify(ctx context.Context, r *http.Request) (key
 }
 
 // FetchRemotePublicKey returns the RSA public key for keyID, from cache or by fetching the actor document.
-func (s *HTTPSignatureService) FetchRemotePublicKey(ctx context.Context, keyID string) (*rsa.PublicKey, error) {
+func (s *httpSignatureService) FetchRemotePublicKey(ctx context.Context, keyID string) (*rsa.PublicKey, error) {
 	ck := pubKeyCacheKey(keyID)
 	b, err := s.cache.Get(ctx, ck)
 	if err == nil {
@@ -177,7 +184,7 @@ func (s *HTTPSignatureService) FetchRemotePublicKey(ctx context.Context, keyID s
 
 // SignWithSenderID looks up the local account by senderID, parses its private key, and signs r.
 // Returns an error if account is not found, account has no private key, or the key is invalid.
-func (s *HTTPSignatureService) SignWithSenderID(ctx context.Context, r *http.Request, senderID string) error {
+func (s *httpSignatureService) SignWithSenderID(ctx context.Context, r *http.Request, senderID string) error {
 	account, err := s.accountService.GetByID(ctx, senderID)
 	if err != nil {
 		return fmt.Errorf("httpsignature: get account %s: %w", senderID, err)
@@ -203,7 +210,7 @@ func (s *HTTPSignatureService) SignWithSenderID(ctx context.Context, r *http.Req
 // The Date header is set to the current time if not already present.
 // If the request has a body, the Digest header is computed and set.
 // The Signature header is constructed per draft-cavage-http-signatures-12.
-func (s *HTTPSignatureService) sign(r *http.Request, keyID string, privateKey *rsa.PrivateKey) error {
+func (s *httpSignatureService) sign(r *http.Request, keyID string, privateKey *rsa.PrivateKey) error {
 	if r.Header.Get("Date") == "" {
 		r.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	}
@@ -351,12 +358,12 @@ func sha256Sum(data []byte) []byte {
 	return h[:]
 }
 
-// EvictKey removes the cached key for keyID so the next FetchPublicKey will refetch from remote.
-func (s *HTTPSignatureService) evictKey(ctx context.Context, keyID string) {
+// evictKey removes the cached key for keyID so the next FetchRemotePublicKey will refetch from remote.
+func (s *httpSignatureService) evictKey(ctx context.Context, keyID string) {
 	_ = s.cache.Delete(ctx, pubKeyCacheKey(keyID))
 }
 
-func (s *HTTPSignatureService) fetchFromRemote(ctx context.Context, keyID string) (*rsa.PublicKey, error) {
+func (s *httpSignatureService) fetchFromRemote(ctx context.Context, keyID string) (*rsa.PublicKey, error) {
 	actorURL := keyID
 	if idx := strings.Index(keyID, "#"); idx >= 0 {
 		actorURL = keyID[:idx]

@@ -53,10 +53,6 @@ func toDbCreateUserParams(in store.CreateUserInput) db.CreateUserParams {
 }
 
 func toDbCreateStatusParams(in store.CreateStatusInput) db.CreateStatusParams {
-	policy := in.QuoteApprovalPolicy
-	if policy == "" {
-		policy = "public"
-	}
 	return db.CreateStatusParams{
 		ID:                  in.ID,
 		Uri:                 in.URI,
@@ -70,7 +66,7 @@ func toDbCreateStatusParams(in store.CreateStatusInput) db.CreateStatusParams {
 		InReplyToAccountID:  in.InReplyToAccountID,
 		ReblogOfID:          in.ReblogOfID,
 		QuotedStatusID:      in.QuotedStatusID,
-		QuoteApprovalPolicy: policy,
+		QuoteApprovalPolicy: in.QuoteApprovalPolicy,
 		ApID:                in.APID,
 		ApRaw:               in.ApRaw,
 		Sensitive:           in.Sensitive,
@@ -284,13 +280,6 @@ func (s *PostgresStore) CountLocalStatuses(ctx context.Context) (int64, error) {
 func (s *PostgresStore) CountAccountPublicStatuses(ctx context.Context, accountID string) (int64, error) {
 	n, err := s.q.CountAccountPublicStatuses(ctx, accountID)
 	return n, mapErr(err)
-}
-
-func (s *PostgresStore) DeleteStatus(ctx context.Context, id string) error {
-	if err := s.q.SoftDeleteStatus(ctx, id); err != nil {
-		return fmt.Errorf("DeleteStatus(%s): %w", id, mapErr(err))
-	}
-	return nil
 }
 
 func (s *PostgresStore) IncrementStatusesCount(ctx context.Context, accountID string) error {
@@ -753,22 +742,14 @@ func (s *PostgresStore) ListFeaturedTagSuggestions(ctx context.Context, accountI
 }
 
 func (s *PostgresStore) GetConversationRoot(ctx context.Context, statusID string) (string, error) {
-	visited := make(map[string]struct{})
-	currentID := statusID
-	for {
-		if _, ok := visited[currentID]; ok {
-			return currentID, nil
+	root, err := s.q.GetConversationRoot(ctx, statusID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return statusID, nil
 		}
-		visited[currentID] = struct{}{}
-		st, err := s.q.GetStatusByID(ctx, currentID)
-		if err != nil {
-			return "", mapErr(err)
-		}
-		if st.InReplyToID == nil || *st.InReplyToID == "" {
-			return currentID, nil
-		}
-		currentID = *st.InReplyToID
+		return "", mapErr(err)
 	}
+	return root, nil
 }
 
 func (s *PostgresStore) CreateConversationMute(ctx context.Context, accountID, conversationID string) error {
@@ -1001,51 +982,22 @@ func (s *PostgresStore) DecrementFollowingCount(ctx context.Context, accountID s
 	return mapErr(s.q.DecrementFollowingCount(ctx, accountID))
 }
 
-func (s *PostgresStore) GetRelationship(ctx context.Context, accountID, targetID string) (*domain.Relationship, error) {
-	rel := &domain.Relationship{
-		TargetID:       targetID,
-		ShowingReblogs: true,
-		Notifying:      false,
-		Endorsed:       false,
-		Note:           "",
+func (s *PostgresStore) GetBlock(ctx context.Context, accountID, targetID string) (*domain.Block, error) {
+	b, err := s.q.GetBlock(ctx, db.GetBlockParams{AccountID: accountID, TargetID: targetID})
+	if err != nil {
+		return nil, mapErr(err)
 	}
-	fw, err := s.q.GetFollow(ctx, db.GetFollowParams{AccountID: accountID, TargetID: targetID})
-	if err == nil {
-		switch fw.State {
-		case domain.FollowStateAccepted:
-			rel.Following = true
-		case domain.FollowStatePending:
-			rel.Requested = true
-		}
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return nil, fmt.Errorf("GetFollow(actor->target): %w", mapErr(err))
-	}
-	bw, err := s.q.GetFollow(ctx, db.GetFollowParams{AccountID: targetID, TargetID: accountID})
-	if err == nil && bw.State == domain.FollowStateAccepted {
-		rel.FollowedBy = true
-	} else if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return nil, fmt.Errorf("GetFollow(target->actor): %w", mapErr(err))
-	}
-	_, err = s.q.GetBlock(ctx, db.GetBlockParams{AccountID: accountID, TargetID: targetID})
-	if err == nil {
-		rel.Blocking = true
-	} else if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return nil, fmt.Errorf("GetBlock(actor->target): %w", mapErr(err))
-	}
-	_, err = s.q.GetBlock(ctx, db.GetBlockParams{AccountID: targetID, TargetID: accountID})
-	if err == nil {
-		rel.BlockedBy = true
-	} else if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return nil, fmt.Errorf("GetBlock(target->actor): %w", mapErr(err))
-	}
+	d := ToDomainBlock(b)
+	return &d, nil
+}
+
+func (s *PostgresStore) GetMute(ctx context.Context, accountID, targetID string) (*domain.Mute, error) {
 	m, err := s.q.GetMute(ctx, db.GetMuteParams{AccountID: accountID, TargetID: targetID})
-	if err == nil {
-		rel.Muting = true
-		rel.MutingNotifications = m.HideNotifications
-	} else if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return nil, fmt.Errorf("GetMute: %w", mapErr(err))
+	if err != nil {
+		return nil, mapErr(err)
 	}
-	return rel, nil
+	d := ToDomainMute(m)
+	return &d, nil
 }
 
 func (s *PostgresStore) ListDomainBlocks(ctx context.Context) ([]domain.DomainBlock, error) {

@@ -39,7 +39,7 @@ type outboxDeliveryPublisher interface {
 func newOutboxDeliveryWorker(
 	js jetstream.JetStream,
 	bl *BlocklistCache,
-	signer *HTTPSignatureService,
+	signer HTTPSignatureService,
 	cfg *config.Config,
 ) *outboxDeliveryWorker {
 	transport := &http.Transport{}
@@ -69,7 +69,7 @@ type outboxDeliveryWorker struct {
 	js        jetstream.JetStream
 	blocklist *BlocklistCache
 	cfg       *config.Config
-	signer    *HTTPSignatureService
+	signer    HTTPSignatureService
 	http      *http.Client
 }
 
