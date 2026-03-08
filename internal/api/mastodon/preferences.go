@@ -12,11 +12,12 @@ import (
 
 // PreferencesResponse is the Mastodon API preferences response (flat key-value).
 type PreferencesResponse struct {
-	PostingDefaultVisibility string `json:"posting:default:visibility"`
-	PostingDefaultSensitive  bool   `json:"posting:default:sensitive"`
-	PostingDefaultLanguage   string `json:"posting:default:language"`
-	ReadingExpandMedia       string `json:"reading:expand:media"`
-	ReadingExpandSpoilers    bool   `json:"reading:expand:spoilers"`
+	PostingDefaultVisibility  string `json:"posting:default:visibility"`
+	PostingDefaultSensitive   bool   `json:"posting:default:sensitive"`
+	PostingDefaultLanguage    string `json:"posting:default:language"`
+	PostingDefaultQuotePolicy string `json:"posting:default:quote_policy"`
+	ReadingExpandMedia        string `json:"reading:expand:media"`
+	ReadingExpandSpoilers     bool   `json:"reading:expand:spoilers"`
 }
 
 // PreferencesHandler handles GET /api/v1/preferences.
@@ -47,15 +48,20 @@ func (h *PreferencesHandler) GETPreferences(w http.ResponseWriter, r *http.Reque
 	}
 	visibility := user.DefaultPrivacy
 	if visibility == "" {
-		visibility = "public"
+		visibility = domain.VisibilityPublic
 	}
 	lang := user.DefaultLanguage
+	quotePolicy := user.DefaultQuotePolicy
+	if quotePolicy == "" {
+		quotePolicy = domain.QuotePolicyPublic
+	}
 	resp := PreferencesResponse{
-		PostingDefaultVisibility: visibility,
-		PostingDefaultSensitive:  user.DefaultSensitive,
-		PostingDefaultLanguage:   lang,
-		ReadingExpandMedia:       "default",
-		ReadingExpandSpoilers:    false,
+		PostingDefaultVisibility:  visibility,
+		PostingDefaultSensitive:   user.DefaultSensitive,
+		PostingDefaultLanguage:    lang,
+		PostingDefaultQuotePolicy: quotePolicy,
+		ReadingExpandMedia:        "default",
+		ReadingExpandSpoilers:     false,
 	}
 	api.WriteJSON(w, http.StatusOK, resp)
 }

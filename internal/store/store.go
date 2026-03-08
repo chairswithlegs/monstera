@@ -137,8 +137,15 @@ type Store interface {
 	DecrementFavouritesCount(ctx context.Context, statusID string) error
 	IncrementReblogsCount(ctx context.Context, statusID string) error
 	DecrementReblogsCount(ctx context.Context, statusID string) error
+	IncrementQuotesCount(ctx context.Context, quotedStatusID string) error
+	DecrementQuotesCount(ctx context.Context, quotedStatusID string) error
 	IncrementRepliesCount(ctx context.Context, statusID string) error
 	GetReblogByAccountAndTarget(ctx context.Context, accountID, statusID string) (*domain.Status, error)
+	CreateQuoteApproval(ctx context.Context, quotingStatusID, quotedStatusID string) error
+	RevokeQuote(ctx context.Context, quotedStatusID, quotingStatusID string) error
+	ListQuotesOfStatus(ctx context.Context, quotedStatusID string, maxID *string, limit int) ([]domain.Status, error)
+	GetQuoteApproval(ctx context.Context, quotingStatusID string) (*domain.QuoteApprovalRecord, error)
+	UpdateStatusQuoteApprovalPolicy(ctx context.Context, statusID, policy string) error
 
 	CreateAccountPin(ctx context.Context, accountID, statusID string) error
 	DeleteAccountPin(ctx context.Context, accountID, statusID string) error
@@ -214,6 +221,7 @@ type Store interface {
 	ListLocalUsers(ctx context.Context, limit, offset int) ([]domain.User, error)
 	GetUserByID(ctx context.Context, id string) (*domain.User, error)
 	UpdateUserRole(ctx context.Context, userID string, role string) error
+	UpdateUserDefaultQuotePolicy(ctx context.Context, accountID, policy string) error
 	GetPendingRegistrations(ctx context.Context) ([]domain.User, error)
 	DeleteUser(ctx context.Context, id string) error
 

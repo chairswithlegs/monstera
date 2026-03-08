@@ -35,42 +35,52 @@ type Field struct {
 
 // Source is the raw account preferences (only for verify_credentials).
 type Source struct {
-	Note      string  `json:"note"`
-	Privacy   string  `json:"privacy"`
-	Sensitive bool    `json:"sensitive"`
-	Language  string  `json:"language"`
-	Fields    []Field `json:"fields"`
+	Note        string  `json:"note"`
+	Privacy     string  `json:"privacy"`
+	Sensitive   bool    `json:"sensitive"`
+	Language    string  `json:"language"`
+	QuotePolicy string  `json:"quote_policy,omitempty"`
+	Fields      []Field `json:"fields"`
 }
 
 // Status is the Mastodon API status response shape.
 type Status struct {
-	ID                 string            `json:"id"`
-	CreatedAt          string            `json:"created_at"`
-	InReplyToID        *string           `json:"in_reply_to_id"`
-	InReplyToAccountID *string           `json:"in_reply_to_account_id"`
-	Sensitive          bool              `json:"sensitive"`
-	SpoilerText        string            `json:"spoiler_text"`
-	Visibility         string            `json:"visibility"`
-	Language           *string           `json:"language"`
-	URI                string            `json:"uri"`
-	URL                *string           `json:"url"`
-	RepliesCount       int               `json:"replies_count"`
-	ReblogsCount       int               `json:"reblogs_count"`
-	FavouritesCount    int               `json:"favourites_count"`
-	Content            string            `json:"content"`
-	Reblog             *Status           `json:"reblog"`
-	Account            Account           `json:"account"`
-	MediaAttachments   []MediaAttachment `json:"media_attachments"`
-	Mentions           []Mention         `json:"mentions"`
-	Tags               []Tag             `json:"tags"`
-	Emojis             []any             `json:"emojis"`
-	Card               *any              `json:"card"`
-	Poll               *Poll             `json:"poll"`
-	Favourited         bool              `json:"favourited"`
-	Reblogged          bool              `json:"reblogged"`
-	Muted              bool              `json:"muted"`
-	Bookmarked         bool              `json:"bookmarked"`
-	Pinned             bool              `json:"pinned"`
+	ID                  string            `json:"id"`
+	CreatedAt           string            `json:"created_at"`
+	InReplyToID         *string           `json:"in_reply_to_id"`
+	InReplyToAccountID  *string           `json:"in_reply_to_account_id"`
+	Sensitive           bool              `json:"sensitive"`
+	SpoilerText         string            `json:"spoiler_text"`
+	Visibility          string            `json:"visibility"`
+	Language            *string           `json:"language"`
+	URI                 string            `json:"uri"`
+	URL                 *string           `json:"url"`
+	RepliesCount        int               `json:"replies_count"`
+	ReblogsCount        int               `json:"reblogs_count"`
+	FavouritesCount     int               `json:"favourites_count"`
+	QuotesCount         int               `json:"quotes_count"`
+	QuoteApprovalPolicy string            `json:"quote_approval_policy,omitempty"` // public | followers | nobody (Mastodon-style quotes)
+	Content             string            `json:"content"`
+	Reblog              *Status           `json:"reblog"`
+	QuoteApproval       *QuoteApproval    `json:"quote_approval,omitempty"`
+	Account             Account           `json:"account"`
+	MediaAttachments    []MediaAttachment `json:"media_attachments"`
+	Mentions            []Mention         `json:"mentions"`
+	Tags                []Tag             `json:"tags"`
+	Emojis              []any             `json:"emojis"`
+	Card                *any              `json:"card"`
+	Poll                *Poll             `json:"poll"`
+	Favourited          bool              `json:"favourited"`
+	Reblogged           bool              `json:"reblogged"`
+	Muted               bool              `json:"muted"`
+	Bookmarked          bool              `json:"bookmarked"`
+	Pinned              bool              `json:"pinned"`
+}
+
+// QuoteApproval is the quote approval state and optional quoted status (Mastodon API entity).
+type QuoteApproval struct {
+	State        string  `json:"state"` // "accepted" | "revoked" | "pending" | ...
+	QuotedStatus *Status `json:"quoted_status,omitempty"`
 }
 
 // Mention is an account mention in a status.

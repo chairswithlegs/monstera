@@ -21,6 +21,9 @@ UPDATE users SET role = $2 WHERE id = $1;
 -- name: UpdateUserPassword :exec
 UPDATE users SET password_hash = $2 WHERE id = $1;
 
+-- name: UpdateUserDefaultQuotePolicy :exec
+UPDATE users SET default_quote_policy = $2 WHERE account_id = $1;
+
 -- name: ListLocalUsers :many
 SELECT u.* FROM users u
 INNER JOIN accounts a ON a.id = u.account_id

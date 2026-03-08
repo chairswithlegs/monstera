@@ -36,21 +36,23 @@ type CreateUserInput struct {
 
 // CreateStatusInput is the input for creating a status.
 type CreateStatusInput struct {
-	ID                 string
-	URI                string
-	AccountID          string
-	Text               *string
-	Content            *string
-	ContentWarning     *string
-	Visibility         string
-	Language           *string
-	InReplyToID        *string
-	InReplyToAccountID *string
-	ReblogOfID         *string
-	APID               string
-	ApRaw              []byte
-	Sensitive          bool
-	Local              bool
+	ID                  string
+	URI                 string
+	AccountID           string
+	Text                *string
+	Content             *string
+	ContentWarning      *string
+	Visibility          string
+	Language            *string
+	InReplyToID         *string
+	InReplyToAccountID  *string
+	ReblogOfID          *string
+	QuotedStatusID      *string
+	QuoteApprovalPolicy string
+	APID                string
+	ApRaw               []byte
+	Sensitive           bool
+	Local               bool
 }
 
 // CreateApplicationInput is the input for creating an OAuth application.

@@ -50,6 +50,7 @@ type Querier interface {
 	CreatePoll(ctx context.Context, arg CreatePollParams) (Poll, error)
 	CreatePollOption(ctx context.Context, arg CreatePollOptionParams) (PollOption, error)
 	CreatePollVote(ctx context.Context, arg CreatePollVoteParams) (PollVote, error)
+	CreateQuoteApproval(ctx context.Context, arg CreateQuoteApprovalParams) error
 	CreateReport(ctx context.Context, arg CreateReportParams) (Report, error)
 	CreateScheduledStatus(ctx context.Context, arg CreateScheduledStatusParams) (ScheduledStatus, error)
 	CreateServerFilter(ctx context.Context, arg CreateServerFilterParams) (ServerFilter, error)
@@ -61,6 +62,7 @@ type Querier interface {
 	DecrementFavouritesCount(ctx context.Context, id string) error
 	DecrementFollowersCount(ctx context.Context, id string) error
 	DecrementFollowingCount(ctx context.Context, id string) error
+	DecrementQuotesCount(ctx context.Context, id string) error
 	DecrementReblogsCount(ctx context.Context, id string) error
 	DecrementRepliesCount(ctx context.Context, id string) error
 	DecrementStatusesCount(ctx context.Context, id string) error
@@ -138,6 +140,7 @@ type Querier interface {
 	GetPollByID(ctx context.Context, id string) (Poll, error)
 	GetPollByStatusID(ctx context.Context, statusID string) (Poll, error)
 	GetPublicTimeline(ctx context.Context, arg GetPublicTimelineParams) ([]Status, error)
+	GetQuoteApproval(ctx context.Context, quotingStatusID string) (QuoteApproval, error)
 	GetReblogByAccountAndTarget(ctx context.Context, arg GetReblogByAccountAndTargetParams) (Status, error)
 	GetRebloggedBy(ctx context.Context, arg GetRebloggedByParams) ([]GetRebloggedByRow, error)
 	GetRemoteAccountByUsername(ctx context.Context, arg GetRemoteAccountByUsernameParams) (Account, error)
@@ -164,6 +167,7 @@ type Querier interface {
 	IncrementFollowersCount(ctx context.Context, id string) error
 	IncrementFollowingCount(ctx context.Context, id string) error
 	IncrementInviteUses(ctx context.Context, code string) error
+	IncrementQuotesCount(ctx context.Context, id string) error
 	IncrementReblogsCount(ctx context.Context, id string) error
 	IncrementRepliesCount(ctx context.Context, id string) error
 	IncrementStatusesCount(ctx context.Context, id string) error
@@ -200,6 +204,7 @@ type Querier interface {
 	ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]Notification, error)
 	ListPinnedStatusIDs(ctx context.Context, accountID string) ([]string, error)
 	ListPollOptions(ctx context.Context, pollID string) ([]PollOption, error)
+	ListQuotesOfStatus(ctx context.Context, arg ListQuotesOfStatusParams) ([]Status, error)
 	ListReadAnnouncementIDs(ctx context.Context, accountID string) ([]string, error)
 	ListReports(ctx context.Context, arg ListReportsParams) ([]Report, error)
 	ListScheduledStatuses(ctx context.Context, arg ListScheduledStatusesParams) ([]ScheduledStatus, error)
@@ -217,6 +222,7 @@ type Querier interface {
 	ResolveReport(ctx context.Context, arg ResolveReportParams) error
 	RevokeAccessToken(ctx context.Context, token string) error
 	RevokeAllAccessTokensForAccount(ctx context.Context, accountID *string) error
+	RevokeQuote(ctx context.Context, arg RevokeQuoteParams) (string, error)
 	SearchAccounts(ctx context.Context, arg SearchAccountsParams) ([]Account, error)
 	SearchHashtagsByPrefix(ctx context.Context, arg SearchHashtagsByPrefixParams) ([]Hashtag, error)
 	SetMarker(ctx context.Context, arg SetMarkerParams) error
@@ -239,6 +245,8 @@ type Querier interface {
 	UpdateScheduledStatus(ctx context.Context, arg UpdateScheduledStatusParams) (ScheduledStatus, error)
 	UpdateServerFilter(ctx context.Context, arg UpdateServerFilterParams) (ServerFilter, error)
 	UpdateStatus(ctx context.Context, arg UpdateStatusParams) (Status, error)
+	UpdateStatusQuoteApprovalPolicy(ctx context.Context, arg UpdateStatusQuoteApprovalPolicyParams) error
+	UpdateUserDefaultQuotePolicy(ctx context.Context, arg UpdateUserDefaultQuotePolicyParams) error
 	UpdateUserFilter(ctx context.Context, arg UpdateUserFilterParams) (UserFilter, error)
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error

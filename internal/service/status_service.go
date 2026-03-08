@@ -15,6 +15,9 @@ import (
 	"github.com/chairswithlegs/monstera/internal/uid"
 )
 
+// Quote-related methods implement Mastodon-style quotes: quoted_status_id, quote_approval_policy,
+// quote approvals, revoke, and quoted_update notifications. See docs/mastodon-api-* for the plan.
+
 // StatusFederationPublisher publishes status create/delete to federation (e.g. ap.Outbox).
 type StatusFederationPublisher interface {
 	PublishStatus(ctx context.Context, status *domain.Status) error
@@ -93,6 +96,11 @@ type StatusService interface {
 	IsConversationMutedForViewer(ctx context.Context, viewerAccountID, statusID string) (bool, error)
 	ListMutedConversationIDs(ctx context.Context, accountID string) ([]string, error)
 
+	GetQuoteApproval(ctx context.Context, quotingStatusID string) (*domain.QuoteApprovalRecord, error)
+	UpdateQuoteApprovalPolicy(ctx context.Context, accountID, statusID, policy string) error
+	ListQuotesOfStatus(ctx context.Context, quotedStatusID string, maxID *string, limit int, viewerAccountID *string) ([]EnrichedStatus, error)
+	RevokeQuote(ctx context.Context, accountID, quotedStatusID, quotingStatusID string) error
+
 	// SetDirectStatusConversationUpdater sets the optional updater for direct statuses (used by wiring to break circular dependency).
 	SetDirectStatusConversationUpdater(DirectStatusConversationUpdater)
 }
@@ -142,18 +150,20 @@ func (svc *statusService) SetDirectStatusConversationUpdater(u DirectStatusConve
 
 // CreateWithContentInput is the input for creating a status with plain text (content is rendered in-service).
 type CreateWithContentInput struct {
-	AccountID         string
-	Username          string
-	Text              string
-	Visibility        string
-	DefaultVisibility string // used when Visibility is empty or invalid
-	ContentWarning    string
-	Language          string
-	Sensitive         bool
-	InReplyToID       *string     // optional parent status ID for replies
-	MediaIDs          []string    // optional media attachment IDs (max 4)
-	Poll              *PollInput  // optional; when set, status is created with an attached poll
-	PollLimits        *PollLimits // required when Poll is set (from instance configuration)
+	AccountID           string
+	Username            string
+	Text                string
+	Visibility          string
+	DefaultVisibility   string // used when Visibility is empty or invalid
+	ContentWarning      string
+	Language            string
+	Sensitive           bool
+	InReplyToID         *string     // optional parent status ID for replies
+	QuotedStatusID      *string     // optional status ID being quoted
+	QuoteApprovalPolicy string      // public | followers | nobody (for the new status)
+	MediaIDs            []string    // optional media attachment IDs (max 4)
+	Poll                *PollInput  // optional; when set, status is created with an attached poll
+	PollLimits          *PollLimits // required when Poll is set (from instance configuration)
 }
 
 // PollInput is the poll payload when creating a status with a poll.
@@ -572,8 +582,9 @@ func (svc *statusService) GetByIDEnriched(ctx context.Context, id string, viewer
 }
 
 // CreateWithContent creates a status from plain text: validates, renders content (mentions, hashtags),
-// persists status with mentions, hashtags, and mention notifications in one transaction,
-// then loads author, mentions, tags, and media for the response.
+// persists status with mentions, hashtags, and mention notifications in one transaction.
+// Supports Mastodon-style quotes (quoted_status_id, quote approval, quote notification) when QuotedStatusID is set.
+// Then loads author, mentions, tags, and media for the response.
 func (svc *statusService) CreateWithContent(ctx context.Context, in CreateWithContentInput) (EnrichedStatus, error) {
 	text := strings.TrimSpace(in.Text)
 	if text == "" && len(in.MediaIDs) == 0 {
@@ -603,6 +614,42 @@ func (svc *statusService) CreateWithContent(ctx context.Context, in CreateWithCo
 			return EnrichedStatus{}, fmt.Errorf("CreateWithContent media: %w", domain.ErrForbidden)
 		}
 	}
+	var quotedAuthorID *string
+	if in.QuotedStatusID != nil && *in.QuotedStatusID != "" {
+		if (in.Poll != nil && len(in.Poll.Options) > 0) || len(in.MediaIDs) > 0 {
+			return EnrichedStatus{}, fmt.Errorf("CreateWithContent: %w", domain.ErrValidation)
+		}
+		quoted, err := svc.store.GetStatusByID(ctx, *in.QuotedStatusID)
+		if err != nil {
+			return EnrichedStatus{}, fmt.Errorf("CreateWithContent quoted_status_id: %w", err)
+		}
+		if quoted.DeletedAt != nil {
+			return EnrichedStatus{}, fmt.Errorf("CreateWithContent quoted_status_id: %w", domain.ErrNotFound)
+		}
+		visible, err := svc.canViewStatus(ctx, quoted, &in.AccountID)
+		if err != nil {
+			return EnrichedStatus{}, fmt.Errorf("CreateWithContent quoted_status_id: %w", err)
+		}
+		if !visible {
+			return EnrichedStatus{}, fmt.Errorf("CreateWithContent quoted_status_id: %w", domain.ErrForbidden)
+		}
+		switch quoted.QuoteApprovalPolicy {
+		case domain.QuotePolicyNobody:
+			if quoted.AccountID != in.AccountID {
+				return EnrichedStatus{}, fmt.Errorf("CreateWithContent quoted_status_id: %w", domain.ErrForbidden)
+			}
+		case domain.QuotePolicyFollowers:
+			if quoted.AccountID != in.AccountID {
+				follow, followErr := svc.store.GetFollow(ctx, in.AccountID, quoted.AccountID)
+				if followErr != nil || follow == nil || follow.State != domain.FollowStateAccepted {
+					return EnrichedStatus{}, fmt.Errorf("CreateWithContent quoted_status_id: %w", domain.ErrForbidden)
+				}
+			}
+		default:
+			// public or unknown: allow (block already checked in canViewStatus)
+		}
+		quotedAuthorID = &quoted.AccountID
+	}
 	renderResult := RenderResult{}
 	if text != "" {
 		resolver := svc.mentionResolver(ctx)
@@ -631,11 +678,20 @@ func (svc *statusService) CreateWithContent(ctx context.Context, in CreateWithCo
 	statusID := uid.New()
 	statusURI := fmt.Sprintf("%s/users/%s/statuses/%s", svc.instanceBaseURL, in.Username, statusID)
 
+	quotePolicy := in.QuoteApprovalPolicy
+	if quotePolicy == "" {
+		quotePolicy = domain.QuotePolicyPublic
+	}
+	if visibility == domain.VisibilityPrivate || visibility == domain.VisibilityDirect {
+		quotePolicy = domain.QuotePolicyNobody
+	}
+
 	var created *domain.Status
 	var createdPollID string
+	// Single transaction: status create, quote approval, quotes_count increment, and quote notification (Mastodon-style quotes) are atomic.
 	err := svc.store.WithTx(ctx, func(tx store.Store) error {
 		var txErr error
-		created, txErr = createStatusWithContentTx(ctx, tx, in.AccountID, in.Username, statusID, statusURI, visibility, text, renderResult.HTML, in.ContentWarning, language, in.Sensitive, renderResult, in.InReplyToID, inReplyToAccountID, in.MediaIDs)
+		created, txErr = createStatusWithContentTx(ctx, tx, in.AccountID, in.Username, statusID, statusURI, visibility, text, renderResult.HTML, in.ContentWarning, language, in.Sensitive, renderResult, in.InReplyToID, inReplyToAccountID, in.QuotedStatusID, quotePolicy, quotedAuthorID, in.MediaIDs)
 		if txErr != nil {
 			return txErr
 		}
@@ -893,6 +949,9 @@ func createStatusWithContentTx(
 	sensitive bool,
 	renderResult RenderResult,
 	inReplyToID, inReplyToAccountID *string,
+	quotedStatusID *string,
+	quoteApprovalPolicy string,
+	quotedAuthorID *string,
 	_ []string, // mediaIDs are attached by caller after CreateStatus
 ) (*domain.Status, error) {
 	var textPtr, contentPtr *string
@@ -901,23 +960,46 @@ func createStatusWithContentTx(
 		contentPtr = &content
 	}
 	st, err := tx.CreateStatus(ctx, store.CreateStatusInput{
-		ID:                 statusID,
-		URI:                statusURI,
-		AccountID:          accountID,
-		Text:               textPtr,
-		Content:            contentPtr,
-		ContentWarning:     &contentWarning,
-		Visibility:         visibility,
-		Language:           &language,
-		InReplyToID:        inReplyToID,
-		InReplyToAccountID: inReplyToAccountID,
-		Sensitive:          sensitive,
-		Local:              true,
-		APID:               statusURI,
-		ApRaw:              nil,
+		ID:                  statusID,
+		URI:                 statusURI,
+		AccountID:           accountID,
+		Text:                textPtr,
+		Content:             contentPtr,
+		ContentWarning:      &contentWarning,
+		Visibility:          visibility,
+		Language:            &language,
+		InReplyToID:         inReplyToID,
+		InReplyToAccountID:  inReplyToAccountID,
+		QuotedStatusID:      quotedStatusID,
+		QuoteApprovalPolicy: quoteApprovalPolicy,
+		Sensitive:           sensitive,
+		Local:               true,
+		APID:                statusURI,
+		ApRaw:               nil,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("CreateStatus: %w", err)
+	}
+	if quotedStatusID != nil && *quotedStatusID != "" {
+		if err := tx.CreateQuoteApproval(ctx, statusID, *quotedStatusID); err != nil {
+			return nil, fmt.Errorf("CreateQuoteApproval: %w", err)
+		}
+		if err := tx.IncrementQuotesCount(ctx, *quotedStatusID); err != nil {
+			return nil, fmt.Errorf("IncrementQuotesCount: %w", err)
+		}
+		if quotedAuthorID != nil && *quotedAuthorID != accountID {
+			notifID := uid.New()
+			_, err = tx.CreateNotification(ctx, store.CreateNotificationInput{
+				ID:        notifID,
+				AccountID: *quotedAuthorID,
+				FromID:    accountID,
+				Type:      domain.NotificationTypeQuote,
+				StatusID:  &statusID,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("CreateNotification quote: %w", err)
+			}
+		}
 	}
 	for _, m := range renderResult.Mentions {
 		if err := tx.CreateStatusMention(ctx, statusID, m.AccountID); err != nil {
@@ -1358,6 +1440,23 @@ func (svc *statusService) UpdateStatusFromAPI(ctx context.Context, accountID, st
 	if err := svc.fed.PublishUpdate(ctx, updated); err != nil && svc.logger != nil {
 		svc.logger.WarnContext(ctx, "federation publish update failed", slog.Any("error", err), slog.String("status_id", statusID))
 	}
+	quotes, err := svc.store.ListQuotesOfStatus(ctx, statusID, nil, 500)
+	if err == nil {
+		for i := range quotes {
+			quotingAuthorID := quotes[i].AccountID
+			if quotingAuthorID == accountID {
+				continue
+			}
+			quotingStatusID := quotes[i].ID
+			_, _ = svc.store.CreateNotification(ctx, store.CreateNotificationInput{
+				ID:        uid.New(),
+				AccountID: quotingAuthorID,
+				FromID:    accountID,
+				Type:      domain.NotificationTypeQuotedUpdate,
+				StatusID:  &quotingStatusID,
+			})
+		}
+	}
 	return svc.GetByIDEnriched(ctx, statusID, &accountID)
 }
 
@@ -1710,4 +1809,111 @@ func (svc *statusService) ListMutedConversationIDs(ctx context.Context, accountI
 		return nil, fmt.Errorf("ListMutedConversationIDs: %w", err)
 	}
 	return ids, nil
+}
+
+// GetQuoteApproval returns the quote approval record for a quoting status, or ErrNotFound.
+func (svc *statusService) GetQuoteApproval(ctx context.Context, quotingStatusID string) (*domain.QuoteApprovalRecord, error) {
+	rec, err := svc.store.GetQuoteApproval(ctx, quotingStatusID)
+	if err != nil {
+		return nil, fmt.Errorf("GetQuoteApproval(%s): %w", quotingStatusID, err)
+	}
+	return rec, nil
+}
+
+// UpdateQuoteApprovalPolicy updates the quote_approval_policy of a status (Mastodon-style quotes).
+// Caller must be the status owner. Policy must be non-empty; use domain.QuotePolicy* constants.
+func (svc *statusService) UpdateQuoteApprovalPolicy(ctx context.Context, accountID, statusID, policy string) error {
+	if strings.TrimSpace(policy) == "" {
+		return fmt.Errorf("UpdateQuoteApprovalPolicy: %w", domain.ErrValidation)
+	}
+	st, err := svc.store.GetStatusByID(ctx, statusID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return fmt.Errorf("UpdateQuoteApprovalPolicy: %w", domain.ErrNotFound)
+		}
+		return fmt.Errorf("UpdateQuoteApprovalPolicy: %w", err)
+	}
+	if st.AccountID != accountID {
+		return fmt.Errorf("UpdateQuoteApprovalPolicy: %w", domain.ErrForbidden)
+	}
+	if st.Visibility == domain.VisibilityPrivate || st.Visibility == domain.VisibilityDirect {
+		policy = domain.QuotePolicyNobody
+	} else {
+		switch policy {
+		case domain.QuotePolicyPublic, domain.QuotePolicyFollowers, domain.QuotePolicyNobody:
+			// valid
+		default:
+			return fmt.Errorf("UpdateQuoteApprovalPolicy: %w", domain.ErrValidation)
+		}
+	}
+	if err := svc.store.UpdateStatusQuoteApprovalPolicy(ctx, statusID, policy); err != nil {
+		return fmt.Errorf("UpdateQuoteApprovalPolicy: %w", err)
+	}
+	if svc.logger != nil {
+		svc.logger.InfoContext(ctx, "quote approval policy updated", slog.String("status_id", statusID), slog.String("account_id", accountID), slog.String("policy", policy))
+	}
+	return nil
+}
+
+// ListQuotesOfStatus returns enriched statuses that quote the given status (Mastodon-style quotes, non-revoked).
+// Viewer must be able to see the quoted status.
+func (svc *statusService) ListQuotesOfStatus(ctx context.Context, quotedStatusID string, maxID *string, limit int, viewerAccountID *string) ([]EnrichedStatus, error) {
+	quoted, err := svc.store.GetStatusByID(ctx, quotedStatusID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, fmt.Errorf("ListQuotesOfStatus: %w", domain.ErrNotFound)
+		}
+		return nil, fmt.Errorf("ListQuotesOfStatus: %w", err)
+	}
+	ok, err := svc.canViewStatus(ctx, quoted, viewerAccountID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("ListQuotesOfStatus: %w", domain.ErrNotFound)
+	}
+	if limit <= 0 || limit > 80 {
+		limit = 20
+	}
+	list, err := svc.store.ListQuotesOfStatus(ctx, quotedStatusID, maxID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("ListQuotesOfStatus: %w", err)
+	}
+	out := make([]EnrichedStatus, 0, len(list))
+	for i := range list {
+		enriched, err := svc.GetByIDEnriched(ctx, list[i].ID, viewerAccountID)
+		if err != nil {
+			continue
+		}
+		out = append(out, enriched)
+	}
+	return out, nil
+}
+
+// RevokeQuote revokes a quote of the given status by the quoting status (Mastodon-style quotes).
+// Caller must be the author of the quoted status.
+func (svc *statusService) RevokeQuote(ctx context.Context, accountID, quotedStatusID, quotingStatusID string) error {
+	quoted, err := svc.store.GetStatusByID(ctx, quotedStatusID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return fmt.Errorf("RevokeQuote: %w", domain.ErrNotFound)
+		}
+		return fmt.Errorf("RevokeQuote: %w", err)
+	}
+	if quoted.AccountID != accountID {
+		return fmt.Errorf("RevokeQuote: %w", domain.ErrForbidden)
+	}
+	if err := svc.store.RevokeQuote(ctx, quotedStatusID, quotingStatusID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return fmt.Errorf("RevokeQuote: %w", domain.ErrNotFound)
+		}
+		return fmt.Errorf("RevokeQuote: %w", err)
+	}
+	if err := svc.store.DecrementQuotesCount(ctx, quotedStatusID); err != nil {
+		return fmt.Errorf("RevokeQuote DecrementQuotesCount: %w", err)
+	}
+	if svc.logger != nil {
+		svc.logger.InfoContext(ctx, "quote revoked", slog.String("quoted_status_id", quotedStatusID), slog.String("quoting_status_id", quotingStatusID), slog.String("account_id", accountID))
+	}
+	return nil
 }

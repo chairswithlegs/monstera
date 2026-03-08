@@ -56,15 +56,17 @@ type idempotencyCached struct {
 
 // CreateStatusRequest is the request body for POST /api/v1/statuses.
 type CreateStatusRequest struct {
-	Status      string   `json:"status"`
-	Visibility  string   `json:"visibility"`
-	SpoilerText string   `json:"spoiler_text"`
-	Sensitive   bool     `json:"sensitive"`
-	Language    string   `json:"language"`
-	InReplyToID string   `json:"in_reply_to_id"`
-	MediaIDs    []string `json:"media_ids"`
-	ScheduledAt string   `json:"scheduled_at"` // if non-empty, return 422 (Phase 1)
-	Poll        *struct {
+	Status              string   `json:"status"`
+	Visibility          string   `json:"visibility"`
+	SpoilerText         string   `json:"spoiler_text"`
+	Sensitive           bool     `json:"sensitive"`
+	Language            string   `json:"language"`
+	InReplyToID         string   `json:"in_reply_to_id"`
+	MediaIDs            []string `json:"media_ids"`
+	QuotedStatusID      string   `json:"quoted_status_id"`
+	QuoteApprovalPolicy string   `json:"quote_approval_policy"`
+	ScheduledAt         string   `json:"scheduled_at"` // if non-empty, return 422 (Phase 1)
+	Poll                *struct {
 		Options   []string `json:"options"`
 		ExpiresIn int      `json:"expires_in"`
 		Multiple  bool     `json:"multiple"`
@@ -83,6 +85,11 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 	req, err := parseCreateStatusRequest(r)
 	if err != nil {
 		api.HandleError(w, r, err)
+		return
+	}
+
+	if req.QuotedStatusID != "" && (len(req.MediaIDs) > 0 || (req.Poll != nil && len(req.Poll.Options) > 0)) {
+		api.HandleError(w, r, api.NewUnprocessableError("Cannot attach media or poll to a quote post"))
 		return
 	}
 
@@ -155,30 +162,52 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defaultVisibility := ""
+	defaultQuotePolicy := domain.QuotePolicyPublic
 	if user != nil {
 		defaultVisibility = user.DefaultPrivacy
+		if user.DefaultQuotePolicy != "" {
+			defaultQuotePolicy = user.DefaultQuotePolicy
+		}
 	}
 
 	var inReplyToID *string
 	if req.InReplyToID != "" {
 		inReplyToID = &req.InReplyToID
 	}
+	var quotedStatusID *string
+	if req.QuotedStatusID != "" {
+		quotedStatusID = &req.QuotedStatusID
+	}
+	quoteApprovalPolicy := req.QuoteApprovalPolicy
+	if quoteApprovalPolicy == "" {
+		quoteApprovalPolicy = defaultQuotePolicy
+	}
+	vis := req.Visibility
+	if vis == "" {
+		vis = defaultVisibility
+	}
+	if vis == "private" || vis == "direct" {
+		quoteApprovalPolicy = domain.QuotePolicyNobody
+	}
+
 	mediaIDs := req.MediaIDs
 	if len(mediaIDs) > 4 {
 		mediaIDs = mediaIDs[:4]
 	}
 
 	createInput := service.CreateWithContentInput{
-		AccountID:         account.ID,
-		Username:          account.Username,
-		Text:              req.Status,
-		Visibility:        req.Visibility,
-		DefaultVisibility: defaultVisibility,
-		ContentWarning:    req.SpoilerText,
-		Language:          req.Language,
-		Sensitive:         req.Sensitive,
-		InReplyToID:       inReplyToID,
-		MediaIDs:          mediaIDs,
+		AccountID:           account.ID,
+		Username:            account.Username,
+		Text:                req.Status,
+		Visibility:          req.Visibility,
+		DefaultVisibility:   defaultVisibility,
+		ContentWarning:      req.SpoilerText,
+		Language:            req.Language,
+		Sensitive:           req.Sensitive,
+		InReplyToID:         inReplyToID,
+		QuotedStatusID:      quotedStatusID,
+		QuoteApprovalPolicy: quoteApprovalPolicy,
+		MediaIDs:            mediaIDs,
 	}
 	if req.Poll != nil && len(req.Poll.Options) > 0 {
 		createInput.Poll = &service.PollInput{
@@ -195,6 +224,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	h.setQuoteApprovalOnStatus(ctx, result, &out, &account.ID)
 	body, _ := json.Marshal(out)
 	if idemKey != "" && h.cache != nil {
 		cacheKey := "idempotency:" + account.ID + ":" + idemKey
@@ -223,6 +253,7 @@ func (h *StatusesHandler) GETStatuses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	h.setQuoteApprovalOnStatus(r.Context(), result, &out, viewerID)
 	if account := middleware.AccountFromContext(r.Context()); account != nil {
 		if ok, err := h.statuses.IsBookmarked(r.Context(), account.ID, id); err == nil {
 			out.Bookmarked = ok
@@ -241,6 +272,78 @@ func (h *StatusesHandler) GETStatuses(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// GETQuotes handles GET /api/v1/statuses/:id/quotes (Mastodon-style quotes). Auth required. Returns statuses that quote the given status.
+func (h *StatusesHandler) GETQuotes(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	params := PageParamsFromRequest(r)
+	maxID := optionalString(params.MaxID)
+	limit := params.Limit
+	if limit <= 0 {
+		limit = DefaultPageLimit
+	}
+	if limit > MaxPageLimit {
+		limit = MaxPageLimit
+	}
+	enriched, err := h.statuses.ListQuotesOfStatus(r.Context(), id, maxID, limit, &account.ID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	out := make([]apimodel.Status, 0, len(enriched))
+	for i := range enriched {
+		s := enrichedStatusToAPIModel(enriched[i], h.instanceDomain)
+		h.setQuoteApprovalOnStatus(r.Context(), enriched[i], &s, &account.ID)
+		out = append(out, s)
+	}
+	firstID, lastID := firstLastIDsFromEnriched(enriched)
+	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
+		w.Header().Set("Link", link)
+	}
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// POSTRevokeQuote handles POST /api/v1/statuses/:id/quotes/:quoting_status_id/revoke (Mastodon-style quotes).
+// Caller must be the author of the quoted status (:id). Revokes the quote approval for the quoting status.
+func (h *StatusesHandler) POSTRevokeQuote(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	quotedStatusID := chi.URLParam(r, "id")
+	quotingStatusID := chi.URLParam(r, "quoting_status_id")
+	if quotedStatusID == "" || quotingStatusID == "" {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	if err := h.statuses.RevokeQuote(r.Context(), account.ID, quotedStatusID, quotingStatusID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		if errors.Is(err, domain.ErrForbidden) {
+			api.HandleError(w, r, api.ErrForbidden)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // POSTPin handles POST /api/v1/statuses/:id/pin.
@@ -414,6 +517,7 @@ func (h *StatusesHandler) PUTStatuses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	h.setQuoteApprovalOnStatus(r.Context(), result, &out, &account.ID)
 	pinnedIDs, _ := h.statuses.ListPinnedStatusIDs(r.Context(), account.ID)
 	for _, pid := range pinnedIDs {
 		if pid == id {
@@ -421,6 +525,60 @@ func (h *StatusesHandler) PUTStatuses(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// PUTInteractionPolicyRequest is the request body for PUT /api/v1/statuses/:id/interaction_policy.
+type PUTInteractionPolicyRequest struct {
+	QuoteApprovalPolicy string `json:"quote_approval_policy"`
+}
+
+// PUTInteractionPolicy handles PUT /api/v1/statuses/:id/interaction_policy (Mastodon-style quotes).
+// Updates the status quote_approval_policy (public, followers, or nobody). Caller must own the status.
+func (h *StatusesHandler) PUTInteractionPolicy(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	var req PUTInteractionPolicyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		api.HandleError(w, r, api.NewUnprocessableError("invalid JSON"))
+		return
+	}
+	policy := strings.TrimSpace(req.QuoteApprovalPolicy)
+	if policy == "" {
+		api.HandleError(w, r, api.NewUnprocessableError("quote_approval_policy is required"))
+		return
+	}
+	if err := h.statuses.UpdateQuoteApprovalPolicy(r.Context(), account.ID, id, policy); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		if errors.Is(err, domain.ErrForbidden) {
+			api.HandleError(w, r, api.ErrForbidden)
+			return
+		}
+		if errors.Is(err, domain.ErrValidation) {
+			api.HandleError(w, r, api.NewUnprocessableError("quote_approval_policy must be public, followers, or nobody"))
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	result, err := h.statuses.GetByIDEnriched(r.Context(), id, &account.ID)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	h.setQuoteApprovalOnStatus(r.Context(), result, &out, &account.ID)
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -541,6 +699,8 @@ func parseCreateStatusRequest(r *http.Request) (CreateStatusRequest, error) {
 		req.Sensitive = r.FormValue("sensitive") == resolveQueryTrue || r.FormValue("sensitive") == "1"
 		req.Language = r.FormValue("language")
 		req.InReplyToID = r.FormValue("in_reply_to_id")
+		req.QuotedStatusID = r.FormValue("quoted_status_id")
+		req.QuoteApprovalPolicy = r.FormValue("quote_approval_policy")
 		req.ScheduledAt = r.FormValue("scheduled_at")
 		if ids := r.Form["media_ids[]"]; len(ids) > 0 {
 			req.MediaIDs = ids
@@ -845,6 +1005,31 @@ func enrichedStatusToAPIModelWithReblog(ctx context.Context, result service.Enri
 		}
 	}
 	return boost
+}
+
+// setQuoteApprovalOnStatus populates out.QuoteApproval when the status is a quote (has QuotedStatusID).
+func (h *StatusesHandler) setQuoteApprovalOnStatus(ctx context.Context, result service.EnrichedStatus, out *apimodel.Status, viewerID *string) {
+	if result.Status.QuotedStatusID == nil || *result.Status.QuotedStatusID == "" {
+		return
+	}
+	rec, err := h.statuses.GetQuoteApproval(ctx, result.Status.ID)
+	if err != nil {
+		return
+	}
+	state := "accepted"
+	if rec.RevokedAt != nil {
+		state = "revoked"
+	}
+	var quoted *apimodel.Status
+	if state == "accepted" {
+		quotedEnriched, err := h.statuses.GetByIDEnriched(ctx, *result.Status.QuotedStatusID, viewerID)
+		if err == nil {
+			q := enrichedStatusToAPIModel(quotedEnriched, h.instanceDomain)
+			q.QuoteApproval = nil
+			quoted = &q
+		}
+	}
+	out.QuoteApproval = &apimodel.QuoteApproval{State: state, QuotedStatus: quoted}
 }
 
 // enrichedStatusToAPIModel maps service.EnrichedStatus to apimodel.Status.

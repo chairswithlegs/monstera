@@ -194,7 +194,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	trendsHandler := mastodon.NewTrendsHandler()
 	conversationsHandler := mastodon.NewConversationsHandler(conversationSvc, cfg.InstanceDomain)
 	suggestionsHandler := mastodon.NewSuggestionsHandler()
-	notificationsHandler := mastodon.NewNotificationsHandler(notificationSvc, accountSvc, cfg.InstanceDomain)
+	notificationsHandler := mastodon.NewNotificationsHandler(notificationSvc, accountSvc, statusSvc, cfg.InstanceDomain)
 	mediaHandler := mastodon.NewMediaHandler(mediaSvc)
 	searchHandler := mastodon.NewSearchHandler(searchSvc, cfg.InstanceDomain)
 	streamingHandler := mastodon.NewStreamingHandler(hub)

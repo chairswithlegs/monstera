@@ -996,3 +996,388 @@ func TestStatusesHandler_POSTStatuses_idempotency(t *testing.T) {
 	assert.Equal(t, firstResp["id"], secondResp["id"], "idempotency key should return cached response with same status id")
 	assert.Contains(t, secondResp["content"], "idempotent post")
 }
+
+func TestStatusesHandler_POSTStatuses_quote(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
+
+	alice, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	quotedID := uid.New()
+	_, err = st.CreateStatus(ctx, store.CreateStatusInput{
+		ID:                  quotedID,
+		URI:                 "https://example.com/statuses/" + quotedID,
+		AccountID:           alice.ID,
+		Text:                testutil.StrPtr("original"),
+		Content:             testutil.StrPtr("<p>original</p>"),
+		Visibility:          domain.VisibilityPublic,
+		QuoteApprovalPolicy: domain.QuotePolicyPublic,
+		APID:                "https://example.com/statuses/" + quotedID,
+		Local:               true,
+	})
+	require.NoError(t, err)
+
+	bob, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "bob",
+		Email:        "bob@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	t.Run("success creates quote and returns 201 with quote_approval", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"status":"quoting you","quoted_status_id":"` + quotedID + `"}`)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), bob))
+		rec := httptest.NewRecorder()
+		handler.POSTStatuses(rec, req)
+		assert.Equal(t, http.StatusCreated, rec.Code)
+		var out map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
+		assert.Contains(t, out["content"], "quoting you")
+		quoteApproval, ok := out["quote_approval"].(map[string]any)
+		require.True(t, ok, "response should include quote_approval")
+		assert.Equal(t, "accepted", quoteApproval["state"])
+	})
+
+	t.Run("quoted_status_id with media_ids returns 422", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"status":"quote with media","quoted_status_id":"` + quotedID + `","media_ids":["01HXYZ"]}`)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), bob))
+		rec := httptest.NewRecorder()
+		handler.POSTStatuses(rec, req)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	})
+
+	t.Run("quoted_status_id with poll returns 422", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"status":"quote with poll","quoted_status_id":"` + quotedID + `","poll":{"options":["A","B"],"expires_in":300,"multiple":false}}`)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), bob))
+		rec := httptest.NewRecorder()
+		handler.POSTStatuses(rec, req)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	})
+
+	t.Run("quote_approval_policy nobody returns 403 for non-author", func(t *testing.T) {
+		nobodyID := uid.New()
+		_, err := st.CreateStatus(ctx, store.CreateStatusInput{
+			ID:                  nobodyID,
+			URI:                 "https://example.com/statuses/" + nobodyID,
+			AccountID:           alice.ID,
+			Text:                testutil.StrPtr("nobody may quote"),
+			Content:             testutil.StrPtr("<p>nobody</p>"),
+			Visibility:          domain.VisibilityPublic,
+			QuoteApprovalPolicy: domain.QuotePolicyNobody,
+			APID:                "https://example.com/statuses/" + nobodyID,
+			Local:               true,
+		})
+		require.NoError(t, err)
+		body := bytes.NewBufferString(`{"status":"trying to quote","quoted_status_id":"` + nobodyID + `"}`)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), bob))
+		rec := httptest.NewRecorder()
+		handler.POSTStatuses(rec, req)
+		assert.Equal(t, http.StatusForbidden, rec.Code)
+	})
+
+	t.Run("nonexistent quoted_status_id returns 404", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"status":"quote missing","quoted_status_id":"01H0000000000000000000000"}`)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), bob))
+		rec := httptest.NewRecorder()
+		handler.POSTStatuses(rec, req)
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+}
+
+func TestStatusesHandler_GETQuotes(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
+
+	acc, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	quotedID := uid.New()
+	_, err = st.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         quotedID,
+		URI:        "https://example.com/statuses/" + quotedID,
+		AccountID:  acc.ID,
+		Text:       testutil.StrPtr("original"),
+		Content:    testutil.StrPtr("<p>original</p>"),
+		Visibility: domain.VisibilityPublic,
+		APID:       "https://example.com/statuses/" + quotedID,
+		Local:      true,
+	})
+	require.NoError(t, err)
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/statuses/"+quotedID+"/quotes", nil)
+		req = testutil.AddChiURLParam(req, "id", quotedID)
+		rec := httptest.NewRecorder()
+		handler.GETQuotes(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("authenticated returns 200 and empty list when no quotes", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/statuses/"+quotedID+"/quotes", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", quotedID)
+		rec := httptest.NewRecorder()
+		handler.GETQuotes(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var out []any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
+		assert.Empty(t, out)
+	})
+
+	t.Run("after creating quote returns 200 with one status", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"status":"a quote","quoted_status_id":"` + quotedID + `"}`)
+		postReq := httptest.NewRequest(http.MethodPost, "/api/v1/statuses", body)
+		postReq.Header.Set("Content-Type", "application/json")
+		postReq = postReq.WithContext(middleware.WithAccount(postReq.Context(), acc))
+		postRec := httptest.NewRecorder()
+		handler.POSTStatuses(postRec, postReq)
+		require.Equal(t, http.StatusCreated, postRec.Code)
+		var postOut map[string]any
+		require.NoError(t, json.NewDecoder(postRec.Body).Decode(&postOut))
+		quotingID, _ := postOut["id"].(string)
+		require.NotEmpty(t, quotingID)
+
+		getReq := httptest.NewRequest(http.MethodGet, "/api/v1/statuses/"+quotedID+"/quotes", nil)
+		getReq = getReq.WithContext(middleware.WithAccount(getReq.Context(), acc))
+		getReq = testutil.AddChiURLParam(getReq, "id", quotedID)
+		getRec := httptest.NewRecorder()
+		handler.GETQuotes(getRec, getReq)
+		assert.Equal(t, http.StatusOK, getRec.Code)
+		var list []any
+		require.NoError(t, json.NewDecoder(getRec.Body).Decode(&list))
+		require.Len(t, list, 1)
+		assert.Equal(t, quotingID, (list[0].(map[string]any))["id"])
+	})
+
+	t.Run("nonexistent status returns 404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/statuses/01H0000000000000000000000/quotes", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", "01H0000000000000000000000")
+		rec := httptest.NewRecorder()
+		handler.GETQuotes(rec, req)
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+}
+
+func TestStatusesHandler_POSTRevokeQuote(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
+
+	alice, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	bob, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "bob",
+		Email:        "bob@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	quotedID := uid.New()
+	_, err = st.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         quotedID,
+		URI:        "https://example.com/statuses/" + quotedID,
+		AccountID:  alice.ID,
+		Text:       testutil.StrPtr("alice post"),
+		Content:    testutil.StrPtr("<p>alice</p>"),
+		Visibility: domain.VisibilityPublic,
+		APID:       "https://example.com/statuses/" + quotedID,
+		Local:      true,
+	})
+	require.NoError(t, err)
+	quotingID := uid.New()
+	_, err = st.CreateStatus(ctx, store.CreateStatusInput{
+		ID:                  quotingID,
+		URI:                 "https://example.com/statuses/" + quotingID,
+		AccountID:           bob.ID,
+		Text:                testutil.StrPtr("bob quote"),
+		Content:             testutil.StrPtr("<p>bob quote</p>"),
+		Visibility:          domain.VisibilityPublic,
+		QuotedStatusID:      &quotedID,
+		QuoteApprovalPolicy: domain.QuotePolicyPublic,
+		APID:                "https://example.com/statuses/" + quotingID,
+		Local:               true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, st.CreateQuoteApproval(ctx, quotingID, quotedID))
+	require.NoError(t, st.IncrementQuotesCount(ctx, quotedID))
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+quotedID+"/quotes/"+quotingID+"/revoke", nil)
+		req = testutil.AddChiURLParams(req, map[string]string{"id": quotedID, "quoting_status_id": quotingID})
+		rec := httptest.NewRecorder()
+		handler.POSTRevokeQuote(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("non-owner of quoted status returns 403", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+quotedID+"/quotes/"+quotingID+"/revoke", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), bob))
+		req = testutil.AddChiURLParams(req, map[string]string{"id": quotedID, "quoting_status_id": quotingID})
+		rec := httptest.NewRecorder()
+		handler.POSTRevokeQuote(rec, req)
+		assert.Equal(t, http.StatusForbidden, rec.Code)
+	})
+
+	t.Run("owner of quoted status revokes returns 204", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+quotedID+"/quotes/"+quotingID+"/revoke", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), alice))
+		req = testutil.AddChiURLParams(req, map[string]string{"id": quotedID, "quoting_status_id": quotingID})
+		rec := httptest.NewRecorder()
+		handler.POSTRevokeQuote(rec, req)
+		assert.Equal(t, http.StatusNoContent, rec.Code)
+	})
+
+	t.Run("nonexistent quoting_status_id returns 404", func(t *testing.T) {
+		fakeQuotingID := "01H0000000000000000000000"
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+quotedID+"/quotes/"+fakeQuotingID+"/revoke", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), alice))
+		req = testutil.AddChiURLParams(req, map[string]string{"id": quotedID, "quoting_status_id": fakeQuotingID})
+		rec := httptest.NewRecorder()
+		handler.POSTRevokeQuote(rec, req)
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+}
+
+func TestStatusesHandler_PUTInteractionPolicy(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
+	handler := NewStatusesHandler(accountSvc, statusSvc, "example.com", nil, nil)
+
+	acc, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	otherAcc, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "bob",
+		Email:        "bob@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	statusID := uid.New()
+	_, err = st.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         statusID,
+		URI:        "https://example.com/statuses/" + statusID,
+		AccountID:  acc.ID,
+		Text:       testutil.StrPtr("my status"),
+		Content:    testutil.StrPtr("<p>my status</p>"),
+		Visibility: domain.VisibilityPublic,
+		APID:       "https://example.com/statuses/" + statusID,
+		Local:      true,
+	})
+	require.NoError(t, err)
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"quote_approval_policy":"followers"}`)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/statuses/"+statusID+"/interaction_policy", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.PUTInteractionPolicy(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("owner updates policy returns 200 with quote_approval_policy in response", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"quote_approval_policy":"followers"}`)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/statuses/"+statusID+"/interaction_policy", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.PUTInteractionPolicy(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var out map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
+		assert.Equal(t, statusID, out["id"], "response should be the updated status")
+		assert.Equal(t, "followers", out["quote_approval_policy"], "response should include updated policy")
+	})
+
+	t.Run("empty quote_approval_policy returns 422", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"quote_approval_policy":"   "}`)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/statuses/"+statusID+"/interaction_policy", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.PUTInteractionPolicy(rec, req)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	})
+
+	t.Run("non-owner returns 403", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"quote_approval_policy":"nobody"}`)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/statuses/"+statusID+"/interaction_policy", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), otherAcc))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.PUTInteractionPolicy(rec, req)
+		assert.Equal(t, http.StatusForbidden, rec.Code)
+	})
+
+	t.Run("invalid policy returns 422", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"quote_approval_policy":"invalid"}`)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/statuses/"+statusID+"/interaction_policy", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", statusID)
+		rec := httptest.NewRecorder()
+		handler.PUTInteractionPolicy(rec, req)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	})
+
+	t.Run("nonexistent status returns 404", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"quote_approval_policy":"public"}`)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/statuses/01H0000000000000000000000/interaction_policy", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", "01H0000000000000000000000")
+		rec := httptest.NewRecorder()
+		handler.PUTInteractionPolicy(rec, req)
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+}

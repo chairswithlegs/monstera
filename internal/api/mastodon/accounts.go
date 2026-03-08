@@ -284,6 +284,14 @@ func (h *AccountsHandler) PATCHUpdateCredentials(w http.ResponseWriter, r *http.
 		notePtr = &note
 	}
 	fields := parseFieldsAttributes(form)
+	quotePolicy := formValue(form, "source[quote_policy]")
+	if quotePolicy == "" {
+		quotePolicy = formValue(form, "quote_policy")
+	}
+	var defaultQuotePolicy *string
+	if quotePolicy != "" {
+		defaultQuotePolicy = &quotePolicy
+	}
 	acc, user, err := h.accounts.GetAccountWithUser(r.Context(), account.ID)
 	if err != nil {
 		api.HandleError(w, r, err)
@@ -293,14 +301,15 @@ func (h *AccountsHandler) PATCHUpdateCredentials(w http.ResponseWriter, r *http.
 		fields = acc.Fields
 	}
 	updated, updatedUser, err := h.accounts.UpdateCredentials(r.Context(), service.UpdateCredentialsInput{
-		AccountID:     account.ID,
-		DisplayName:   displayNamePtr,
-		Note:          notePtr,
-		AvatarMediaID: avatarMediaID,
-		HeaderMediaID: headerMediaID,
-		Locked:        locked,
-		Bot:           bot,
-		Fields:        fields,
+		AccountID:          account.ID,
+		DisplayName:        displayNamePtr,
+		Note:               notePtr,
+		AvatarMediaID:      avatarMediaID,
+		HeaderMediaID:      headerMediaID,
+		Locked:             locked,
+		Bot:                bot,
+		DefaultQuotePolicy: defaultQuotePolicy,
+		Fields:             fields,
 	})
 	if err != nil {
 		api.HandleError(w, r, err)

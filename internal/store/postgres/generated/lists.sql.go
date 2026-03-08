@@ -85,7 +85,7 @@ func (q *Queries) GetListByID(ctx context.Context, id string) (List, error) {
 }
 
 const getListTimeline = `-- name: GetListTimeline :many
-SELECT s.id, s.uri, s.account_id, s.text, s.content, s.content_warning, s.visibility, s.language, s.in_reply_to_id, s.reblog_of_id, s.ap_id, s.ap_raw, s.sensitive, s.local, s.edited_at, s.replies_count, s.reblogs_count, s.favourites_count, s.created_at, s.updated_at, s.deleted_at, s.in_reply_to_account_id, s.conversation_id FROM statuses s
+SELECT s.id, s.uri, s.account_id, s.text, s.content, s.content_warning, s.visibility, s.language, s.in_reply_to_id, s.reblog_of_id, s.ap_id, s.ap_raw, s.sensitive, s.local, s.edited_at, s.replies_count, s.reblogs_count, s.favourites_count, s.created_at, s.updated_at, s.deleted_at, s.in_reply_to_account_id, s.conversation_id, s.quoted_status_id, s.quote_approval_policy, s.quotes_count FROM statuses s
 INNER JOIN list_accounts la ON la.account_id = s.account_id
 WHERE la.list_id = $1
   AND s.deleted_at IS NULL
@@ -133,6 +133,9 @@ func (q *Queries) GetListTimeline(ctx context.Context, arg GetListTimelineParams
 			&i.DeletedAt,
 			&i.InReplyToAccountID,
 			&i.ConversationID,
+			&i.QuotedStatusID,
+			&i.QuoteApprovalPolicy,
+			&i.QuotesCount,
 		); err != nil {
 			return nil, err
 		}

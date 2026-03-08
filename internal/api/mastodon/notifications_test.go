@@ -23,7 +23,7 @@ func TestNotificationsHandler_GETNotification(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	notifSvc := service.NewNotificationService(st)
-	handler := NewNotificationsHandler(notifSvc, accountSvc, "example.com")
+	handler := NewNotificationsHandler(notifSvc, accountSvc, nil, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -80,7 +80,7 @@ func TestNotificationsHandler_POSTClear(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	notifSvc := service.NewNotificationService(st)
-	handler := NewNotificationsHandler(notifSvc, accountSvc, "example.com")
+	handler := NewNotificationsHandler(notifSvc, accountSvc, nil, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -112,7 +112,7 @@ func TestNotificationsHandler_POSTDismiss(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	notifSvc := service.NewNotificationService(st)
-	handler := NewNotificationsHandler(notifSvc, accountSvc, "example.com")
+	handler := NewNotificationsHandler(notifSvc, accountSvc, nil, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "alice",

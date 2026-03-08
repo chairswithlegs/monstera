@@ -13,6 +13,7 @@ type User struct {
 	DefaultPrivacy     string
 	DefaultSensitive   bool
 	DefaultLanguage    string
+	DefaultQuotePolicy string // public | followers | nobody
 	CreatedAt          time.Time
 }
 

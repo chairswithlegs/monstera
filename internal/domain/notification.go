@@ -18,4 +18,6 @@ const (
 	NotificationTypeReblog        = "reblog"
 	NotificationTypeFavourite     = "favourite"
 	NotificationTypeFollowRequest = "follow_request"
+	NotificationTypeQuote         = "quote"
+	NotificationTypeQuotedUpdate  = "quoted_update"
 )

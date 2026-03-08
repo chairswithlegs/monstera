@@ -400,14 +400,15 @@ func (svc *accountService) GetAccountWithUser(ctx context.Context, accountID str
 
 // UpdateCredentialsInput is the input for updating the authenticated account's profile (PATCH update_credentials).
 type UpdateCredentialsInput struct {
-	AccountID     string
-	DisplayName   *string
-	Note          *string
-	AvatarMediaID *string
-	HeaderMediaID *string
-	Locked        bool
-	Bot           bool
-	Fields        json.RawMessage // when nil or empty, existing account.Fields are preserved
+	AccountID          string
+	DisplayName        *string
+	Note               *string
+	AvatarMediaID      *string
+	HeaderMediaID      *string
+	Locked             bool
+	Bot                bool
+	DefaultQuotePolicy *string         // public | followers | nobody
+	Fields             json.RawMessage // when nil or empty, existing account.Fields are preserved
 }
 
 // UpdateCredentials updates the account profile. Caller should pass current account.Fields when not updating fields.
@@ -432,6 +433,17 @@ func (svc *accountService) UpdateCredentials(ctx context.Context, in UpdateCrede
 		Fields:        fields,
 	}); err != nil {
 		return nil, nil, fmt.Errorf("UpdateCredentials UpdateAccount: %w", err)
+	}
+	if in.DefaultQuotePolicy != nil {
+		policy := strings.TrimSpace(*in.DefaultQuotePolicy)
+		switch policy {
+		case domain.QuotePolicyPublic, domain.QuotePolicyFollowers, domain.QuotePolicyNobody:
+			if err := svc.store.UpdateUserDefaultQuotePolicy(ctx, in.AccountID, policy); err != nil {
+				return nil, nil, fmt.Errorf("UpdateCredentials UpdateUserDefaultQuotePolicy: %w", err)
+			}
+		default:
+			return nil, nil, fmt.Errorf("UpdateCredentials default_quote_policy: %w", domain.ErrValidation)
+		}
 	}
 	updated, err := svc.store.GetAccountByID(ctx, in.AccountID)
 	if err != nil {

@@ -17,12 +17,23 @@ import (
 type NotificationsHandler struct {
 	notifications  service.NotificationService
 	accounts       service.AccountService
+	statuses       service.StatusService
 	instanceDomain string
 }
 
 // NewNotificationsHandler returns a new NotificationsHandler.
-func NewNotificationsHandler(notifications service.NotificationService, accounts service.AccountService, instanceDomain string) *NotificationsHandler {
-	return &NotificationsHandler{notifications: notifications, accounts: accounts, instanceDomain: instanceDomain}
+func NewNotificationsHandler(notifications service.NotificationService, accounts service.AccountService, statuses service.StatusService, instanceDomain string) *NotificationsHandler {
+	return &NotificationsHandler{notifications: notifications, accounts: accounts, statuses: statuses, instanceDomain: instanceDomain}
+}
+
+func notificationStatusType(t string) bool {
+	switch t {
+	case domain.NotificationTypeMention, domain.NotificationTypeReblog, domain.NotificationTypeFavourite,
+		domain.NotificationTypeQuote, domain.NotificationTypeQuotedUpdate, "update", "poll":
+		return true
+	default:
+		return false
+	}
 }
 
 // GETNotifications handles GET /api/v1/notifications.
@@ -43,7 +54,14 @@ func (h *NotificationsHandler) GETNotifications(w http.ResponseWriter, r *http.R
 	for i := range list {
 		n := &list[i]
 		fromAcc, _ := h.accounts.GetByID(r.Context(), n.FromID)
-		out = append(out, apimodel.ToNotification(n, fromAcc, nil, h.instanceDomain))
+		var statusAPI *apimodel.Status
+		if h.statuses != nil && n.StatusID != nil && *n.StatusID != "" && notificationStatusType(n.Type) {
+			if enriched, err := h.statuses.GetByIDEnriched(r.Context(), *n.StatusID, &account.ID); err == nil {
+				s := enrichedStatusToAPIModel(enriched, h.instanceDomain)
+				statusAPI = &s
+			}
+		}
+		out = append(out, apimodel.ToNotification(n, fromAcc, statusAPI, h.instanceDomain))
 	}
 	firstID, lastID := firstLastNotificationIDs(list)
 	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
@@ -81,7 +99,14 @@ func (h *NotificationsHandler) GETNotification(w http.ResponseWriter, r *http.Re
 		return
 	}
 	fromAcc, _ := h.accounts.GetByID(r.Context(), n.FromID)
-	api.WriteJSON(w, http.StatusOK, apimodel.ToNotification(n, fromAcc, nil, h.instanceDomain))
+	var statusAPI *apimodel.Status
+	if h.statuses != nil && n.StatusID != nil && *n.StatusID != "" && notificationStatusType(n.Type) {
+		if enriched, err := h.statuses.GetByIDEnriched(r.Context(), *n.StatusID, &account.ID); err == nil {
+			s := enrichedStatusToAPIModel(enriched, h.instanceDomain)
+			statusAPI = &s
+		}
+	}
+	api.WriteJSON(w, http.StatusOK, apimodel.ToNotification(n, fromAcc, statusAPI, h.instanceDomain))
 }
 
 // POSTClear handles POST /api/v1/notifications/clear.

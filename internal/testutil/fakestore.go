@@ -70,6 +70,13 @@ type FakeStore struct {
 	pollsByStatusID map[string]*domain.Poll
 	pollOptions     map[string][]domain.PollOption // pollID -> options ordered by position
 	pollVotes       []pollVoteEntry                // poll_id, account_id, option_id
+
+	quoteApprovalsByQuoting map[string]*quoteApprovalEntry // quotingStatusID -> entry
+}
+
+type quoteApprovalEntry struct {
+	quotedStatusID string
+	revokedAt      *time.Time
 }
 
 type pollVoteEntry struct {
@@ -120,45 +127,46 @@ type announcementReactionEntry struct {
 // NewFakeStore returns a new FakeStore for use in tests.
 func NewFakeStore() *FakeStore {
 	return &FakeStore{
-		accountsByID:           make(map[string]*domain.Account),
-		accountsByUsername:     make(map[string]*domain.Account),
-		usersByAccountID:       make(map[string]*domain.User),
-		statusesByID:           make(map[string]*domain.Status),
-		statusesCount:          make(map[string]int),
-		homeTimeline:           make(map[string][]*domain.Status),
-		followsByKey:           make(map[string]*domain.Follow),
-		blocksByKey:            make(map[string]struct{}),
-		mutesByKey:             make(map[string]struct{}),
-		suspendedAccountIDs:    make(map[string]struct{}),
-		mediaByID:              make(map[string]*domain.MediaAttachment),
-		notificationsByAccount: make(map[string][]*domain.Notification),
-		hashtagsByName:         make(map[string]*domain.Hashtag),
-		hashtagsByID:           make(map[string]*domain.Hashtag),
-		applications:           make(map[string]*domain.OAuthApplication),
-		applicationsByID:       make(map[string]*domain.OAuthApplication),
-		authCodes:              make(map[string]*domain.OAuthAuthorizationCode),
-		tokens:                 make(map[string]*domain.OAuthAccessToken),
-		userFiltersByID:        make(map[string]*domain.UserFilter),
-		listsByID:              make(map[string]*domain.List),
-		listAccountIDs:         make(map[string][]string),
-		mentionsByStatusID:     make(map[string][]string),
-		markersByKey:           make(map[string]*domain.Marker),
-		lastStatusAtByAccount:  make(map[string]time.Time),
-		accountPins:            nil,
-		statusEdits:            nil,
-		scheduledStatuses:      make(map[string]*domain.ScheduledStatus),
-		pollsByID:              make(map[string]*domain.Poll),
-		pollsByStatusID:        make(map[string]*domain.Poll),
-		pollOptions:            make(map[string][]domain.PollOption),
-		pollVotes:              nil,
-		conversationMutesByKey: make(map[string]struct{}),
-		conversationMutesList:  nil,
-		conversationIDs:        make(map[string]struct{}),
-		statusConversationIDs:  make(map[string]string),
-		accountConversations:   nil,
-		announcementsByID:      make(map[string]*domain.Announcement),
-		announcementReads:      make(map[string]struct{}),
-		announcementReactions:  nil,
+		accountsByID:            make(map[string]*domain.Account),
+		accountsByUsername:      make(map[string]*domain.Account),
+		usersByAccountID:        make(map[string]*domain.User),
+		statusesByID:            make(map[string]*domain.Status),
+		statusesCount:           make(map[string]int),
+		homeTimeline:            make(map[string][]*domain.Status),
+		followsByKey:            make(map[string]*domain.Follow),
+		blocksByKey:             make(map[string]struct{}),
+		mutesByKey:              make(map[string]struct{}),
+		suspendedAccountIDs:     make(map[string]struct{}),
+		mediaByID:               make(map[string]*domain.MediaAttachment),
+		notificationsByAccount:  make(map[string][]*domain.Notification),
+		hashtagsByName:          make(map[string]*domain.Hashtag),
+		hashtagsByID:            make(map[string]*domain.Hashtag),
+		applications:            make(map[string]*domain.OAuthApplication),
+		applicationsByID:        make(map[string]*domain.OAuthApplication),
+		authCodes:               make(map[string]*domain.OAuthAuthorizationCode),
+		tokens:                  make(map[string]*domain.OAuthAccessToken),
+		userFiltersByID:         make(map[string]*domain.UserFilter),
+		listsByID:               make(map[string]*domain.List),
+		listAccountIDs:          make(map[string][]string),
+		mentionsByStatusID:      make(map[string][]string),
+		markersByKey:            make(map[string]*domain.Marker),
+		lastStatusAtByAccount:   make(map[string]time.Time),
+		accountPins:             nil,
+		statusEdits:             nil,
+		scheduledStatuses:       make(map[string]*domain.ScheduledStatus),
+		pollsByID:               make(map[string]*domain.Poll),
+		pollsByStatusID:         make(map[string]*domain.Poll),
+		pollOptions:             make(map[string][]domain.PollOption),
+		pollVotes:               nil,
+		quoteApprovalsByQuoting: make(map[string]*quoteApprovalEntry),
+		conversationMutesByKey:  make(map[string]struct{}),
+		conversationMutesList:   nil,
+		conversationIDs:         make(map[string]struct{}),
+		statusConversationIDs:   make(map[string]string),
+		accountConversations:    nil,
+		announcementsByID:       make(map[string]*domain.Announcement),
+		announcementReads:       make(map[string]struct{}),
+		announcementReactions:   nil,
 	}
 }
 
@@ -344,12 +352,13 @@ func (f *FakeStore) CreateUser(ctx context.Context, in store.CreateUserInput) (*
 	defer f.mu.Unlock()
 	now := time.Now()
 	u := &domain.User{
-		ID:           in.ID,
-		AccountID:    in.AccountID,
-		Email:        in.Email,
-		PasswordHash: in.PasswordHash,
-		Role:         in.Role,
-		CreatedAt:    now,
+		ID:                 in.ID,
+		AccountID:          in.AccountID,
+		Email:              in.Email,
+		PasswordHash:       in.PasswordHash,
+		Role:               in.Role,
+		DefaultQuotePolicy: "public",
+		CreatedAt:          now,
 	}
 	f.usersByAccountID[in.AccountID] = u
 	return u, nil
@@ -363,23 +372,30 @@ func (f *FakeStore) CreateStatus(ctx context.Context, in store.CreateStatusInput
 	if len(in.ApRaw) > 0 {
 		apRaw = in.ApRaw
 	}
+	policy := in.QuoteApprovalPolicy
+	if policy == "" {
+		policy = "public"
+	}
 	s := &domain.Status{
-		ID:             in.ID,
-		URI:            in.URI,
-		AccountID:      in.AccountID,
-		Text:           in.Text,
-		Content:        in.Content,
-		ContentWarning: in.ContentWarning,
-		Visibility:     in.Visibility,
-		Language:       in.Language,
-		InReplyToID:    in.InReplyToID,
-		ReblogOfID:     in.ReblogOfID,
-		APID:           in.APID,
-		APRaw:          apRaw,
-		Sensitive:      in.Sensitive,
-		Local:          in.Local,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		ID:                  in.ID,
+		URI:                 in.URI,
+		AccountID:           in.AccountID,
+		Text:                in.Text,
+		Content:             in.Content,
+		ContentWarning:      in.ContentWarning,
+		Visibility:          in.Visibility,
+		Language:            in.Language,
+		InReplyToID:         in.InReplyToID,
+		ReblogOfID:          in.ReblogOfID,
+		QuotedStatusID:      in.QuotedStatusID,
+		QuoteApprovalPolicy: policy,
+		QuotesCount:         0,
+		APID:                in.APID,
+		APRaw:               apRaw,
+		Sensitive:           in.Sensitive,
+		Local:               in.Local,
+		CreatedAt:           now,
+		UpdatedAt:           now,
 	}
 	f.statusesByID[s.ID] = s
 	if f.homeTimeline[in.AccountID] == nil {
@@ -2112,6 +2128,84 @@ func (f *FakeStore) IncrementReblogsCount(ctx context.Context, statusID string) 
 func (f *FakeStore) DecrementReblogsCount(ctx context.Context, statusID string) error {
 	return nil
 }
+func (f *FakeStore) IncrementQuotesCount(ctx context.Context, quotedStatusID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if s, ok := f.statusesByID[quotedStatusID]; ok {
+		s.QuotesCount++
+	}
+	return nil
+}
+func (f *FakeStore) DecrementQuotesCount(ctx context.Context, quotedStatusID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if s, ok := f.statusesByID[quotedStatusID]; ok && s.QuotesCount > 0 {
+		s.QuotesCount--
+	}
+	return nil
+}
+func (f *FakeStore) CreateQuoteApproval(ctx context.Context, quotingStatusID, quotedStatusID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.quoteApprovalsByQuoting[quotingStatusID] = &quoteApprovalEntry{quotedStatusID: quotedStatusID}
+	return nil
+}
+func (f *FakeStore) RevokeQuote(ctx context.Context, quotedStatusID, quotingStatusID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	e, ok := f.quoteApprovalsByQuoting[quotingStatusID]
+	if !ok || e.quotedStatusID != quotedStatusID {
+		return domain.ErrNotFound
+	}
+	now := time.Now()
+	e.revokedAt = &now
+	return nil
+}
+func (f *FakeStore) ListQuotesOfStatus(ctx context.Context, quotedStatusID string, maxID *string, limit int) ([]domain.Status, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.Status
+	for quotingID, e := range f.quoteApprovalsByQuoting {
+		if e.quotedStatusID != quotedStatusID || e.revokedAt != nil {
+			continue
+		}
+		s, ok := f.statusesByID[quotingID]
+		if !ok || s.DeletedAt != nil {
+			continue
+		}
+		if maxID != nil && *maxID != "" && s.ID >= *maxID {
+			continue
+		}
+		out = append(out, *s)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+func (f *FakeStore) GetQuoteApproval(ctx context.Context, quotingStatusID string) (*domain.QuoteApprovalRecord, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	e, ok := f.quoteApprovalsByQuoting[quotingStatusID]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return &domain.QuoteApprovalRecord{
+		QuotingStatusID: quotingStatusID,
+		QuotedStatusID:  e.quotedStatusID,
+		RevokedAt:       e.revokedAt,
+	}, nil
+}
+func (f *FakeStore) UpdateStatusQuoteApprovalPolicy(ctx context.Context, statusID, policy string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if s, ok := f.statusesByID[statusID]; ok {
+		s.QuoteApprovalPolicy = policy
+		return nil
+	}
+	return domain.ErrNotFound
+}
 func (f *FakeStore) IncrementRepliesCount(ctx context.Context, statusID string) error {
 	return nil
 }
@@ -2543,6 +2637,15 @@ func (f *FakeStore) UpdateUserRole(ctx context.Context, userID string, role stri
 			u.Role = role
 			return nil
 		}
+	}
+	return domain.ErrNotFound
+}
+func (f *FakeStore) UpdateUserDefaultQuotePolicy(ctx context.Context, accountID, policy string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if u, ok := f.usersByAccountID[accountID]; ok {
+		u.DefaultQuotePolicy = policy
+		return nil
 	}
 	return domain.ErrNotFound
 }

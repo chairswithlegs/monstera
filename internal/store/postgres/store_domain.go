@@ -53,22 +53,28 @@ func toDbCreateUserParams(in store.CreateUserInput) db.CreateUserParams {
 }
 
 func toDbCreateStatusParams(in store.CreateStatusInput) db.CreateStatusParams {
+	policy := in.QuoteApprovalPolicy
+	if policy == "" {
+		policy = "public"
+	}
 	return db.CreateStatusParams{
-		ID:                 in.ID,
-		Uri:                in.URI,
-		AccountID:          in.AccountID,
-		Text:               in.Text,
-		Content:            in.Content,
-		ContentWarning:     in.ContentWarning,
-		Visibility:         in.Visibility,
-		Language:           in.Language,
-		InReplyToID:        in.InReplyToID,
-		InReplyToAccountID: in.InReplyToAccountID,
-		ReblogOfID:         in.ReblogOfID,
-		ApID:               in.APID,
-		ApRaw:              in.ApRaw,
-		Sensitive:          in.Sensitive,
-		Local:              in.Local,
+		ID:                  in.ID,
+		Uri:                 in.URI,
+		AccountID:           in.AccountID,
+		Text:                in.Text,
+		Content:             in.Content,
+		ContentWarning:      in.ContentWarning,
+		Visibility:          in.Visibility,
+		Language:            in.Language,
+		InReplyToID:         in.InReplyToID,
+		InReplyToAccountID:  in.InReplyToAccountID,
+		ReblogOfID:          in.ReblogOfID,
+		QuotedStatusID:      in.QuotedStatusID,
+		QuoteApprovalPolicy: policy,
+		ApID:                in.APID,
+		ApRaw:               in.ApRaw,
+		Sensitive:           in.Sensitive,
+		Local:               in.Local,
 	}
 }
 
@@ -1372,6 +1378,65 @@ func (s *PostgresStore) DecrementReblogsCount(ctx context.Context, statusID stri
 	return mapErr(s.q.DecrementReblogsCount(ctx, statusID))
 }
 
+func (s *PostgresStore) IncrementQuotesCount(ctx context.Context, quotedStatusID string) error {
+	return mapErr(s.q.IncrementQuotesCount(ctx, quotedStatusID))
+}
+
+func (s *PostgresStore) DecrementQuotesCount(ctx context.Context, quotedStatusID string) error {
+	return mapErr(s.q.DecrementQuotesCount(ctx, quotedStatusID))
+}
+
+func (s *PostgresStore) CreateQuoteApproval(ctx context.Context, quotingStatusID, quotedStatusID string) error {
+	return mapErr(s.q.CreateQuoteApproval(ctx, db.CreateQuoteApprovalParams{
+		QuotingStatusID: quotingStatusID,
+		QuotedStatusID:  quotedStatusID,
+	}))
+}
+
+func (s *PostgresStore) RevokeQuote(ctx context.Context, quotedStatusID, quotingStatusID string) error {
+	_, err := s.q.RevokeQuote(ctx, db.RevokeQuoteParams{
+		QuotedStatusID:  quotedStatusID,
+		QuotingStatusID: quotingStatusID,
+	})
+	return mapErr(err)
+}
+
+func (s *PostgresStore) ListQuotesOfStatus(ctx context.Context, quotedStatusID string, maxID *string, limit int) ([]domain.Status, error) {
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	rows, err := s.q.ListQuotesOfStatus(ctx, db.ListQuotesOfStatusParams{
+		QuotedStatusID: quotedStatusID,
+		Column2:        cursor,
+		Limit:          int32(limit), //nolint:gosec // limit clamped by caller
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.Status, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainStatus(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) GetQuoteApproval(ctx context.Context, quotingStatusID string) (*domain.QuoteApprovalRecord, error) {
+	qa, err := s.q.GetQuoteApproval(ctx, quotingStatusID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := quoteApprovalToDomain(qa)
+	return &d, nil
+}
+
+func (s *PostgresStore) UpdateStatusQuoteApprovalPolicy(ctx context.Context, statusID, policy string) error {
+	return mapErr(s.q.UpdateStatusQuoteApprovalPolicy(ctx, db.UpdateStatusQuoteApprovalPolicyParams{
+		ID:                  statusID,
+		QuoteApprovalPolicy: policy,
+	}))
+}
+
 func (s *PostgresStore) IncrementRepliesCount(ctx context.Context, statusID string) error {
 	return mapErr(s.q.IncrementRepliesCount(ctx, statusID))
 }
@@ -2019,6 +2084,13 @@ func (s *PostgresStore) GetUserByID(ctx context.Context, id string) (*domain.Use
 
 func (s *PostgresStore) UpdateUserRole(ctx context.Context, userID string, role string) error {
 	return mapErr(s.q.UpdateUserRole(ctx, db.UpdateUserRoleParams{ID: userID, Role: role}))
+}
+
+func (s *PostgresStore) UpdateUserDefaultQuotePolicy(ctx context.Context, accountID, policy string) error {
+	return mapErr(s.q.UpdateUserDefaultQuotePolicy(ctx, db.UpdateUserDefaultQuotePolicyParams{
+		AccountID:          accountID,
+		DefaultQuotePolicy: policy,
+	}))
 }
 
 func (s *PostgresStore) GetPendingRegistrations(ctx context.Context) ([]domain.User, error) {
