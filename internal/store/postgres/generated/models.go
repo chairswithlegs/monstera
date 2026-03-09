@@ -240,8 +240,10 @@ type MediaAttachment struct {
 }
 
 type MonsteraSetting struct {
-	ID               string `json:"id"`
-	RegistrationMode string `json:"registration_mode"`
+	ID                  string      `json:"id"`
+	RegistrationMode    string      `json:"registration_mode"`
+	InviteMaxUses       pgtype.Int4 `json:"invite_max_uses"`
+	InviteExpiresInDays pgtype.Int4 `json:"invite_expires_in_days"`
 }
 
 type Mute struct {

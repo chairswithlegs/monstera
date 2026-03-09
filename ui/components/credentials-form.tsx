@@ -15,25 +15,25 @@ export function CredentialsForm({
   loading,
   submitLabel = 'Sign in',
 }: CredentialsFormProps) {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit(username, password);
+        onSubmit(email, password);
       }}
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="username">Username</Label>
+        <Label htmlFor="email">Email</Label>
         <Input
-          id="username"
+          id="email"
           type="text"
-          autoComplete="username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           disabled={loading}
           required
         />

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/chairswithlegs/monstera/internal/api"
 	"github.com/chairswithlegs/monstera/internal/api/mastodon/apimodel"
@@ -22,12 +23,13 @@ type AccountsHandler struct {
 	accounts       service.AccountService
 	follows        service.FollowService
 	timeline       service.TimelineService
+	settings       service.MonsteraSettingsService
 	instanceDomain string
 }
 
 // NewAccountsHandler returns a new AccountsHandler. follows may be nil to disable follow endpoints; timeline is required for GET account statuses.
-func NewAccountsHandler(accounts service.AccountService, follows service.FollowService, timeline service.TimelineService, instanceDomain string) *AccountsHandler {
-	return &AccountsHandler{accounts: accounts, follows: follows, timeline: timeline, instanceDomain: instanceDomain}
+func NewAccountsHandler(accounts service.AccountService, follows service.FollowService, timeline service.TimelineService, settings service.MonsteraSettingsService, instanceDomain string) *AccountsHandler {
+	return &AccountsHandler{accounts: accounts, follows: follows, timeline: timeline, settings: settings, instanceDomain: instanceDomain}
 }
 
 // GETVerifyCredentials handles GET /api/v1/accounts/verify_credentials.
@@ -762,6 +764,81 @@ func (h *AccountsHandler) POSTFollowedTags(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	api.WriteJSON(w, http.StatusOK, apimodel.FollowedTagFromDomain(*tag, h.instanceDomain))
+}
+
+type registerAccountRequest struct {
+	Username   string  `json:"username"`
+	Email      string  `json:"email"`
+	Password   string  `json:"password"`
+	Agreement  bool    `json:"agreement"`
+	Locale     string  `json:"locale"`
+	Reason     *string `json:"reason"`
+	InviteCode *string `json:"invite_code"`
+}
+
+func (req registerAccountRequest) Validate() error {
+	if err := api.ValidateRequiredField(req.Username, "username"); err != nil {
+		return fmt.Errorf("username: %w", err)
+	}
+	if err := api.ValidateRequiredField(req.Email, "email"); err != nil {
+		return fmt.Errorf("email: %w", err)
+	}
+	if err := api.ValidateRequiredField(req.Password, "password"); err != nil {
+		return fmt.Errorf("password: %w", err)
+	}
+	if !req.Agreement {
+		return fmt.Errorf("%w", api.NewUnprocessableError("agreement must be accepted"))
+	}
+	return nil
+}
+
+type registerAccountResponse struct {
+	Account apimodel.Account `json:"account"`
+	Pending bool             `json:"pending"`
+}
+
+// POSTAccounts handles POST /api/v1/accounts (public registration endpoint).
+func (h *AccountsHandler) POSTAccounts(w http.ResponseWriter, r *http.Request) {
+	var body registerAccountRequest
+	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+
+	settings, err := h.settings.Get(r.Context())
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	if settings.RegistrationMode == domain.MonsteraRegistrationModeClosed {
+		api.HandleError(w, r, api.NewForbiddenError("registrations are closed"))
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+
+	acc, err := h.accounts.Register(r.Context(), service.RegisterInput{
+		Username:           body.Username,
+		Email:              body.Email,
+		PasswordHash:       string(hash),
+		Role:               domain.RoleUser,
+		RegistrationReason: body.Reason,
+		InviteCode:         body.InviteCode,
+	})
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+
+	pending := settings.RegistrationMode == domain.MonsteraRegistrationModeApproval
+	api.WriteJSON(w, http.StatusOK, registerAccountResponse{
+		Account: apimodel.ToAccount(acc, h.instanceDomain),
+		Pending: pending,
+	})
 }
 
 // DELETEFollowedTag handles DELETE /api/v1/followed_tags/:id. id is the tag ID.

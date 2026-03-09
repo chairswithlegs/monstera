@@ -40,7 +40,7 @@ export default function AdminLayout({
 
   return (
     <div className="flex gap-8">
-      <aside className="w-56 shrink-0 border-r border-gray-200 bg-white py-6 pr-4">
+      <aside className="w-56 shrink-0 border-r border-gray-200 bg-white py-6 px-2">
         <nav className="flex flex-col gap-1">
           {navItems.map(({ href, label }) => (
             <Link

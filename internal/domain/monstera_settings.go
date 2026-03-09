@@ -12,7 +12,9 @@ const (
 )
 
 type MonsteraSettings struct {
-	RegistrationMode MonsteraRegistrationMode `json:"registration_mode"`
+	RegistrationMode    MonsteraRegistrationMode `json:"registration_mode"`
+	InviteMaxUses       *int                     `json:"invite_max_uses,omitempty"`
+	InviteExpiresInDays *int                     `json:"invite_expires_in_days,omitempty"`
 }
 
 func (m MonsteraSettings) Validate() error {

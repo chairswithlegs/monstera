@@ -934,12 +934,33 @@ func (s *PostgresStore) GetMonsteraSettings(ctx context.Context) (*domain.Monste
 		return nil, mapErr(err)
 	}
 	return &domain.MonsteraSettings{
-		RegistrationMode: domain.MonsteraRegistrationMode(row.RegistrationMode),
+		RegistrationMode:    domain.MonsteraRegistrationMode(row.RegistrationMode),
+		InviteMaxUses:       intPtrFromPgInt4(row.InviteMaxUses),
+		InviteExpiresInDays: intPtrFromPgInt4(row.InviteExpiresInDays),
 	}, nil
 }
 
 func (s *PostgresStore) UpdateMonsteraSettings(ctx context.Context, in *domain.MonsteraSettings) error {
-	return mapErr(s.q.UpdateMonsteraSettings(ctx, string(in.RegistrationMode)))
+	return mapErr(s.q.UpdateMonsteraSettings(ctx, db.UpdateMonsteraSettingsParams{
+		RegistrationMode:    string(in.RegistrationMode),
+		InviteMaxUses:       pgInt4FromPtr(in.InviteMaxUses),
+		InviteExpiresInDays: pgInt4FromPtr(in.InviteExpiresInDays),
+	}))
+}
+
+func intPtrFromPgInt4(v pgtype.Int4) *int {
+	if !v.Valid {
+		return nil
+	}
+	i := int(v.Int32)
+	return &i
+}
+
+func pgInt4FromPtr(v *int) pgtype.Int4 {
+	if v == nil {
+		return pgtype.Int4{Valid: false}
+	}
+	return pgtype.Int4{Int32: int32(*v), Valid: true} //nolint:gosec // domain value bounded by caller
 }
 
 func (s *PostgresStore) GetMediaAttachment(ctx context.Context, id string) (*domain.MediaAttachment, error) {

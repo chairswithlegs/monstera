@@ -7,25 +7,37 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getMonsteraSettings = `-- name: GetMonsteraSettings :one
-SELECT id, registration_mode FROM monstera_settings WHERE id = 'default'
+SELECT id, registration_mode, invite_max_uses, invite_expires_in_days FROM monstera_settings WHERE id = 'default'
 `
 
 func (q *Queries) GetMonsteraSettings(ctx context.Context) (MonsteraSetting, error) {
 	row := q.db.QueryRow(ctx, getMonsteraSettings)
 	var i MonsteraSetting
-	err := row.Scan(&i.ID, &i.RegistrationMode)
+	err := row.Scan(&i.ID, &i.RegistrationMode, &i.InviteMaxUses, &i.InviteExpiresInDays)
 	return i, err
 }
 
 const updateMonsteraSettings = `-- name: UpdateMonsteraSettings :exec
-INSERT INTO monstera_settings (id, registration_mode) VALUES ('default', $1)
-ON CONFLICT (id) DO UPDATE SET registration_mode = $1
+INSERT INTO monstera_settings (id, registration_mode, invite_max_uses, invite_expires_in_days)
+VALUES ('default', $1, $2, $3)
+ON CONFLICT (id) DO UPDATE SET
+  registration_mode = $1,
+  invite_max_uses = $2,
+  invite_expires_in_days = $3
 `
 
-func (q *Queries) UpdateMonsteraSettings(ctx context.Context, registrationMode string) error {
-	_, err := q.db.Exec(ctx, updateMonsteraSettings, registrationMode)
+type UpdateMonsteraSettingsParams struct {
+	RegistrationMode    string      `json:"registration_mode"`
+	InviteMaxUses       pgtype.Int4 `json:"invite_max_uses"`
+	InviteExpiresInDays pgtype.Int4 `json:"invite_expires_in_days"`
+}
+
+func (q *Queries) UpdateMonsteraSettings(ctx context.Context, arg UpdateMonsteraSettingsParams) error {
+	_, err := q.db.Exec(ctx, updateMonsteraSettings, arg.RegistrationMode, arg.InviteMaxUses, arg.InviteExpiresInDays)
 	return err
 }

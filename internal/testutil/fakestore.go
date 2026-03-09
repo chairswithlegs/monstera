@@ -1452,7 +1452,11 @@ func (f *FakeStore) GetMonsteraSettings(ctx context.Context) (*domain.MonsteraSe
 func (f *FakeStore) UpdateMonsteraSettings(ctx context.Context, in *domain.MonsteraSettings) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.monsteraSettings = &domain.MonsteraSettings{RegistrationMode: in.RegistrationMode}
+	f.monsteraSettings = &domain.MonsteraSettings{
+		RegistrationMode:    in.RegistrationMode,
+		InviteMaxUses:       in.InviteMaxUses,
+		InviteExpiresInDays: in.InviteExpiresInDays,
+	}
 	return nil
 }
 

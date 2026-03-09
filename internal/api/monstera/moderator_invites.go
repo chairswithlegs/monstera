@@ -11,21 +11,15 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-type postInviteRequest struct {
-	MaxUses   *int       `json:"max_uses"`
-	ExpiresAt *time.Time `json:"expires_at"`
-}
-
-func (postInviteRequest) Validate() error { return nil }
-
 // ModeratorInvitesHandler handles invite code management.
 type ModeratorInvitesHandler struct {
 	registration service.RegistrationService
+	settings     service.MonsteraSettingsService
 }
 
 // NewModeratorInvitesHandler returns a new ModeratorInvitesHandler.
-func NewModeratorInvitesHandler(registration service.RegistrationService) *ModeratorInvitesHandler {
-	return &ModeratorInvitesHandler{registration: registration}
+func NewModeratorInvitesHandler(registration service.RegistrationService, settings service.MonsteraSettingsService) *ModeratorInvitesHandler {
+	return &ModeratorInvitesHandler{registration: registration, settings: settings}
 }
 
 // GETInvites returns invites created by the current user.
@@ -54,12 +48,16 @@ func (h *ModeratorInvitesHandler) POSTInvites(w http.ResponseWriter, r *http.Req
 		api.HandleError(w, r, api.ErrForbidden)
 		return
 	}
-	var body postInviteRequest
-	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
-		api.HandleError(w, r, err)
-		return
+	var maxUses *int
+	var expiresAt *time.Time
+	if s, err := h.settings.Get(r.Context()); err == nil {
+		maxUses = s.InviteMaxUses
+		if s.InviteExpiresInDays != nil {
+			t := time.Now().AddDate(0, 0, *s.InviteExpiresInDays)
+			expiresAt = &t
+		}
 	}
-	inv, err := h.registration.CreateInvite(r.Context(), user.ID, body.MaxUses, body.ExpiresAt)
+	inv, err := h.registration.CreateInvite(r.Context(), user.ID, maxUses, expiresAt)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return

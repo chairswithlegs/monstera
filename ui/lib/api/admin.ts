@@ -309,18 +309,24 @@ export async function deleteFilter(id: string): Promise<void> {
   if (!res.ok) throw new Error('Failed to delete filter');
 }
 
-export async function getSettings(): Promise<{ settings: Record<string, string> }> {
+export interface AdminSettings {
+  registration_mode: string; // "open" | "approval" | "invite" | "closed"
+  invite_max_uses?: number | null;
+  invite_expires_in_days?: number | null;
+}
+
+export async function getSettings(): Promise<AdminSettings> {
   const base = await adminPrefix();
   const res = await authFetch(`${base}/settings`);
   if (!res.ok) throw new Error('Failed to fetch settings');
   return res.json();
 }
 
-export async function putSettings(settings: Record<string, string>): Promise<void> {
+export async function putSettings(settings: AdminSettings): Promise<void> {
   const base = await adminPrefix();
   const res = await authFetch(`${base}/settings`, {
     method: 'PUT',
-    body: JSON.stringify({ settings }),
+    body: JSON.stringify(settings),
   });
   if (!res.ok) throw new Error('Failed to update settings');
 }

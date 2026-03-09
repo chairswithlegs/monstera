@@ -1,7 +1,6 @@
 package monstera
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -20,7 +19,8 @@ func TestModeratorInvitesHandler_GETInvites(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
 	regSvc := service.NewRegistrationService(st, nil, nil, "https://example.com", "Example")
-	handler := NewModeratorInvitesHandler(regSvc)
+	settingsSvc := service.NewMonsteraSettingsService(st)
+	handler := NewModeratorInvitesHandler(regSvc, settingsSvc)
 
 	t.Run("no user returns 403", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/admin/invites", nil)
@@ -47,7 +47,8 @@ func TestModeratorInvitesHandler_POSTInvites(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
 	regSvc := service.NewRegistrationService(st, nil, nil, "https://example.com", "Example")
-	handler := NewModeratorInvitesHandler(regSvc)
+	settingsSvc := service.NewMonsteraSettingsService(st)
+	handler := NewModeratorInvitesHandler(regSvc, settingsSvc)
 	adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
 	adminUser := getUserByAccountID(t, st, adminAcc.ID)
 
@@ -59,8 +60,7 @@ func TestModeratorInvitesHandler_POSTInvites(t *testing.T) {
 	})
 
 	t.Run("with user returns 201 and created invite", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/admin/invites", bytes.NewReader([]byte("{}")))
-		req.Header.Set("Content-Type", "application/json")
+		req := httptest.NewRequest(http.MethodPost, "/admin/invites", nil)
 		req = req.WithContext(middleware.WithUser(req.Context(), adminUser))
 		rec := httptest.NewRecorder()
 		handler.POSTInvites(rec, req)
@@ -76,7 +76,8 @@ func TestModeratorInvitesHandler_DELETEInvite(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
 	regSvc := service.NewRegistrationService(st, nil, nil, "https://example.com", "Example")
-	handler := NewModeratorInvitesHandler(regSvc)
+	settingsSvc := service.NewMonsteraSettingsService(st)
+	handler := NewModeratorInvitesHandler(regSvc, settingsSvc)
 
 	t.Run("with valid id returns 204", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodDelete, "/admin/invites/01inviteid", nil)

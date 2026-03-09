@@ -144,6 +144,7 @@ func New(deps Deps) http.Handler {
 			r.Use(chimw.Timeout(30 * time.Second))
 			r.Get("/instance", deps.Instance.GETInstanceV1)
 			r.Post("/apps", deps.OAuthHandler.POSTRegisterApp)
+			r.Post("/accounts", deps.Accounts.POSTAccounts)
 			r.Get("/custom_emojis", deps.Instance.GETCustomEmojis)
 
 			// Auth optional routes

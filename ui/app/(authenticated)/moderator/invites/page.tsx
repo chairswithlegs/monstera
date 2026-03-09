@@ -81,6 +81,7 @@ export default function ModeratorInvitesPage() {
                   <TableHead>Code</TableHead>
                   <TableHead>Uses</TableHead>
                   <TableHead>Created</TableHead>
+                  <TableHead>Expires</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -93,6 +94,9 @@ export default function ModeratorInvitesPage() {
                       {inv.max_uses != null ? ` / ${inv.max_uses}` : ''}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{new Date(inv.created_at).toLocaleString()}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {inv.expires_at ? new Date(inv.expires_at).toLocaleDateString() : 'Never'}
+                    </TableCell>
                     <TableCell className="text-right">
                       <Button type="button" variant="ghost" size="sm" onClick={() => remove(inv.id)} className="text-destructive hover:text-destructive">
                         Revoke
