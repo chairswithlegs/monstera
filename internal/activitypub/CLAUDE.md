@@ -1,0 +1,11 @@
+# ActivityPub & Federation
+
+Design doc: `docs/architecture/03-activitypub-implementation.md`
+
+## Conventions
+
+- AP types defined in `internal/activitypub/vocab.go` — `Activity`, `Object`, `Actor`, `PublicAddress`.
+- HTTP Signatures: RSA-SHA256, sign with local actor key, verify with cached remote public key.
+- On signature verification failure: evict cached key, re-fetch from remote, retry once (key rotation handling).
+- Private keys encrypted at rest with AES-256-GCM (HKDF-derived key from `SECRET_KEY_BASE`).
+- Supported inbox types: `Create`, `Delete`, `Follow`, `Undo`, `Accept`, `Reject`, `Announce`, `Like`, `Block`, `Update`.

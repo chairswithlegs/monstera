@@ -1,0 +1,79 @@
+# API Handler Patterns
+
+When adding a new API handler, follow the structure and conventions used in `internal/api`. Handlers are HTTP-only: parse request, call service, map errors, write response. See the root `CLAUDE.md` for architecture rules and error handling rules.
+
+## Directory layout
+
+- **Shared package** (`internal/api`): `HandleError`, `WriteJSON` / `WriteActivityJSON` / `WriteJRD`, `DecodeJSONBody`, `DecodeAndValidateJSON`, `Validatable`, `ValidateRequiredField`, `ValidateOneOf`, `ValidateRFC3339`, `ValidatePositiveInt`, `ErrorResponse`, and API sentinels (`ErrUnauthorized`, `ErrNotFound`, etc.). No handler logic.
+- **Subpackages** group handlers by protocol or surface (mastodon, activitypub, oauth). Put response DTOs and domain→API conversion in an `apimodel` subpackage when the response shape is non-trivial (e.g. `mastodon/apimodel/`).
+
+## Handler struct and constructor
+
+- **Name**: `{Resource}Handler` (e.g. `AccountsHandler`, `StatusesHandler`, `ActorHandler`).
+- **Constructor**: `New{Resource}Handler(deps...)` that takes only what the handler needs: services, config, or scalar config (e.g. `instanceDomain string`). No store; use services only.
+- **Methods**: `{METHOD}{ResourceOrAction}` — e.g. `GETAccounts`, `POSTStatuses`, `GETVerifyCredentials`, `GETActor`. One method per route.
+
+```go
+// Example: handler struct and constructor
+type StatusesHandler struct {
+	accounts       *service.AccountService
+	statuses       *service.StatusService
+	instanceDomain string
+}
+
+func NewStatusesHandler(accounts *service.AccountService, statuses *service.StatusService, instanceDomain string) *StatusesHandler {
+	return &StatusesHandler{accounts: accounts, statuses: statuses, instanceDomain: instanceDomain}
+}
+```
+
+## Request handling
+
+1. **Path/query**: Use `chi.URLParam(r, "id")` for path params. Validate with `api.ValidateRequiredField(id, "id")` or equivalent; on failure call `api.HandleError(w, r, err)` and return.
+2. **Auth**: For routes that need an authenticated user, read `middleware.AccountFromContext(r.Context())`. If `nil` and auth is required, respond with `api.HandleError(w, r, api.ErrUnauthorized)` (or `api.NewUnauthorizedError("...")` when a specific message is needed) and return.
+3. **Body**: For JSON-only endpoints, define a named request struct with a `Validate() error` method and use `api.DecodeAndValidateJSON(r, &body)`. For mixed JSON/form endpoints, use a `parseXxxRequest(r)` helper that calls `api.DecodeJSONBody` for the JSON path and uses the validation helpers from `internal/api/validate.go`. Do not use raw `json.NewDecoder(r.Body).Decode` in handlers. Do not put business rules in the handler — delegate to the service.
+
+## Response and errors
+
+- **Success**: Use `api.WriteJSON(w, status, body)`. For ActivityPub use `api.WriteActivityJSON`; for JRD use `api.WriteJRD`. Set `Content-Type` only when the shared helpers don't (they set it when empty).
+- **Errors**: Always use `api.HandleError(w, r, err)`. Pass domain or api sentinel errors; do not map status codes in the handler. Use `api.ErrNotFound`, `api.ErrForbidden`, `api.ErrUnauthorized`, or wrapped api errors (e.g. `api.NewForbiddenError("...")`) when the failure is at the HTTP layer (e.g. missing auth). For service failures, pass the returned error as-is.
+
+## Router wiring (adding a new handler)
+
+1. **Add the handler to `router.Deps`** in `internal/api/router/router.go`: add a field, e.g. `MyNew *mastodon.MyNewHandler`.
+2. **Construct the handler in `cmd/server/internal/cli/serve.go`** (where other handlers are built) and set it on the `router.Deps` struct passed to `router.New`.
+3. **Register the route** in `router.New()`:
+   - Use the correct **route group**: unauthenticated, `OptionalAuth`, or `RequireAuth` (and optionally `RequiredScopes` for Mastodon).
+   - For Mastodon scoped routes, wrap the handler with `middleware.RequiredScopes("scope:name")` and use `r.Method("VERB", "/path", middleware.RequiredScopes("...")(http.HandlerFunc(deps.MyNew.METHODMyNew)))`.
+
+Example (auth required + scope):
+
+```go
+r.Method("POST", "/statuses", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.POSTStatuses)))
+```
+
+Example (optional auth):
+
+```go
+r.Use(middleware.OptionalAuth(deps.OAuthServer, deps.AccountsService))
+r.Get("/accounts/{id}", deps.Accounts.GETAccounts)
+```
+
+## Testing
+
+- Handler tests live in the same package, e.g. `internal/api/mastodon/accounts_test.go`.
+- Use `net/http/httptest`: `httptest.NewRequest`, `httptest.NewRecorder`, call the handler method directly.
+- For authenticated tests, inject the account with `req = req.WithContext(middleware.WithAccount(req.Context(), account))`.
+- **Success-path tests**: Use a fake store and real services (e.g. `testutil.NewFakeStore()`, then construct the service and handler). Assert status code and, when relevant, response body (decode JSON into `map[string]any` or a small struct).
+- **Error-path tests**: When triggering the right store state is awkward, use a hand-written mock that implements the service interface — override only the method under test and return the desired error (e.g. `domain.ErrNotFound`).
+- Prefer table-driven tests and `require` for setup, `assert` for response checks. Use `t.Helper()` in helpers.
+
+## Checklist for a new handler
+
+- [ ] Handler struct in the right subpackage (`mastodon`, `activitypub`, etc.) with `NewXxxHandler` constructor.
+- [ ] Handler takes only services/config; no store.
+- [ ] Methods: parse input → optional auth check → call service → `api.HandleError` on error → `api.WriteJSON` (or WriteActivityJSON/WriteJRD) on success.
+- [ ] Route registered in `router.go` with correct middleware (OptionalAuth / RequireAuth, RequiredScopes if Mastodon).
+- [ ] Handler constructed in `serve.go` and added to `router.Deps`.
+- [ ] Response types/conversions in `apimodel` (or local). DO NOT RETURN DOMAIN TYPES DIRECTLY.
+- [ ] Request structs for POST/PUT/PATCH implement `Validatable` with field-level checks; no inline validation in handler body.
+- [ ] Tests for success and key error paths (e.g. 401 when unauthenticated, 404 when not found).
