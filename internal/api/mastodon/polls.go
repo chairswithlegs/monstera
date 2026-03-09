@@ -1,7 +1,6 @@
 package mastodon
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -66,8 +65,8 @@ func (h *PollsHandler) POSTVotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req POSTVotesRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		api.HandleError(w, r, api.NewUnprocessableError("invalid JSON"))
+	if err := api.DecodeJSONBody(r, &req); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	poll, err := h.statuses.RecordVote(ctx, id, account.ID, req.Choices)

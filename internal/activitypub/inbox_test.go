@@ -77,10 +77,12 @@ func newInboxProcessorForTest(t *testing.T, fake *testutil.FakeStore, cfg *confi
 	accountSvc := service.NewAccountService(fake, instanceBaseURL)
 	followSvc := service.NewFollowService(fake, service.NewAccountService(fake, "https://example.com"), nil, nil)
 	notificationSvc := service.NewNotificationService(fake)
-	statusSvc := service.NewStatusService(fake, service.NoopFederationPublisher, events.NoopEventBus, nil, instanceBaseURL, "example.com", 5000, nil)
+	statusSvc := service.NewStatusService(fake, instanceBaseURL, "example.com", 5000)
+	conversationSvc := service.NewConversationService(fake, statusSvc)
+	statusWriteSvc := service.NewStatusWriteService(fake, statusSvc, conversationSvc, service.NoopFederationPublisher, events.NoopEventBus, instanceBaseURL, "example.com", 5000, nil)
 	mediaSvc := service.NewMediaService(fake, &testMediaStore{}, 1<<20)
 	noopEvents := &noopInboxEvents{}
-	return NewInbox(accountSvc, followSvc, notificationSvc, statusSvc, mediaSvc, nil, cacheStore, bl, nil, noopEvents, noopEvents, cfg)
+	return NewInbox(accountSvc, followSvc, notificationSvc, statusSvc, statusWriteSvc, mediaSvc, nil, cacheStore, bl, nil, noopEvents, noopEvents, cfg)
 }
 
 const (

@@ -1,0 +1,66 @@
+package api
+
+import (
+	"strconv"
+	"time"
+)
+
+// ValidateRequiredField returns ErrUnprocessable if value is empty.
+// Use for required request body fields (semantic validation → 422).
+func ValidateRequiredField(value, fieldName string) error {
+	if value == "" {
+		return NewUnprocessableError(fieldName + " is required")
+	}
+	return nil
+}
+
+// ValidateOneOf returns ErrUnprocessable if value is not in the allowed slice.
+func ValidateOneOf[T comparable](value T, allowed []T, fieldName string) error {
+	for _, a := range allowed {
+		if value == a {
+			return nil
+		}
+	}
+	return NewUnprocessableError(fieldName + ": invalid value")
+}
+
+// ValidateRFC3339 parses raw as RFC3339 and returns the time, or ErrUnprocessable on parse failure.
+func ValidateRFC3339(raw, fieldName string) (time.Time, error) {
+	msg := fieldName + ": must be a valid RFC3339 datetime"
+	if raw == "" {
+		return time.Time{}, NewUnprocessableError(msg)
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, NewUnprocessableError(msg)
+	}
+	return t, nil
+}
+
+// ValidateRFC3339Optional parses *raw as RFC3339 if non-nil and non-empty; returns the time or nil, or ErrUnprocessable on parse failure.
+func ValidateRFC3339Optional(raw *string, fieldName string) (*time.Time, error) {
+	if raw == nil || *raw == "" {
+		return nil, nil
+	}
+	t, err := ValidateRFC3339(*raw, fieldName)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// ValidatePositiveInt parses raw as an integer. If raw is empty, returns defaultVal.
+// Returns ErrUnprocessable if raw is non-empty and not a positive integer, or if the value exceeds max (in which case max is returned and no error).
+func ValidatePositiveInt(raw, fieldName string, defaultVal, max int) (int, error) {
+	if raw == "" {
+		return defaultVal, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return 0, NewUnprocessableError(fieldName + " must be a positive integer")
+	}
+	if n > max {
+		return max, nil
+	}
+	return n, nil
+}

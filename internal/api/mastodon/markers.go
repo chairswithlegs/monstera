@@ -1,7 +1,6 @@
 package mastodon
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -74,8 +73,8 @@ func (h *MarkersHandler) POSTMarkers(w http.ResponseWriter, r *http.Request) {
 	}
 	var body POSTMarkersRequest
 	if r.Header.Get("Content-Type") == "application/json" {
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+		if err := api.DecodeJSONBody(r, &body); err != nil {
+			api.HandleError(w, r, err)
 			return
 		}
 	} else {

@@ -219,12 +219,12 @@ func TestHandler_POSTRevoke(t *testing.T) {
 	authSvc := service.NewAuthService(st, "", "")
 	h := NewHandler(srv, authSvc, cfg)
 
-	t.Run("missing token returns 400", func(t *testing.T) {
+	t.Run("missing token returns 422", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/oauth/revoke", bytes.NewReader([]byte("")))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rec := httptest.NewRecorder()
 		h.POSTRevoke(rec, req)
-		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	})
 
 	t.Run("happy path returns 200", func(t *testing.T) {

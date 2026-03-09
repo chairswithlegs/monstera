@@ -1,6 +1,7 @@
 package monstera
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -11,6 +12,17 @@ import (
 	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/go-chi/chi/v5"
 )
+
+type putRoleRequest struct {
+	Role string `json:"role"`
+}
+
+func (r putRoleRequest) Validate() error {
+	if err := api.ValidateOneOf(r.Role, []string{domain.RoleUser, domain.RoleModerator, domain.RoleAdmin}, "role"); err != nil {
+		return fmt.Errorf("role: %w", err)
+	}
+	return nil
+}
 
 // AdminUsersHandler handles admin user management.
 type AdminUsersHandler struct {
@@ -164,15 +176,9 @@ func (h *AdminUsersHandler) PUTRole(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
 		return
 	}
-	var body struct {
-		Role string `json:"role"`
-	}
-	if err := api.DecodeJSONBody(r, &body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
-		return
-	}
-	if body.Role != domain.RoleUser && body.Role != domain.RoleModerator && body.Role != domain.RoleAdmin {
-		api.HandleError(w, r, api.NewBadRequestError("invalid role"))
+	var body putRoleRequest
+	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	targetUser, err := h.accounts.GetUserByID(r.Context(), id)

@@ -36,6 +36,7 @@ func NewInbox(
 	follows service.FollowService,
 	notifications service.NotificationService,
 	statuses service.StatusService,
+	statusWrites service.StatusWriteService,
 	media service.MediaService,
 	remoteResolver *RemoteAccountResolver,
 	c cache.Store,
@@ -50,6 +51,7 @@ func NewInbox(
 		follows:        follows,
 		notifications:  notifications,
 		statuses:       statuses,
+		statusWrites:   statusWrites,
 		media:          media,
 		remoteResolver: remoteResolver,
 		cache:          c,
@@ -68,6 +70,7 @@ type inbox struct {
 	follows        service.FollowService
 	notifications  service.NotificationService
 	statuses       service.StatusService
+	statusWrites   service.StatusWriteService
 	media          service.MediaService
 	remoteResolver *RemoteAccountResolver
 	cache          cache.Store
@@ -342,7 +345,7 @@ func (p *inbox) handleUndoFollow(ctx context.Context, activity *Activity) error 
 
 // undoFavourite handles AP Undo{Like} -> domain delete favourite.
 func (p *inbox) undoFavourite(ctx context.Context, fav *domain.Favourite) error {
-	if err := p.statuses.DeleteRemoteFavourite(ctx, fav.AccountID, fav.StatusID); err != nil {
+	if err := p.statusWrites.DeleteRemoteFavourite(ctx, fav.AccountID, fav.StatusID); err != nil {
 		return fmt.Errorf("inbox: DeleteRemoteFavourite: %w", err)
 	}
 	return nil
@@ -404,7 +407,7 @@ func (p *inbox) handleUndoAnnounce(ctx context.Context, activity *Activity) erro
 	if err != nil {
 		return fmt.Errorf("inbox: GetStatusByAPID (UndoAnnounce): %w", err)
 	}
-	if err := p.statuses.Unreblog(ctx, actorAccount.ID, originalStatus.ID); err != nil {
+	if err := p.statusWrites.Unreblog(ctx, actorAccount.ID, originalStatus.ID); err != nil {
 		return fmt.Errorf("inbox: Unreblog (UndoAnnounce): %w", err)
 	}
 	return nil
@@ -592,7 +595,7 @@ func (p *inbox) handleCreate(ctx context.Context, activity *Activity, _ string) 
 	}
 	createInput := p.buildCreateStatusInput(ctx, note, author, visibility)
 	// AP Note -> domain status
-	status, err := p.statuses.CreateRemote(ctx, createInput.in)
+	status, err := p.statusWrites.CreateRemote(ctx, createInput.in)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil
@@ -625,7 +628,7 @@ func (p *inbox) handleAnnounce(ctx context.Context, activity *Activity, _ string
 	}
 	apRaw, _ := json.Marshal(activity)
 	// AP Announce -> domain reblog
-	_, err = p.statuses.CreateRemoteReblog(ctx, service.CreateRemoteReblogInput{
+	_, err = p.statusWrites.CreateRemoteReblog(ctx, service.CreateRemoteReblogInput{
 		AccountID:        actor.ID,
 		ActivityAPID:     activity.ID,
 		ObjectStatusAPID: objectID,
@@ -664,7 +667,7 @@ func (p *inbox) handleLike(ctx context.Context, activity *Activity) error {
 		apID = &activity.ID
 	}
 	// AP Like -> domain favourite
-	_, err = p.statuses.CreateRemoteFavourite(ctx, actor.ID, status.ID, apID)
+	_, err = p.statusWrites.CreateRemoteFavourite(ctx, actor.ID, status.ID, apID)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil
@@ -708,7 +711,7 @@ func (p *inbox) handleDelete(ctx context.Context, activity *Activity) error {
 			return fmt.Errorf("%w: delete: actor %q is not the author", ErrFatal, activity.Actor)
 		}
 		// AP Delete{Note/Tombstone} -> domain delete status
-		if err := p.statuses.DeleteRemote(ctx, status.ID); err != nil {
+		if err := p.statusWrites.DeleteRemote(ctx, status.ID); err != nil {
 			return fmt.Errorf("inbox: DeleteRemote (Delete): %w", err)
 		}
 		return nil
@@ -753,7 +756,7 @@ func (p *inbox) handleUpdate(ctx context.Context, activity *Activity) error {
 		}
 		content := note.Content
 		// AP Update{Note} -> domain update status
-		if updateErr := p.statuses.UpdateRemote(ctx, status.ID, status, service.UpdateRemoteStatusInput{
+		if updateErr := p.statusWrites.UpdateRemote(ctx, status.ID, status, service.UpdateRemoteStatusInput{
 			Text:           &content,
 			Content:        &content,
 			ContentWarning: cw,

@@ -10,6 +10,12 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+type postRejectRegistrationRequest struct {
+	Reason string `json:"reason"`
+}
+
+func (postRejectRegistrationRequest) Validate() error { return nil }
+
 // ModeratorRegistrationsHandler handles pending registration approval/rejection.
 type ModeratorRegistrationsHandler struct {
 	registration service.RegistrationService
@@ -71,11 +77,9 @@ func (h *ModeratorRegistrationsHandler) POSTReject(w http.ResponseWriter, r *htt
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
 		return
 	}
-	var body struct {
-		Reason string `json:"reason"`
-	}
-	if err := api.DecodeJSONBody(r, &body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+	var body postRejectRegistrationRequest
+	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	if err := h.registration.Reject(r.Context(), user.ID, id, body.Reason); err != nil {

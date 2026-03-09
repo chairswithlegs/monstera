@@ -182,11 +182,6 @@ type Hashtag struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
-type InstanceSetting struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
-}
-
 type Invite struct {
 	ID        string             `json:"id"`
 	Code      string             `json:"code"`
@@ -242,6 +237,11 @@ type MediaAttachment struct {
 	Meta        []byte             `json:"meta"`
 	SizeBytes   int64              `json:"size_bytes"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type MonsteraSetting struct {
+	ID               string `json:"id"`
+	RegistrationMode string `json:"registration_mode"`
 }
 
 type Mute struct {

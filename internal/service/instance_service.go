@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
@@ -22,12 +23,10 @@ type InstanceStats struct {
 	DomainCount int64
 }
 
-// InstanceService provides instance-level discovery data (NodeInfo) and instance settings.
+// InstanceService provides instance-level discovery data (NodeInfo).
 type InstanceService interface {
 	GetNodeInfoStats(ctx context.Context) (*NodeInfoStats, error)
 	GetInstanceStats(ctx context.Context) (*InstanceStats, error)
-	GetAllSettings(ctx context.Context) (map[string]string, error)
-	SetSetting(ctx context.Context, key, value string) error
 	ListKnownInstances(ctx context.Context, limit, offset int) ([]domain.KnownInstance, error)
 }
 
@@ -50,11 +49,21 @@ func (svc *instanceService) GetNodeInfoStats(ctx context.Context) (*NodeInfoStat
 	if err != nil {
 		return nil, fmt.Errorf("CountLocalStatuses: %w", err)
 	}
-	regMode, _ := svc.store.GetSetting(ctx, "registration_mode")
+	settings, err := svc.store.GetMonsteraSettings(ctx)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return &NodeInfoStats{
+				UserCount:         userCount,
+				LocalPostCount:    postCount,
+				OpenRegistrations: true,
+			}, nil
+		}
+		return nil, fmt.Errorf("GetMonsteraSettings: %w", err)
+	}
 	return &NodeInfoStats{
 		UserCount:         userCount,
 		LocalPostCount:    postCount,
-		OpenRegistrations: regMode == "open",
+		OpenRegistrations: settings.RegistrationMode == domain.MonsteraRegistrationModeOpen,
 	}, nil
 }
 
@@ -77,23 +86,6 @@ func (svc *instanceService) GetInstanceStats(ctx context.Context) (*InstanceStat
 		StatusCount: statusCount,
 		DomainCount: domainCount,
 	}, nil
-}
-
-// GetAllSettings returns all instance settings as a map from the store.
-func (svc *instanceService) GetAllSettings(ctx context.Context) (map[string]string, error) {
-	m, err := svc.store.ListSettings(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("ListSettings: %w", err)
-	}
-	return m, nil
-}
-
-// SetSetting writes a single setting to the store.
-func (svc *instanceService) SetSetting(ctx context.Context, key, value string) error {
-	if err := svc.store.SetSetting(ctx, key, value); err != nil {
-		return fmt.Errorf("SetSetting(%s): %w", key, err)
-	}
-	return nil
 }
 
 // ListKnownInstances returns known federated instances for admin.

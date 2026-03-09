@@ -68,7 +68,7 @@ func (h *MediaHandler) PUTMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	if err := api.ValidateRequiredString(id); err != nil {
+	if err := api.ValidateRequiredField(id, "id"); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}

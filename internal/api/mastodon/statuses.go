@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -32,13 +33,14 @@ const (
 type StatusesHandler struct {
 	accounts       service.AccountService
 	statuses       service.StatusService
+	statusWrites   service.StatusWriteService
 	instanceDomain string
 	cache          cache.Store // optional; when set, Idempotency-Key is honored
 	pollLimits     *service.PollLimits
 }
 
 // NewStatusesHandler returns a new StatusesHandler. idempotencyCache may be nil to disable idempotency. pollLimits may be nil to use defaults.
-func NewStatusesHandler(accounts service.AccountService, statuses service.StatusService, instanceDomain string, idempotencyCache cache.Store, pollLimits *service.PollLimits) *StatusesHandler {
+func NewStatusesHandler(accounts service.AccountService, statuses service.StatusService, statusWrites service.StatusWriteService, instanceDomain string, idempotencyCache cache.Store, pollLimits *service.PollLimits) *StatusesHandler {
 	if pollLimits == nil {
 		pollLimits = &service.PollLimits{
 			MaxOptions:    DefaultPollMaxOptions,
@@ -46,7 +48,7 @@ func NewStatusesHandler(accounts service.AccountService, statuses service.Status
 			MaxExpiration: DefaultPollMaxExpiration,
 		}
 	}
-	return &StatusesHandler{accounts: accounts, statuses: statuses, instanceDomain: instanceDomain, cache: idempotencyCache, pollLimits: pollLimits}
+	return &StatusesHandler{accounts: accounts, statuses: statuses, statusWrites: statusWrites, instanceDomain: instanceDomain, cache: idempotencyCache, pollLimits: pollLimits}
 }
 
 type idempotencyCached struct {
@@ -191,7 +193,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 		}
 		createInput.PollLimits = h.pollLimits
 	}
-	result, err := h.statuses.Create(ctx, createInput)
+	result, err := h.statusWrites.Create(ctx, createInput)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -448,11 +450,11 @@ func (h *StatusesHandler) PUTStatuses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req UpdateStatusRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		api.HandleError(w, r, api.NewUnprocessableError("invalid JSON"))
+	if err := api.DecodeJSONBody(r, &req); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
-	result, err := h.statuses.Update(r.Context(), account.ID, id, strings.TrimSpace(req.Status), req.SpoilerText, req.Sensitive)
+	result, err := h.statusWrites.Update(r.Context(), account.ID, id, strings.TrimSpace(req.Status), req.SpoilerText, req.Sensitive)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -490,6 +492,15 @@ type PUTInteractionPolicyRequest struct {
 	QuoteApprovalPolicy string `json:"quote_approval_policy"`
 }
 
+func (r *PUTInteractionPolicyRequest) Validate() error {
+	policy := strings.TrimSpace(r.QuoteApprovalPolicy)
+	if policy == "" {
+		return fmt.Errorf("quote_approval_policy: %w", api.NewUnprocessableError("quote_approval_policy is required"))
+	}
+	r.QuoteApprovalPolicy = policy
+	return nil
+}
+
 // PUTInteractionPolicy handles PUT /api/v1/statuses/:id/interaction_policy (Mastodon-style quotes).
 // Updates the status quote_approval_policy (public, followers, or nobody). Caller must own the status.
 func (h *StatusesHandler) PUTInteractionPolicy(w http.ResponseWriter, r *http.Request) {
@@ -504,15 +515,11 @@ func (h *StatusesHandler) PUTInteractionPolicy(w http.ResponseWriter, r *http.Re
 		return
 	}
 	var req PUTInteractionPolicyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		api.HandleError(w, r, api.NewUnprocessableError("invalid JSON"))
+	if err := api.DecodeAndValidateJSON(r, &req); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
-	policy := strings.TrimSpace(req.QuoteApprovalPolicy)
-	if policy == "" {
-		api.HandleError(w, r, api.NewUnprocessableError("quote_approval_policy is required"))
-		return
-	}
+	policy := req.QuoteApprovalPolicy
 	if err := h.statuses.UpdateQuoteApprovalPolicy(r.Context(), account.ID, id, policy); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -627,7 +634,7 @@ func (h *StatusesHandler) DELETEStatuses(w http.ResponseWriter, r *http.Request)
 		api.HandleError(w, r, err)
 		return
 	}
-	if err := h.statuses.Delete(r.Context(), id); err != nil {
+	if err := h.statusWrites.Delete(r.Context(), id); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
@@ -641,9 +648,8 @@ func parseCreateStatusRequest(r *http.Request) (CreateStatusRequest, error) {
 	var req CreateStatusRequest
 	ct := r.Header.Get("Content-Type")
 	if strings.HasPrefix(ct, "application/json") {
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			// nolint:wrapcheck
-			return CreateStatusRequest{}, api.NewUnprocessableError("invalid JSON")
+		if err := api.DecodeJSONBody(r, &req); err != nil {
+			return CreateStatusRequest{}, fmt.Errorf("decode body: %w", err)
 		}
 	} else {
 		if err := r.ParseForm(); err != nil {
@@ -701,7 +707,7 @@ func (h *StatusesHandler) POSTReblog(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	result, err := h.statuses.Reblog(r.Context(), account.ID, account.Username, id)
+	result, err := h.statusWrites.Reblog(r.Context(), account.ID, account.Username, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -734,7 +740,7 @@ func (h *StatusesHandler) POSTUnreblog(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	if err := h.statuses.Unreblog(r.Context(), account.ID, id); err != nil {
+	if err := h.statusWrites.Unreblog(r.Context(), account.ID, id); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
@@ -758,7 +764,7 @@ func (h *StatusesHandler) POSTFavourite(w http.ResponseWriter, r *http.Request) 
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	result, err := h.statuses.Favourite(r.Context(), account.ID, id)
+	result, err := h.statusWrites.Favourite(r.Context(), account.ID, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -784,7 +790,7 @@ func (h *StatusesHandler) POSTUnfavourite(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	result, err := h.statuses.Unfavourite(r.Context(), account.ID, id)
+	result, err := h.statusWrites.Unfavourite(r.Context(), account.ID, id)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return

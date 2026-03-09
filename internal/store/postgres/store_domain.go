@@ -928,9 +928,18 @@ func (s *PostgresStore) GetStatusAttachments(ctx context.Context, statusID strin
 	return out, nil
 }
 
-func (s *PostgresStore) GetSetting(ctx context.Context, key string) (string, error) {
-	v, err := s.q.GetSetting(ctx, key)
-	return v, mapErr(err)
+func (s *PostgresStore) GetMonsteraSettings(ctx context.Context) (*domain.MonsteraSettings, error) {
+	row, err := s.q.GetMonsteraSettings(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return &domain.MonsteraSettings{
+		RegistrationMode: domain.MonsteraRegistrationMode(row.RegistrationMode),
+	}, nil
+}
+
+func (s *PostgresStore) UpdateMonsteraSettings(ctx context.Context, in *domain.MonsteraSettings) error {
+	return mapErr(s.q.UpdateMonsteraSettings(ctx, string(in.RegistrationMode)))
 }
 
 func (s *PostgresStore) GetMediaAttachment(ctx context.Context, id string) (*domain.MediaAttachment, error) {
@@ -1917,22 +1926,6 @@ func (s *PostgresStore) DeleteInvite(ctx context.Context, id string) error {
 
 func (s *PostgresStore) IncrementInviteUses(ctx context.Context, code string) error {
 	return mapErr(s.q.IncrementInviteUses(ctx, code))
-}
-
-func (s *PostgresStore) SetSetting(ctx context.Context, key, value string) error {
-	return mapErr(s.q.SetSetting(ctx, db.SetSettingParams{Key: key, Value: value}))
-}
-
-func (s *PostgresStore) ListSettings(ctx context.Context) (map[string]string, error) {
-	rows, err := s.q.ListSettings(ctx)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	out := make(map[string]string, len(rows))
-	for _, r := range rows {
-		out[r.Key] = r.Value
-	}
-	return out, nil
 }
 
 func (s *PostgresStore) UpsertKnownInstance(ctx context.Context, id, domain string) error {

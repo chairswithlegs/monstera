@@ -44,7 +44,7 @@ type FakeStore struct {
 	announcementsByID      map[string]*domain.Announcement
 	announcementReads      map[string]struct{} // "accountID:announcementID"
 	announcementReactions  []announcementReactionEntry
-	Settings               map[string]string // optional; GetSetting reads from here
+	monsteraSettings       *domain.MonsteraSettings
 
 	applications     map[string]*domain.OAuthApplication
 	applicationsByID map[string]*domain.OAuthApplication
@@ -1440,15 +1440,20 @@ func (f *FakeStore) GetStatusAttachments(ctx context.Context, statusID string) (
 	return nil, nil
 }
 
-func (f *FakeStore) GetSetting(ctx context.Context, key string) (string, error) {
+func (f *FakeStore) GetMonsteraSettings(ctx context.Context) (*domain.MonsteraSettings, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.Settings != nil {
-		if v, ok := f.Settings[key]; ok {
-			return v, nil
-		}
+	if f.monsteraSettings != nil {
+		return f.monsteraSettings, nil
 	}
-	return "", nil
+	return &domain.MonsteraSettings{RegistrationMode: domain.MonsteraRegistrationModeOpen}, nil
+}
+
+func (f *FakeStore) UpdateMonsteraSettings(ctx context.Context, in *domain.MonsteraSettings) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.monsteraSettings = &domain.MonsteraSettings{RegistrationMode: in.RegistrationMode}
+	return nil
 }
 
 func (f *FakeStore) GetMediaAttachment(ctx context.Context, id string) (*domain.MediaAttachment, error) {
@@ -2652,12 +2657,6 @@ func (f *FakeStore) DeleteInvite(ctx context.Context, id string) error {
 }
 func (f *FakeStore) IncrementInviteUses(ctx context.Context, code string) error {
 	return nil
-}
-func (f *FakeStore) SetSetting(ctx context.Context, key, value string) error {
-	return nil
-}
-func (f *FakeStore) ListSettings(ctx context.Context) (map[string]string, error) {
-	return nil, nil
 }
 func (f *FakeStore) UpsertKnownInstance(ctx context.Context, id, domain string) error {
 	return nil

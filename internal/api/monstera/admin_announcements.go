@@ -2,6 +2,7 @@ package monstera
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -39,20 +40,36 @@ func (h *AdminAnnouncementsHandler) GETAnnouncements(w http.ResponseWriter, r *h
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
+type postAnnouncementRequest struct {
+	Content        string  `json:"content"`
+	StartsAt       *string `json:"starts_at"`
+	EndsAt         *string `json:"ends_at"`
+	AllDay         bool    `json:"all_day"`
+	parsedStartsAt *time.Time
+	parsedEndsAt   *time.Time
+}
+
+func (r *postAnnouncementRequest) Validate() error {
+	if err := api.ValidateRequiredField(r.Content, "content"); err != nil {
+		return fmt.Errorf("content: %w", err)
+	}
+	var err error
+	r.parsedStartsAt, err = api.ValidateRFC3339Optional(r.StartsAt, "starts_at")
+	if err != nil {
+		return fmt.Errorf("starts_at: %w", err)
+	}
+	r.parsedEndsAt, err = api.ValidateRFC3339Optional(r.EndsAt, "ends_at")
+	if err != nil {
+		return fmt.Errorf("ends_at: %w", err)
+	}
+	return nil
+}
+
 // POSTAnnouncements handles POST /admin/announcements (create).
 func (h *AdminAnnouncementsHandler) POSTAnnouncements(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Content  string  `json:"content"`
-		StartsAt *string `json:"starts_at"`
-		EndsAt   *string `json:"ends_at"`
-		AllDay   bool    `json:"all_day"`
-	}
-	if err := api.DecodeJSONBody(r, &body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
-		return
-	}
-	if body.Content == "" {
-		api.HandleError(w, r, api.NewBadRequestError("content is required"))
+	var body postAnnouncementRequest
+	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	now := time.Now().UTC()
@@ -61,22 +78,8 @@ func (h *AdminAnnouncementsHandler) POSTAnnouncements(w http.ResponseWriter, r *
 		Content:     body.Content,
 		AllDay:      body.AllDay,
 		PublishedAt: now,
-	}
-	if body.StartsAt != nil && *body.StartsAt != "" {
-		t, err := time.Parse(time.RFC3339, *body.StartsAt)
-		if err != nil {
-			api.HandleError(w, r, api.NewBadRequestError("invalid starts_at"))
-			return
-		}
-		in.StartsAt = &t
-	}
-	if body.EndsAt != nil && *body.EndsAt != "" {
-		t, err := time.Parse(time.RFC3339, *body.EndsAt)
-		if err != nil {
-			api.HandleError(w, r, api.NewBadRequestError("invalid ends_at"))
-			return
-		}
-		in.EndsAt = &t
+		StartsAt:    body.parsedStartsAt,
+		EndsAt:      body.parsedEndsAt,
 	}
 	a, err := h.announcements.Create(r.Context(), in)
 	if err != nil {
@@ -84,6 +87,38 @@ func (h *AdminAnnouncementsHandler) POSTAnnouncements(w http.ResponseWriter, r *
 		return
 	}
 	api.WriteJSON(w, http.StatusCreated, domainAnnouncementToAdmin(*a))
+}
+
+type putAnnouncementRequest struct {
+	Content           *string `json:"content"`
+	StartsAt          *string `json:"starts_at"`
+	EndsAt            *string `json:"ends_at"`
+	AllDay            *bool   `json:"all_day"`
+	PublishedAt       *string `json:"published_at"`
+	parsedStartsAt    *time.Time
+	parsedEndsAt      *time.Time
+	parsedPublishedAt time.Time
+	hasPublishedAt    bool
+}
+
+func (r *putAnnouncementRequest) Validate() error {
+	var err error
+	r.parsedStartsAt, err = api.ValidateRFC3339Optional(r.StartsAt, "starts_at")
+	if err != nil {
+		return fmt.Errorf("starts_at: %w", err)
+	}
+	r.parsedEndsAt, err = api.ValidateRFC3339Optional(r.EndsAt, "ends_at")
+	if err != nil {
+		return fmt.Errorf("ends_at: %w", err)
+	}
+	if r.PublishedAt != nil && *r.PublishedAt != "" {
+		r.parsedPublishedAt, err = api.ValidateRFC3339(*r.PublishedAt, "published_at")
+		if err != nil {
+			return fmt.Errorf("published_at: %w", err)
+		}
+		r.hasPublishedAt = true
+	}
+	return nil
 }
 
 // PUTAnnouncement handles PUT /admin/announcements/:id (update).
@@ -102,15 +137,9 @@ func (h *AdminAnnouncementsHandler) PUTAnnouncement(w http.ResponseWriter, r *ht
 		api.HandleError(w, r, err)
 		return
 	}
-	var body struct {
-		Content     *string `json:"content"`
-		StartsAt    *string `json:"starts_at"`
-		EndsAt      *string `json:"ends_at"`
-		AllDay      *bool   `json:"all_day"`
-		PublishedAt *string `json:"published_at"`
-	}
-	if err := api.DecodeJSONBody(r, &body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+	var body putAnnouncementRequest
+	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	in := store.UpdateAnnouncementInput{
@@ -125,39 +154,16 @@ func (h *AdminAnnouncementsHandler) PUTAnnouncement(w http.ResponseWriter, r *ht
 		in.Content = *body.Content
 	}
 	if body.StartsAt != nil {
-		if *body.StartsAt == "" {
-			in.StartsAt = nil
-		} else {
-			t, err := time.Parse(time.RFC3339, *body.StartsAt)
-			if err != nil {
-				api.HandleError(w, r, api.NewBadRequestError("invalid starts_at"))
-				return
-			}
-			in.StartsAt = &t
-		}
+		in.StartsAt = body.parsedStartsAt
 	}
 	if body.EndsAt != nil {
-		if *body.EndsAt == "" {
-			in.EndsAt = nil
-		} else {
-			t, err := time.Parse(time.RFC3339, *body.EndsAt)
-			if err != nil {
-				api.HandleError(w, r, api.NewBadRequestError("invalid ends_at"))
-				return
-			}
-			in.EndsAt = &t
-		}
+		in.EndsAt = body.parsedEndsAt
 	}
 	if body.AllDay != nil {
 		in.AllDay = *body.AllDay
 	}
-	if body.PublishedAt != nil && *body.PublishedAt != "" {
-		t, err := time.Parse(time.RFC3339, *body.PublishedAt)
-		if err != nil {
-			api.HandleError(w, r, api.NewBadRequestError("invalid published_at"))
-			return
-		}
-		in.PublishedAt = t
+	if body.hasPublishedAt {
+		in.PublishedAt = body.parsedPublishedAt
 	}
 	if err := h.announcements.Update(r.Context(), in); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {

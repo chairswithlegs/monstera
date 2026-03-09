@@ -1,6 +1,7 @@
 package monstera
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/chairswithlegs/monstera/internal/api"
@@ -34,27 +35,32 @@ func (h *ModeratorContentHandler) GETFilters(w http.ResponseWriter, r *http.Requ
 	api.WriteJSON(w, http.StatusOK, apimodel.AdminServerFilterList{Filters: out})
 }
 
+type postServerFilterRequest struct {
+	Phrase    string `json:"phrase"`
+	Scope     string `json:"scope"`
+	Action    string `json:"action"`
+	WholeWord bool   `json:"whole_word"`
+}
+
+func (r *postServerFilterRequest) Validate() error {
+	if err := api.ValidateRequiredField(r.Phrase, "phrase"); err != nil {
+		return fmt.Errorf("phrase: %w", err)
+	}
+	if r.Scope == "" {
+		r.Scope = domain.ServerFilterScopeAll
+	}
+	if r.Action == "" {
+		r.Action = domain.ServerFilterActionHide
+	}
+	return nil
+}
+
 // POSTFilters creates a server filter.
 func (h *ModeratorContentHandler) POSTFilters(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Phrase    string `json:"phrase"`
-		Scope     string `json:"scope"`
-		Action    string `json:"action"`
-		WholeWord bool   `json:"whole_word"`
-	}
-	if err := api.DecodeJSONBody(r, &body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+	var body postServerFilterRequest
+	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
-	}
-	if body.Phrase == "" {
-		api.HandleError(w, r, api.NewBadRequestError("phrase required"))
-		return
-	}
-	if body.Scope == "" {
-		body.Scope = domain.ServerFilterScopeAll
-	}
-	if body.Action == "" {
-		body.Action = domain.ServerFilterActionHide
 	}
 	filter, err := h.filters.CreateServerFilter(r.Context(), body.Phrase, body.Scope, body.Action, body.WholeWord)
 	if err != nil {
@@ -64,6 +70,26 @@ func (h *ModeratorContentHandler) POSTFilters(w http.ResponseWriter, r *http.Req
 	api.WriteJSON(w, http.StatusCreated, apimodel.ToAdminServerFilter(filter))
 }
 
+type putServerFilterRequest struct {
+	Phrase    string `json:"phrase"`
+	Scope     string `json:"scope"`
+	Action    string `json:"action"`
+	WholeWord bool   `json:"whole_word"`
+}
+
+func (r *putServerFilterRequest) Validate() error {
+	if err := api.ValidateRequiredField(r.Phrase, "phrase"); err != nil {
+		return fmt.Errorf("phrase: %w", err)
+	}
+	if r.Scope == "" {
+		r.Scope = domain.ServerFilterScopeAll
+	}
+	if r.Action == "" {
+		r.Action = domain.ServerFilterActionHide
+	}
+	return nil
+}
+
 // PUTFilter updates a server filter.
 func (h *ModeratorContentHandler) PUTFilter(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -71,14 +97,9 @@ func (h *ModeratorContentHandler) PUTFilter(w http.ResponseWriter, r *http.Reque
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
 		return
 	}
-	var body struct {
-		Phrase    string `json:"phrase"`
-		Scope     string `json:"scope"`
-		Action    string `json:"action"`
-		WholeWord bool   `json:"whole_word"`
-	}
-	if err := api.DecodeJSONBody(r, &body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+	var body putServerFilterRequest
+	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	filter, err := h.filters.UpdateServerFilter(r.Context(), id, body.Phrase, body.Scope, body.Action, body.WholeWord)

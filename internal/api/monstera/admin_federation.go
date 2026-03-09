@@ -1,6 +1,7 @@
 package monstera
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -63,6 +64,22 @@ func (h *AdminFederationHandler) GETDomainBlocks(w http.ResponseWriter, r *http.
 	api.WriteJSON(w, http.StatusOK, apimodel.AdminDomainBlockList{DomainBlocks: out})
 }
 
+type postDomainBlocksRequest struct {
+	Domain   string  `json:"domain"`
+	Severity string  `json:"severity"`
+	Reason   *string `json:"reason"`
+}
+
+func (r *postDomainBlocksRequest) Validate() error {
+	if err := api.ValidateRequiredField(r.Domain, "domain"); err != nil {
+		return fmt.Errorf("domain: %w", err)
+	}
+	if r.Severity != domain.DomainBlockSeveritySilence && r.Severity != domain.DomainBlockSeveritySuspend {
+		r.Severity = domain.DomainBlockSeveritySilence
+	}
+	return nil
+}
+
 // POSTDomainBlocks creates a domain block (admin only; route protected by RequireAdmin).
 func (h *AdminFederationHandler) POSTDomainBlocks(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromContext(r.Context())
@@ -70,21 +87,10 @@ func (h *AdminFederationHandler) POSTDomainBlocks(w http.ResponseWriter, r *http
 		api.HandleError(w, r, api.ErrForbidden)
 		return
 	}
-	var body struct {
-		Domain   string  `json:"domain"`
-		Severity string  `json:"severity"`
-		Reason   *string `json:"reason"`
-	}
-	if err := api.DecodeJSONBody(r, &body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+	var body postDomainBlocksRequest
+	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
-	}
-	if body.Domain == "" {
-		api.HandleError(w, r, api.NewBadRequestError("domain required"))
-		return
-	}
-	if body.Severity != domain.DomainBlockSeveritySilence && body.Severity != domain.DomainBlockSeveritySuspend {
-		body.Severity = domain.DomainBlockSeveritySilence
 	}
 	_, err := h.moderation.CreateDomainBlock(r.Context(), user.ID, service.CreateDomainBlockInput{
 		Domain:   body.Domain,

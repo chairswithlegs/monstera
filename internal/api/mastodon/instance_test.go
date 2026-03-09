@@ -85,12 +85,6 @@ func (m *mockInstanceService) GetInstanceStats(ctx context.Context) (*service.In
 	}
 	return &service.InstanceStats{}, nil
 }
-func (m *mockInstanceService) GetAllSettings(context.Context) (map[string]string, error) {
-	return nil, nil
-}
-func (m *mockInstanceService) SetSetting(context.Context, string, string) error {
-	return nil
-}
 func (m *mockInstanceService) ListKnownInstances(context.Context, int, int) ([]domain.KnownInstance, error) {
 	return nil, nil
 }

@@ -128,9 +128,13 @@ func (svc *accountService) Register(ctx context.Context, in RegisterInput) (*dom
 	default:
 		return nil, fmt.Errorf("Register: %w", domain.ErrValidation)
 	}
-	regMode, _ := svc.store.GetSetting(ctx, "registration_mode")
-	confirm := regMode != "approval"
-	if regMode == "invite" {
+	settings, err := svc.store.GetMonsteraSettings(ctx)
+	if err != nil {
+		settings = &domain.MonsteraSettings{RegistrationMode: domain.MonsteraRegistrationModeOpen}
+	}
+	regMode := settings.RegistrationMode
+	confirm := regMode != domain.MonsteraRegistrationModeApproval
+	if regMode == domain.MonsteraRegistrationModeInvite {
 		if in.InviteCode == nil || *in.InviteCode == "" {
 			return nil, fmt.Errorf("Register: invite code required: %w", domain.ErrValidation)
 		}
@@ -146,7 +150,7 @@ func (svc *accountService) Register(ctx context.Context, in RegisterInput) (*dom
 		}
 	}
 	var created *domain.Account
-	err := svc.store.WithTx(ctx, func(tx store.Store) error {
+	err = svc.store.WithTx(ctx, func(tx store.Store) error {
 		acc, err := svc.createAccountWithStore(ctx, tx, CreateAccountInput{
 			Username:    in.Username,
 			DisplayName: in.DisplayName,

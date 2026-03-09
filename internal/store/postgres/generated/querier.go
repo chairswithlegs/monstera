@@ -131,6 +131,7 @@ type Querier interface {
 	GetLocalFollowerAccountIDs(ctx context.Context, targetID string) ([]string, error)
 	GetMarkers(ctx context.Context, arg GetMarkersParams) ([]Marker, error)
 	GetMediaAttachment(ctx context.Context, id string) (MediaAttachment, error)
+	GetMonsteraSettings(ctx context.Context) (MonsteraSetting, error)
 	GetMute(ctx context.Context, arg GetMuteParams) (Mute, error)
 	GetNotification(ctx context.Context, arg GetNotificationParams) (Notification, error)
 	GetOrCreateHashtag(ctx context.Context, arg GetOrCreateHashtagParams) (Hashtag, error)
@@ -148,7 +149,6 @@ type Querier interface {
 	GetReport(ctx context.Context, id string) (Report, error)
 	GetScheduledStatusByID(ctx context.Context, id string) (ScheduledStatus, error)
 	GetServerFilter(ctx context.Context, id string) (ServerFilter, error)
-	GetSetting(ctx context.Context, key string) (string, error)
 	GetStatusAncestors(ctx context.Context, id string) ([]GetStatusAncestorsRow, error)
 	GetStatusByAPID(ctx context.Context, apID string) (Status, error)
 	GetStatusByID(ctx context.Context, id string) (Status, error)
@@ -211,7 +211,6 @@ type Querier interface {
 	ListScheduledStatuses(ctx context.Context, arg ListScheduledStatusesParams) ([]ScheduledStatus, error)
 	ListScheduledStatusesDue(ctx context.Context, limit int32) ([]ScheduledStatus, error)
 	ListServerFilters(ctx context.Context) ([]ServerFilter, error)
-	ListSettings(ctx context.Context) ([]InstanceSetting, error)
 	ListStatusAttachments(ctx context.Context, statusID *string) ([]MediaAttachment, error)
 	ListStatusEdits(ctx context.Context, statusID string) ([]StatusEdit, error)
 	ListUnattachedMedia(ctx context.Context, accountID string) ([]MediaAttachment, error)
@@ -227,7 +226,6 @@ type Querier interface {
 	SearchAccounts(ctx context.Context, arg SearchAccountsParams) ([]Account, error)
 	SearchHashtagsByPrefix(ctx context.Context, arg SearchHashtagsByPrefixParams) ([]Hashtag, error)
 	SetMarker(ctx context.Context, arg SetMarkerParams) error
-	SetSetting(ctx context.Context, arg SetSettingParams) error
 	SetStatusConversationID(ctx context.Context, arg SetStatusConversationIDParams) error
 	SilenceAccount(ctx context.Context, id string) error
 	SoftDeleteStatus(ctx context.Context, id string) error
@@ -243,6 +241,7 @@ type Querier interface {
 	UpdateKnownInstanceSoftware(ctx context.Context, arg UpdateKnownInstanceSoftwareParams) error
 	UpdateList(ctx context.Context, arg UpdateListParams) (List, error)
 	UpdateMediaAttachment(ctx context.Context, arg UpdateMediaAttachmentParams) (MediaAttachment, error)
+	UpdateMonsteraSettings(ctx context.Context, registrationMode string) error
 	UpdateScheduledStatus(ctx context.Context, arg UpdateScheduledStatusParams) (ScheduledStatus, error)
 	UpdateServerFilter(ctx context.Context, arg UpdateServerFilterParams) (ServerFilter, error)
 	UpdateStatus(ctx context.Context, arg UpdateStatusParams) (Status, error)

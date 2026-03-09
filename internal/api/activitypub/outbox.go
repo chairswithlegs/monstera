@@ -37,7 +37,7 @@ func NewOutbox(accounts service.AccountService, timelines service.TimelineServic
 // GETOutbox serves the outbox collection or a page.
 func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
-	if err := api.ValidateRequiredString(username); err != nil {
+	if err := api.ValidateRequiredField(username, "username"); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}

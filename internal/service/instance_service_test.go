@@ -2,11 +2,9 @@ package service
 
 import (
 	"context"
-	"log/slog"
 	"testing"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
-	"github.com/chairswithlegs/monstera/internal/events"
 	"github.com/chairswithlegs/monstera/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,6 +14,7 @@ func TestInstanceService_GetNodeInfoStats(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
+	_ = fake.UpdateMonsteraSettings(ctx, &domain.MonsteraSettings{RegistrationMode: domain.MonsteraRegistrationModeApproval})
 	accountSvc := NewAccountService(fake, "https://example.com")
 	instanceSvc := NewInstanceService(fake)
 
@@ -35,7 +34,7 @@ func TestInstanceService_GetNodeInfoStats_open_registrations(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	fake.Settings = map[string]string{"registration_mode": "open"}
+	_ = fake.UpdateMonsteraSettings(ctx, &domain.MonsteraSettings{RegistrationMode: domain.MonsteraRegistrationModeOpen})
 	instanceSvc := NewInstanceService(fake)
 
 	stats, err := instanceSvc.GetNodeInfoStats(ctx)
@@ -49,7 +48,7 @@ func TestInstanceService_GetNodeInfoStats_local_post_count(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	instanceSvc := NewInstanceService(fake)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})

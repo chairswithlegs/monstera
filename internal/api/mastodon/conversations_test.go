@@ -9,7 +9,6 @@ import (
 
 	"github.com/chairswithlegs/monstera/internal/api/middleware"
 	"github.com/chairswithlegs/monstera/internal/domain"
-	"github.com/chairswithlegs/monstera/internal/events"
 	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/testutil"
@@ -23,7 +22,7 @@ func TestConversationsHandler_GETConversations(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, nil)
+	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	convSvc := service.NewConversationService(st, statusSvc)
 	handler := NewConversationsHandler(convSvc, "example.com")
 
@@ -59,7 +58,7 @@ func TestConversationsHandler_DELETEConversation(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, nil)
+	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	convSvc := service.NewConversationService(st, statusSvc)
 	handler := NewConversationsHandler(convSvc, "example.com")
 
@@ -106,7 +105,7 @@ func TestConversationsHandler_POSTConversationRead(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, nil)
+	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	convSvc := service.NewConversationService(st, statusSvc)
 	handler := NewConversationsHandler(convSvc, "example.com")
 

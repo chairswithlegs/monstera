@@ -129,12 +129,12 @@ func TestMediaHandler_PUTMedia(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	})
 
-	t.Run("missing id returns 400", func(t *testing.T) {
+	t.Run("missing id returns 422", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPut, "/api/v1/media/", strings.NewReader(""))
 		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
 		rec := httptest.NewRecorder()
 		handler.PUTMedia(rec, req)
-		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	})
 
 	t.Run("not found returns 404", func(t *testing.T) {

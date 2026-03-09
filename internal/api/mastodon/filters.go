@@ -1,7 +1,6 @@
 package mastodon
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -84,8 +83,8 @@ func (h *FiltersHandler) POSTFilters(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body POSTFiltersRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+	if err := api.DecodeJSONBody(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	f, err := h.filters.CreateFilter(r.Context(), account.ID, body.Phrase, body.Context, body.WholeWord, body.ExpiresAt, body.Irreversible)
@@ -122,8 +121,8 @@ func (h *FiltersHandler) PUTFilter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body PUTFilterRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+	if err := api.DecodeJSONBody(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	f, err := h.filters.UpdateFilter(r.Context(), account.ID, id, body.Phrase, body.Context, body.WholeWord, body.ExpiresAt, body.Irreversible)

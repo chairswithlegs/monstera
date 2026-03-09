@@ -1,8 +1,8 @@
 package mastodon
 
 import (
-	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/chairswithlegs/monstera/internal/api"
@@ -11,6 +11,11 @@ import (
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
 )
+
+var reportCategories = []string{
+	domain.ReportCategorySpam, domain.ReportCategoryIllegal,
+	domain.ReportCategoryViolation, domain.ReportCategoryOther,
+}
 
 // ReportsHandler handles Mastodon API report endpoints.
 type ReportsHandler struct {
@@ -38,6 +43,19 @@ type POSTReportsRequest struct {
 	Forward   bool     `json:"forward"` // Accepted but ignored; report forwarding is out of scope.
 }
 
+func (r *POSTReportsRequest) Validate() error {
+	if err := api.ValidateRequiredField(r.AccountID, "account_id"); err != nil {
+		return fmt.Errorf("account_id: %w", err)
+	}
+	if r.Category == "" {
+		r.Category = domain.ReportCategoryOther
+	}
+	if err := api.ValidateOneOf(r.Category, reportCategories, "category"); err != nil {
+		return fmt.Errorf("category: %w", err)
+	}
+	return nil
+}
+
 // POSTReports handles POST /api/v1/reports.
 func (h *ReportsHandler) POSTReports(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -48,23 +66,8 @@ func (h *ReportsHandler) POSTReports(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body POSTReportsRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
-		return
-	}
-	if body.AccountID == "" {
-		api.HandleError(w, r, api.NewUnprocessableError("account_id is required"))
-		return
-	}
-
-	category := body.Category
-	if category == "" {
-		category = domain.ReportCategoryOther
-	}
-	switch category {
-	case domain.ReportCategorySpam, domain.ReportCategoryIllegal, domain.ReportCategoryViolation, domain.ReportCategoryOther:
-	default:
-		api.HandleError(w, r, api.NewUnprocessableError("invalid category"))
+	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 
@@ -78,7 +81,7 @@ func (h *ReportsHandler) POSTReports(w http.ResponseWriter, r *http.Request) {
 		TargetID:  body.AccountID,
 		StatusIDs: body.StatusIDs,
 		Comment:   comment,
-		Category:  category,
+		Category:  body.Category,
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {

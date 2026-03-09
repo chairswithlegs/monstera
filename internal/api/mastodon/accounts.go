@@ -3,6 +3,7 @@ package mastodon
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -52,7 +53,7 @@ func (h *AccountsHandler) GETVerifyCredentials(w http.ResponseWriter, r *http.Re
 // GETAccounts handles GET /api/v1/accounts/:id. Auth optional. id is the account's internal ID (ULID).
 func (h *AccountsHandler) GETAccounts(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if err := api.ValidateRequiredString(id); err != nil {
+	if err := api.ValidateRequiredField(id, "id"); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
@@ -157,7 +158,7 @@ func (h *AccountsHandler) POSTFollow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	targetID := chi.URLParam(r, "id")
-	if err := api.ValidateRequiredString(targetID); err != nil {
+	if err := api.ValidateRequiredField(targetID, "target_id"); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
@@ -186,7 +187,7 @@ func (h *AccountsHandler) POSTUnfollow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	targetID := chi.URLParam(r, "id")
-	if err := api.ValidateRequiredString(targetID); err != nil {
+	if err := api.ValidateRequiredField(targetID, "target_id"); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
@@ -728,6 +729,17 @@ func (h *AccountsHandler) GETFollowedTags(w http.ResponseWriter, r *http.Request
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
+type postFollowedTagRequest struct {
+	Name string `json:"name"`
+}
+
+func (r *postFollowedTagRequest) Validate() error {
+	if err := api.ValidateRequiredField(r.Name, "name"); err != nil {
+		return fmt.Errorf("name: %w", err)
+	}
+	return nil
+}
+
 // POSTFollowedTags handles POST /api/v1/followed_tags. Body: { "name": "hashtag" }.
 func (h *AccountsHandler) POSTFollowedTags(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
@@ -735,15 +747,9 @@ func (h *AccountsHandler) POSTFollowedTags(w http.ResponseWriter, r *http.Reques
 		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
-	var body struct {
-		Name string `json:"name"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
-		return
-	}
-	if body.Name == "" {
-		api.HandleError(w, r, api.NewUnprocessableError("name is required"))
+	var body postFollowedTagRequest
+	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	tag, err := h.follows.FollowTag(r.Context(), account.ID, body.Name)

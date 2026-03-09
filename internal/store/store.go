@@ -92,7 +92,8 @@ type Store interface {
 	DismissNotification(ctx context.Context, id, accountID string) error
 	GetStatusAttachments(ctx context.Context, statusID string) ([]domain.MediaAttachment, error)
 
-	GetSetting(ctx context.Context, key string) (string, error)
+	GetMonsteraSettings(ctx context.Context) (*domain.MonsteraSettings, error)
+	UpdateMonsteraSettings(ctx context.Context, in *domain.MonsteraSettings) error
 	GetMediaAttachment(ctx context.Context, id string) (*domain.MediaAttachment, error)
 	CountFollowers(ctx context.Context, accountID string) (int64, error)
 	CountFollowing(ctx context.Context, accountID string) (int64, error)
@@ -204,9 +205,6 @@ type Store interface {
 	ListInvitesByCreator(ctx context.Context, createdByUserID string) ([]domain.Invite, error)
 	DeleteInvite(ctx context.Context, id string) error
 	IncrementInviteUses(ctx context.Context, code string) error
-
-	SetSetting(ctx context.Context, key, value string) error
-	ListSettings(ctx context.Context) (map[string]string, error)
 
 	UpsertKnownInstance(ctx context.Context, id, domain string) error
 	ListKnownInstances(ctx context.Context, limit, offset int) ([]domain.KnownInstance, error)

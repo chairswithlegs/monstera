@@ -70,14 +70,17 @@ func TestIntegration_PostgresStore(t *testing.T) {
 		require.Equal(t, "alice", got.Username)
 	})
 
-	t.Run("GetSetting_ListSettings", func(t *testing.T) {
-		val, err := s.GetSetting(ctx, "instance_name")
+	t.Run("GetMonsteraSettings_UpdateMonsteraSettings", func(t *testing.T) {
+		settings, err := s.GetMonsteraSettings(ctx)
 		require.NoError(t, err)
-		require.NotEmpty(t, val)
+		require.NotNil(t, settings)
+		require.NotEmpty(t, string(settings.RegistrationMode))
 
-		settings, err := s.ListSettings(ctx)
+		err = s.UpdateMonsteraSettings(ctx, &domain.MonsteraSettings{RegistrationMode: domain.MonsteraRegistrationModeClosed})
 		require.NoError(t, err)
-		require.GreaterOrEqual(t, len(settings), 1)
+		settings, err = s.GetMonsteraSettings(ctx)
+		require.NoError(t, err)
+		require.Equal(t, domain.MonsteraRegistrationModeClosed, settings.RegistrationMode)
 	})
 
 	t.Run("CountLocalAccounts_CountRemoteAccounts", func(t *testing.T) {

@@ -11,6 +11,18 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+type postAssignReportRequest struct {
+	AssigneeID *string `json:"assignee_id"`
+}
+
+func (postAssignReportRequest) Validate() error { return nil }
+
+type postResolveReportRequest struct {
+	Resolution string `json:"resolution"`
+}
+
+func (postResolveReportRequest) Validate() error { return nil }
+
 // ModeratorReportsHandler handles report queue and actions.
 type ModeratorReportsHandler struct {
 	moderation service.ModerationService
@@ -75,11 +87,9 @@ func (h *ModeratorReportsHandler) POSTAssign(w http.ResponseWriter, r *http.Requ
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
 		return
 	}
-	var body struct {
-		AssigneeID *string `json:"assignee_id"`
-	}
-	if err := api.DecodeJSONBody(r, &body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+	var body postAssignReportRequest
+	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	if err := h.moderation.AssignReport(r.Context(), user.ID, id, body.AssigneeID); err != nil {
@@ -101,11 +111,9 @@ func (h *ModeratorReportsHandler) POSTResolve(w http.ResponseWriter, r *http.Req
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
 		return
 	}
-	var body struct {
-		Resolution string `json:"resolution"`
-	}
-	if err := api.DecodeJSONBody(r, &body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+	var body postResolveReportRequest
+	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	if err := h.moderation.ResolveReport(r.Context(), user.ID, id, body.Resolution); err != nil {

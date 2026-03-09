@@ -15,12 +15,17 @@ alwaysApply: true
 ## Handler pattern
 
 ```go
-account, err := h.accountSvc.GetByID(r.Context(), id)
-if err != nil {
-    api.HandleError(w, r, h.logger, err)
+var body MyRequest
+if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+    api.HandleError(w, r, err)
     return
 }
-writeJSON(w, http.StatusOK, presenter.Account(account))
+result, err := h.svc.Do(r.Context(), body)
+if err != nil {
+    api.HandleError(w, r, err)
+    return
+}
+api.WriteJSON(w, http.StatusOK, result)
 ```
 
 ## Store / service
@@ -33,3 +38,5 @@ writeJSON(w, http.StatusOK, presenter.Account(account))
 - Return API/HTTP-aware types from service or store.
 - Use `%v` when wrapping (use `%w`).
 - Log in service/store and then return the same error (double logging).
+- Use raw `json.NewDecoder(r.Body).Decode` in handlers (use `api.DecodeJSONBody` or `api.DecodeAndValidateJSON`).
+- Return `NewUnprocessableError` for JSON decode failures (use `NewBadRequestError`; 400 = malformed request, 422 = semantically invalid).
