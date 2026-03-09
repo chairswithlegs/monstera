@@ -12,6 +12,9 @@ INSERT INTO status_hashtags (status_id, hashtag_id)
 SELECT $1, unnest($2::text[])
 ON CONFLICT DO NOTHING;
 
+-- name: DeleteStatusHashtags :exec
+DELETE FROM status_hashtags WHERE status_id = $1;
+
 -- name: GetStatusHashtags :many
 SELECT h.* FROM hashtags h
 INNER JOIN status_hashtags sh ON sh.hashtag_id = h.id

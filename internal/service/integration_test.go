@@ -28,7 +28,7 @@ func TestIntegration_RegisterUser_CreateStatus_HomeTimeline(t *testing.T) {
 	s := postgres.New(pool)
 	instanceBaseURL := "https://test.example.com"
 	accountSvc := NewAccountService(s, instanceBaseURL)
-	statusSvc := NewStatusService(s, NoopFederationPublisher, events.NoopEventBus, instanceBaseURL, "test.example.com", 500, slog.Default())
+	statusSvc := NewStatusService(s, NoopFederationPublisher, events.NoopEventBus, nil, instanceBaseURL, "test.example.com", 500, slog.Default())
 	timelineSvc := NewTimelineService(s, statusSvc)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
@@ -41,7 +41,7 @@ func TestIntegration_RegisterUser_CreateStatus_HomeTimeline(t *testing.T) {
 	require.NotNil(t, acc)
 
 	text := "Hello from integration test"
-	st, err := statusSvc.Create(ctx, CreateStatusInput{
+	st, err := statusSvc.CreateLocal(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
 		Text:       &text,
 		Visibility: domain.VisibilityPublic,

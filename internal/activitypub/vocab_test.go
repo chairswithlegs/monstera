@@ -130,3 +130,100 @@ func TestNewAcceptActivity(t *testing.T) {
 	require.NoError(t, json.Unmarshal(accept.ObjectRaw, &decoded))
 	require.Equal(t, "Follow", decoded["type"])
 }
+
+func TestNewDeleteActivity(t *testing.T) {
+	act, err := NewDeleteActivity("https://example.com/activities/del-1", "https://example.com/users/alice", "https://example.com/statuses/123")
+	require.NoError(t, err)
+	require.Equal(t, "Delete", act.Type)
+	require.Equal(t, "https://example.com/activities/del-1", act.ID)
+	require.Equal(t, "https://example.com/users/alice", act.Actor)
+	var obj map[string]any
+	require.NoError(t, json.Unmarshal(act.ObjectRaw, &obj))
+	require.Equal(t, "Tombstone", obj["type"])
+	require.Equal(t, "https://example.com/statuses/123", obj["id"])
+}
+
+func TestNewFollowActivity(t *testing.T) {
+	act, err := NewFollowActivity("https://example.com/activities/f-1", "https://a.com/users/alice", "https://b.com/users/bob")
+	require.NoError(t, err)
+	require.Equal(t, "Follow", act.Type)
+	require.Equal(t, "https://example.com/activities/f-1", act.ID)
+	require.Equal(t, "https://a.com/users/alice", act.Actor)
+	var obj string
+	require.NoError(t, json.Unmarshal(act.ObjectRaw, &obj))
+	require.Equal(t, "https://b.com/users/bob", obj)
+}
+
+func TestNewUndoActivity(t *testing.T) {
+	inner, _ := NewFollowActivity("https://example.com/f", "https://a.com/users/alice", "https://b.com/users/bob")
+	act, err := NewUndoActivity("https://example.com/undo-1", "https://a.com/users/alice", inner)
+	require.NoError(t, err)
+	require.Equal(t, "Undo", act.Type)
+	require.Equal(t, "https://example.com/undo-1", act.ID)
+	require.Equal(t, "https://a.com/users/alice", act.Actor)
+	innerDecoded, err := act.ObjectActivity()
+	require.NoError(t, err)
+	require.Equal(t, "Follow", innerDecoded.Type)
+}
+
+func TestWrapInCreate(t *testing.T) {
+	note := &Note{
+		ID:           "https://example.com/statuses/1",
+		Type:         "Note",
+		AttributedTo: "https://example.com/users/alice",
+		Content:      "Hello",
+		To:           []string{PublicAddress},
+		Published:    "2026-02-25T12:00:00Z",
+		URL:          "https://example.com/statuses/1",
+	}
+	act, err := WrapInCreate("https://example.com/activities/create-1", note)
+	require.NoError(t, err)
+	require.Equal(t, "Create", act.Type)
+	require.Equal(t, "https://example.com/activities/create-1", act.ID)
+	require.Equal(t, "https://example.com/users/alice", act.Actor)
+	var obj map[string]any
+	require.NoError(t, json.Unmarshal(act.ObjectRaw, &obj))
+	require.Equal(t, "Note", obj["type"])
+	require.Equal(t, "Hello", obj["content"])
+}
+
+func TestWrapInUpdate(t *testing.T) {
+	note := &Note{
+		ID:           "https://example.com/statuses/1",
+		Type:         "Note",
+		AttributedTo: "https://example.com/users/alice",
+		Content:      "Updated",
+		To:           []string{PublicAddress},
+		Published:    "2026-02-25T12:00:00Z",
+		URL:          "https://example.com/statuses/1",
+	}
+	act, err := WrapInUpdate("https://example.com/activities/update-1", "https://example.com/users/alice", note)
+	require.NoError(t, err)
+	require.Equal(t, "Update", act.Type)
+	require.Equal(t, "https://example.com/activities/update-1", act.ID)
+	require.Equal(t, "https://example.com/users/alice", act.Actor)
+	var obj map[string]any
+	require.NoError(t, json.Unmarshal(act.ObjectRaw, &obj))
+	require.Equal(t, "Updated", obj["content"])
+}
+
+func TestActivity_ObjectActivity(t *testing.T) {
+	inner := &Activity{Type: "Follow", ID: "https://ex.com/f1", Actor: "https://a.com/u", ObjectRaw: json.RawMessage(`"https://b.com/u"`)}
+	raw, _ := json.Marshal(inner)
+	outer := &Activity{Type: "Accept", ID: "https://ex.com/a1", Actor: "https://b.com/u", ObjectRaw: raw}
+	decoded, err := outer.ObjectActivity()
+	require.NoError(t, err)
+	require.Equal(t, "Follow", decoded.Type)
+	require.Equal(t, "https://ex.com/f1", decoded.ID)
+}
+
+func TestActivity_ObjectActor(t *testing.T) {
+	actorJSON := `{"type":"Person","id":"https://example.com/users/bob","preferredUsername":"bob","name":"Bob"}`
+	a := &Activity{Type: "Update", ObjectRaw: json.RawMessage(actorJSON)}
+	actor, err := a.ObjectActor()
+	require.NoError(t, err)
+	require.Equal(t, "Person", actor.Type)
+	require.Equal(t, "https://example.com/users/bob", actor.ID)
+	require.Equal(t, "bob", actor.PreferredUsername)
+	require.Equal(t, "Bob", actor.Name)
+}

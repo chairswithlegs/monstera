@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/nats-io/nats.go/jetstream"
 
@@ -32,7 +31,7 @@ func NewOutbox(
 	s store.Store,
 	js jetstream.JetStream,
 	bl *BlocklistCache,
-	signer *HTTPSignatureService,
+	signer HTTPSignatureService,
 	cfg *config.Config,
 ) *Outbox {
 	dw := newOutboxDeliveryWorker(js, bl, signer, cfg)
@@ -61,7 +60,7 @@ func (p *Outbox) PublishStatus(ctx context.Context, status *domain.Status) error
 	if err != nil {
 		return fmt.Errorf("outbox: get account: %w", err)
 	}
-	note := p.statusToNote(status, account)
+	note := StatusToNote(status, account, p.cfg.InstanceDomain)
 	activityID := status.APID
 	if activityID == "" {
 		activityID = status.URI
@@ -119,6 +118,43 @@ func (p *Outbox) DeleteStatus(ctx context.Context, status *domain.Status) error 
 		SenderID:   account.ID,
 	}
 	if err := p.fanout.publish(ctx, "delete", msg); err != nil {
+		return fmt.Errorf("outbox: enqueue fanout: %w", err)
+	}
+	return nil
+}
+
+// PublishUpdate enqueues an Update{Note} activity for async fan-out to the author's followers' inboxes.
+func (p *Outbox) PublishUpdate(ctx context.Context, status *domain.Status) error {
+	account, err := p.store.GetAccountByID(ctx, status.AccountID)
+	if err != nil {
+		return fmt.Errorf("outbox: get account: %w", err)
+	}
+	note := StatusToNote(status, account, p.cfg.InstanceDomain)
+	activityID := status.APID
+	if activityID == "" {
+		activityID = status.URI
+	}
+	if activityID == "" {
+		activityID = fmt.Sprintf("https://%s/activities/%s", p.cfg.InstanceDomain, uid.New())
+	}
+	actorID := account.APID
+	if actorID == "" {
+		actorID = fmt.Sprintf("https://%s/users/%s", p.cfg.InstanceDomain, account.Username)
+	}
+	update, err := WrapInUpdate(activityID+"#update", actorID, note)
+	if err != nil {
+		return fmt.Errorf("outbox: wrap update: %w", err)
+	}
+	raw, err := json.Marshal(update)
+	if err != nil {
+		return fmt.Errorf("outbox: marshal update: %w", err)
+	}
+	msg := outboxFanoutMessage{
+		ActivityID: activityID + "#update",
+		Activity:   raw,
+		SenderID:   account.ID,
+	}
+	if err := p.fanout.publish(ctx, "update", msg); err != nil {
 		return fmt.Errorf("outbox: enqueue fanout: %w", err)
 	}
 	return nil
@@ -235,37 +271,4 @@ func (p *Outbox) SendAcceptFollow(ctx context.Context, target, actor *domain.Acc
 		slog.Warn("outbox: enqueue accept follow failed", slog.String("target", actor.InboxURL), slog.Any("error", err))
 	}
 	return nil
-}
-
-func (p *Outbox) statusToNote(s *domain.Status, account *domain.Account) *Note {
-	content := ""
-	if s.Content != nil {
-		content = *s.Content
-	} else if s.Text != nil {
-		content = *s.Text
-	}
-	noteID := s.APID
-	if noteID == "" {
-		noteID = s.URI
-	}
-	if noteID == "" {
-		noteID = fmt.Sprintf("https://%s/statuses/%s", p.cfg.InstanceDomain, s.ID)
-	}
-	actorID := account.APID
-	if actorID == "" {
-		actorID = fmt.Sprintf("https://%s/users/%s", p.cfg.InstanceDomain, account.Username)
-	}
-	published := s.CreatedAt.Format(time.RFC3339)
-	return &Note{
-		Context:      DefaultContext,
-		ID:           noteID,
-		Type:         "Note",
-		AttributedTo: actorID,
-		Content:      content,
-		To:           []string{PublicAddress},
-		Published:    published,
-		URL:          noteID,
-		Sensitive:    s.Sensitive,
-		Summary:      s.ContentWarning,
-	}
 }

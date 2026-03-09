@@ -16,7 +16,7 @@ func TestFollowService_Follow_success(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	followSvc := NewFollowService(fake, nil, nil)
+	followSvc := NewFollowService(fake, NewAccountService(fake, "https://example.com"), nil, nil)
 
 	actor, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -35,7 +35,7 @@ func TestFollowService_Follow_self_returns_validation(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	followSvc := NewFollowService(fake, nil, nil)
+	followSvc := NewFollowService(fake, NewAccountService(fake, "https://example.com"), nil, nil)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -50,7 +50,7 @@ func TestFollowService_Follow_target_not_found(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	followSvc := NewFollowService(fake, nil, nil)
+	followSvc := NewFollowService(fake, NewAccountService(fake, "https://example.com"), nil, nil)
 
 	actor, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -65,7 +65,7 @@ func TestFollowService_Follow_target_suspended_returns_not_found(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	followSvc := NewFollowService(fake, nil, nil)
+	followSvc := NewFollowService(fake, NewAccountService(fake, "https://example.com"), nil, nil)
 
 	actor, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -83,7 +83,7 @@ func TestFollowService_Follow_blocked_returns_forbidden(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	followSvc := NewFollowService(fake, nil, nil)
+	followSvc := NewFollowService(fake, NewAccountService(fake, "https://example.com"), nil, nil)
 
 	actor, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -105,7 +105,7 @@ func TestFollowService_Follow_already_following_returns_relationship(t *testing.
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	followSvc := NewFollowService(fake, nil, nil)
+	followSvc := NewFollowService(fake, NewAccountService(fake, "https://example.com"), nil, nil)
 
 	actor, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -127,7 +127,7 @@ func TestFollowService_Follow_locked_account_creates_pending(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	followSvc := NewFollowService(fake, nil, nil)
+	followSvc := NewFollowService(fake, NewAccountService(fake, "https://example.com"), nil, nil)
 
 	actor, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -146,7 +146,7 @@ func TestFollowService_Unfollow_success(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	followSvc := NewFollowService(fake, nil, nil)
+	followSvc := NewFollowService(fake, NewAccountService(fake, "https://example.com"), nil, nil)
 
 	actor, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -167,7 +167,7 @@ func TestFollowService_Unfollow_no_follow_returns_relationship(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	followSvc := NewFollowService(fake, nil, nil)
+	followSvc := NewFollowService(fake, NewAccountService(fake, "https://example.com"), nil, nil)
 
 	actor, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -185,14 +185,14 @@ func TestFollowService_AcceptFollow_increments_counts(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	followSvc := NewFollowService(fake, nil, nil)
+	followSvc := NewFollowService(fake, NewAccountService(fake, "https://example.com"), nil, nil)
 
 	actor, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 	target, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
 	require.NoError(t, err)
 
-	follow, err := followSvc.CreateFollowFromInbox(ctx, actor.ID, target.ID, domain.FollowStatePending, nil)
+	follow, err := followSvc.CreateRemoteFollow(ctx, actor.ID, target.ID, domain.FollowStatePending, nil)
 	require.NoError(t, err)
 	require.NotNil(t, follow)
 
@@ -212,14 +212,14 @@ func TestFollowService_AcceptFollow_idempotent(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	followSvc := NewFollowService(fake, nil, nil)
+	followSvc := NewFollowService(fake, NewAccountService(fake, "https://example.com"), nil, nil)
 
 	actor, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 	target, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
 	require.NoError(t, err)
 
-	follow, err := followSvc.CreateFollowFromInbox(ctx, actor.ID, target.ID, domain.FollowStatePending, nil)
+	follow, err := followSvc.CreateRemoteFollow(ctx, actor.ID, target.ID, domain.FollowStatePending, nil)
 	require.NoError(t, err)
 
 	require.NoError(t, followSvc.AcceptFollow(ctx, follow.ID))
@@ -237,26 +237,26 @@ func TestFollowService_AcceptFollow_not_found(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	followSvc := NewFollowService(fake, nil, nil)
+	followSvc := NewFollowService(fake, NewAccountService(fake, "https://example.com"), nil, nil)
 
 	err := followSvc.AcceptFollow(ctx, "01nonexistent")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
 
-func TestFollowService_CreateFollowFromInbox_accepted_increments_counts(t *testing.T) {
+func TestFollowService_CreateRemoteFollow_accepted_increments_counts(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	followSvc := NewFollowService(fake, nil, nil)
+	followSvc := NewFollowService(fake, NewAccountService(fake, "https://example.com"), nil, nil)
 
 	actor, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 	target, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
 	require.NoError(t, err)
 
-	follow, err := followSvc.CreateFollowFromInbox(ctx, actor.ID, target.ID, domain.FollowStateAccepted, nil)
+	follow, err := followSvc.CreateRemoteFollow(ctx, actor.ID, target.ID, domain.FollowStateAccepted, nil)
 	require.NoError(t, err)
 	require.NotNil(t, follow)
 	assert.Equal(t, domain.FollowStateAccepted, follow.State)
@@ -269,19 +269,19 @@ func TestFollowService_CreateFollowFromInbox_accepted_increments_counts(t *testi
 	assert.Equal(t, 1, actorAfter.FollowingCount, "actor's following_count should be incremented when state is accepted")
 }
 
-func TestFollowService_CreateFollowFromInbox_pending_does_not_increment_counts(t *testing.T) {
+func TestFollowService_CreateRemoteFollow_pending_does_not_increment_counts(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	followSvc := NewFollowService(fake, nil, nil)
+	followSvc := NewFollowService(fake, NewAccountService(fake, "https://example.com"), nil, nil)
 
 	actor, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 	target, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
 	require.NoError(t, err)
 
-	follow, err := followSvc.CreateFollowFromInbox(ctx, actor.ID, target.ID, domain.FollowStatePending, nil)
+	follow, err := followSvc.CreateRemoteFollow(ctx, actor.ID, target.ID, domain.FollowStatePending, nil)
 	require.NoError(t, err)
 	require.NotNil(t, follow)
 	assert.Equal(t, domain.FollowStatePending, follow.State)

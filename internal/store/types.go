@@ -36,21 +36,23 @@ type CreateUserInput struct {
 
 // CreateStatusInput is the input for creating a status.
 type CreateStatusInput struct {
-	ID                 string
-	URI                string
-	AccountID          string
-	Text               *string
-	Content            *string
-	ContentWarning     *string
-	Visibility         string
-	Language           *string
-	InReplyToID        *string
-	InReplyToAccountID *string
-	ReblogOfID         *string
-	APID               string
-	ApRaw              []byte
-	Sensitive          bool
-	Local              bool
+	ID                  string
+	URI                 string
+	AccountID           string
+	Text                *string
+	Content             *string
+	ContentWarning      *string
+	Visibility          string
+	Language            *string
+	InReplyToID         *string
+	InReplyToAccountID  *string
+	ReblogOfID          *string
+	QuotedStatusID      *string
+	QuoteApprovalPolicy string
+	APID                string
+	ApRaw               []byte
+	Sensitive           bool
+	Local               bool
 }
 
 // CreateApplicationInput is the input for creating an OAuth application.
@@ -133,6 +135,15 @@ type CreateBookmarkInput struct {
 	ID        string
 	AccountID string
 	StatusID  string
+}
+
+// UpsertAccountConversationInput is the input for creating or updating an account_conversations row.
+type UpsertAccountConversationInput struct {
+	ID             string
+	AccountID      string
+	ConversationID string
+	LastStatusID   string
+	Unread         bool
 }
 
 // CreateListInput is the input for creating a list.
@@ -228,6 +239,37 @@ type UpdateStatusInput struct {
 	Sensitive      bool
 }
 
+// CreateScheduledStatusInput is the input for creating a scheduled status.
+type CreateScheduledStatusInput struct {
+	ID          string
+	AccountID   string
+	Params      []byte
+	ScheduledAt time.Time
+}
+
+// UpdateScheduledStatusInput is the input for updating a scheduled status (params and/or scheduled_at).
+type UpdateScheduledStatusInput struct {
+	ID          string
+	Params      []byte
+	ScheduledAt time.Time
+}
+
+// CreatePollInput is the input for creating a poll.
+type CreatePollInput struct {
+	ID        string
+	StatusID  string
+	ExpiresAt *time.Time
+	Multiple  bool
+}
+
+// CreatePollOptionInput is the input for creating a poll option.
+type CreatePollOptionInput struct {
+	ID       string
+	PollID   string
+	Title    string
+	Position int
+}
+
 // CreateReportInput is the input for creating a report.
 type CreateReportInput struct {
 	ID        string
@@ -281,4 +323,24 @@ type UpdateServerFilterInput struct {
 	Scope     string
 	Action    string
 	WholeWord bool
+}
+
+// CreateAnnouncementInput is the input for creating an announcement.
+type CreateAnnouncementInput struct {
+	ID          string
+	Content     string
+	StartsAt    *time.Time
+	EndsAt      *time.Time
+	AllDay      bool
+	PublishedAt time.Time
+}
+
+// UpdateAnnouncementInput is the input for updating an announcement.
+type UpdateAnnouncementInput struct {
+	ID          string
+	Content     string
+	StartsAt    *time.Time
+	EndsAt      *time.Time
+	AllDay      bool
+	PublishedAt time.Time
 }

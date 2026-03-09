@@ -66,7 +66,7 @@ func mapTypeToSearchType(typ string) service.SearchType {
 	}
 }
 
-// GETSearch handles GET /api/v2/search.
+// GETSearch handles GET /api/v1/search and GET /api/v2/search.
 func (h *SearchHandler) GETSearch(w http.ResponseWriter, r *http.Request) {
 	req, err := parseSearchRequest(r)
 	if err != nil {

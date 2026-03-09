@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/store"
@@ -34,25 +35,31 @@ type FollowService interface {
 	Unmute(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error)
 	GetFollowByAPID(ctx context.Context, apID string) (*domain.Follow, error)
 	GetFollow(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Follow, error)
-	CreateFollowFromInbox(ctx context.Context, actorAccountID, targetAccountID string, state string, apID *string) (*domain.Follow, error)
+	CreateRemoteFollow(ctx context.Context, actorAccountID, targetAccountID string, state string, apID *string) (*domain.Follow, error)
 	AcceptFollow(ctx context.Context, followID string) error
-	DeleteFollowFromInbox(ctx context.Context, actorAccountID, targetAccountID string) error
+	DeleteRemoteFollow(ctx context.Context, actorAccountID, targetAccountID string) error
 	GetFollowers(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error)
 	GetFollowing(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error)
 	ListPendingFollowRequests(ctx context.Context, targetAccountID string, maxID *string, limit int) ([]domain.Account, *string, error)
+	ListBlockedAccounts(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, *string, error)
+	ListMutedAccounts(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, *string, error)
 	AuthorizeFollowRequest(ctx context.Context, targetAccountID, requesterAccountID string) error
 	RejectFollowRequest(ctx context.Context, targetAccountID, requesterAccountID string) error
+	ListFollowedTags(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Hashtag, *string, error)
+	FollowTag(ctx context.Context, accountID, tagName string) (*domain.Hashtag, error)
+	UnfollowTag(ctx context.Context, accountID, tagID string) error
 }
 
 type followService struct {
-	store store.Store
-	pub   FollowPublisher
-	block BlockPublisher
+	store    store.Store
+	accounts AccountService
+	pub      FollowPublisher
+	block    BlockPublisher
 }
 
 // NewFollowService returns a FollowService. pub and block may be nil.
-func NewFollowService(s store.Store, pub FollowPublisher, block BlockPublisher) FollowService {
-	return &followService{store: s, pub: pub, block: block}
+func NewFollowService(s store.Store, accounts AccountService, pub FollowPublisher, block BlockPublisher) FollowService {
+	return &followService{store: s, accounts: accounts, pub: pub, block: block}
 }
 
 // Follow creates a follow from actor to target. Returns the relationship after the change.
@@ -71,7 +78,7 @@ func (svc *followService) Follow(ctx context.Context, actorAccountID, targetAcco
 	if target.Suspended {
 		return nil, fmt.Errorf("Follow target: %w", domain.ErrNotFound)
 	}
-	rel, err := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+	rel, err := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("Follow GetRelationship: %w", err)
 	}
@@ -91,7 +98,7 @@ func (svc *followService) Follow(ctx context.Context, actorAccountID, targetAcco
 	existing, _ := svc.store.GetFollow(ctx, actorAccountID, targetAccountID)
 	if existing != nil {
 		if existing.State == domain.FollowStateAccepted || existing.State == domain.FollowStatePending {
-			rel, err := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+			rel, err := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 			if err != nil {
 				return nil, fmt.Errorf("Follow GetRelationship existing: %w", err)
 			}
@@ -142,7 +149,7 @@ func (svc *followService) Follow(ctx context.Context, actorAccountID, targetAcco
 		_ = svc.pub.PublishFollow(ctx, actor, target, follow.ID)
 	}
 
-	rel, err = svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+	rel, err = svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("Follow GetRelationship after: %w", err)
 	}
@@ -153,7 +160,7 @@ func (svc *followService) Follow(ctx context.Context, actorAccountID, targetAcco
 func (svc *followService) Unfollow(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error) {
 	follow, err := svc.store.GetFollow(ctx, actorAccountID, targetAccountID)
 	if err != nil {
-		rel, _ := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+		rel, _ := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 		if rel != nil {
 			return rel, nil
 		}
@@ -179,7 +186,7 @@ func (svc *followService) Unfollow(ctx context.Context, actorAccountID, targetAc
 		_ = svc.pub.PublishUndoFollow(ctx, actor, target, follow.ID)
 	}
 
-	rel, err := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+	rel, err := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("Unfollow GetRelationship: %w", err)
 	}
@@ -229,7 +236,7 @@ func (svc *followService) Block(ctx context.Context, actorAccountID, targetAccou
 	if svc.block != nil && target != nil && actor != nil && target.InboxURL != "" {
 		_ = svc.block.PublishBlock(ctx, actor, target)
 	}
-	rel, err := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+	rel, err := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("Block GetRelationship: %w", err)
 	}
@@ -248,7 +255,7 @@ func (svc *followService) Unblock(ctx context.Context, actorAccountID, targetAcc
 			_ = svc.block.PublishUndoBlock(ctx, actor, target)
 		}
 	}
-	rel, err := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+	rel, err := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("Unblock GetRelationship: %w", err)
 	}
@@ -275,7 +282,7 @@ func (svc *followService) Mute(ctx context.Context, actorAccountID, targetAccoun
 	}); err != nil {
 		return nil, fmt.Errorf("CreateMute: %w", err)
 	}
-	rel, err := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+	rel, err := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("Mute GetRelationship: %w", err)
 	}
@@ -285,7 +292,7 @@ func (svc *followService) Mute(ctx context.Context, actorAccountID, targetAccoun
 // Unmute removes the mute from actor to target. Returns the relationship.
 func (svc *followService) Unmute(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error) {
 	_ = svc.store.DeleteMute(ctx, actorAccountID, targetAccountID)
-	rel, err := svc.store.GetRelationship(ctx, actorAccountID, targetAccountID)
+	rel, err := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("Unmute GetRelationship: %w", err)
 	}
@@ -310,9 +317,9 @@ func (svc *followService) GetFollow(ctx context.Context, actorAccountID, targetA
 	return f, nil
 }
 
-// CreateFollowFromInbox creates a follow from inbox (remote actor following local target).
+// CreateRemoteFollow creates a follow from a remote actor to a local target.
 // When state is accepted (e.g. target not locked), increments follower/following counts.
-func (svc *followService) CreateFollowFromInbox(ctx context.Context, actorAccountID, targetAccountID string, state string, apID *string) (*domain.Follow, error) {
+func (svc *followService) CreateRemoteFollow(ctx context.Context, actorAccountID, targetAccountID string, state string, apID *string) (*domain.Follow, error) {
 	var follow *domain.Follow
 	err := svc.store.WithTx(ctx, func(tx store.Store) error {
 		var txErr error
@@ -337,7 +344,7 @@ func (svc *followService) CreateFollowFromInbox(ctx context.Context, actorAccoun
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("CreateFollowFromInbox: %w", err)
+		return nil, fmt.Errorf("CreateRemoteFollow: %w", err)
 	}
 	return follow, nil
 }
@@ -369,10 +376,10 @@ func (svc *followService) AcceptFollow(ctx context.Context, followID string) err
 	return nil
 }
 
-// DeleteFollowFromInbox removes the follow (for inbox Reject/Undo). Does not decrement follower/following counts.
-func (svc *followService) DeleteFollowFromInbox(ctx context.Context, actorAccountID, targetAccountID string) error {
+// DeleteRemoteFollow removes the follow (e.g. Reject/Undo from federation). Does not decrement follower/following counts.
+func (svc *followService) DeleteRemoteFollow(ctx context.Context, actorAccountID, targetAccountID string) error {
 	if err := svc.store.DeleteFollow(ctx, actorAccountID, targetAccountID); err != nil {
-		return fmt.Errorf("DeleteFollowFromInbox: %w", err)
+		return fmt.Errorf("DeleteRemoteFollow: %w", err)
 	}
 	return nil
 }
@@ -400,6 +407,36 @@ func (svc *followService) ListPendingFollowRequests(ctx context.Context, targetA
 	accounts, nextCursor, err := svc.store.GetPendingFollowRequests(ctx, targetAccountID, maxID, limit)
 	if err != nil {
 		return nil, nil, fmt.Errorf("GetPendingFollowRequests: %w", err)
+	}
+	return accounts, nextCursor, nil
+}
+
+// ListBlockedAccounts returns blocked accounts for the given account (paginated by block id).
+func (svc *followService) ListBlockedAccounts(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, *string, error) {
+	if limit <= 0 {
+		limit = DefaultServiceListLimit
+	}
+	if limit > MaxServicePageLimit {
+		limit = MaxServicePageLimit
+	}
+	accounts, nextCursor, err := svc.store.ListBlockedAccounts(ctx, accountID, maxID, limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("ListBlockedAccounts: %w", err)
+	}
+	return accounts, nextCursor, nil
+}
+
+// ListMutedAccounts returns muted accounts for the given account (paginated by mute id).
+func (svc *followService) ListMutedAccounts(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, *string, error) {
+	if limit <= 0 {
+		limit = DefaultServiceListLimit
+	}
+	if limit > MaxServicePageLimit {
+		limit = MaxServicePageLimit
+	}
+	accounts, nextCursor, err := svc.store.ListMutedAccounts(ctx, accountID, maxID, limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("ListMutedAccounts: %w", err)
 	}
 	return accounts, nextCursor, nil
 }
@@ -436,6 +473,46 @@ func (svc *followService) RejectFollowRequest(ctx context.Context, targetAccount
 	}
 	if err := svc.store.DeleteFollow(ctx, requesterAccountID, targetAccountID); err != nil {
 		return fmt.Errorf("DeleteFollow: %w", err)
+	}
+	return nil
+}
+
+// ListFollowedTags returns tags the account follows, paginated.
+func (svc *followService) ListFollowedTags(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Hashtag, *string, error) {
+	if limit <= 0 {
+		limit = DefaultServiceListLimit
+	}
+	if limit > MaxServicePageLimit {
+		limit = MaxServicePageLimit
+	}
+	tags, next, err := svc.store.ListFollowedTags(ctx, accountID, maxID, limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("ListFollowedTags: %w", err)
+	}
+	return tags, next, nil
+}
+
+// FollowTag resolves the tag by name (creating it if needed), then records the follow.
+func (svc *followService) FollowTag(ctx context.Context, accountID, tagName string) (*domain.Hashtag, error) {
+	tagName = strings.TrimSpace(tagName)
+	if tagName == "" {
+		return nil, fmt.Errorf("FollowTag: %w", domain.ErrValidation)
+	}
+	tag, err := svc.store.GetOrCreateHashtag(ctx, tagName)
+	if err != nil {
+		return nil, fmt.Errorf("GetOrCreateHashtag: %w", err)
+	}
+	rowID := uid.New()
+	if err := svc.store.FollowTag(ctx, rowID, accountID, tag.ID); err != nil {
+		return nil, fmt.Errorf("FollowTag: %w", err)
+	}
+	return tag, nil
+}
+
+// UnfollowTag removes the follow for the given tag ID.
+func (svc *followService) UnfollowTag(ctx context.Context, accountID, tagID string) error {
+	if err := svc.store.UnfollowTag(ctx, accountID, tagID); err != nil {
+		return fmt.Errorf("UnfollowTag: %w", err)
 	}
 	return nil
 }

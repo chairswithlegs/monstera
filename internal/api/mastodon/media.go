@@ -26,7 +26,7 @@ func NewMediaHandler(media service.MediaService) *MediaHandler {
 	return &MediaHandler{media: media}
 }
 
-// POSTMedia handles POSTMedia /api/v2/media.
+// POSTMedia handles POST /api/v1/media and POST /api/v2/media.
 func (h *MediaHandler) POSTMedia(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
 	if account == nil {

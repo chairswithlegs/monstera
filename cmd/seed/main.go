@@ -46,6 +46,7 @@ func run() error {
 	}
 
 	logger := observability.NewLogger(cfg.AppEnv, cfg.LogLevel)
+	slog.SetDefault(logger)
 	ctx := context.Background()
 
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
@@ -57,25 +58,28 @@ func run() error {
 		return fmt.Errorf("database ping: %w", err)
 	}
 
+	slog.InfoContext(ctx, "Running database migrations")
 	if err := store.RunUp(cfg.DatabaseURL); err != nil {
 		return fmt.Errorf("migrate up: %w", err)
 	}
+	slog.InfoContext(ctx, "Database migrations completed")
 
 	s := postgres.New(pool)
 	instanceBaseURL := "https://" + cfg.InstanceDomain
 	accountSvc := service.NewAccountService(s, instanceBaseURL)
 
+	slog.InfoContext(ctx, "Seeding users")
 	for _, u := range seedUsers {
-		if err := runSeedUser(ctx, logger, s, accountSvc, u); err != nil {
+		if err := runSeedUser(ctx, s, accountSvc, u); err != nil {
 			return fmt.Errorf("seed user %s: %w", u.Username, err)
 		}
 	}
 
-	logger.Info("seed complete")
+	slog.InfoContext(ctx, "Seed complete")
 	return nil
 }
 
-func runSeedUser(ctx context.Context, logger *slog.Logger, s store.Store, accountSvc service.AccountService, u seedUser) error {
+func runSeedUser(ctx context.Context, s store.Store, accountSvc service.AccountService, u seedUser) error {
 	acc, err := s.GetLocalAccountByUsername(ctx, u.Username)
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return fmt.Errorf("get account: %w", err)
@@ -89,9 +93,9 @@ func runSeedUser(ctx context.Context, logger *slog.Logger, s store.Store, accoun
 			if err := s.ConfirmUser(ctx, user.ID); err != nil {
 				return fmt.Errorf("confirm user: %w", err)
 			}
-			logger.Info("user already existed, confirmed", slog.String("username", u.Username))
+			slog.InfoContext(ctx, "user already existed, confirmed", slog.String("username", u.Username))
 		} else {
-			logger.Info("user already exists", slog.String("username", u.Username))
+			slog.InfoContext(ctx, "user already exists", slog.String("username", u.Username))
 		}
 		return nil
 	}
@@ -118,6 +122,6 @@ func runSeedUser(ctx context.Context, logger *slog.Logger, s store.Store, accoun
 	if err := s.ConfirmUser(ctx, user.ID); err != nil {
 		return fmt.Errorf("confirm user: %w", err)
 	}
-	logger.Info("created user", slog.String("username", u.Username), slog.String("email", u.Email))
+	slog.InfoContext(ctx, "created user", slog.String("username", u.Username), slog.String("email", u.Email))
 	return nil
 }

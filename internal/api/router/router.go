@@ -32,18 +32,27 @@ type Deps struct {
 	OAuthHandler *oauthhandlers.Handler
 
 	// Mastodon API handlers
-	Accounts       *mastodon.AccountsHandler
-	Statuses       *mastodon.StatusesHandler
-	Timelines      *mastodon.TimelinesHandler
-	Instance       *mastodon.InstanceHandler
-	Notifications  *mastodon.NotificationsHandler
-	Media          *mastodon.MediaHandler
-	Search         *mastodon.SearchHandler
-	Streaming      *mastodon.StreamingHandler
-	Reports        *mastodon.ReportsHandler
-	FollowRequests *mastodon.FollowRequestsHandler
-	Lists          *mastodon.ListsHandler
-	Filters        *mastodon.FiltersHandler
+	Accounts          *mastodon.AccountsHandler
+	Statuses          *mastodon.StatusesHandler
+	ScheduledStatuses *mastodon.ScheduledStatusesHandler
+	Polls             *mastodon.PollsHandler
+	Timelines         *mastodon.TimelinesHandler
+	Instance          *mastodon.InstanceHandler
+	Trends            *mastodon.TrendsHandler
+	Conversations     *mastodon.ConversationsHandler
+	Suggestions       *mastodon.SuggestionsHandler
+	Notifications     *mastodon.NotificationsHandler
+	Media             *mastodon.MediaHandler
+	Search            *mastodon.SearchHandler
+	Streaming         *mastodon.StreamingHandler
+	Reports           *mastodon.ReportsHandler
+	FollowRequests    *mastodon.FollowRequestsHandler
+	Lists             *mastodon.ListsHandler
+	Filters           *mastodon.FiltersHandler
+	Preferences       *mastodon.PreferencesHandler
+	Markers           *mastodon.MarkersHandler
+	FeaturedTags      *mastodon.FeaturedTagsHandler
+	Announcements     *mastodon.AnnouncementsHandler
 
 	// ActivityPub handlers
 	WebFinger   *activitypub.WebFingerHandler
@@ -68,6 +77,7 @@ type Deps struct {
 	AdminFederation        *monstera.AdminFederationHandler
 	ModeratorContent       *monstera.ModeratorContentHandler
 	AdminSettings          *monstera.AdminSettingsHandler
+	AdminAnnouncements     *monstera.AdminAnnouncementsHandler
 }
 
 // New builds the chi router with global middleware and P1–P2 routes.
@@ -108,6 +118,7 @@ func New(deps Deps) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth(deps.OAuthServer, deps.AccountsService))
 			r.Method("POST", "/media", middleware.RequiredScopes("write:media")(http.HandlerFunc(deps.Media.POSTMedia)))
+			r.Method("GET", "/suggestions", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Suggestions.GETSuggestions)))
 		})
 	})
 
@@ -131,7 +142,7 @@ func New(deps Deps) http.Handler {
 		r.Group(func(r chi.Router) {
 			// Public routes
 			r.Use(chimw.Timeout(30 * time.Second))
-			r.Get("/instance", deps.Instance.GETInstance)
+			r.Get("/instance", deps.Instance.GETInstanceV1)
 			r.Post("/apps", deps.OAuthHandler.POSTRegisterApp)
 			r.Get("/custom_emojis", deps.Instance.GETCustomEmojis)
 
@@ -140,18 +151,28 @@ func New(deps Deps) http.Handler {
 				r.Use(middleware.OptionalAuth(deps.OAuthServer, deps.AccountsService))
 				r.Get("/accounts/lookup", deps.Accounts.GETAccountsLookup)
 				r.Get("/accounts/{id}", deps.Accounts.GETAccounts)
+				r.Get("/directory", deps.Accounts.GETDirectory)
+				r.Get("/search", deps.Search.GETSearch)
 				r.Get("/statuses/{id}", deps.Statuses.GETStatuses)
 				r.Get("/statuses/{id}/context", deps.Statuses.GETContext)
 				r.Get("/statuses/{id}/favourited_by", deps.Statuses.GETFavouritedBy)
 				r.Get("/statuses/{id}/reblogged_by", deps.Statuses.GETRebloggedBy)
+				r.Get("/polls/{id}", deps.Polls.GETPoll)
 				r.Get("/timelines/public", deps.Timelines.GETPublic)
 				r.Get("/timelines/tag/{hashtag}", deps.Timelines.GETTag)
+				r.Get("/trends/statuses", deps.Trends.GETTrendsStatuses)
+				r.Get("/trends/tags", deps.Trends.GETTrendsTags)
+				r.Get("/trends/links", deps.Trends.GETTrendsLinks)
 			})
 
 			// Auth required routes
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequireAuth(deps.OAuthServer, deps.AccountsService))
 				r.Method("GET", "/accounts/verify_credentials", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Accounts.GETVerifyCredentials)))
+				r.Method("GET", "/preferences", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Preferences.GETPreferences)))
+				r.Method("GET", "/statuses/{id}/quotes", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.Statuses.GETQuotes)))
+				r.Method("GET", "/markers", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.Markers.GETMarkers)))
+				r.Method("POST", "/markers", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Markers.POSTMarkers)))
 				r.Method("PATCH", "/accounts/update_credentials", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.Accounts.PATCHUpdateCredentials)))
 				r.Method("GET", "/accounts/relationships", middleware.RequiredScopes("read:follows")(http.HandlerFunc(deps.Accounts.GETRelationships)))
 				r.Method("GET", "/accounts/{id}/statuses", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Accounts.GETAccountStatuses)))
@@ -159,10 +180,28 @@ func New(deps Deps) http.Handler {
 				r.Method("GET", "/accounts/{id}/following", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Accounts.GETFollowing)))
 				r.Method("POST", "/accounts/{id}/follow", middleware.RequiredScopes("write:follows")(http.HandlerFunc(deps.Accounts.POSTFollow)))
 				r.Method("POST", "/accounts/{id}/unfollow", middleware.RequiredScopes("write:follows")(http.HandlerFunc(deps.Accounts.POSTUnfollow)))
+				r.Method("GET", "/blocks", middleware.RequiredScopes("read:blocks")(http.HandlerFunc(deps.Accounts.GETBlocks)))
 				r.Method("POST", "/accounts/{id}/block", middleware.RequiredScopes("write:blocks")(http.HandlerFunc(deps.Accounts.POSTBlock)))
 				r.Method("POST", "/accounts/{id}/unblock", middleware.RequiredScopes("write:blocks")(http.HandlerFunc(deps.Accounts.POSTUnblock)))
+				r.Method("GET", "/mutes", middleware.RequiredScopes("read:mutes")(http.HandlerFunc(deps.Accounts.GETMutes)))
 				r.Method("POST", "/accounts/{id}/mute", middleware.RequiredScopes("write:mutes")(http.HandlerFunc(deps.Accounts.POSTMute)))
 				r.Method("POST", "/accounts/{id}/unmute", middleware.RequiredScopes("write:mutes")(http.HandlerFunc(deps.Accounts.POSTUnmute)))
+				r.Method("GET", "/followed_tags", middleware.RequiredScopes("read:follows")(http.HandlerFunc(deps.Accounts.GETFollowedTags)))
+				r.Method("POST", "/followed_tags", middleware.RequiredScopes("write:follows")(http.HandlerFunc(deps.Accounts.POSTFollowedTags)))
+				r.Method("DELETE", "/followed_tags/{id}", middleware.RequiredScopes("write:follows")(http.HandlerFunc(deps.Accounts.DELETEFollowedTag)))
+				r.Method("GET", "/featured_tags", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.FeaturedTags.GETFeaturedTags)))
+				r.Method("POST", "/featured_tags", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.FeaturedTags.POSTFeaturedTags)))
+				r.Method("DELETE", "/featured_tags/{id}", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.FeaturedTags.DELETEFeaturedTag)))
+				r.Method("GET", "/featured_tags/suggestions", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.FeaturedTags.GETFeaturedTagSuggestions)))
+				r.Method("GET", "/announcements", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Announcements.GETAnnouncements)))
+				r.Route("/announcements/{id}", func(r chi.Router) {
+					r.Method("POST", "/dismiss", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.Announcements.POSTDismissAnnouncement)))
+					r.Route("/reactions/{name}", func(r chi.Router) {
+						r.Method("PUT", "/", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.Announcements.PUTAnnouncementReaction)))
+						r.Method("DELETE", "/", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.Announcements.DELETEAnnouncementReaction)))
+					})
+				})
+				r.Method("POST", "/media", middleware.RequiredScopes("write:media")(http.HandlerFunc(deps.Media.POSTMedia)))
 				r.Method("PUT", "/media/{id}", middleware.RequiredScopes("write:media")(http.HandlerFunc(deps.Media.PUTMedia)))
 				r.Method("POST", "/statuses", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.POSTStatuses)))
 				r.Method("DELETE", "/statuses/{id}", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.DELETEStatuses)))
@@ -170,6 +209,20 @@ func New(deps Deps) http.Handler {
 				r.Method("POST", "/statuses/{id}/unreblog", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.POSTUnreblog)))
 				r.Method("POST", "/statuses/{id}/favourite", middleware.RequiredScopes("write:favourites")(http.HandlerFunc(deps.Statuses.POSTFavourite)))
 				r.Method("POST", "/statuses/{id}/unfavourite", middleware.RequiredScopes("write:favourites")(http.HandlerFunc(deps.Statuses.POSTUnfavourite)))
+				r.Method("PUT", "/statuses/{id}", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.PUTStatuses)))
+				r.Method("PUT", "/statuses/{id}/interaction_policy", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.PUTInteractionPolicy)))
+				r.Method("POST", "/statuses/{id}/quotes/{quoting_status_id}/revoke", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.POSTRevokeQuote)))
+				r.Method("GET", "/statuses/{id}/history", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.Statuses.GETStatusHistory)))
+				r.Method("GET", "/statuses/{id}/source", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.Statuses.GETStatusSource)))
+				r.Method("POST", "/statuses/{id}/pin", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.POSTPin)))
+				r.Method("POST", "/statuses/{id}/unpin", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.POSTUnpin)))
+				r.Method("POST", "/statuses/{id}/mute", middleware.RequiredScopes("write:mutes")(http.HandlerFunc(deps.Statuses.POSTMuteConversation)))
+				r.Method("POST", "/statuses/{id}/unmute", middleware.RequiredScopes("write:mutes")(http.HandlerFunc(deps.Statuses.POSTUnmuteConversation)))
+				r.Method("GET", "/scheduled_statuses", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.ScheduledStatuses.GETScheduledStatuses)))
+				r.Method("GET", "/scheduled_statuses/{id}", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.ScheduledStatuses.GETScheduledStatus)))
+				r.Method("POST", "/polls/{id}/votes", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Polls.POSTVotes)))
+				r.Method("PUT", "/scheduled_statuses/{id}", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.ScheduledStatuses.PUTScheduledStatus)))
+				r.Method("DELETE", "/scheduled_statuses/{id}", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.ScheduledStatuses.DELETEScheduledStatus)))
 				r.Method("POST", "/statuses/{id}/bookmark", middleware.RequiredScopes("write:bookmarks")(http.HandlerFunc(deps.Statuses.POSTBookmark)))
 				r.Method("POST", "/statuses/{id}/unbookmark", middleware.RequiredScopes("write:bookmarks")(http.HandlerFunc(deps.Statuses.POSTUnbookmark)))
 				r.Method("GET", "/timelines/home", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.Timelines.GETHome)))
@@ -186,6 +239,12 @@ func New(deps Deps) http.Handler {
 					r.Method("POST", "/accounts", middleware.RequiredScopes("write:lists")(http.HandlerFunc(deps.Lists.POSTListAccounts)))
 					r.Method("DELETE", "/accounts", middleware.RequiredScopes("write:lists")(http.HandlerFunc(deps.Lists.DELETEListAccounts)))
 				})
+				r.Method("GET", "/conversations", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.Conversations.GETConversations)))
+				r.Route("/conversations/{id}", func(r chi.Router) {
+					r.Method("DELETE", "/", middleware.RequiredScopes("write:conversations")(http.HandlerFunc(deps.Conversations.DELETEConversation)))
+					r.Method("POST", "/read", middleware.RequiredScopes("write:conversations")(http.HandlerFunc(deps.Conversations.POSTConversationRead)))
+				})
+				r.Method("GET", "/suggestions", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Suggestions.GETSuggestions)))
 				r.Method("GET", "/notifications", middleware.RequiredScopes("read:notifications")(http.HandlerFunc(deps.Notifications.GETNotifications)))
 				r.Method("GET", "/notifications/{id}", middleware.RequiredScopes("read:notifications")(http.HandlerFunc(deps.Notifications.GETNotification)))
 				r.Method("POST", "/notifications/clear", middleware.RequiredScopes("write:notifications")(http.HandlerFunc(deps.Notifications.POSTClear)))
@@ -247,6 +306,12 @@ func New(deps Deps) http.Handler {
 				r.Use(middleware.RequireAdmin())
 				r.Get("/", deps.AdminSettings.GETSettings)
 				r.Put("/", deps.AdminSettings.PUTSettings)
+			})
+			r.Route("/announcements", func(r chi.Router) {
+				r.Use(middleware.RequireAdmin())
+				r.Get("/", deps.AdminAnnouncements.GETAnnouncements)
+				r.Post("/", deps.AdminAnnouncements.POSTAnnouncements)
+				r.Put("/{id}", deps.AdminAnnouncements.PUTAnnouncement)
 			})
 		})
 	})

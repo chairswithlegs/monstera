@@ -61,17 +61,17 @@ func (h *ListsHandler) GETList(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	l, err := h.lists.GetList(r.Context(), id)
+	l, err := h.lists.GetList(r.Context(), account.ID, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
 			return
 		}
+		if errors.Is(err, domain.ErrForbidden) {
+			api.HandleError(w, r, api.ErrForbidden)
+			return
+		}
 		api.HandleError(w, r, err)
-		return
-	}
-	if l.AccountID != account.ID {
-		api.HandleError(w, r, api.ErrForbidden)
 		return
 	}
 	api.WriteJSON(w, http.StatusOK, apimodel.ToList(l))
@@ -187,44 +187,22 @@ func (h *ListsHandler) GETListAccounts(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	l, err := h.lists.GetList(r.Context(), id)
+	accounts, err := h.lists.GetListAccounts(r.Context(), account.ID, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
 			return
 		}
-		api.HandleError(w, r, err)
-		return
-	}
-	if l.AccountID != account.ID {
-		api.HandleError(w, r, api.ErrForbidden)
-		return
-	}
-	accountIDs, err := h.lists.ListListAccountIDs(r.Context(), id)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	if len(accountIDs) == 0 {
-		api.WriteJSON(w, http.StatusOK, []apimodel.Account{})
-		return
-	}
-	accounts, err := h.accounts.GetAccountsByIDs(r.Context(), accountIDs)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	byID := make(map[string]*domain.Account, len(accounts))
-	for _, acc := range accounts {
-		byID[acc.ID] = acc
-	}
-	out := make([]apimodel.Account, 0, len(accountIDs))
-	for _, aid := range accountIDs {
-		acc := byID[aid]
-		if acc == nil || acc.Suspended {
-			continue
+		if errors.Is(err, domain.ErrForbidden) {
+			api.HandleError(w, r, api.ErrForbidden)
+			return
 		}
-		out = append(out, apimodel.ToAccount(acc, h.instanceDomain))
+		api.HandleError(w, r, err)
+		return
+	}
+	out := make([]apimodel.Account, 0, len(accounts))
+	for i := range accounts {
+		out = append(out, apimodel.ToAccount(&accounts[i], h.instanceDomain))
 	}
 	api.WriteJSON(w, http.StatusOK, out)
 }

@@ -17,13 +17,49 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestNotificationsHandler_GETNotifications(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	notifSvc := service.NewNotificationService(st)
+	handler := NewNotificationsHandler(notifSvc, accountSvc, nil, "example.com")
+
+	acc, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications", nil)
+		rec := httptest.NewRecorder()
+		handler.GETNotifications(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("authenticated returns 200 and array", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		rec := httptest.NewRecorder()
+		handler.GETNotifications(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body []any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.NotNil(t, body)
+		assert.Empty(t, body)
+	})
+}
+
 func TestNotificationsHandler_GETNotification(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	notifSvc := service.NewNotificationService(st)
-	handler := NewNotificationsHandler(notifSvc, accountSvc, "example.com")
+	handler := NewNotificationsHandler(notifSvc, accountSvc, nil, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -80,7 +116,7 @@ func TestNotificationsHandler_POSTClear(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	notifSvc := service.NewNotificationService(st)
-	handler := NewNotificationsHandler(notifSvc, accountSvc, "example.com")
+	handler := NewNotificationsHandler(notifSvc, accountSvc, nil, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -112,7 +148,7 @@ func TestNotificationsHandler_POSTDismiss(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	notifSvc := service.NewNotificationService(st)
-	handler := NewNotificationsHandler(notifSvc, accountSvc, "example.com")
+	handler := NewNotificationsHandler(notifSvc, accountSvc, nil, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "alice",

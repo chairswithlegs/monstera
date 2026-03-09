@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"strings"
 	"testing"
 
@@ -32,6 +34,72 @@ func (f *fakeMediaStore) Get(ctx context.Context, key string) (io.ReadCloser, er
 func (f *fakeMediaStore) Delete(ctx context.Context, key string) error { return nil }
 func (f *fakeMediaStore) URL(ctx context.Context, key string) (string, error) {
 	return f.baseURL + "/" + key, nil
+}
+
+func TestMediaHandler_POSTMedia(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	mediaStore := &fakeMediaStore{baseURL: "https://media.example.com"}
+	mediaSvc := service.NewMediaService(st, mediaStore, 10<<20)
+	handler := NewMediaHandler(mediaSvc)
+
+	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		var buf bytes.Buffer
+		w := multipart.NewWriter(&buf)
+		fw, _ := w.CreateFormFile("file", "image.jpg")
+		_, _ = fw.Write(testutil.MinimalJPEG(t))
+		contentType := w.FormDataContentType()
+		require.NoError(t, w.Close())
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/media", &buf)
+		req.Header.Set("Content-Type", contentType)
+		rec := httptest.NewRecorder()
+		handler.POSTMedia(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("missing file returns 400", func(t *testing.T) {
+		var buf bytes.Buffer
+		w := multipart.NewWriter(&buf)
+		_ = w.WriteField("description", "alt")
+		contentType := w.FormDataContentType()
+		require.NoError(t, w.Close())
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/media", &buf)
+		req.Header.Set("Content-Type", contentType)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		rec := httptest.NewRecorder()
+		handler.POSTMedia(rec, req)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("valid file returns 200 and attachment", func(t *testing.T) {
+		var buf bytes.Buffer
+		w := multipart.NewWriter(&buf)
+		partHeader := textproto.MIMEHeader{
+			"Content-Disposition": {`form-data; name="file"; filename="image.jpg"`},
+			"Content-Type":        {"image/jpeg"},
+		}
+		fw, err := w.CreatePart(partHeader)
+		require.NoError(t, err)
+		_, err = fw.Write(testutil.MinimalJPEG(t))
+		require.NoError(t, err)
+		contentType := w.FormDataContentType()
+		require.NoError(t, w.Close())
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/media", &buf)
+		req.Header.Set("Content-Type", contentType)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		rec := httptest.NewRecorder()
+		handler.POSTMedia(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.NotEmpty(t, body["id"])
+		assert.Equal(t, "image", body["type"])
+	})
 }
 
 func TestMediaHandler_PUTMedia(t *testing.T) {

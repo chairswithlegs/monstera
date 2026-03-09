@@ -79,6 +79,9 @@ UPDATE accounts SET following_count = GREATEST(0, following_count - 1) WHERE id 
 -- name: IncrementStatusesCount :exec
 UPDATE accounts SET statuses_count = statuses_count + 1 WHERE id = $1;
 
+-- name: UpdateAccountLastStatusAt :exec
+UPDATE accounts SET last_status_at = NOW() WHERE id = $1;
+
 -- name: DecrementStatusesCount :exec
 UPDATE accounts SET statuses_count = GREATEST(0, statuses_count - 1) WHERE id = $1;
 
@@ -91,6 +94,15 @@ WHERE suspended = FALSE
   )
 ORDER BY (domain IS NOT NULL), username
 LIMIT $2;
+
+-- name: ListDirectoryAccounts :many
+SELECT * FROM accounts
+WHERE (NOT $1 OR domain IS NULL)
+  AND suspended = FALSE
+ORDER BY
+  CASE WHEN $2::text = 'active' THEN last_status_at END DESC NULLS LAST,
+  created_at DESC
+LIMIT $3 OFFSET $4;
 
 -- name: DeleteAccount :exec
 DELETE FROM accounts WHERE id = $1;

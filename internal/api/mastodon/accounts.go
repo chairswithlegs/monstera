@@ -113,6 +113,42 @@ func (h *AccountsHandler) GETAccountsLookup(w http.ResponseWriter, r *http.Reque
 	api.WriteJSON(w, http.StatusOK, apimodel.ToAccount(acc, h.instanceDomain))
 }
 
+// GETDirectory handles GET /api/v1/directory. Auth optional. Returns discoverable/local accounts.
+func (h *AccountsHandler) GETDirectory(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	limit := DefaultListLimit
+	if l := q.Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+			if limit > MaxListLimit {
+				limit = MaxListLimit
+			}
+		}
+	}
+	offset := 0
+	if o := q.Get("offset"); o != "" {
+		if n, err := strconv.Atoi(o); err == nil && n > 0 {
+			offset = n
+		}
+	}
+	order := q.Get("order")
+	if order != "active" && order != "new" {
+		order = "active"
+	}
+	localOnly := q.Get("local") == "true"
+
+	accounts, err := h.accounts.ListDirectory(r.Context(), order, localOnly, offset, limit)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	out := make([]apimodel.Account, 0, len(accounts))
+	for i := range accounts {
+		out = append(out, apimodel.ToAccount(&accounts[i], h.instanceDomain))
+	}
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
 // POSTFollow handles POST /api/v1/accounts/:id/follow. Auth required.
 func (h *AccountsHandler) POSTFollow(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
@@ -248,6 +284,14 @@ func (h *AccountsHandler) PATCHUpdateCredentials(w http.ResponseWriter, r *http.
 		notePtr = &note
 	}
 	fields := parseFieldsAttributes(form)
+	quotePolicy := formValue(form, "source[quote_policy]")
+	if quotePolicy == "" {
+		quotePolicy = formValue(form, "quote_policy")
+	}
+	var defaultQuotePolicy *string
+	if quotePolicy != "" {
+		defaultQuotePolicy = &quotePolicy
+	}
 	acc, user, err := h.accounts.GetAccountWithUser(r.Context(), account.ID)
 	if err != nil {
 		api.HandleError(w, r, err)
@@ -257,14 +301,15 @@ func (h *AccountsHandler) PATCHUpdateCredentials(w http.ResponseWriter, r *http.
 		fields = acc.Fields
 	}
 	updated, updatedUser, err := h.accounts.UpdateCredentials(r.Context(), service.UpdateCredentialsInput{
-		AccountID:     account.ID,
-		DisplayName:   displayNamePtr,
-		Note:          notePtr,
-		AvatarMediaID: avatarMediaID,
-		HeaderMediaID: headerMediaID,
-		Locked:        locked,
-		Bot:           bot,
-		Fields:        fields,
+		AccountID:          account.ID,
+		DisplayName:        displayNamePtr,
+		Note:               notePtr,
+		AvatarMediaID:      avatarMediaID,
+		HeaderMediaID:      headerMediaID,
+		Locked:             locked,
+		Bot:                bot,
+		DefaultQuotePolicy: defaultQuotePolicy,
+		Fields:             fields,
 	})
 	if err != nil {
 		api.HandleError(w, r, err)
@@ -458,6 +503,74 @@ func (h *AccountsHandler) GETFollowing(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
+// GETBlocks handles GET /api/v1/blocks. Returns paginated blocked accounts for the authenticated user.
+func (h *AccountsHandler) GETBlocks(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	params := PageParamsFromRequest(r)
+	limit := DefaultListLimit
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+			if limit > MaxListLimit {
+				limit = MaxListLimit
+			}
+		}
+	}
+	blocks, nextCursor, err := h.follows.ListBlockedAccounts(r.Context(), account.ID, optionalString(params.MaxID), limit)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	out := make([]apimodel.Account, 0, len(blocks))
+	for i := range blocks {
+		out = append(out, apimodel.ToAccount(&blocks[i], h.instanceDomain))
+	}
+	if nextCursor != nil && *nextCursor != "" {
+		if link := linkHeaderWithNext(AbsoluteRequestURL(r, h.instanceDomain), *nextCursor); link != "" {
+			w.Header().Set("Link", link)
+		}
+	}
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// GETMutes handles GET /api/v1/mutes. Returns paginated muted accounts for the authenticated user.
+func (h *AccountsHandler) GETMutes(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	params := PageParamsFromRequest(r)
+	limit := DefaultListLimit
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+			if limit > MaxListLimit {
+				limit = MaxListLimit
+			}
+		}
+	}
+	mutes, nextCursor, err := h.follows.ListMutedAccounts(r.Context(), account.ID, optionalString(params.MaxID), limit)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	out := make([]apimodel.Account, 0, len(mutes))
+	for i := range mutes {
+		out = append(out, apimodel.ToAccount(&mutes[i], h.instanceDomain))
+	}
+	if nextCursor != nil && *nextCursor != "" {
+		if link := linkHeaderWithNext(AbsoluteRequestURL(r, h.instanceDomain), *nextCursor); link != "" {
+			w.Header().Set("Link", link)
+		}
+	}
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
 // POSTBlock handles POST /api/v1/accounts/:id/block.
 func (h *AccountsHandler) POSTBlock(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
@@ -579,4 +692,87 @@ func (h *AccountsHandler) POSTUnmute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	api.WriteJSON(w, http.StatusOK, apimodel.ToRelationship(rel))
+}
+
+// GETFollowedTags handles GET /api/v1/followed_tags.
+func (h *AccountsHandler) GETFollowedTags(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	params := PageParamsFromRequest(r)
+	limit := DefaultListLimit
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+			if limit > MaxListLimit {
+				limit = MaxListLimit
+			}
+		}
+	}
+	tags, nextCursor, err := h.follows.ListFollowedTags(r.Context(), account.ID, optionalString(params.MaxID), limit)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	out := make([]apimodel.Tag, 0, len(tags))
+	for i := range tags {
+		out = append(out, apimodel.FollowedTagFromDomain(tags[i], h.instanceDomain))
+	}
+	if nextCursor != nil && *nextCursor != "" {
+		if link := linkHeaderWithNext(AbsoluteRequestURL(r, h.instanceDomain), *nextCursor); link != "" {
+			w.Header().Set("Link", link)
+		}
+	}
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// POSTFollowedTags handles POST /api/v1/followed_tags. Body: { "name": "hashtag" }.
+func (h *AccountsHandler) POSTFollowedTags(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+		return
+	}
+	if body.Name == "" {
+		api.HandleError(w, r, api.NewUnprocessableError("name is required"))
+		return
+	}
+	tag, err := h.follows.FollowTag(r.Context(), account.ID, body.Name)
+	if err != nil {
+		if errors.Is(err, domain.ErrValidation) {
+			api.HandleError(w, r, api.NewUnprocessableError("Validation failed: Tag is invalid"))
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, apimodel.FollowedTagFromDomain(*tag, h.instanceDomain))
+}
+
+// DELETEFollowedTag handles DELETE /api/v1/followed_tags/:id. id is the tag ID.
+func (h *AccountsHandler) DELETEFollowedTag(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	tagID := chi.URLParam(r, "id")
+	if tagID == "" {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	if err := h.follows.UnfollowTag(r.Context(), account.ID, tagID); err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, map[string]any{})
 }

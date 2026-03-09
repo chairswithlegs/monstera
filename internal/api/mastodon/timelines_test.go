@@ -111,6 +111,93 @@ func TestTimelinesHandler_Home(t *testing.T) {
 	})
 }
 
+func TestTimelinesHandler_GETPublic(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	timelineSvc := service.NewTimelineService(st, &allowAllVisibilityChecker{})
+	handler := NewTimelinesHandler(timelineSvc, "example.com")
+
+	t.Run("returns 200 and array", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/timelines/public", nil)
+		rec := httptest.NewRecorder()
+		handler.GETPublic(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body []any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.NotNil(t, body)
+	})
+
+	t.Run("local=true returns 200", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/timelines/public?local=true", nil)
+		rec := httptest.NewRecorder()
+		handler.GETPublic(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body []any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.NotNil(t, body)
+	})
+
+	t.Run("with public status returns 200 and status list", func(t *testing.T) {
+		acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "bob"})
+		require.NoError(t, err)
+		_, err = st.CreateStatus(ctx, store.CreateStatusInput{
+			ID:         uid.New(),
+			URI:        "https://example.com/statuses/01",
+			AccountID:  acc.ID,
+			Text:       testutil.StrPtr("public post"),
+			Content:    testutil.StrPtr("<p>public post</p>"),
+			Visibility: domain.VisibilityPublic,
+			APID:       "https://example.com/statuses/01",
+			Local:      true,
+		})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/timelines/public", nil)
+		rec := httptest.NewRecorder()
+		handler.GETPublic(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body []any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.NotNil(t, body)
+	})
+}
+
+func TestTimelinesHandler_GETBookmarks(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	timelineSvc := service.NewTimelineService(st, &allowAllVisibilityChecker{})
+	handler := NewTimelinesHandler(timelineSvc, "example.com")
+
+	acc, err := accountSvc.Register(ctx, service.RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/bookmarks", nil)
+		rec := httptest.NewRecorder()
+		handler.GETBookmarks(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("authenticated returns 200 and empty array", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/bookmarks", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		rec := httptest.NewRecorder()
+		handler.GETBookmarks(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body []any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Empty(t, body)
+	})
+}
+
 func TestTimelinesHandler_GETTag(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()

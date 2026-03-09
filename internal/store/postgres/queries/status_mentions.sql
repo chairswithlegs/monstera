@@ -13,3 +13,6 @@ SELECT sm.account_id FROM status_mentions sm
 INNER JOIN accounts a ON a.id = sm.account_id
 WHERE sm.status_id = $1
   AND a.domain IS NULL;
+
+-- name: DeleteStatusMentions :exec
+DELETE FROM status_mentions WHERE status_id = $1;

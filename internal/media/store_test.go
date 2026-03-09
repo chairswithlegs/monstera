@@ -11,7 +11,7 @@ func TestStorageKey_Format(t *testing.T) {
 	t.Helper()
 	key := StorageKey("image/jpeg")
 	require.NotEmpty(t, key)
-	assert.Contains(t, key, "media/")
+	assert.Regexp(t, `^\d{4}/\d{2}/\d{2}/`, key)
 	assert.Contains(t, key, ".jpg")
 }
 

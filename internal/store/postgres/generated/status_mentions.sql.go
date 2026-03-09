@@ -25,6 +25,15 @@ func (q *Queries) CreateStatusMention(ctx context.Context, arg CreateStatusMenti
 	return err
 }
 
+const deleteStatusMentions = `-- name: DeleteStatusMentions :exec
+DELETE FROM status_mentions WHERE status_id = $1
+`
+
+func (q *Queries) DeleteStatusMentions(ctx context.Context, statusID string) error {
+	_, err := q.db.Exec(ctx, deleteStatusMentions, statusID)
+	return err
+}
+
 const getStatusMentionAccountIDs = `-- name: GetStatusMentionAccountIDs :many
 SELECT sm.account_id FROM status_mentions sm
 INNER JOIN accounts a ON a.id = sm.account_id
@@ -53,7 +62,7 @@ func (q *Queries) GetStatusMentionAccountIDs(ctx context.Context, statusID strin
 }
 
 const getStatusMentions = `-- name: GetStatusMentions :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.ap_raw, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields FROM accounts a
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.ap_raw, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at FROM accounts a
 INNER JOIN status_mentions sm ON sm.account_id = a.id
 WHERE sm.status_id = $1
 `
@@ -93,6 +102,7 @@ func (q *Queries) GetStatusMentions(ctx context.Context, statusID string) ([]Acc
 			&i.FollowingCount,
 			&i.StatusesCount,
 			&i.Fields,
+			&i.LastStatusAt,
 		); err != nil {
 			return nil, err
 		}

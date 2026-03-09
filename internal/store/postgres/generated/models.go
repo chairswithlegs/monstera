@@ -5,6 +5,8 @@
 package db
 
 import (
+	"encoding/json"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -34,6 +36,37 @@ type Account struct {
 	FollowingCount int32              `json:"following_count"`
 	StatusesCount  int32              `json:"statuses_count"`
 	Fields         []byte             `json:"fields"`
+	LastStatusAt   pgtype.Timestamptz `json:"last_status_at"`
+}
+
+type AccountConversation struct {
+	ID             string             `json:"id"`
+	AccountID      string             `json:"account_id"`
+	ConversationID string             `json:"conversation_id"`
+	LastStatusID   *string            `json:"last_status_id"`
+	Unread         bool               `json:"unread"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type AccountFeaturedTag struct {
+	ID        string             `json:"id"`
+	AccountID string             `json:"account_id"`
+	TagID     string             `json:"tag_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type AccountFollowedTag struct {
+	ID        string             `json:"id"`
+	AccountID string             `json:"account_id"`
+	TagID     string             `json:"tag_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type AccountPin struct {
+	AccountID string             `json:"account_id"`
+	StatusID  string             `json:"status_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
 type AdminAction struct {
@@ -44,6 +77,29 @@ type AdminAction struct {
 	Comment         *string            `json:"comment"`
 	Metadata        []byte             `json:"metadata"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
+type Announcement struct {
+	ID          string             `json:"id"`
+	Content     string             `json:"content"`
+	StartsAt    pgtype.Timestamptz `json:"starts_at"`
+	EndsAt      pgtype.Timestamptz `json:"ends_at"`
+	AllDay      bool               `json:"all_day"`
+	PublishedAt pgtype.Timestamptz `json:"published_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type AnnouncementReaction struct {
+	AnnouncementID string             `json:"announcement_id"`
+	AccountID      string             `json:"account_id"`
+	Name           string             `json:"name"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type AnnouncementRead struct {
+	AccountID      string             `json:"account_id"`
+	AnnouncementID string             `json:"announcement_id"`
+	ReadAt         pgtype.Timestamptz `json:"read_at"`
 }
 
 type Block struct {
@@ -58,6 +114,17 @@ type Bookmark struct {
 	AccountID string             `json:"account_id"`
 	StatusID  string             `json:"status_id"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type Conversation struct {
+	ID        string             `json:"id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type ConversationMute struct {
+	AccountID      string             `json:"account_id"`
+	ConversationID string             `json:"conversation_id"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
 type CustomEmoji struct {
@@ -153,6 +220,14 @@ type ListAccount struct {
 	AccountID string `json:"account_id"`
 }
 
+type Marker struct {
+	AccountID  string             `json:"account_id"`
+	Timeline   string             `json:"timeline"`
+	LastReadID string             `json:"last_read_id"`
+	Version    int32              `json:"version"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
 type MediaAttachment struct {
 	ID          string             `json:"id"`
 	AccountID   string             `json:"account_id"`
@@ -222,6 +297,36 @@ type OauthAuthorizationCode struct {
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 }
 
+type Poll struct {
+	ID        string             `json:"id"`
+	StatusID  string             `json:"status_id"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	Multiple  bool               `json:"multiple"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type PollOption struct {
+	ID        string             `json:"id"`
+	PollID    string             `json:"poll_id"`
+	Title     string             `json:"title"`
+	Position  int32              `json:"position"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type PollVote struct {
+	ID        string             `json:"id"`
+	PollID    string             `json:"poll_id"`
+	AccountID string             `json:"account_id"`
+	OptionID  string             `json:"option_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type QuoteApproval struct {
+	QuotingStatusID string             `json:"quoting_status_id"`
+	QuotedStatusID  string             `json:"quoted_status_id"`
+	RevokedAt       pgtype.Timestamptz `json:"revoked_at"`
+}
+
 type Report struct {
 	ID           string             `json:"id"`
 	AccountID    string             `json:"account_id"`
@@ -236,6 +341,14 @@ type Report struct {
 	ResolvedAt   pgtype.Timestamptz `json:"resolved_at"`
 }
 
+type ScheduledStatus struct {
+	ID          string             `json:"id"`
+	AccountID   string             `json:"account_id"`
+	Params      json.RawMessage    `json:"params"`
+	ScheduledAt pgtype.Timestamptz `json:"scheduled_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
 type ServerFilter struct {
 	ID        string             `json:"id"`
 	Phrase    string             `json:"phrase"`
@@ -247,28 +360,32 @@ type ServerFilter struct {
 }
 
 type Status struct {
-	ID                 string             `json:"id"`
-	Uri                string             `json:"uri"`
-	AccountID          string             `json:"account_id"`
-	Text               *string            `json:"text"`
-	Content            *string            `json:"content"`
-	ContentWarning     *string            `json:"content_warning"`
-	Visibility         string             `json:"visibility"`
-	Language           *string            `json:"language"`
-	InReplyToID        *string            `json:"in_reply_to_id"`
-	ReblogOfID         *string            `json:"reblog_of_id"`
-	ApID               string             `json:"ap_id"`
-	ApRaw              []byte             `json:"ap_raw"`
-	Sensitive          bool               `json:"sensitive"`
-	Local              bool               `json:"local"`
-	EditedAt           pgtype.Timestamptz `json:"edited_at"`
-	RepliesCount       int32              `json:"replies_count"`
-	ReblogsCount       int32              `json:"reblogs_count"`
-	FavouritesCount    int32              `json:"favourites_count"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
-	DeletedAt          pgtype.Timestamptz `json:"deleted_at"`
-	InReplyToAccountID *string            `json:"in_reply_to_account_id"`
+	ID                  string             `json:"id"`
+	Uri                 string             `json:"uri"`
+	AccountID           string             `json:"account_id"`
+	Text                *string            `json:"text"`
+	Content             *string            `json:"content"`
+	ContentWarning      *string            `json:"content_warning"`
+	Visibility          string             `json:"visibility"`
+	Language            *string            `json:"language"`
+	InReplyToID         *string            `json:"in_reply_to_id"`
+	ReblogOfID          *string            `json:"reblog_of_id"`
+	ApID                string             `json:"ap_id"`
+	ApRaw               []byte             `json:"ap_raw"`
+	Sensitive           bool               `json:"sensitive"`
+	Local               bool               `json:"local"`
+	EditedAt            pgtype.Timestamptz `json:"edited_at"`
+	RepliesCount        int32              `json:"replies_count"`
+	ReblogsCount        int32              `json:"reblogs_count"`
+	FavouritesCount     int32              `json:"favourites_count"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt           pgtype.Timestamptz `json:"deleted_at"`
+	InReplyToAccountID  *string            `json:"in_reply_to_account_id"`
+	ConversationID      *string            `json:"conversation_id"`
+	QuotedStatusID      *string            `json:"quoted_status_id"`
+	QuoteApprovalPolicy string             `json:"quote_approval_policy"`
+	QuotesCount         int32              `json:"quotes_count"`
 }
 
 type StatusEdit struct {
@@ -304,6 +421,7 @@ type User struct {
 	DefaultPrivacy     string             `json:"default_privacy"`
 	DefaultSensitive   bool               `json:"default_sensitive"`
 	DefaultLanguage    string             `json:"default_language"`
+	DefaultQuotePolicy string             `json:"default_quote_policy"`
 }
 
 type UserFilter struct {

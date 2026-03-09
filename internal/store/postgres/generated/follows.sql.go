@@ -228,7 +228,7 @@ func (q *Queries) GetFollowerInboxURLs(ctx context.Context, targetID string) ([]
 }
 
 const getFollowers = `-- name: GetFollowers :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.ap_raw, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields FROM accounts a
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.ap_raw, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at FROM accounts a
 INNER JOIN follows f ON f.account_id = a.id
 WHERE f.target_id = $1
   AND f.state = 'accepted'
@@ -278,6 +278,7 @@ func (q *Queries) GetFollowers(ctx context.Context, arg GetFollowersParams) ([]A
 			&i.FollowingCount,
 			&i.StatusesCount,
 			&i.Fields,
+			&i.LastStatusAt,
 		); err != nil {
 			return nil, err
 		}
@@ -290,7 +291,7 @@ func (q *Queries) GetFollowers(ctx context.Context, arg GetFollowersParams) ([]A
 }
 
 const getFollowing = `-- name: GetFollowing :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.ap_raw, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields FROM accounts a
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.ap_raw, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at FROM accounts a
 INNER JOIN follows f ON f.target_id = a.id
 WHERE f.account_id = $1
   AND f.state = 'accepted'
@@ -340,6 +341,7 @@ func (q *Queries) GetFollowing(ctx context.Context, arg GetFollowingParams) ([]A
 			&i.FollowingCount,
 			&i.StatusesCount,
 			&i.Fields,
+			&i.LastStatusAt,
 		); err != nil {
 			return nil, err
 		}

@@ -56,11 +56,12 @@ func ToAccountWithSource(a *domain.Account, u *domain.User, instanceDomain strin
 	acc := ToAccount(a, instanceDomain)
 	if u != nil {
 		acc.Source = &Source{
-			Note:      acc.Note,
-			Privacy:   u.DefaultPrivacy,
-			Sensitive: u.DefaultSensitive,
-			Language:  u.DefaultLanguage,
-			Fields:    parseFieldsRaw(a.Fields),
+			Note:        acc.Note,
+			Privacy:     u.DefaultPrivacy,
+			Sensitive:   u.DefaultSensitive,
+			Language:    u.DefaultLanguage,
+			QuotePolicy: u.DefaultQuotePolicy,
+			Fields:      parseFieldsRaw(a.Fields),
 		}
 	}
 	return acc

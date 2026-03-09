@@ -8,11 +8,13 @@ SELECT * FROM statuses WHERE ap_id = $1 AND deleted_at IS NULL;
 INSERT INTO statuses (
     id, uri, account_id, text, content, content_warning,
     visibility, language, in_reply_to_id, in_reply_to_account_id, reblog_of_id,
+    quoted_status_id, quote_approval_policy, quotes_count,
     ap_id, ap_raw, sensitive, local
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
     $7, $8, $9, $10, $11,
-    $12, $13, $14, $15
+    $12, $13, 0,
+    $14, $15, $16, $17
 ) RETURNING *;
 
 -- name: UpdateStatus :one
@@ -124,6 +126,15 @@ UPDATE statuses SET favourites_count = favourites_count + 1 WHERE id = $1;
 
 -- name: DecrementFavouritesCount :exec
 UPDATE statuses SET favourites_count = GREATEST(0, favourites_count - 1) WHERE id = $1;
+
+-- name: IncrementQuotesCount :exec
+UPDATE statuses SET quotes_count = quotes_count + 1 WHERE id = $1;
+
+-- name: DecrementQuotesCount :exec
+UPDATE statuses SET quotes_count = GREATEST(0, quotes_count - 1) WHERE id = $1;
+
+-- name: UpdateStatusQuoteApprovalPolicy :exec
+UPDATE statuses SET quote_approval_policy = $2 WHERE id = $1;
 
 -- name: GetReblogByAccountAndTarget :one
 SELECT * FROM statuses

@@ -8,11 +8,6 @@ import (
 	"strings"
 )
 
-const (
-	defaultPageLimit = 20
-	maxPageLimit     = 40
-)
-
 // PageParams holds cursor-based pagination parameters.
 type PageParams struct {
 	MaxID   string
@@ -31,12 +26,12 @@ func AbsoluteRequestURL(r *http.Request, instanceDomain string) string {
 // PageParamsFromRequest parses max_id, min_id, since_id, and limit from the query string.
 func PageParamsFromRequest(r *http.Request) PageParams {
 	q := r.URL.Query()
-	limit := defaultPageLimit
+	limit := DefaultPageLimit
 	if l := q.Get("limit"); l != "" {
 		if n, err := strconv.Atoi(l); err == nil && n >= 1 {
 			limit = n
-			if limit > maxPageLimit {
-				limit = maxPageLimit
+			if limit > MaxPageLimit {
+				limit = MaxPageLimit
 			}
 		}
 	}

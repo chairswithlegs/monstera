@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -17,12 +18,12 @@ type AccountService interface {
 	GetAccountsByIDs(ctx context.Context, ids []string) ([]*domain.Account, error)
 	GetByAPID(ctx context.Context, apID string) (*domain.Account, error)
 	GetLocalByUsername(ctx context.Context, username string) (*domain.Account, error)
+	GetActiveLocalAccount(ctx context.Context, username string) (*domain.Account, error)
+	GetByUsername(ctx context.Context, username string, accountDomain *string) (*domain.Account, error)
 	Create(ctx context.Context, in CreateAccountInput) (*domain.Account, error)
 	CreateOrUpdateRemoteAccount(ctx context.Context, in CreateOrUpdateRemoteInput) (*domain.Account, error)
 	Suspend(ctx context.Context, accountID string) error
-	GetByUsername(ctx context.Context, username string, accountDomain *string) (*domain.Account, error)
-	GetLocalActorForFederation(ctx context.Context, username string) (*domain.Account, error)
-	GetLocalActorWithMedia(ctx context.Context, username string) (*LocalActorWithMedia, error)
+	GetActiveLocalAccountWithMedia(ctx context.Context, username string) (*LocalAccountWithMedia, error)
 	CountFollowers(ctx context.Context, accountID string) (int64, error)
 	CountFollowing(ctx context.Context, accountID string) (int64, error)
 	GetRelationship(ctx context.Context, accountID, targetID string) (*domain.Relationship, error)
@@ -31,6 +32,7 @@ type AccountService interface {
 	Register(ctx context.Context, in RegisterInput) (*domain.Account, error)
 	ListLocalUsers(ctx context.Context, limit, offset int) ([]domain.User, error)
 	GetUserByID(ctx context.Context, userID string) (*domain.User, error)
+	ListDirectory(ctx context.Context, order string, localOnly bool, offset, limit int) ([]domain.Account, error)
 }
 
 // AccountService handles account creation and lookup.
@@ -311,38 +313,38 @@ func (svc *accountService) GetByUsername(ctx context.Context, username string, a
 	return acc, nil
 }
 
-// GetLocalActorForFederation returns the local account by username for federation (WebFinger, Actor, collections).
-// Returns ErrNotFound if the account does not exist, is suspended, or the user is pending (unconfirmed).
-func (svc *accountService) GetLocalActorForFederation(ctx context.Context, username string) (*domain.Account, error) {
+// GetActiveLocalAccount returns the local account by username if it exists, is not suspended, and the user is confirmed.
+// Returns ErrNotFound otherwise.
+func (svc *accountService) GetActiveLocalAccount(ctx context.Context, username string) (*domain.Account, error) {
 	acc, err := svc.store.GetLocalAccountByUsername(ctx, username)
 	if err != nil {
-		return nil, fmt.Errorf("GetLocalActorForFederation(%s): %w", username, err)
+		return nil, fmt.Errorf("GetActiveLocalAccount(%s): %w", username, err)
 	}
 	if acc.Suspended {
-		return nil, fmt.Errorf("GetLocalActorForFederation(%s): %w", username, domain.ErrNotFound)
+		return nil, fmt.Errorf("GetActiveLocalAccount(%s): %w", username, domain.ErrNotFound)
 	}
 	user, err := svc.store.GetUserByAccountID(ctx, acc.ID)
 	if err != nil || user == nil || user.ConfirmedAt == nil {
-		return nil, fmt.Errorf("GetLocalActorForFederation(%s): %w", username, domain.ErrNotFound)
+		return nil, fmt.Errorf("GetActiveLocalAccount(%s): %w", username, domain.ErrNotFound)
 	}
 	return acc, nil
 }
 
-// LocalActorWithMedia is the result of resolving a local actor with avatar/header URLs.
-type LocalActorWithMedia struct {
+// LocalAccountWithMedia is the result of resolving a local account with avatar/header URLs.
+type LocalAccountWithMedia struct {
 	Account   *domain.Account
 	AvatarURL string
 	HeaderURL string
 }
 
-// GetLocalActorWithMedia returns the local account and resolved avatar/header URLs for federation (Actor document).
+// GetActiveLocalAccountWithMedia returns the local account and resolved avatar/header URLs.
 // Returns ErrNotFound if the account does not exist, is suspended, or the user is pending (unconfirmed).
-func (svc *accountService) GetLocalActorWithMedia(ctx context.Context, username string) (*LocalActorWithMedia, error) {
-	acc, err := svc.GetLocalActorForFederation(ctx, username)
+func (svc *accountService) GetActiveLocalAccountWithMedia(ctx context.Context, username string) (*LocalAccountWithMedia, error) {
+	acc, err := svc.GetActiveLocalAccount(ctx, username)
 	if err != nil {
 		return nil, err
 	}
-	out := &LocalActorWithMedia{Account: acc}
+	out := &LocalAccountWithMedia{Account: acc}
 	if acc.AvatarMediaID != nil {
 		if att, err := svc.store.GetMediaAttachment(ctx, *acc.AvatarMediaID); err == nil && att.URL != "" {
 			out.AvatarURL = att.URL
@@ -376,9 +378,54 @@ func (svc *accountService) CountFollowing(ctx context.Context, accountID string)
 
 // GetRelationship returns the relationship between accountID (viewer) and targetID.
 func (svc *accountService) GetRelationship(ctx context.Context, accountID, targetID string) (*domain.Relationship, error) {
-	rel, err := svc.store.GetRelationship(ctx, accountID, targetID)
-	if err != nil {
-		return nil, fmt.Errorf("GetRelationship: %w", err)
+	rel := &domain.Relationship{
+		TargetID:       targetID,
+		ShowingReblogs: true,
+		Notifying:      false,
+		Endorsed:       false,
+		Note:           "",
+	}
+	fw, err := svc.store.GetFollow(ctx, accountID, targetID)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return nil, fmt.Errorf("GetFollow(actor->target): %w", err)
+	}
+	if err == nil {
+		switch fw.State {
+		case domain.FollowStateAccepted:
+			rel.Following = true
+		case domain.FollowStatePending:
+			rel.Following = true
+			rel.Requested = true
+		}
+	}
+	bw, err := svc.store.GetFollow(ctx, targetID, accountID)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return nil, fmt.Errorf("GetFollow(target->actor): %w", err)
+	}
+	if err == nil && bw.State == domain.FollowStateAccepted {
+		rel.FollowedBy = true
+	}
+	_, err = svc.store.GetBlock(ctx, accountID, targetID)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return nil, fmt.Errorf("GetBlock(actor->target): %w", err)
+	}
+	if err == nil {
+		rel.Blocking = true
+	}
+	_, err = svc.store.GetBlock(ctx, targetID, accountID)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return nil, fmt.Errorf("GetBlock(target->actor): %w", err)
+	}
+	if err == nil {
+		rel.BlockedBy = true
+	}
+	m, err := svc.store.GetMute(ctx, accountID, targetID)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return nil, fmt.Errorf("GetMute: %w", err)
+	}
+	if err == nil {
+		rel.Muting = true
+		rel.MutingNotifications = m.HideNotifications
 	}
 	return rel, nil
 }
@@ -399,14 +446,15 @@ func (svc *accountService) GetAccountWithUser(ctx context.Context, accountID str
 
 // UpdateCredentialsInput is the input for updating the authenticated account's profile (PATCH update_credentials).
 type UpdateCredentialsInput struct {
-	AccountID     string
-	DisplayName   *string
-	Note          *string
-	AvatarMediaID *string
-	HeaderMediaID *string
-	Locked        bool
-	Bot           bool
-	Fields        json.RawMessage // when nil or empty, existing account.Fields are preserved
+	AccountID          string
+	DisplayName        *string
+	Note               *string
+	AvatarMediaID      *string
+	HeaderMediaID      *string
+	Locked             bool
+	Bot                bool
+	DefaultQuotePolicy *string         // public | followers | nobody
+	Fields             json.RawMessage // when nil or empty, existing account.Fields are preserved
 }
 
 // UpdateCredentials updates the account profile. Caller should pass current account.Fields when not updating fields.
@@ -432,6 +480,17 @@ func (svc *accountService) UpdateCredentials(ctx context.Context, in UpdateCrede
 	}); err != nil {
 		return nil, nil, fmt.Errorf("UpdateCredentials UpdateAccount: %w", err)
 	}
+	if in.DefaultQuotePolicy != nil {
+		policy := strings.TrimSpace(*in.DefaultQuotePolicy)
+		switch policy {
+		case domain.QuotePolicyPublic, domain.QuotePolicyFollowers, domain.QuotePolicyNobody:
+			if err := svc.store.UpdateUserDefaultQuotePolicy(ctx, in.AccountID, policy); err != nil {
+				return nil, nil, fmt.Errorf("UpdateCredentials UpdateUserDefaultQuotePolicy: %w", err)
+			}
+		default:
+			return nil, nil, fmt.Errorf("UpdateCredentials default_quote_policy: %w", domain.ErrValidation)
+		}
+	}
 	updated, err := svc.store.GetAccountByID(ctx, in.AccountID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("UpdateCredentials GetAccountByID after: %w", err)
@@ -456,4 +515,24 @@ func (svc *accountService) GetUserByID(ctx context.Context, userID string) (*dom
 		return nil, fmt.Errorf("GetUserByID(%s): %w", userID, err)
 	}
 	return u, nil
+}
+
+func (svc *accountService) ListDirectory(ctx context.Context, order string, localOnly bool, offset, limit int) ([]domain.Account, error) {
+	if limit <= 0 {
+		limit = DefaultServiceListLimit
+	}
+	if limit > MaxServicePageLimit {
+		limit = MaxServicePageLimit
+	}
+	if order != "active" && order != "new" {
+		order = "active"
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	accounts, err := svc.store.ListDirectoryAccounts(ctx, order, localOnly, offset, limit)
+	if err != nil {
+		return nil, fmt.Errorf("ListDirectoryAccounts: %w", err)
+	}
+	return accounts, nil
 }

@@ -49,6 +49,53 @@ func ToDomainUserFilter(u db.UserFilter) domain.UserFilter {
 	return d
 }
 
+// ToDomainStatusEdit converts a sqlc db.StatusEdit to a domain.StatusEdit.
+func ToDomainStatusEdit(e db.StatusEdit) domain.StatusEdit {
+	return domain.StatusEdit{
+		ID:             e.ID,
+		StatusID:       e.StatusID,
+		AccountID:      e.AccountID,
+		Text:           e.Text,
+		Content:        e.Content,
+		ContentWarning: e.ContentWarning,
+		Sensitive:      e.Sensitive,
+		CreatedAt:      pgTime(e.CreatedAt),
+	}
+}
+
+// ToDomainScheduledStatus converts a sqlc db.ScheduledStatus to a domain.ScheduledStatus.
+func ToDomainScheduledStatus(s db.ScheduledStatus) domain.ScheduledStatus {
+	return domain.ScheduledStatus{
+		ID:          s.ID,
+		AccountID:   s.AccountID,
+		Params:      s.Params,
+		ScheduledAt: pgTime(s.ScheduledAt),
+		CreatedAt:   pgTime(s.CreatedAt),
+	}
+}
+
+// ToDomainPoll converts a sqlc db.Poll to a domain.Poll.
+func ToDomainPoll(p db.Poll) domain.Poll {
+	out := domain.Poll{
+		ID:        p.ID,
+		StatusID:  p.StatusID,
+		Multiple:  p.Multiple,
+		CreatedAt: pgTime(p.CreatedAt),
+	}
+	out.ExpiresAt = pgTimePtr(p.ExpiresAt)
+	return out
+}
+
+// ToDomainPollOption converts a sqlc db.PollOption to a domain.PollOption.
+func ToDomainPollOption(o db.PollOption) domain.PollOption {
+	return domain.PollOption{
+		ID:       o.ID,
+		PollID:   o.PollID,
+		Title:    o.Title,
+		Position: int(o.Position),
+	}
+}
+
 // ToDomainList converts a sqlc db.List to a domain.List.
 func ToDomainList(l db.List) domain.List {
 	return domain.List{
@@ -97,6 +144,102 @@ func ToDomainAccount(a db.Account) domain.Account {
 	return d
 }
 
+// MutedAccountRowToDomainAccount converts ListMutedAccountsPaginatedRow to domain.Account.
+func MutedAccountRowToDomainAccount(r db.ListMutedAccountsPaginatedRow) domain.Account {
+	a := db.Account{
+		ID:             r.ID,
+		Username:       r.Username,
+		Domain:         r.Domain,
+		DisplayName:    r.DisplayName,
+		Note:           r.Note,
+		PublicKey:      r.PublicKey,
+		PrivateKey:     r.PrivateKey,
+		InboxUrl:       r.InboxUrl,
+		OutboxUrl:      r.OutboxUrl,
+		FollowersUrl:   r.FollowersUrl,
+		FollowingUrl:   r.FollowingUrl,
+		ApID:           r.ApID,
+		ApRaw:          r.ApRaw,
+		Bot:            r.Bot,
+		Locked:         r.Locked,
+		Suspended:      r.Suspended,
+		Silenced:       r.Silenced,
+		CreatedAt:      r.CreatedAt,
+		UpdatedAt:      r.UpdatedAt,
+		AvatarMediaID:  r.AvatarMediaID,
+		HeaderMediaID:  r.HeaderMediaID,
+		FollowersCount: r.FollowersCount,
+		FollowingCount: r.FollowingCount,
+		StatusesCount:  r.StatusesCount,
+		Fields:         r.Fields,
+	}
+	return ToDomainAccount(a)
+}
+
+// RebloggedByRowToDomainAccount converts GetRebloggedByRow to domain.Account (row omits last_status_at).
+func RebloggedByRowToDomainAccount(r db.GetRebloggedByRow) domain.Account {
+	a := db.Account{
+		ID:             r.ID,
+		Username:       r.Username,
+		Domain:         r.Domain,
+		DisplayName:    r.DisplayName,
+		Note:           r.Note,
+		PublicKey:      r.PublicKey,
+		PrivateKey:     r.PrivateKey,
+		InboxUrl:       r.InboxUrl,
+		OutboxUrl:      r.OutboxUrl,
+		FollowersUrl:   r.FollowersUrl,
+		FollowingUrl:   r.FollowingUrl,
+		ApID:           r.ApID,
+		ApRaw:          r.ApRaw,
+		Bot:            r.Bot,
+		Locked:         r.Locked,
+		Suspended:      r.Suspended,
+		Silenced:       r.Silenced,
+		CreatedAt:      r.CreatedAt,
+		UpdatedAt:      r.UpdatedAt,
+		AvatarMediaID:  r.AvatarMediaID,
+		HeaderMediaID:  r.HeaderMediaID,
+		FollowersCount: r.FollowersCount,
+		FollowingCount: r.FollowingCount,
+		StatusesCount:  r.StatusesCount,
+		Fields:         r.Fields,
+	}
+	return ToDomainAccount(a)
+}
+
+// BlockedAccountRowToDomainAccount converts ListBlockedAccountsPaginatedRow to domain.Account.
+func BlockedAccountRowToDomainAccount(r db.ListBlockedAccountsPaginatedRow) domain.Account {
+	a := db.Account{
+		ID:             r.ID,
+		Username:       r.Username,
+		Domain:         r.Domain,
+		DisplayName:    r.DisplayName,
+		Note:           r.Note,
+		PublicKey:      r.PublicKey,
+		PrivateKey:     r.PrivateKey,
+		InboxUrl:       r.InboxUrl,
+		OutboxUrl:      r.OutboxUrl,
+		FollowersUrl:   r.FollowersUrl,
+		FollowingUrl:   r.FollowingUrl,
+		ApID:           r.ApID,
+		ApRaw:          r.ApRaw,
+		Bot:            r.Bot,
+		Locked:         r.Locked,
+		Suspended:      r.Suspended,
+		Silenced:       r.Silenced,
+		CreatedAt:      r.CreatedAt,
+		UpdatedAt:      r.UpdatedAt,
+		AvatarMediaID:  r.AvatarMediaID,
+		HeaderMediaID:  r.HeaderMediaID,
+		FollowersCount: r.FollowersCount,
+		FollowingCount: r.FollowingCount,
+		StatusesCount:  r.StatusesCount,
+		Fields:         r.Fields,
+	}
+	return ToDomainAccount(a)
+}
+
 // PendingFollowRequestRowToDomainAccount converts GetPendingFollowRequestsPaginatedRow to domain.Account.
 func PendingFollowRequestRowToDomainAccount(r db.GetPendingFollowRequestsPaginatedRow) domain.Account {
 	a := db.Account{
@@ -132,25 +275,28 @@ func PendingFollowRequestRowToDomainAccount(r db.GetPendingFollowRequestsPaginat
 // ToDomainStatus converts a sqlc db.Status to a domain.Status.
 func ToDomainStatus(s db.Status) domain.Status {
 	d := domain.Status{
-		ID:                 s.ID,
-		URI:                s.Uri,
-		AccountID:          s.AccountID,
-		Text:               s.Text,
-		Content:            s.Content,
-		ContentWarning:     s.ContentWarning,
-		Visibility:         s.Visibility,
-		Language:           s.Language,
-		InReplyToID:        s.InReplyToID,
-		InReplyToAccountID: s.InReplyToAccountID,
-		ReblogOfID:         s.ReblogOfID,
-		APID:               s.ApID,
-		Sensitive:          s.Sensitive,
-		Local:              s.Local,
-		RepliesCount:       int(s.RepliesCount),
-		ReblogsCount:       int(s.ReblogsCount),
-		FavouritesCount:    int(s.FavouritesCount),
-		CreatedAt:          pgTime(s.CreatedAt),
-		UpdatedAt:          pgTime(s.UpdatedAt),
+		ID:                  s.ID,
+		URI:                 s.Uri,
+		AccountID:           s.AccountID,
+		Text:                s.Text,
+		Content:             s.Content,
+		ContentWarning:      s.ContentWarning,
+		Visibility:          s.Visibility,
+		Language:            s.Language,
+		InReplyToID:         s.InReplyToID,
+		InReplyToAccountID:  s.InReplyToAccountID,
+		ReblogOfID:          s.ReblogOfID,
+		QuotedStatusID:      s.QuotedStatusID,
+		QuoteApprovalPolicy: s.QuoteApprovalPolicy,
+		QuotesCount:         int(s.QuotesCount),
+		APID:                s.ApID,
+		Sensitive:           s.Sensitive,
+		Local:               s.Local,
+		RepliesCount:        int(s.RepliesCount),
+		ReblogsCount:        int(s.ReblogsCount),
+		FavouritesCount:     int(s.FavouritesCount),
+		CreatedAt:           pgTime(s.CreatedAt),
+		UpdatedAt:           pgTime(s.UpdatedAt),
 	}
 	if len(s.ApRaw) > 0 {
 		d.APRaw = json.RawMessage(s.ApRaw)
@@ -160,28 +306,41 @@ func ToDomainStatus(s db.Status) domain.Status {
 	return d
 }
 
+// quoteApprovalToDomain converts a sqlc db.QuoteApproval to domain.QuoteApprovalRecord.
+func quoteApprovalToDomain(qa db.QuoteApproval) domain.QuoteApprovalRecord {
+	d := domain.QuoteApprovalRecord{
+		QuotingStatusID: qa.QuotingStatusID,
+		QuotedStatusID:  qa.QuotedStatusID,
+	}
+	d.RevokedAt = pgTimePtr(qa.RevokedAt)
+	return d
+}
+
 // statusRowToDomain converts a status row (ancestors/descendants) to domain.Status.
-func statusRowToDomain(id, uri, accountID string, text, content, contentWarning *string, visibility string, language *string, inReplyToID, reblogOfID *string, apID string, apRaw []byte, sensitive, local bool, editedAt, createdAt, updatedAt, deletedAt pgtype.Timestamptz, repliesCount, reblogsCount, favouritesCount int32, inReplyToAccountID *string) domain.Status {
+func statusRowToDomain(id, uri, accountID string, text, content, contentWarning *string, visibility string, language *string, inReplyToID, reblogOfID, quotedStatusID *string, quoteApprovalPolicy string, quotesCount int32, apID string, apRaw []byte, sensitive, local bool, editedAt, createdAt, updatedAt, deletedAt pgtype.Timestamptz, repliesCount, reblogsCount, favouritesCount int32, inReplyToAccountID *string) domain.Status {
 	d := domain.Status{
-		ID:                 id,
-		URI:                uri,
-		AccountID:          accountID,
-		Text:               text,
-		Content:            content,
-		ContentWarning:     contentWarning,
-		Visibility:         visibility,
-		Language:           language,
-		InReplyToID:        inReplyToID,
-		InReplyToAccountID: inReplyToAccountID,
-		ReblogOfID:         reblogOfID,
-		APID:               apID,
-		Sensitive:          sensitive,
-		Local:              local,
-		RepliesCount:       int(repliesCount),
-		ReblogsCount:       int(reblogsCount),
-		FavouritesCount:    int(favouritesCount),
-		CreatedAt:          pgTime(createdAt),
-		UpdatedAt:          pgTime(updatedAt),
+		ID:                  id,
+		URI:                 uri,
+		AccountID:           accountID,
+		Text:                text,
+		Content:             content,
+		ContentWarning:      contentWarning,
+		Visibility:          visibility,
+		Language:            language,
+		InReplyToID:         inReplyToID,
+		InReplyToAccountID:  inReplyToAccountID,
+		ReblogOfID:          reblogOfID,
+		QuotedStatusID:      quotedStatusID,
+		QuoteApprovalPolicy: quoteApprovalPolicy,
+		QuotesCount:         int(quotesCount),
+		APID:                apID,
+		Sensitive:           sensitive,
+		Local:               local,
+		RepliesCount:        int(repliesCount),
+		ReblogsCount:        int(reblogsCount),
+		FavouritesCount:     int(favouritesCount),
+		CreatedAt:           pgTime(createdAt),
+		UpdatedAt:           pgTime(updatedAt),
 	}
 	if len(apRaw) > 0 {
 		d.APRaw = json.RawMessage(apRaw)
@@ -195,7 +354,8 @@ func statusRowToDomain(id, uri, accountID string, text, content, contentWarning 
 func AncestorRowToDomain(r db.GetStatusAncestorsRow) domain.Status {
 	return statusRowToDomain(
 		r.ID, r.Uri, r.AccountID, r.Text, r.Content, r.ContentWarning,
-		r.Visibility, r.Language, r.InReplyToID, r.ReblogOfID, r.ApID, r.ApRaw,
+		r.Visibility, r.Language, r.InReplyToID, r.ReblogOfID, r.QuotedStatusID, r.QuoteApprovalPolicy, r.QuotesCount,
+		r.ApID, r.ApRaw,
 		r.Sensitive, r.Local, r.EditedAt, r.CreatedAt, r.UpdatedAt, r.DeletedAt,
 		r.RepliesCount, r.ReblogsCount, r.FavouritesCount, r.InReplyToAccountID,
 	)
@@ -205,27 +365,32 @@ func AncestorRowToDomain(r db.GetStatusAncestorsRow) domain.Status {
 func DescendantRowToDomain(r db.GetStatusDescendantsRow) domain.Status {
 	return statusRowToDomain(
 		r.ID, r.Uri, r.AccountID, r.Text, r.Content, r.ContentWarning,
-		r.Visibility, r.Language, r.InReplyToID, r.ReblogOfID, r.ApID, r.ApRaw,
+		r.Visibility, r.Language, r.InReplyToID, r.ReblogOfID, r.QuotedStatusID, r.QuoteApprovalPolicy, r.QuotesCount,
+		r.ApID, r.ApRaw,
 		r.Sensitive, r.Local, r.EditedAt, r.CreatedAt, r.UpdatedAt, r.DeletedAt,
 		r.RepliesCount, r.ReblogsCount, r.FavouritesCount, r.InReplyToAccountID,
 	)
 }
 
 // FavouritesTimelineRowToDomain converts GetFavouritesTimelineRow to domain.Status.
+// Favourites query does not select quote columns; use zero values.
 func FavouritesTimelineRowToDomain(r db.GetFavouritesTimelineRow) domain.Status {
 	return statusRowToDomain(
 		r.ID, r.Uri, r.AccountID, r.Text, r.Content, r.ContentWarning,
-		r.Visibility, r.Language, r.InReplyToID, r.ReblogOfID, r.ApID, r.ApRaw,
+		r.Visibility, r.Language, r.InReplyToID, r.ReblogOfID, nil, "", 0,
+		r.ApID, r.ApRaw,
 		r.Sensitive, r.Local, r.EditedAt, r.CreatedAt, r.UpdatedAt, r.DeletedAt,
 		r.RepliesCount, r.ReblogsCount, r.FavouritesCount, r.InReplyToAccountID,
 	)
 }
 
 // BookmarksTimelineRowToDomain converts GetBookmarksTimelineRow to domain.Status.
+// Bookmarks query does not select quote columns; use zero values.
 func BookmarksTimelineRowToDomain(r db.GetBookmarksTimelineRow) domain.Status {
 	return statusRowToDomain(
 		r.ID, r.Uri, r.AccountID, r.Text, r.Content, r.ContentWarning,
-		r.Visibility, r.Language, r.InReplyToID, r.ReblogOfID, r.ApID, r.ApRaw,
+		r.Visibility, r.Language, r.InReplyToID, r.ReblogOfID, nil, "", 0,
+		r.ApID, r.ApRaw,
 		r.Sensitive, r.Local, r.EditedAt, r.CreatedAt, r.UpdatedAt, r.DeletedAt,
 		r.RepliesCount, r.ReblogsCount, r.FavouritesCount, r.InReplyToAccountID,
 	)
@@ -243,6 +408,7 @@ func ToDomainUser(u db.User) domain.User {
 		DefaultPrivacy:     u.DefaultPrivacy,
 		DefaultSensitive:   u.DefaultSensitive,
 		DefaultLanguage:    u.DefaultLanguage,
+		DefaultQuotePolicy: u.DefaultQuotePolicy,
 		CreatedAt:          pgTime(u.CreatedAt),
 	}
 	d.ConfirmedAt = pgTimePtr(u.ConfirmedAt)
@@ -316,6 +482,45 @@ func ToDomainHashtag(h db.Hashtag) domain.Hashtag {
 	}
 }
 
+// ToDomainMarker converts a sqlc db.Marker to a domain.Marker.
+func ToDomainMarker(m db.Marker) domain.Marker {
+	return domain.Marker{
+		LastReadID: m.LastReadID,
+		Version:    int(m.Version),
+		UpdatedAt:  pgTime(m.UpdatedAt),
+	}
+}
+
+// ToDomainAccountConversation converts a sqlc db.AccountConversation to a domain.AccountConversation.
+func ToDomainAccountConversation(a db.AccountConversation) domain.AccountConversation {
+	d := domain.AccountConversation{
+		ID:             a.ID,
+		AccountID:      a.AccountID,
+		ConversationID: a.ConversationID,
+		Unread:         a.Unread,
+		CreatedAt:      pgTime(a.CreatedAt),
+		UpdatedAt:      pgTime(a.UpdatedAt),
+	}
+	if a.LastStatusID != nil {
+		d.LastStatusID = a.LastStatusID
+	}
+	return d
+}
+
+// ToDomainAnnouncement converts a sqlc db.Announcement to a domain.Announcement.
+func ToDomainAnnouncement(a db.Announcement) domain.Announcement {
+	out := domain.Announcement{
+		ID:          a.ID,
+		Content:     a.Content,
+		AllDay:      a.AllDay,
+		PublishedAt: pgTime(a.PublishedAt),
+		UpdatedAt:   pgTime(a.UpdatedAt),
+	}
+	out.StartsAt = pgTimePtr(a.StartsAt)
+	out.EndsAt = pgTimePtr(a.EndsAt)
+	return out
+}
+
 // ToDomainDomainBlock converts a sqlc db.DomainBlock to a domain.DomainBlock.
 func ToDomainDomainBlock(b db.DomainBlock) domain.DomainBlock {
 	return domain.DomainBlock{
@@ -336,6 +541,27 @@ func ToDomainFollow(f db.Follow) domain.Follow {
 		State:     f.State,
 		APID:      f.ApID,
 		CreatedAt: pgTime(f.CreatedAt),
+	}
+}
+
+// ToDomainBlock converts a sqlc db.Block to a domain.Block.
+func ToDomainBlock(b db.Block) domain.Block {
+	return domain.Block{
+		ID:        b.ID,
+		AccountID: b.AccountID,
+		TargetID:  b.TargetID,
+		CreatedAt: pgTime(b.CreatedAt),
+	}
+}
+
+// ToDomainMute converts a sqlc db.Mute to a domain.Mute.
+func ToDomainMute(m db.Mute) domain.Mute {
+	return domain.Mute{
+		ID:                m.ID,
+		AccountID:         m.AccountID,
+		TargetID:          m.TargetID,
+		HideNotifications: m.HideNotifications,
+		CreatedAt:         pgTime(m.CreatedAt),
 	}
 }
 

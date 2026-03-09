@@ -21,7 +21,7 @@ func (q *Queries) ConfirmUser(ctx context.Context, id string) error {
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, account_id, email, password_hash, role, registration_reason)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, account_id, email, password_hash, confirmed_at, role, registration_reason, created_at, default_privacy, default_sensitive, default_language
+RETURNING id, account_id, email, password_hash, confirmed_at, role, registration_reason, created_at, default_privacy, default_sensitive, default_language, default_quote_policy
 `
 
 type CreateUserParams struct {
@@ -55,6 +55,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.DefaultPrivacy,
 		&i.DefaultSensitive,
 		&i.DefaultLanguage,
+		&i.DefaultQuotePolicy,
 	)
 	return i, err
 }
@@ -69,7 +70,7 @@ func (q *Queries) DeleteUser(ctx context.Context, id string) error {
 }
 
 const getPendingRegistrations = `-- name: GetPendingRegistrations :many
-SELECT u.id, u.account_id, u.email, u.password_hash, u.confirmed_at, u.role, u.registration_reason, u.created_at, u.default_privacy, u.default_sensitive, u.default_language FROM users u
+SELECT u.id, u.account_id, u.email, u.password_hash, u.confirmed_at, u.role, u.registration_reason, u.created_at, u.default_privacy, u.default_sensitive, u.default_language, u.default_quote_policy FROM users u
 INNER JOIN accounts a ON a.id = u.account_id
 WHERE u.confirmed_at IS NULL AND a.domain IS NULL
 ORDER BY u.created_at ASC
@@ -96,6 +97,7 @@ func (q *Queries) GetPendingRegistrations(ctx context.Context) ([]User, error) {
 			&i.DefaultPrivacy,
 			&i.DefaultSensitive,
 			&i.DefaultLanguage,
+			&i.DefaultQuotePolicy,
 		); err != nil {
 			return nil, err
 		}
@@ -108,7 +110,7 @@ func (q *Queries) GetPendingRegistrations(ctx context.Context) ([]User, error) {
 }
 
 const getUserByAccountID = `-- name: GetUserByAccountID :one
-SELECT id, account_id, email, password_hash, confirmed_at, role, registration_reason, created_at, default_privacy, default_sensitive, default_language FROM users WHERE account_id = $1
+SELECT id, account_id, email, password_hash, confirmed_at, role, registration_reason, created_at, default_privacy, default_sensitive, default_language, default_quote_policy FROM users WHERE account_id = $1
 `
 
 func (q *Queries) GetUserByAccountID(ctx context.Context, accountID string) (User, error) {
@@ -126,12 +128,13 @@ func (q *Queries) GetUserByAccountID(ctx context.Context, accountID string) (Use
 		&i.DefaultPrivacy,
 		&i.DefaultSensitive,
 		&i.DefaultLanguage,
+		&i.DefaultQuotePolicy,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, account_id, email, password_hash, confirmed_at, role, registration_reason, created_at, default_privacy, default_sensitive, default_language FROM users WHERE email = $1
+SELECT id, account_id, email, password_hash, confirmed_at, role, registration_reason, created_at, default_privacy, default_sensitive, default_language, default_quote_policy FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -149,12 +152,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.DefaultPrivacy,
 		&i.DefaultSensitive,
 		&i.DefaultLanguage,
+		&i.DefaultQuotePolicy,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, account_id, email, password_hash, confirmed_at, role, registration_reason, created_at, default_privacy, default_sensitive, default_language FROM users WHERE id = $1
+SELECT id, account_id, email, password_hash, confirmed_at, role, registration_reason, created_at, default_privacy, default_sensitive, default_language, default_quote_policy FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
@@ -172,12 +176,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.DefaultPrivacy,
 		&i.DefaultSensitive,
 		&i.DefaultLanguage,
+		&i.DefaultQuotePolicy,
 	)
 	return i, err
 }
 
 const listLocalUsers = `-- name: ListLocalUsers :many
-SELECT u.id, u.account_id, u.email, u.password_hash, u.confirmed_at, u.role, u.registration_reason, u.created_at, u.default_privacy, u.default_sensitive, u.default_language FROM users u
+SELECT u.id, u.account_id, u.email, u.password_hash, u.confirmed_at, u.role, u.registration_reason, u.created_at, u.default_privacy, u.default_sensitive, u.default_language, u.default_quote_policy FROM users u
 INNER JOIN accounts a ON a.id = u.account_id
 WHERE a.domain IS NULL
 ORDER BY u.created_at DESC
@@ -210,6 +215,7 @@ func (q *Queries) ListLocalUsers(ctx context.Context, arg ListLocalUsersParams) 
 			&i.DefaultPrivacy,
 			&i.DefaultSensitive,
 			&i.DefaultLanguage,
+			&i.DefaultQuotePolicy,
 		); err != nil {
 			return nil, err
 		}
@@ -219,6 +225,20 @@ func (q *Queries) ListLocalUsers(ctx context.Context, arg ListLocalUsersParams) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateUserDefaultQuotePolicy = `-- name: UpdateUserDefaultQuotePolicy :exec
+UPDATE users SET default_quote_policy = $2 WHERE account_id = $1
+`
+
+type UpdateUserDefaultQuotePolicyParams struct {
+	AccountID          string `json:"account_id"`
+	DefaultQuotePolicy string `json:"default_quote_policy"`
+}
+
+func (q *Queries) UpdateUserDefaultQuotePolicy(ctx context.Context, arg UpdateUserDefaultQuotePolicyParams) error {
+	_, err := q.db.Exec(ctx, updateUserDefaultQuotePolicy, arg.AccountID, arg.DefaultQuotePolicy)
+	return err
 }
 
 const updateUserPassword = `-- name: UpdateUserPassword :exec

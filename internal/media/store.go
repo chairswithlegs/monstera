@@ -98,13 +98,13 @@ func init() {
 // StorageKey generates a date-sharded, collision-resistant storage key for
 // an uploaded file.
 //
-// Format: media/{year}/{month}/{day}/{nanoid}{ext}
-// Example: media/2026/02/24/V1StGXR8_Z5jdHi6B-myT.jpg
+// Format: {year}/{month}/{day}/{nanoid}{ext}
+// Example: 2026/02/24/V1StGXR8_Z5jdHi6B-myT.jpg
 func StorageKey(contentType string) string {
 	now := time.Now().UTC()
 	ext := extensionForContentType(contentType)
 	id := nanoidGen()
-	return fmt.Sprintf("media/%04d/%02d/%02d/%s%s",
+	return fmt.Sprintf("%04d/%02d/%02d/%s%s",
 		now.Year(), now.Month(), now.Day(), id, ext)
 }
 
