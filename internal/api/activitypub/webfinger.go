@@ -29,7 +29,7 @@ func NewWebFingerHandler(accounts service.AccountService, config *config.Config)
 // GETWebFinger handles the WebFinger request.
 func (h *WebFingerHandler) GETWebFinger(w http.ResponseWriter, r *http.Request) {
 	resource := r.URL.Query().Get("resource")
-	if err := api.ValidateRequiredString(resource); err != nil {
+	if err := api.ValidateRequiredField(resource, "resource"); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}

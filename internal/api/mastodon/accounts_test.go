@@ -129,12 +129,12 @@ func TestAccountsHandler_GETAccounts(t *testing.T) {
 	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"), nil, nil)
 	handler := NewAccountsHandler(accountSvc, followSvc, nil, "example.com")
 
-	t.Run("missing id returns 400", func(t *testing.T) {
+	t.Run("missing id returns 422", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/", nil)
 		req = testutil.AddChiURLParam(req, "id", "")
 		rec := httptest.NewRecorder()
 		handler.GETAccounts(rec, req)
-		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	})
 
 	t.Run("unknown account returns 404", func(t *testing.T) {

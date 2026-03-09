@@ -131,7 +131,7 @@ func TestAdminUsersHandler_PUTRole(t *testing.T) {
 		assert.Equal(t, http.StatusNoContent, rec.Code)
 	})
 
-	t.Run("with invalid role returns 400", func(t *testing.T) {
+	t.Run("with invalid role returns 422", func(t *testing.T) {
 		body := map[string]string{"role": "invalid"}
 		b, _ := json.Marshal(body)
 		req := httptest.NewRequest(http.MethodPut, "/admin/users/"+targetUserID+"/role", bytes.NewReader(b))
@@ -140,7 +140,7 @@ func TestAdminUsersHandler_PUTRole(t *testing.T) {
 		req = testutil.AddChiURLParam(req, "id", targetUserID)
 		rec := httptest.NewRecorder()
 		handler.PUTRole(rec, req)
-		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	})
 }
 

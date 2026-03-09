@@ -18,3 +18,4 @@ Design doc: `docs/architecture/01-high-level-system-architecture.md`
 - API model types and conversion functions in `internal/api/mastodon/apimodel/` map domain types to Mastodon JSON response types.
 - Viewer-relative fields (`favourited`, `reblogged`) resolved via batch lookup after fetching the main entities.
 - `acct` field: `username` for local, `username@domain` for remote.
+- Request body validation: use `api.DecodeAndValidateJSON` for JSON-only endpoints or `parseXxxRequest` helpers for mixed JSON/form. See `api-handler-patterns.mdc` for details.

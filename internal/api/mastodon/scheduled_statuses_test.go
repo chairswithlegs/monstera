@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/chairswithlegs/monstera/internal/api/middleware"
 	"github.com/chairswithlegs/monstera/internal/domain"
-	"github.com/chairswithlegs/monstera/internal/events"
 	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/testutil"
@@ -25,7 +23,7 @@ func TestScheduledStatusesHandler_GETScheduledStatuses(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
-	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	handler := NewScheduledStatusesHandler(statusSvc)
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
@@ -71,7 +69,7 @@ func TestScheduledStatusesHandler_GETScheduledStatus(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
-	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	handler := NewScheduledStatusesHandler(statusSvc)
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
@@ -134,7 +132,7 @@ func TestScheduledStatusesHandler_PUTScheduledStatus(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
-	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	handler := NewScheduledStatusesHandler(statusSvc)
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
@@ -222,7 +220,7 @@ func TestScheduledStatusesHandler_DELETEScheduledStatus(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
-	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	handler := NewScheduledStatusesHandler(statusSvc)
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{

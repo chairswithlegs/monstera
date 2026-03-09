@@ -77,7 +77,7 @@ func TestWebFingerHandler_missingResource(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/.well-known/webfinger", nil)
 	w := httptest.NewRecorder()
 	h.GETWebFinger(w, r)
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
 }
 
 func TestWebFingerHandler_wrongDomain(t *testing.T) {

@@ -10,7 +10,7 @@ When adding a new API handler, follow the structure and conventions used in `int
 
 ## Directory layout
 
-- **Shared package** (`internal/api`): `HandleError`, `WriteJSON` / `WriteActivityJSON` / `WriteJRD`, `ValidateRequiredString`, `ErrorResponse`, and API sentinels (`ErrUnauthorized`, `ErrNotFound`, etc.). No handler logic.
+- **Shared package** (`internal/api`): `HandleError`, `WriteJSON` / `WriteActivityJSON` / `WriteJRD`, `DecodeJSONBody`, `DecodeAndValidateJSON`, `Validatable`, `ValidateRequiredField`, `ValidateOneOf`, `ValidateRFC3339`, `ValidatePositiveInt`, `ErrorResponse`, and API sentinels (`ErrUnauthorized`, `ErrNotFound`, etc.). No handler logic.
 - **Subpackages** group handlers by protocol or surface (mastodon, activitypub, oauth). Put response DTOs and domain→API conversion in an `apimodel` subpackage when the response shape is non-trivial (e.g. `mastodon/apimodel/`).
 
 ## Handler struct and constructor
@@ -34,9 +34,9 @@ func NewStatusesHandler(accounts *service.AccountService, statuses *service.Stat
 
 ## Request handling
 
-1. **Path/query**: Use `chi.URLParam(r, "id")` for path params. Validate with `api.ValidateRequiredString(id)` or equivalent; on failure call `api.HandleError(w, r, err)` and return.
+1. **Path/query**: Use `chi.URLParam(r, "id")` for path params. Validate with `api.ValidateRequiredField(id, "id")` or equivalent; on failure call `api.HandleError(w, r, err)` and return.
 2. **Auth**: For routes that need an authenticated user, read `middleware.AccountFromContext(r.Context())`. If `nil` and auth is required, respond with `api.HandleError(w, r, api.ErrUnauthorized)` (or `api.NewUnauthorizedError("...")` when a specific message is needed) and return.
-3. **Body**: For JSON/form, decode into a request struct. Use a small `parseXxxRequest(r *http.Request)` helper that returns a domain-friendly struct and uses `api.NewUnprocessableError` / `api.NewBadRequestError` for validation errors. Do not put business rules in the handler — delegate to the service.
+3. **Body**: For JSON-only endpoints, define a named request struct with a `Validate() error` method and use `api.DecodeAndValidateJSON(r, &body)`. For mixed JSON/form endpoints, use a `parseXxxRequest(r)` helper that calls `api.DecodeJSONBody` for the JSON path and uses the validation helpers from `internal/api/validate.go`. Do not use raw `json.NewDecoder(r.Body).Decode` in handlers. Do not put business rules in the handler — delegate to the service.
 
 ## Response and errors
 
@@ -81,4 +81,5 @@ r.Get("/accounts/{id}", deps.Accounts.GETAccounts)
 - [ ] Route registered in `router.go` with correct middleware (OptionalAuth / RequireAuth, RequiredScopes if Mastodon).
 - [ ] Handler constructed in `serve.go` and added to `router.Deps`.
 - [ ] Response types/conversions in `apimodel` (or local). DO NOT RETURN DOMAIN TYPES DIRECTLY.
+- [ ] Request structs for POST/PUT/PATCH implement `Validatable` with field-level checks; no inline validation in handler body.
 - [ ] Tests for success and key error paths (e.g. 401 when unauthenticated, 404 when not found).

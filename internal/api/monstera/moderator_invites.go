@@ -11,6 +11,13 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+type postInviteRequest struct {
+	MaxUses   *int       `json:"max_uses"`
+	ExpiresAt *time.Time `json:"expires_at"`
+}
+
+func (postInviteRequest) Validate() error { return nil }
+
 // ModeratorInvitesHandler handles invite code management.
 type ModeratorInvitesHandler struct {
 	registration service.RegistrationService
@@ -47,12 +54,9 @@ func (h *ModeratorInvitesHandler) POSTInvites(w http.ResponseWriter, r *http.Req
 		api.HandleError(w, r, api.ErrForbidden)
 		return
 	}
-	var body struct {
-		MaxUses   *int       `json:"max_uses"`
-		ExpiresAt *time.Time `json:"expires_at"`
-	}
-	if err := api.DecodeJSONBody(r, &body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+	var body postInviteRequest
+	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	inv, err := h.registration.CreateInvite(r.Context(), user.ID, body.MaxUses, body.ExpiresAt)

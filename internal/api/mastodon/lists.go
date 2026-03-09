@@ -1,7 +1,6 @@
 package mastodon
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -92,8 +91,8 @@ func (h *ListsHandler) POSTLists(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body POSTListsRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+	if err := api.DecodeJSONBody(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	l, err := h.lists.CreateList(r.Context(), account.ID, body.Title, body.RepliesPolicy, body.Exclusive)
@@ -128,8 +127,8 @@ func (h *ListsHandler) PUTList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body PUTListRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+	if err := api.DecodeJSONBody(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	l, err := h.lists.UpdateList(r.Context(), account.ID, id, body.Title, body.RepliesPolicy, body.Exclusive)
@@ -225,8 +224,8 @@ func (h *ListsHandler) POSTListAccounts(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var body POSTListAccountsRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+	if err := api.DecodeJSONBody(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	if err := h.lists.AddAccountsToList(r.Context(), account.ID, id, body.AccountIDs); err != nil {
@@ -262,8 +261,8 @@ func (h *ListsHandler) DELETEListAccounts(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var body DELETEListAccountsRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+	if err := api.DecodeJSONBody(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	if err := h.lists.RemoveAccountsFromList(r.Context(), account.ID, id, body.AccountIDs); err != nil {

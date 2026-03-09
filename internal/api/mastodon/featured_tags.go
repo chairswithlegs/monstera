@@ -1,8 +1,8 @@
 package mastodon
 
 import (
-	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -51,6 +51,17 @@ func (h *FeaturedTagsHandler) GETFeaturedTags(w http.ResponseWriter, r *http.Req
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
+type postFeaturedTagRequest struct {
+	Name string `json:"name"`
+}
+
+func (r *postFeaturedTagRequest) Validate() error {
+	if err := api.ValidateRequiredField(r.Name, "name"); err != nil {
+		return fmt.Errorf("name: %w", err)
+	}
+	return nil
+}
+
 // POSTFeaturedTags handles POST /api/v1/featured_tags. Body: { "name": "hashtag" }.
 func (h *FeaturedTagsHandler) POSTFeaturedTags(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
@@ -58,15 +69,9 @@ func (h *FeaturedTagsHandler) POSTFeaturedTags(w http.ResponseWriter, r *http.Re
 		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
-	var body struct {
-		Name string `json:"name"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
-		return
-	}
-	if body.Name == "" {
-		api.HandleError(w, r, api.NewUnprocessableError("Validation failed: Tag is invalid"))
+	var body postFeaturedTagRequest
+	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	ft, err := h.featuredTags.CreateFeaturedTag(r.Context(), account.ID, body.Name)

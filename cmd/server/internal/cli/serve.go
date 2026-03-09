@@ -150,10 +150,10 @@ func runServe(_ *cobra.Command, _ []string) error {
 	eventBus := sseMastodon.NewPublisher(natsClient.Conn, s, metrics, logger, cfg.InstanceDomain)
 	signatureService := ap.NewHTTPSignatureService(cfg, cacheStore, accountSvc)
 	outbox := ap.NewOutbox(s, natsClient.JS, blocklistCache, signatureService, cfg)
-	statusSvc := service.NewStatusService(s, outbox, eventBus, nil, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars, logger)
+	statusSvc := service.NewStatusService(s, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars)
 	timelineSvc := service.NewTimelineService(s, statusSvc)
 	conversationSvc := service.NewConversationService(s, statusSvc)
-	statusSvc.SetDirectStatusConversationUpdater(conversationSvc)
+	statusWriteSvc := service.NewStatusWriteService(s, statusSvc, conversationSvc, outbox, eventBus, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars, logger)
 	instanceSvc := service.NewInstanceService(s)
 	followSvc := service.NewFollowService(s, accountSvc, outbox, nil)
 	notificationSvc := service.NewNotificationService(s)
@@ -164,13 +164,14 @@ func runServe(_ *cobra.Command, _ []string) error {
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	go func() { _ = outbox.Start(workerCtx) }()
 	go func() { _ = hub.Start(workerCtx) }()
-	go runScheduledStatusWorker(workerCtx, s, statusSvc, logger)
+	go runScheduledStatusWorker(workerCtx, s, statusWriteSvc, logger)
 	defer workerCancel()
 	inboxProcessor := ap.NewInbox(
 		accountSvc,
 		followSvc,
 		notificationSvc,
 		statusSvc,
+		statusWriteSvc,
 		mediaSvc,
 		remoteResolver,
 		cacheStore,
@@ -191,7 +192,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	oauthHandler := oauthhandlers.NewHandler(oauthServer, authSvc, cfg)
 	health := api.NewHealthChecker(pool, natsClient.Conn)
 	accountsHandler := mastodon.NewAccountsHandler(accountSvc, followSvc, timelineSvc, cfg.InstanceDomain)
-	statusesHandler := mastodon.NewStatusesHandler(accountSvc, statusSvc, cfg.InstanceDomain, cacheStore, nil)
+	statusesHandler := mastodon.NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, cfg.InstanceDomain, cacheStore, nil)
 	scheduledStatusesHandler := mastodon.NewScheduledStatusesHandler(statusSvc)
 	pollsHandler := mastodon.NewPollsHandler(statusSvc)
 	timelinesHandler := mastodon.NewTimelinesHandler(timelineSvc, cfg.InstanceDomain)
@@ -235,7 +236,8 @@ func runServe(_ *cobra.Command, _ []string) error {
 	moderatorReports := monstera.NewModeratorReportsHandler(moderationSvc)
 	adminFederation := monstera.NewAdminFederationHandler(instanceSvc, moderationSvc)
 	moderatorContent := monstera.NewModeratorContentHandler(serverFilterSvc)
-	adminSettings := monstera.NewAdminSettingsHandler(instanceSvc)
+	monsteraSettingsSvc := service.NewMonsteraSettingsService(s)
+	adminSettings := monstera.NewAdminSettingsHandler(monsteraSettingsSvc)
 	adminAnnouncements := monstera.NewAdminAnnouncementsHandler(announcementSvc)
 
 	handler := router.New(router.Deps{
@@ -318,7 +320,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 }
 
 // runScheduledStatusWorker runs a ticker that publishes due scheduled statuses.
-func runScheduledStatusWorker(ctx context.Context, st store.Store, statusSvc service.StatusService, logger *slog.Logger) {
+func runScheduledStatusWorker(ctx context.Context, st store.Store, statusWriteSvc service.StatusWriteService, logger *slog.Logger) {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 	for {
@@ -334,7 +336,7 @@ func runScheduledStatusWorker(ctx context.Context, st store.Store, statusSvc ser
 				continue
 			}
 			for i := range due {
-				if err := statusSvc.PublishScheduled(ctx, due[i].ID); err != nil && logger != nil {
+				if err := statusWriteSvc.PublishScheduled(ctx, due[i].ID); err != nil && logger != nil {
 					logger.WarnContext(ctx, "scheduled status publish failed", slog.String("id", due[i].ID), slog.Any("error", err))
 				}
 			}

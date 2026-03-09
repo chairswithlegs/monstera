@@ -1,7 +1,6 @@
 package oauth
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -68,8 +67,8 @@ func (h *Handler) POSTRegisterApp(w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("Content-Type")
 	if strings.HasPrefix(ct, "application/json") {
 		var body registerAppRequest
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			api.HandleError(w, r, api.NewBadRequestError("invalid request body"))
+		if err := api.DecodeJSONBody(r, &body); err != nil {
+			api.HandleError(w, r, err)
 			return
 		}
 		name = strings.TrimSpace(body.ClientName)
@@ -191,8 +190,8 @@ type loginRequest struct {
 // Validates credentials and authorizes the application.
 func (h *Handler) POSTLogin(w http.ResponseWriter, r *http.Request) {
 	var body loginRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid request body"))
+	if err := api.DecodeJSONBody(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 
@@ -269,8 +268,8 @@ func (h *Handler) POSTToken(w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("Content-Type")
 	if strings.HasPrefix(ct, "application/json") {
 		var body tokenRequestBody
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			api.HandleError(w, r, api.NewBadRequestError("invalid request body"))
+		if err := api.DecodeJSONBody(r, &body); err != nil {
+			api.HandleError(w, r, err)
 			return
 		}
 		grantType = strings.TrimSpace(body.GrantType)
@@ -336,7 +335,7 @@ func (h *Handler) POSTRevoke(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := r.FormValue("token")
-	if err := api.ValidateRequiredString(token); err != nil {
+	if err := api.ValidateRequiredField(token, "token"); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}

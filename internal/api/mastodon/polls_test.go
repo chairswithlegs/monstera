@@ -26,7 +26,9 @@ func TestPollsHandler_GETPoll(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
+	conversationSvc := service.NewConversationService(st, statusSvc)
+	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
 	handler := NewPollsHandler(statusSvc)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
@@ -38,7 +40,7 @@ func TestPollsHandler_GETPoll(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a status with a poll via the service
-	result, err := statusSvc.Create(ctx, service.CreateWithContentInput{
+	result, err := statusWriteSvc.Create(ctx, service.CreateWithContentInput{
 		AccountID:         acc.ID,
 		Username:          acc.Username,
 		Text:              "Poll?",
@@ -98,7 +100,9 @@ func TestPollsHandler_POSTVotes(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	statusSvc := service.NewStatusService(st, service.NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, slog.Default())
+	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
+	conversationSvc := service.NewConversationService(st, statusSvc)
+	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
 	handler := NewPollsHandler(statusSvc)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
@@ -109,7 +113,7 @@ func TestPollsHandler_POSTVotes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	result, err := statusSvc.Create(ctx, service.CreateWithContentInput{
+	result, err := statusWriteSvc.Create(ctx, service.CreateWithContentInput{
 		AccountID:         acc.ID,
 		Username:          acc.Username,
 		Text:              "Vote?",

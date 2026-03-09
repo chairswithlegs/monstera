@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
-	"github.com/chairswithlegs/monstera/internal/events"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/testutil"
 	"github.com/chairswithlegs/monstera/internal/uid"
@@ -18,7 +17,7 @@ func TestConversationService_ListConversations_empty(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, nil)
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	convSvc := NewConversationService(fake, statusSvc)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
@@ -40,7 +39,7 @@ func TestConversationService_UpdateForDirectStatus_creates_conversation(t *testi
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, nil)
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	convSvc := NewConversationService(fake, statusSvc)
 
 	alice, err := accountSvc.Register(ctx, RegisterInput{
@@ -91,7 +90,7 @@ func TestConversationService_MarkConversationRead(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, nil)
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	convSvc := NewConversationService(fake, statusSvc)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
@@ -122,7 +121,7 @@ func TestConversationService_RemoveConversation(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, nil)
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	convSvc := NewConversationService(fake, statusSvc)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
@@ -155,7 +154,7 @@ func TestConversationService_MarkConversationRead_not_found(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, NoopFederationPublisher, events.NoopEventBus, nil, "https://example.com", "example.com", 500, nil)
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	convSvc := NewConversationService(fake, statusSvc)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{

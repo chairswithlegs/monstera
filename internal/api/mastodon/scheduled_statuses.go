@@ -3,6 +3,7 @@ package mastodon
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -134,8 +135,18 @@ func (h *ScheduledStatusesHandler) GETScheduledStatus(w http.ResponseWriter, r *
 
 // UpdateScheduledStatusRequest is the body for PUT /api/v1/scheduled_statuses/:id.
 type UpdateScheduledStatusRequest struct {
-	ScheduledAt string          `json:"scheduled_at"`
-	Params      json.RawMessage `json:"params,omitempty"`
+	ScheduledAt       string          `json:"scheduled_at"`
+	Params            json.RawMessage `json:"params,omitempty"`
+	parsedScheduledAt time.Time
+}
+
+func (r *UpdateScheduledStatusRequest) Validate() error {
+	t, err := api.ValidateRFC3339(r.ScheduledAt, "scheduled_at")
+	if err != nil {
+		return fmt.Errorf("scheduled_at: %w", err)
+	}
+	r.parsedScheduledAt = t
+	return nil
 }
 
 // PUTScheduledStatus handles PUT /api/v1/scheduled_statuses/:id.
@@ -161,20 +172,15 @@ func (h *ScheduledStatusesHandler) PUTScheduledStatus(w http.ResponseWriter, r *
 		return
 	}
 	var req UpdateScheduledStatusRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		api.HandleError(w, r, api.NewUnprocessableError("invalid JSON"))
-		return
-	}
-	scheduledAt, err := time.Parse(time.RFC3339, req.ScheduledAt)
-	if err != nil || req.ScheduledAt == "" {
-		api.HandleError(w, r, api.NewUnprocessableError("scheduled_at must be a valid ISO8601 datetime"))
+	if err := api.DecodeAndValidateJSON(r, &req); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
 	params := s.Params
 	if len(req.Params) > 0 {
 		params = req.Params
 	}
-	updated, err := h.statuses.UpdateScheduledStatus(ctx, id, account.ID, params, scheduledAt)
+	updated, err := h.statuses.UpdateScheduledStatus(ctx, id, account.ID, params, req.parsedScheduledAt)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)

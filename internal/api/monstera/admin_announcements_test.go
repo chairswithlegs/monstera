@@ -84,14 +84,14 @@ func TestAdminAnnouncementsHandler_POSTAnnouncements(t *testing.T) {
 		assert.NotEmpty(t, out.UpdatedAt)
 	})
 
-	t.Run("missing content returns 400", func(t *testing.T) {
+	t.Run("missing content returns 422", func(t *testing.T) {
 		body := map[string]any{"all_day": true}
 		b, _ := json.Marshal(body)
 		req := httptest.NewRequest(http.MethodPost, "/admin/announcements", bytes.NewReader(b))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		handler.POSTAnnouncements(rec, req)
-		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	})
 
 	t.Run("invalid JSON returns 400", func(t *testing.T) {
@@ -102,7 +102,7 @@ func TestAdminAnnouncementsHandler_POSTAnnouncements(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
 	})
 
-	t.Run("invalid starts_at returns 400", func(t *testing.T) {
+	t.Run("invalid starts_at returns 422", func(t *testing.T) {
 		body := map[string]any{
 			"content":   "<p>Ok</p>",
 			"starts_at": "not-a-date",
@@ -112,7 +112,7 @@ func TestAdminAnnouncementsHandler_POSTAnnouncements(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		handler.POSTAnnouncements(rec, req)
-		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	})
 }
 

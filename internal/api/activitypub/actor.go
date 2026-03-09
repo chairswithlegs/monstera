@@ -28,7 +28,7 @@ func NewActorHandler(accounts service.AccountService, config *config.Config) *Ac
 // GETActor returns the ActivityPub Actor JSON for the local user.
 func (h *ActorHandler) GETActor(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
-	if err := api.ValidateRequiredString(username); err != nil {
+	if err := api.ValidateRequiredField(username, "username"); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}

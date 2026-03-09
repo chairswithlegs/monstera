@@ -8,40 +8,38 @@ import (
 	"github.com/chairswithlegs/monstera/internal/service"
 )
 
-// AdminSettingsHandler handles instance settings (admin only; route protected by RequireAdmin).
+// AdminSettingsHandler handles Monstera settings (admin only; route protected by RequireAdmin).
 type AdminSettingsHandler struct {
-	instance service.InstanceService
+	settings service.MonsteraSettingsService
 }
 
 // NewAdminSettingsHandler returns a new AdminSettingsHandler.
-func NewAdminSettingsHandler(instance service.InstanceService) *AdminSettingsHandler {
-	return &AdminSettingsHandler{instance: instance}
+func NewAdminSettingsHandler(settings service.MonsteraSettingsService) *AdminSettingsHandler {
+	return &AdminSettingsHandler{settings: settings}
 }
 
-// GETSettings returns all instance settings.
+// GETSettings returns the current Monstera settings.
 func (h *AdminSettingsHandler) GETSettings(w http.ResponseWriter, r *http.Request) {
-	settings, err := h.instance.GetAllSettings(r.Context())
+	settings, err := h.settings.Get(r.Context())
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
-	api.WriteJSON(w, http.StatusOK, apimodel.AdminSettings{Settings: settings})
+	api.WriteJSON(w, http.StatusOK, apimodel.AdminSettingsFromDomain(settings))
 }
 
-// PUTSettings updates instance settings (merge with existing).
+// PUTSettings updates Monstera settings.
 func (h *AdminSettingsHandler) PUTSettings(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Settings map[string]string `json:"settings"`
-	}
-	if err := api.DecodeJSONBody(r, &body); err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid JSON"))
+	var body apimodel.AdminSettings
+	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+		api.HandleError(w, r, err)
 		return
 	}
-	for k, v := range body.Settings {
-		if err := h.instance.SetSetting(r.Context(), k, v); err != nil {
-			api.HandleError(w, r, err)
-			return
-		}
+
+	settings := body.ToDomain()
+	if err := h.settings.Update(r.Context(), settings); err != nil {
+		api.HandleError(w, r, err)
+		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

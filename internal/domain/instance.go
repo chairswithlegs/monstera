@@ -20,11 +20,6 @@ type AnnouncementReactionCount struct {
 	Me    bool
 }
 
-type InstanceSetting struct {
-	Key   string
-	Value string
-}
-
 type Mute struct {
 	ID                string
 	AccountID         string

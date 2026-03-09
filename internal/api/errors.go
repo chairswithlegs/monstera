@@ -38,15 +38,6 @@ func NewBadRequestError(msg string) error {
 	return fmt.Errorf("%w: %s", ErrBadRequest, msg)
 }
 
-// ValidateRequiredString is a helper function to validate that a string is not empty.
-// It returns a validation error if it is empty.
-func ValidateRequiredString(field string) error {
-	if field == "" {
-		return fmt.Errorf("%w: [%s] is required", ErrBadRequest, field)
-	}
-	return nil
-}
-
 // ErrorResponse is the standard Mastodon-compatible error body.
 type ErrorResponse struct {
 	Error string `json:"error"`

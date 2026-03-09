@@ -28,7 +28,7 @@ func NewCollectionsHandler(accounts service.AccountService, statuses service.Sta
 // GETFollowers handles GET /users/{username}/followers.
 func (h *CollectionsHandler) GETFollowers(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
-	if err := api.ValidateRequiredString(username); err != nil {
+	if err := api.ValidateRequiredField(username, "username"); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
@@ -57,7 +57,7 @@ func (h *CollectionsHandler) GETFollowers(w http.ResponseWriter, r *http.Request
 // GETFollowing handles GET /users/{username}/following.
 func (h *CollectionsHandler) GETFollowing(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
-	if err := api.ValidateRequiredString(username); err != nil {
+	if err := api.ValidateRequiredField(username, "username"); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
@@ -87,7 +87,7 @@ func (h *CollectionsHandler) GETFollowing(w http.ResponseWriter, r *http.Request
 // Returns pinned statuses as an OrderedCollection of Notes.
 func (h *CollectionsHandler) GETFeatured(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
-	if err := api.ValidateRequiredString(username); err != nil {
+	if err := api.ValidateRequiredField(username, "username"); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
