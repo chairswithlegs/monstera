@@ -859,7 +859,10 @@ func (p *inbox) resolveRemoteAccount(ctx context.Context, actorIRI string) (*dom
 func (p *inbox) syncRemoteActorFromDoc(ctx context.Context, actor *Actor) (*domain.Account, error) {
 	apRaw, _ := json.Marshal(actor)
 	dom := DomainFromActorID(actor.ID)
-	username := usernameFromActorIRI(actor.ID, dom)
+	username := actor.PreferredUsername
+	if username == "" {
+		username = usernameFromActorIRI(actor.ID, dom)
+	}
 	if username == "" {
 		username = defaultUsernameUnknown
 	}
