@@ -1456,6 +1456,9 @@ func (f *FakeStore) UpdateMonsteraSettings(ctx context.Context, in *domain.Monst
 		RegistrationMode:    in.RegistrationMode,
 		InviteMaxUses:       in.InviteMaxUses,
 		InviteExpiresInDays: in.InviteExpiresInDays,
+		ServerName:          in.ServerName,
+		ServerDescription:   in.ServerDescription,
+		ServerRules:         append([]string(nil), in.ServerRules...),
 	}
 	return nil
 }

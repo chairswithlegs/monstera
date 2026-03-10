@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 )
 
 // Message represents a single outbound email.
@@ -47,7 +46,6 @@ type Config struct {
 	SMTPPort     int
 	SMTPUsername string
 	SMTPPassword string
-	Logger       *slog.Logger
 }
 
 // DriverFunc is a constructor for a Sender implementation.

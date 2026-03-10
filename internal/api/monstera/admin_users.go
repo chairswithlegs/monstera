@@ -100,6 +100,15 @@ func (h *AdminUsersHandler) POSTSuspend(w http.ResponseWriter, r *http.Request) 
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
 		return
 	}
+	_, targetUser, err := h.accounts.GetAccountWithUser(r.Context(), id)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	if targetUser != nil && targetUser.Role == domain.RoleAdmin {
+		api.HandleError(w, r, api.NewForbiddenError("cannot suspend or silence an admin account"))
+		return
+	}
 	if err := h.moderation.SuspendAccount(r.Context(), user.ID, id); err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -117,6 +126,15 @@ func (h *AdminUsersHandler) POSTUnsuspend(w http.ResponseWriter, r *http.Request
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
+		return
+	}
+	_, targetUser, err := h.accounts.GetAccountWithUser(r.Context(), id)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	if targetUser != nil && targetUser.Role == domain.RoleAdmin {
+		api.HandleError(w, r, api.NewForbiddenError("cannot suspend or silence an admin account"))
 		return
 	}
 	if err := h.moderation.UnsuspendAccount(r.Context(), user.ID, id); err != nil {
@@ -138,6 +156,15 @@ func (h *AdminUsersHandler) POSTSilence(w http.ResponseWriter, r *http.Request) 
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
 		return
 	}
+	_, targetUser, err := h.accounts.GetAccountWithUser(r.Context(), id)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	if targetUser != nil && targetUser.Role == domain.RoleAdmin {
+		api.HandleError(w, r, api.NewForbiddenError("cannot suspend or silence an admin account"))
+		return
+	}
 	if err := h.moderation.SilenceAccount(r.Context(), user.ID, id); err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -157,6 +184,15 @@ func (h *AdminUsersHandler) POSTUnsilence(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
 		return
 	}
+	_, targetUser, err := h.accounts.GetAccountWithUser(r.Context(), id)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	if targetUser != nil && targetUser.Role == domain.RoleAdmin {
+		api.HandleError(w, r, api.NewForbiddenError("cannot suspend or silence an admin account"))
+		return
+	}
 	if err := h.moderation.UnsilenceAccount(r.Context(), user.ID, id); err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -174,6 +210,10 @@ func (h *AdminUsersHandler) PUTRole(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
+		return
+	}
+	if user.AccountID == id {
+		api.HandleError(w, r, api.NewForbiddenError("cannot perform this action on your own account"))
 		return
 	}
 	var body putRoleRequest
@@ -203,6 +243,10 @@ func (h *AdminUsersHandler) DELETEUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		api.HandleError(w, r, api.NewBadRequestError("id required"))
+		return
+	}
+	if user.AccountID == id {
+		api.HandleError(w, r, api.NewForbiddenError("cannot perform this action on your own account"))
 		return
 	}
 	acc, err := h.accounts.GetByID(r.Context(), id)

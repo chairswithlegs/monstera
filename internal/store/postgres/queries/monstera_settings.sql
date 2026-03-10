@@ -1,11 +1,18 @@
 -- name: GetMonsteraSettings :one
-SELECT id, registration_mode, invite_max_uses, invite_expires_in_days
+SELECT id, registration_mode, invite_max_uses, invite_expires_in_days,
+       server_name, server_description, server_rules
 FROM monstera_settings WHERE id = 'default';
 
 -- name: UpdateMonsteraSettings :exec
-INSERT INTO monstera_settings (id, registration_mode, invite_max_uses, invite_expires_in_days)
-VALUES ('default', @registration_mode, @invite_max_uses, @invite_expires_in_days)
+INSERT INTO monstera_settings
+  (id, registration_mode, invite_max_uses, invite_expires_in_days,
+   server_name, server_description, server_rules)
+VALUES ('default', @registration_mode, @invite_max_uses, @invite_expires_in_days,
+        @server_name, @server_description, @server_rules)
 ON CONFLICT (id) DO UPDATE SET
-  registration_mode = @registration_mode,
-  invite_max_uses = @invite_max_uses,
-  invite_expires_in_days = @invite_expires_in_days;
+  registration_mode    = @registration_mode,
+  invite_max_uses      = @invite_max_uses,
+  invite_expires_in_days = @invite_expires_in_days,
+  server_name          = @server_name,
+  server_description   = @server_description,
+  server_rules         = @server_rules;

@@ -6,50 +6,19 @@ import {
   unsuspendUser,
   silenceUser,
   unsilenceUser,
-  setUserRole,
-  deleteUser,
   type AdminUser,
 } from '@/lib/api/admin';
-import { useModeratorUser } from '@/contexts/moderator-user';
-import { isAdmin } from '@/lib/api/user';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 
 type Props = { id: string };
 
 export default function UserDetailView({ id }: Props) {
-  const router = useRouter();
-  const currentUser = useModeratorUser();
   const [user, setUser] = useState<AdminUser | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
-  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
-  const [newRole, setNewRole] = useState('');
 
   const load = useCallback(() => {
     if (!id) return;
@@ -74,19 +43,6 @@ export default function UserDetailView({ id }: Props) {
     }
   };
 
-  const handleSetRole = async () => {
-    if (!user || !newRole.trim()) return;
-    await act(() => setUserRole(user.account_id, newRole.trim()));
-    setRoleDialogOpen(false);
-    setNewRole('');
-  };
-
-  const handleDelete = async () => {
-    if (!user) return;
-    await act(() => deleteUser(user.account_id));
-    router.push('/moderator/users');
-  };
-
   if (error && !user) {
     return (
       <Alert variant="destructive">
@@ -96,7 +52,7 @@ export default function UserDetailView({ id }: Props) {
   }
   if (!user) return <p className="text-muted-foreground">Loading…</p>;
 
-  const showAdminActions = currentUser && isAdmin(currentUser);
+  const isAdmin = user.role === 'admin';
 
   return (
     <div>
@@ -118,79 +74,27 @@ export default function UserDetailView({ id }: Props) {
       )}
       <div className="mt-6 flex flex-wrap gap-2">
         {user.suspended ? (
-          <Button type="button" disabled={acting} onClick={() => act(() => unsuspendUser(user.account_id))}>
+          <Button type="button" disabled={acting || isAdmin} onClick={() => act(() => unsuspendUser(user.account_id))}>
             Unsuspend
           </Button>
         ) : (
-          <Button type="button" variant="destructive" disabled={acting} onClick={() => act(() => suspendUser(user.account_id))}>
+          <Button type="button" variant="destructive" disabled={acting || isAdmin} onClick={() => act(() => suspendUser(user.account_id))}>
             Suspend
           </Button>
         )}
         {user.silenced ? (
-          <Button type="button" disabled={acting} onClick={() => act(() => unsilenceUser(user.account_id))}>
+          <Button type="button" disabled={acting || isAdmin} onClick={() => act(() => unsilenceUser(user.account_id))}>
             Unsilence
           </Button>
         ) : (
-          <Button type="button" variant="secondary" disabled={acting} onClick={() => act(() => silenceUser(user.account_id))} className="bg-amber-600 text-white hover:bg-amber-700 hover:text-white">
+          <Button type="button" variant="secondary" disabled={acting || isAdmin} onClick={() => act(() => silenceUser(user.account_id))} className="bg-amber-600 text-white hover:bg-amber-700 hover:text-white">
             Silence
           </Button>
         )}
-        {showAdminActions && (
-          <>
-            <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
-              <DialogTrigger asChild>
-                <Button type="button" variant="secondary" disabled={acting}>
-                  Set role
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Set role</DialogTitle>
-                  <DialogDescription>Enter the new role (user, moderator, admin).</DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-2 py-4">
-                  <Label htmlFor="new-role">New role</Label>
-                  <Input
-                    id="new-role"
-                    value={newRole}
-                    onChange={(e) => setNewRole(e.target.value)}
-                    placeholder={user.role}
-                  />
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setRoleDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleSetRole} disabled={acting || !newRole.trim()}>
-                    {acting ? 'Saving…' : 'Save'}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button type="button" variant="destructive" disabled={acting} className="bg-red-800 hover:bg-red-900">
-                  Delete account
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete account?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete the account and all associated data.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                    Delete
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </>
-        )}
       </div>
+      {isAdmin && (
+        <p className="mt-4 text-sm text-muted-foreground">Suspend and silence actions are not available for admin accounts.</p>
+      )}
     </div>
   );
 }

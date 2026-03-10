@@ -244,6 +244,9 @@ type MonsteraSetting struct {
 	RegistrationMode    string      `json:"registration_mode"`
 	InviteMaxUses       pgtype.Int4 `json:"invite_max_uses"`
 	InviteExpiresInDays pgtype.Int4 `json:"invite_expires_in_days"`
+	ServerName          pgtype.Text `json:"server_name"`
+	ServerDescription   pgtype.Text `json:"server_description"`
+	ServerRules         pgtype.Text `json:"server_rules"`
 }
 
 type Mute struct {

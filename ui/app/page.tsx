@@ -7,7 +7,6 @@ import { useEffect, useState } from 'react';
 import type { NodeInfoResponse } from '@/lib/api/nodeinfo';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { StatsCard } from '@/components/stats-card';
 
 export default function LandingPage() {
   const { token, loading: authLoading } = useAuth();
@@ -51,32 +50,35 @@ export default function LandingPage() {
   }
 
   const { software, usage, openRegistrations } = nodeInfo!;
+  const serverName = (nodeInfo!.metadata.server_name as string) || software.name;
+  const serverDescription = nodeInfo!.metadata.server_description as string | undefined;
 
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-2xl px-6 py-16">
-        <h1 className="text-3xl font-bold text-foreground">{software.name}</h1>
+        <h1 className="text-3xl font-bold text-foreground">{serverName}</h1>
         <p className="mt-2 text-muted-foreground">
-          A federated server running {software.name} {software.version}.
+          A federated server running on <a href="https://github.com/chairswithlegs/monstera" className="text-primary hover:underline">{software.name}</a>.
         </p>
+        {serverDescription && (
+          <p className="mt-4 text-base text-foreground">{serverDescription}</p>
+        )}
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2">
-          <StatsCard label="Users" value={usage.users.total.toLocaleString()} />
-          <StatsCard label="Local posts" value={usage.localPosts.toLocaleString()} />
-        </div>
-
-        <p className="mt-4 text-sm text-muted-foreground">
-          Registrations are {openRegistrations ? 'open' : 'closed'}.
-        </p>
-
-        <div className="mt-10 flex flex-wrap gap-4">
+        <div className="mt-10 flex flex-wrap items-center gap-4">
           <Button asChild>
             <Link href="/login">Sign in</Link>
           </Button>
-          {openRegistrations && (
+          {openRegistrations ? (
             <Button asChild variant="outline">
               <Link href="/register">Register</Link>
             </Button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" disabled>
+                Register
+              </Button>
+              <span className="text-sm text-muted-foreground">Registrations are closed.</span>
+            </div>
           )}
         </div>
       </div>

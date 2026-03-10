@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -28,7 +27,7 @@ func TestPollsHandler_GETPoll(t *testing.T) {
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
-	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500)
 	handler := NewPollsHandler(statusSvc)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
@@ -102,7 +101,7 @@ func TestPollsHandler_POSTVotes(t *testing.T) {
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
-	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, service.NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500)
 	handler := NewPollsHandler(statusSvc)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{

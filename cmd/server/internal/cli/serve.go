@@ -125,7 +125,6 @@ func runServe(_ *cobra.Command, _ []string) error {
 		SMTPPort:     cfg.EmailSMTPPort,
 		SMTPUsername: cfg.EmailSMTPUsername,
 		SMTPPassword: cfg.EmailSMTPPassword,
-		Logger:       logger,
 	})
 	if err != nil {
 		return fmt.Errorf("email: %w", err)
@@ -140,7 +139,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	accountSvc := service.NewAccountService(s, instanceBaseURL)
 	blocklistCache := ap.NewBlocklistCache(s)
 	if err := blocklistCache.Refresh(ctx); err != nil {
-		logger.Warn("blocklist refresh failed", slog.Any("error", err))
+		slog.WarnContext(ctx, "blocklist refresh failed", slog.Any("error", err))
 	}
 	if err := ap.CreateOrUpdateStreams(ctx, natsClient.JS); err != nil {
 		return fmt.Errorf("activitypub: create or update streams: %w", err)
@@ -153,7 +152,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	statusSvc := service.NewStatusService(s, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars)
 	timelineSvc := service.NewTimelineService(s, statusSvc)
 	conversationSvc := service.NewConversationService(s, statusSvc)
-	statusWriteSvc := service.NewStatusWriteService(s, statusSvc, conversationSvc, outbox, eventBus, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars, logger)
+	statusWriteSvc := service.NewStatusWriteService(s, statusSvc, conversationSvc, outbox, eventBus, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars)
 	instanceSvc := service.NewInstanceService(s)
 	followSvc := service.NewFollowService(s, accountSvc, outbox, nil)
 	notificationSvc := service.NewNotificationService(s)

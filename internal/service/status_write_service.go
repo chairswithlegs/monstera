@@ -44,7 +44,6 @@ type statusWriteService struct {
 	instanceBaseURL string
 	instanceDomain  string
 	maxStatusChars  int
-	logger          *slog.Logger
 }
 
 // NewStatusWriteService returns a StatusWriteService. fed and eventBus must be non-nil.
@@ -56,7 +55,6 @@ func NewStatusWriteService(
 	eventBus events.EventBus,
 	instanceBaseURL, instanceDomain string,
 	maxStatusChars int,
-	logger *slog.Logger,
 ) StatusWriteService {
 	if fed == nil {
 		panic("StatusWriteService: fed must be non-nil. Use NoopFederationPublisher when federation is disabled")
@@ -74,7 +72,6 @@ func NewStatusWriteService(
 		instanceBaseURL: base,
 		instanceDomain:  instanceDomain,
 		maxStatusChars:  maxStatusChars,
-		logger:          logger,
 	}
 }
 
@@ -390,8 +387,8 @@ func (svc *statusWriteService) Create(ctx context.Context, in CreateWithContentI
 	if err != nil {
 		return EnrichedStatus{}, fmt.Errorf("Create GetStatusAttachments: %w", err)
 	}
-	if err := svc.fed.PublishStatus(ctx, created); err != nil && svc.logger != nil {
-		svc.logger.WarnContext(ctx, "federation publish failed after Create", slog.Any("error", err), slog.String("status_id", created.ID))
+	if err := svc.fed.PublishStatus(ctx, created); err != nil {
+		slog.WarnContext(ctx, "federation publish failed after Create", slog.Any("error", err), slog.String("status_id", created.ID))
 	}
 	mentionedAccountIDs := make([]string, 0, len(mentions))
 	for _, m := range mentions {
@@ -408,8 +405,8 @@ func (svc *statusWriteService) Create(ctx context.Context, in CreateWithContentI
 		MentionedAccountIDs: mentionedAccountIDs,
 	})
 	if created.Visibility == domain.VisibilityDirect {
-		if updErr := svc.conversationSvc.UpdateForDirectStatus(ctx, created, in.AccountID, mentionedAccountIDs); updErr != nil && svc.logger != nil {
-			svc.logger.WarnContext(ctx, "conversation update failed after direct status create", slog.Any("error", updErr), slog.String("status_id", created.ID))
+		if updErr := svc.conversationSvc.UpdateForDirectStatus(ctx, created, in.AccountID, mentionedAccountIDs); updErr != nil {
+			slog.WarnContext(ctx, "conversation update failed after direct status create", slog.Any("error", updErr), slog.String("status_id", created.ID))
 		}
 	}
 	out := EnrichedStatus{
@@ -456,20 +453,18 @@ func (svc *statusWriteService) CreateRemote(ctx context.Context, in CreateRemote
 	}
 	for _, mediaID := range mediaIDs {
 		if attErr := svc.store.AttachMediaToStatus(ctx, mediaID, st.ID, in.AccountID); attErr != nil {
-			if svc.logger != nil {
-				svc.logger.WarnContext(ctx, "CreateRemote: attach media failed", slog.String("media_id", mediaID), slog.Any("error", attErr))
-			}
+			slog.WarnContext(ctx, "CreateRemote: attach media failed", slog.String("media_id", mediaID), slog.Any("error", attErr))
 		}
 	}
 	if in.InReplyToID != nil && *in.InReplyToID != "" {
-		if incErr := svc.store.IncrementRepliesCount(ctx, *in.InReplyToID); incErr != nil && svc.logger != nil {
-			svc.logger.WarnContext(ctx, "CreateRemote: increment replies count failed", slog.String("parent_id", *in.InReplyToID), slog.Any("error", incErr))
+		if incErr := svc.store.IncrementRepliesCount(ctx, *in.InReplyToID); incErr != nil {
+			slog.WarnContext(ctx, "CreateRemote: increment replies count failed", slog.String("parent_id", *in.InReplyToID), slog.Any("error", incErr))
 		}
 	}
 	if in.Visibility == domain.VisibilityDirect {
 		mentionedIDs, _ := svc.store.GetStatusMentionAccountIDs(ctx, st.ID)
-		if updErr := svc.conversationSvc.UpdateForDirectStatus(ctx, st, st.AccountID, mentionedIDs); updErr != nil && svc.logger != nil {
-			svc.logger.WarnContext(ctx, "conversation update failed after direct status from inbox", slog.Any("error", updErr), slog.String("status_id", st.ID))
+		if updErr := svc.conversationSvc.UpdateForDirectStatus(ctx, st, st.AccountID, mentionedIDs); updErr != nil {
+			slog.WarnContext(ctx, "conversation update failed after direct status from inbox", slog.Any("error", updErr), slog.String("status_id", st.ID))
 		}
 	}
 	return st, nil
@@ -499,8 +494,8 @@ func (svc *statusWriteService) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return fmt.Errorf("Delete(%s): %w", id, err)
 	}
-	if err := svc.fed.DeleteStatus(ctx, st); err != nil && svc.logger != nil {
-		svc.logger.WarnContext(ctx, "federation publish failed after status delete", slog.Any("error", err), slog.String("status_id", st.ID))
+	if err := svc.fed.DeleteStatus(ctx, st); err != nil {
+		slog.WarnContext(ctx, "federation publish failed after status delete", slog.Any("error", err), slog.String("status_id", st.ID))
 	}
 	svc.eventBus.PublishStatusDeleted(ctx, events.StatusDeletedEvent{
 		StatusID:            st.ID,
@@ -803,8 +798,8 @@ func (svc *statusWriteService) Update(ctx context.Context, accountID, statusID s
 	if err != nil {
 		return EnrichedStatus{}, fmt.Errorf("Update GetStatusByID: %w", err)
 	}
-	if err := svc.fed.PublishUpdate(ctx, updated); err != nil && svc.logger != nil {
-		svc.logger.WarnContext(ctx, "federation publish update failed", slog.Any("error", err), slog.String("status_id", statusID))
+	if err := svc.fed.PublishUpdate(ctx, updated); err != nil {
+		slog.WarnContext(ctx, "federation publish update failed", slog.Any("error", err), slog.String("status_id", statusID))
 	}
 	quotes, err := svc.store.ListQuotesOfStatus(ctx, statusID, nil, 500)
 	if err == nil {

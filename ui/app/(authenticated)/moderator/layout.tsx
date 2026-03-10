@@ -11,7 +11,6 @@ const navItems = [
   { href: '/moderator/dashboard', label: 'Dashboard' },
   { href: '/moderator/users', label: 'Users' },
   { href: '/moderator/registrations', label: 'Registrations' },
-  { href: '/moderator/invites', label: 'Invites' },
   { href: '/moderator/reports', label: 'Reports' },
   { href: '/moderator/federation', label: 'Federation' },
   { href: '/moderator/content', label: 'Content' },

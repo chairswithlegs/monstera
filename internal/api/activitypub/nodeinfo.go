@@ -67,8 +67,12 @@ func (h *NodeInfoHandler) GETNodeInfo(w http.ResponseWriter, r *http.Request) {
 			LocalPosts: stats.LocalPostCount,
 		},
 		OpenRegistrations: stats.OpenRegistrations,
-		Metadata:          map[string]any{},
+		Metadata: map[string]any{
+			"registration_mode":  stats.RegistrationMode,
+			"server_name":        stats.ServerName,
+			"server_description": stats.ServerDescription,
+			"server_rules":       stats.ServerRules,
+		},
 	}
-	w.Header().Set("Cache-Control", "max-age=1800")
 	api.WriteJSON(w, http.StatusOK, resp)
 }

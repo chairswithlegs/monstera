@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"testing"
 	"time"
 
@@ -123,7 +122,7 @@ func TestStatusService_Delete(t *testing.T) {
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	conversationSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -150,7 +149,7 @@ func TestStatusService_Create_empty_text_returns_validation(t *testing.T) {
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	conversationSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -172,7 +171,7 @@ func TestStatusService_Create_over_char_limit_returns_validation(t *testing.T) {
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 10)
 	conversationSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 10, slog.Default())
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 10)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -194,7 +193,7 @@ func TestStatusService_Create_success_returns_result_with_author(t *testing.T) {
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	conversationSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -224,7 +223,7 @@ func TestStatusService_Create_no_mention_notification_when_mentionee_muted_conve
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	conversationSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500)
 
 	alice, err := accountSvc.Register(ctx, RegisterInput{
 		Username:     "alice",
@@ -346,7 +345,7 @@ func TestStatusService_PublishScheduled(t *testing.T) {
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	conversationSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
 		Username:     "alice",
@@ -390,7 +389,7 @@ func TestStatusService_workerPublishScheduled(t *testing.T) {
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	conversationSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
 		Username:     "alice",
@@ -451,7 +450,7 @@ func TestStatusService_Create_quote(t *testing.T) {
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	conversationSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500)
 
 	alice, err := accountSvc.Register(ctx, RegisterInput{
 		Username:     "alice",
@@ -536,7 +535,7 @@ func TestStatusService_ListQuotesOfStatus(t *testing.T) {
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	conversationSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
 		Username:     "alice",
@@ -731,7 +730,7 @@ func TestStatusService_Update_quoted_update_notification(t *testing.T) {
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	convSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, convSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500, slog.Default())
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, convSvc, NoopFederationPublisher, events.NoopEventBus, "https://example.com", "example.com", 500)
 
 	alice, err := accountSvc.Register(ctx, RegisterInput{
 		Username:     "alice",

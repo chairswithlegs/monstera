@@ -12,32 +12,41 @@ import (
 )
 
 const getMonsteraSettings = `-- name: GetMonsteraSettings :one
-SELECT id, registration_mode, invite_max_uses, invite_expires_in_days FROM monstera_settings WHERE id = 'default'
+SELECT id, registration_mode, invite_max_uses, invite_expires_in_days, server_name, server_description, server_rules FROM monstera_settings WHERE id = 'default'
 `
 
 func (q *Queries) GetMonsteraSettings(ctx context.Context) (MonsteraSetting, error) {
 	row := q.db.QueryRow(ctx, getMonsteraSettings)
 	var i MonsteraSetting
-	err := row.Scan(&i.ID, &i.RegistrationMode, &i.InviteMaxUses, &i.InviteExpiresInDays)
+	err := row.Scan(&i.ID, &i.RegistrationMode, &i.InviteMaxUses, &i.InviteExpiresInDays,
+		&i.ServerName, &i.ServerDescription, &i.ServerRules)
 	return i, err
 }
 
 const updateMonsteraSettings = `-- name: UpdateMonsteraSettings :exec
-INSERT INTO monstera_settings (id, registration_mode, invite_max_uses, invite_expires_in_days)
-VALUES ('default', $1, $2, $3)
+INSERT INTO monstera_settings (id, registration_mode, invite_max_uses, invite_expires_in_days, server_name, server_description, server_rules)
+VALUES ('default', $1, $2, $3, $4, $5, $6)
 ON CONFLICT (id) DO UPDATE SET
   registration_mode = $1,
   invite_max_uses = $2,
-  invite_expires_in_days = $3
+  invite_expires_in_days = $3,
+  server_name = $4,
+  server_description = $5,
+  server_rules = $6
 `
 
 type UpdateMonsteraSettingsParams struct {
 	RegistrationMode    string      `json:"registration_mode"`
 	InviteMaxUses       pgtype.Int4 `json:"invite_max_uses"`
 	InviteExpiresInDays pgtype.Int4 `json:"invite_expires_in_days"`
+	ServerName          pgtype.Text `json:"server_name"`
+	ServerDescription   pgtype.Text `json:"server_description"`
+	ServerRules         pgtype.Text `json:"server_rules"`
 }
 
 func (q *Queries) UpdateMonsteraSettings(ctx context.Context, arg UpdateMonsteraSettingsParams) error {
-	_, err := q.db.Exec(ctx, updateMonsteraSettings, arg.RegistrationMode, arg.InviteMaxUses, arg.InviteExpiresInDays)
+	_, err := q.db.Exec(ctx, updateMonsteraSettings,
+		arg.RegistrationMode, arg.InviteMaxUses, arg.InviteExpiresInDays,
+		arg.ServerName, arg.ServerDescription, arg.ServerRules)
 	return err
 }

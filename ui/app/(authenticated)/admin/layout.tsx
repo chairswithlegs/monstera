@@ -7,6 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 const navItems = [
+  { href: '/admin/users', label: 'Users' },
   { href: '/admin/settings', label: 'Settings' },
 ];
 

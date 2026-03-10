@@ -14,6 +14,10 @@ type NodeInfoStats struct {
 	UserCount         int64
 	LocalPostCount    int64
 	OpenRegistrations bool
+	RegistrationMode  string
+	ServerName        string
+	ServerDescription string
+	ServerRules       []string
 }
 
 // InstanceStats holds counts for the Mastodon instance API (v1 stats block).
@@ -56,14 +60,27 @@ func (svc *instanceService) GetNodeInfoStats(ctx context.Context) (*NodeInfoStat
 				UserCount:         userCount,
 				LocalPostCount:    postCount,
 				OpenRegistrations: true,
+				RegistrationMode:  string(domain.MonsteraRegistrationModeOpen),
 			}, nil
 		}
 		return nil, fmt.Errorf("GetMonsteraSettings: %w", err)
+	}
+	serverName := ""
+	if settings.ServerName != nil {
+		serverName = *settings.ServerName
+	}
+	serverDescription := ""
+	if settings.ServerDescription != nil {
+		serverDescription = *settings.ServerDescription
 	}
 	return &NodeInfoStats{
 		UserCount:         userCount,
 		LocalPostCount:    postCount,
 		OpenRegistrations: settings.RegistrationMode == domain.MonsteraRegistrationModeOpen,
+		RegistrationMode:  string(settings.RegistrationMode),
+		ServerName:        serverName,
+		ServerDescription: serverDescription,
+		ServerRules:       settings.ServerRules,
 	}, nil
 }
 

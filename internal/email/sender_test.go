@@ -1,8 +1,6 @@
 package email_test
 
 import (
-	"log/slog"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -22,12 +20,10 @@ func TestNew_UnknownDriver(t *testing.T) {
 
 func TestNew_NoopOK(t *testing.T) {
 	t.Helper()
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	sender, err := email.New(email.Config{
 		Driver:   "noop",
 		From:     "noreply@test.example",
 		FromName: "Test",
-		Logger:   logger,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, sender)

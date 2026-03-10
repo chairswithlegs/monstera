@@ -933,19 +933,48 @@ func (s *PostgresStore) GetMonsteraSettings(ctx context.Context) (*domain.Monste
 	if err != nil {
 		return nil, mapErr(err)
 	}
+	rules := []string{}
+	if row.ServerRules.Valid && row.ServerRules.String != "" {
+		rules = strings.Split(row.ServerRules.String, "\n")
+	}
 	return &domain.MonsteraSettings{
 		RegistrationMode:    domain.MonsteraRegistrationMode(row.RegistrationMode),
 		InviteMaxUses:       intPtrFromPgInt4(row.InviteMaxUses),
 		InviteExpiresInDays: intPtrFromPgInt4(row.InviteExpiresInDays),
+		ServerName:          ptrFromPgText(row.ServerName),
+		ServerDescription:   ptrFromPgText(row.ServerDescription),
+		ServerRules:         rules,
 	}, nil
 }
 
 func (s *PostgresStore) UpdateMonsteraSettings(ctx context.Context, in *domain.MonsteraSettings) error {
+	var rulesText *string
+	if len(in.ServerRules) > 0 {
+		s := strings.Join(in.ServerRules, "\n")
+		rulesText = &s
+	}
 	return mapErr(s.q.UpdateMonsteraSettings(ctx, db.UpdateMonsteraSettingsParams{
 		RegistrationMode:    string(in.RegistrationMode),
 		InviteMaxUses:       pgInt4FromPtr(in.InviteMaxUses),
 		InviteExpiresInDays: pgInt4FromPtr(in.InviteExpiresInDays),
+		ServerName:          pgTextFromPtr(in.ServerName),
+		ServerDescription:   pgTextFromPtr(in.ServerDescription),
+		ServerRules:         pgTextFromPtr(rulesText),
 	}))
+}
+
+func pgTextFromPtr(s *string) pgtype.Text {
+	if s == nil {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: *s, Valid: true}
+}
+
+func ptrFromPgText(t pgtype.Text) *string {
+	if !t.Valid {
+		return nil
+	}
+	return &t.String
 }
 
 func intPtrFromPgInt4(v pgtype.Int4) *int {
