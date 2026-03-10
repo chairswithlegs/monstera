@@ -272,6 +272,10 @@ func New(deps Deps) http.Handler {
 		r.Use(chimw.Timeout(30 * time.Second))
 		r.Use(middleware.RequireAuth(deps.OAuthServer, deps.AccountsService))
 		r.Method("GET", "/user", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.User.GETUser)))
+		r.Method("PATCH", "/account/profile", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.User.PATCHProfile)))
+		r.Method("PATCH", "/account/preferences", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.User.PATCHPreferences)))
+		r.Method("PATCH", "/account/security/email", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.User.PATCHEmail)))
+		r.Method("PATCH", "/account/security/password", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.User.PATCHPassword)))
 
 		// Moderator API (requires moderator or admin role)
 		r.Route("/moderator", func(r chi.Router) {

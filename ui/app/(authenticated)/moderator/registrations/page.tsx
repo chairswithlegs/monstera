@@ -142,7 +142,7 @@ export default function ModeratorRegistrationsPage() {
       <section>
         <h2 className="mb-4 text-lg font-medium text-foreground">Pending registrations</h2>
         <Card>
-          <CardContent className="p-0">
+          <CardContent>
             {pending.length === 0 ? (
               <EmptyState message="No pending registrations." />
             ) : (
@@ -204,7 +204,7 @@ export default function ModeratorRegistrationsPage() {
           </div>
         </div>
         <Card>
-          <CardContent className="p-0">
+          <CardContent>
             {invites.length === 0 ? (
               <EmptyState message="No invite codes yet." />
             ) : (

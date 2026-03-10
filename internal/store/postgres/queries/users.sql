@@ -39,3 +39,9 @@ ORDER BY u.created_at ASC;
 
 -- name: DeleteUser :exec
 DELETE FROM users WHERE id = $1;
+
+-- name: UpdateUserEmail :exec
+UPDATE users SET email = $2 WHERE id = $1;
+
+-- name: UpdateUserPreferences :exec
+UPDATE users SET default_privacy = $2, default_sensitive = $3, default_language = $4, default_quote_policy = $5 WHERE id = $1;

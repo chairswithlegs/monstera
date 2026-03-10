@@ -89,10 +89,7 @@ export default function ModeratorContentPage() {
           </Button>
         </form>
         <Card className="mt-4">
-          <CardHeader className="py-4">
-            <CardTitle className="text-base">Filters</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
+          <CardContent>
             {filters.length === 0 ? (
               <EmptyState message="No filters." />
             ) : (

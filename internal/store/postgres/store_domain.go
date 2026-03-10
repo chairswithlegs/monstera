@@ -2088,6 +2088,24 @@ func (s *PostgresStore) UpdateUserDefaultQuotePolicy(ctx context.Context, accoun
 	}))
 }
 
+func (s *PostgresStore) UpdateUserPreferences(ctx context.Context, in store.UpdateUserPreferencesInput) error {
+	return mapErr(s.q.UpdateUserPreferences(ctx, db.UpdateUserPreferencesParams{
+		ID:                 in.UserID,
+		DefaultPrivacy:     in.DefaultPrivacy,
+		DefaultSensitive:   in.DefaultSensitive,
+		DefaultLanguage:    in.DefaultLanguage,
+		DefaultQuotePolicy: in.DefaultQuotePolicy,
+	}))
+}
+
+func (s *PostgresStore) UpdateUserEmail(ctx context.Context, userID, email string) error {
+	return mapErr(s.q.UpdateUserEmail(ctx, db.UpdateUserEmailParams{ID: userID, Email: email}))
+}
+
+func (s *PostgresStore) UpdateUserPassword(ctx context.Context, userID, passwordHash string) error {
+	return mapErr(s.q.UpdateUserPassword(ctx, db.UpdateUserPasswordParams{ID: userID, PasswordHash: passwordHash}))
+}
+
 func (s *PostgresStore) GetPendingRegistrations(ctx context.Context) ([]domain.User, error) {
 	rows, err := s.q.GetPendingRegistrations(ctx)
 	if err != nil {

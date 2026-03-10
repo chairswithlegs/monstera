@@ -184,6 +184,15 @@ type UpdateUserFilterInput struct {
 	Irreversible bool
 }
 
+// UpdateUserPreferencesInput is the input for updating a user's post preferences.
+type UpdateUserPreferencesInput struct {
+	UserID             string
+	DefaultPrivacy     string
+	DefaultSensitive   bool
+	DefaultLanguage    string
+	DefaultQuotePolicy string
+}
+
 // UpdateAccountInput is the input for updating an account (profile fields).
 type UpdateAccountInput struct {
 	ID            string

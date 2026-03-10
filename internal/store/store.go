@@ -220,6 +220,9 @@ type Store interface {
 	GetUserByID(ctx context.Context, id string) (*domain.User, error)
 	UpdateUserRole(ctx context.Context, userID string, role string) error
 	UpdateUserDefaultQuotePolicy(ctx context.Context, accountID, policy string) error
+	UpdateUserPreferences(ctx context.Context, in UpdateUserPreferencesInput) error
+	UpdateUserEmail(ctx context.Context, userID, email string) error
+	UpdateUserPassword(ctx context.Context, userID, passwordHash string) error
 	GetPendingRegistrations(ctx context.Context) ([]domain.User, error)
 	DeleteUser(ctx context.Context, id string) error
 

@@ -316,3 +316,12 @@ func (f *fakeAccountService) GetUserByID(context.Context, string) (*domain.User,
 func (f *fakeAccountService) ListDirectory(context.Context, string, bool, int, int) ([]domain.Account, error) {
 	panic("unused")
 }
+func (f *fakeAccountService) UpdatePreferences(context.Context, string, service.UpdatePreferencesInput) (*domain.User, error) {
+	panic("unused")
+}
+func (f *fakeAccountService) ChangeEmail(context.Context, string, string) (*domain.User, error) {
+	panic("unused")
+}
+func (f *fakeAccountService) ChangePassword(context.Context, string, string, string) error {
+	panic("unused")
+}

@@ -255,6 +255,37 @@ func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPassword
 	return err
 }
 
+const updateUserEmail = `-- name: UpdateUserEmail :exec
+UPDATE users SET email = $2 WHERE id = $1
+`
+
+type UpdateUserEmailParams struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+}
+
+func (q *Queries) UpdateUserEmail(ctx context.Context, arg UpdateUserEmailParams) error {
+	_, err := q.db.Exec(ctx, updateUserEmail, arg.ID, arg.Email)
+	return err
+}
+
+const updateUserPreferences = `-- name: UpdateUserPreferences :exec
+UPDATE users SET default_privacy = $2, default_sensitive = $3, default_language = $4, default_quote_policy = $5 WHERE id = $1
+`
+
+type UpdateUserPreferencesParams struct {
+	ID                 string `json:"id"`
+	DefaultPrivacy     string `json:"default_privacy"`
+	DefaultSensitive   bool   `json:"default_sensitive"`
+	DefaultLanguage    string `json:"default_language"`
+	DefaultQuotePolicy string `json:"default_quote_policy"`
+}
+
+func (q *Queries) UpdateUserPreferences(ctx context.Context, arg UpdateUserPreferencesParams) error {
+	_, err := q.db.Exec(ctx, updateUserPreferences, arg.ID, arg.DefaultPrivacy, arg.DefaultSensitive, arg.DefaultLanguage, arg.DefaultQuotePolicy)
+	return err
+}
+
 const updateUserRole = `-- name: UpdateUserRole :exec
 UPDATE users SET role = $2 WHERE id = $1
 `

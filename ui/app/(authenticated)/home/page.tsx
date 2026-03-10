@@ -4,7 +4,6 @@ import { getUser } from '@/lib/api/user';
 import { useEffect, useState } from 'react';
 import type { User } from '@/lib/api/user';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Card, CardContent } from '@/components/ui/card';
 
 export default function HomePage() {
   const [user, setUser] = useState<User | null>(null);
@@ -29,16 +28,87 @@ export default function HomePage() {
   if (!user) return <div className="text-muted-foreground">Loading...</div>;
 
   return (
-    <div>
-      <h1 className="text-2xl font-semibold text-foreground">Home</h1>
-      <p className="mt-2 text-muted-foreground">Welcome. Here is your account info.</p>
-      <Card className="mt-4">
-        <CardContent className="p-4">
-          <pre className="overflow-auto">
-            <code className="text-sm">{JSON.stringify(user, null, 2)}</code>
-          </pre>
-        </CardContent>
-      </Card>
+    <div className="space-y-8">
+      <h1 className="text-2xl font-semibold">Welcome, @{user.username}</h1>
+
+      <section className="space-y-2">
+        <h2 className="text-lg font-medium">What is Monstera?</h2>
+        <p className="text-muted-foreground">
+          Monstera is a federated social server built on the ActivityPub protocol.
+          It is fully compatible with Mastodon and the broader fediverse, meaning you can follow
+          and interact with people on any ActivityPub-speaking platform from your Monstera account.
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-lg font-medium">What is this UI for?</h2>
+        <p className="text-muted-foreground">
+          This web interface is for managing your account settings — things like your profile,
+          preferences, and server administration. For day-to-day use (posting, following people,
+          reading timelines) you should connect a Mastodon-compatible client.
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-medium">Recommended Clients</h2>
+        <ul className="space-y-2">
+          <li>
+            <a
+              href="https://elk.zone"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium hover:underline"
+            >
+              Elk
+            </a>
+            <span className="text-muted-foreground"> — modern web client</span>
+          </li>
+          <li>
+            <a
+              href="https://mastodon.social/about"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium hover:underline"
+            >
+              Mastodon
+            </a>
+            <span className="text-muted-foreground"> — official web app, works with any Mastodon-compatible server</span>
+          </li>
+          <li>
+            <a
+              href="https://tapbots.com/ivory"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium hover:underline"
+            >
+              Ivory
+            </a>
+            <span className="text-muted-foreground"> — polished iOS app by Tapbots</span>
+          </li>
+          <li>
+            <a
+              href="https://getmammoth.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium hover:underline"
+            >
+              Mammoth
+            </a>
+            <span className="text-muted-foreground"> — iOS app</span>
+          </li>
+          <li>
+            <a
+              href="https://tusky.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium hover:underline"
+            >
+              Tusky
+            </a>
+            <span className="text-muted-foreground"> — Android app</span>
+          </li>
+        </ul>
+      </section>
     </div>
   );
 }

@@ -86,7 +86,7 @@ export default function ModeratorFederationPage() {
       <section className="mt-8">
         <h2 className="text-lg font-medium text-foreground">Known instances</h2>
         <Card className="mt-4">
-          <CardContent className="p-0">
+          <CardContent>
             {instances.length === 0 ? (
               <EmptyState message="None yet." />
             ) : (
@@ -143,7 +143,7 @@ export default function ModeratorFederationPage() {
           </form>
         )}
         <Card className="mt-4">
-          <CardContent className="p-0">
+          <CardContent>
             {blocks.length === 0 ? (
               <EmptyState message="No domain blocks." />
             ) : (

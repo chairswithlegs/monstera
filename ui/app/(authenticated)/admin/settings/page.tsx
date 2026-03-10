@@ -91,7 +91,7 @@ export default function ServerSettingsPage() {
   return (
     <div>
       <h1 className="text-2xl font-semibold text-gray-900">Server settings</h1>
-      <p className="mt-2 text-gray-500">Instance configuration (admin only).</p>
+      <p className="mt-2 text-gray-500">Instance configuration.</p>
       {error && (
         <Alert variant="destructive" className="mt-4">
           <AlertDescription>{error}</AlertDescription>
