@@ -1,43 +1,20 @@
 'use client';
 
-import { getUser, isAdmin } from '@/lib/api/user';
-import type { User } from '@/lib/api/user';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 
 const navItems = [
-  { href: '/admin/settings', label: 'Settings' },
-  { href: '/admin/users', label: 'Users' },
+  { href: '/account/profile', label: 'Profile' },
+  { href: '/account/preferences', label: 'Preferences' },
+  { href: '/account/security', label: 'Security' },
 ];
 
-export default function AdminLayout({
+export default function AccountLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    getUser()
-      .then(setUser)
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    if (loading) return;
-    if (!user || !isAdmin(user)) {
-      router.replace('/home');
-    }
-  }, [loading, user, router]);
-
-  if (loading || !user || !isAdmin(user)) {
-    return null;
-  }
 
   return (
     <div className="flex gap-8">

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/uid"
@@ -33,6 +35,17 @@ type AccountService interface {
 	ListLocalUsers(ctx context.Context, limit, offset int) ([]domain.User, error)
 	GetUserByID(ctx context.Context, userID string) (*domain.User, error)
 	ListDirectory(ctx context.Context, order string, localOnly bool, offset, limit int) ([]domain.Account, error)
+	UpdatePreferences(ctx context.Context, userID string, in UpdatePreferencesInput) (*domain.User, error)
+	ChangeEmail(ctx context.Context, userID, newEmail string) (*domain.User, error)
+	ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error
+}
+
+// UpdatePreferencesInput is the input for updating a user's post preferences.
+type UpdatePreferencesInput struct {
+	DefaultPrivacy     string
+	DefaultSensitive   bool
+	DefaultLanguage    string
+	DefaultQuotePolicy string
 }
 
 // AccountService handles account creation and lookup.
@@ -539,4 +552,66 @@ func (svc *accountService) ListDirectory(ctx context.Context, order string, loca
 		return nil, fmt.Errorf("ListDirectoryAccounts: %w", err)
 	}
 	return accounts, nil
+}
+
+// UpdatePreferences updates the user's post preferences.
+func (svc *accountService) UpdatePreferences(ctx context.Context, userID string, in UpdatePreferencesInput) (*domain.User, error) {
+	switch in.DefaultPrivacy {
+	case "public", "unlisted", "private", "direct":
+	default:
+		return nil, fmt.Errorf("UpdatePreferences: %w", domain.ErrValidation)
+	}
+	switch in.DefaultQuotePolicy {
+	case domain.QuotePolicyPublic, domain.QuotePolicyFollowers, domain.QuotePolicyNobody:
+	default:
+		return nil, fmt.Errorf("UpdatePreferences: %w", domain.ErrValidation)
+	}
+	if err := svc.store.UpdateUserPreferences(ctx, store.UpdateUserPreferencesInput{
+		UserID:             userID,
+		DefaultPrivacy:     in.DefaultPrivacy,
+		DefaultSensitive:   in.DefaultSensitive,
+		DefaultLanguage:    in.DefaultLanguage,
+		DefaultQuotePolicy: in.DefaultQuotePolicy,
+	}); err != nil {
+		return nil, fmt.Errorf("UpdatePreferences: %w", err)
+	}
+	u, err := svc.store.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("UpdatePreferences GetUserByID: %w", err)
+	}
+	return u, nil
+}
+
+// ChangeEmail updates the user's email address.
+func (svc *accountService) ChangeEmail(ctx context.Context, userID, newEmail string) (*domain.User, error) {
+	if err := svc.store.UpdateUserEmail(ctx, userID, newEmail); err != nil {
+		if errors.Is(err, domain.ErrConflict) {
+			return nil, fmt.Errorf("ChangeEmail: email already in use: %w", domain.ErrConflict)
+		}
+		return nil, fmt.Errorf("ChangeEmail: %w", err)
+	}
+	u, err := svc.store.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("ChangeEmail GetUserByID: %w", err)
+	}
+	return u, nil
+}
+
+// ChangePassword verifies the current password and replaces it with a new one.
+func (svc *accountService) ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error {
+	u, err := svc.store.GetUserByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("ChangePassword GetUserByID: %w", err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(currentPassword)); err != nil {
+		return fmt.Errorf("ChangePassword: %w", domain.ErrForbidden)
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("ChangePassword GenerateFromPassword: %w", err)
+	}
+	if err := svc.store.UpdateUserPassword(ctx, userID, string(hash)); err != nil {
+		return fmt.Errorf("ChangePassword: %w", err)
+	}
+	return nil
 }

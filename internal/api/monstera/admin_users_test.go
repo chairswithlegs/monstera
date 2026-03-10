@@ -2,7 +2,6 @@ package monstera
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -96,7 +95,6 @@ func TestAdminUsersHandler_POSTSuspend(t *testing.T) {
 
 func TestAdminUsersHandler_PUTRole(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	modSvc := service.NewModerationService(st)
@@ -104,16 +102,13 @@ func TestAdminUsersHandler_PUTRole(t *testing.T) {
 	adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
 	adminUser := getUserByAccountID(t, st, adminAcc.ID)
 	targetAcc := createAccountWithRole(t, st, "target", domain.RoleUser)
-	targetUser, err := st.GetUserByAccountID(ctx, targetAcc.ID)
-	require.NoError(t, err)
-	targetUserID := targetUser.ID
 
 	t.Run("no user returns 403", func(t *testing.T) {
 		body := map[string]string{"role": domain.RoleModerator}
 		b, _ := json.Marshal(body)
-		req := httptest.NewRequest(http.MethodPut, "/admin/users/"+targetUserID+"/role", bytes.NewReader(b))
+		req := httptest.NewRequest(http.MethodPut, "/admin/users/"+targetAcc.ID+"/role", bytes.NewReader(b))
 		req.Header.Set("Content-Type", "application/json")
-		req = testutil.AddChiURLParam(req, "id", targetUserID)
+		req = testutil.AddChiURLParam(req, "id", targetAcc.ID)
 		rec := httptest.NewRecorder()
 		handler.PUTRole(rec, req)
 		assert.Equal(t, http.StatusForbidden, rec.Code)
@@ -122,10 +117,10 @@ func TestAdminUsersHandler_PUTRole(t *testing.T) {
 	t.Run("with user and valid role returns 204", func(t *testing.T) {
 		body := map[string]string{"role": domain.RoleModerator}
 		b, _ := json.Marshal(body)
-		req := httptest.NewRequest(http.MethodPut, "/admin/users/"+targetUserID+"/role", bytes.NewReader(b))
+		req := httptest.NewRequest(http.MethodPut, "/admin/users/"+targetAcc.ID+"/role", bytes.NewReader(b))
 		req.Header.Set("Content-Type", "application/json")
 		req = req.WithContext(middleware.WithUser(req.Context(), adminUser))
-		req = testutil.AddChiURLParam(req, "id", targetUserID)
+		req = testutil.AddChiURLParam(req, "id", targetAcc.ID)
 		rec := httptest.NewRecorder()
 		handler.PUTRole(rec, req)
 		assert.Equal(t, http.StatusNoContent, rec.Code)
@@ -134,10 +129,10 @@ func TestAdminUsersHandler_PUTRole(t *testing.T) {
 	t.Run("with invalid role returns 422", func(t *testing.T) {
 		body := map[string]string{"role": "invalid"}
 		b, _ := json.Marshal(body)
-		req := httptest.NewRequest(http.MethodPut, "/admin/users/"+targetUserID+"/role", bytes.NewReader(b))
+		req := httptest.NewRequest(http.MethodPut, "/admin/users/"+targetAcc.ID+"/role", bytes.NewReader(b))
 		req.Header.Set("Content-Type", "application/json")
 		req = req.WithContext(middleware.WithUser(req.Context(), adminUser))
-		req = testutil.AddChiURLParam(req, "id", targetUserID)
+		req = testutil.AddChiURLParam(req, "id", targetAcc.ID)
 		rec := httptest.NewRecorder()
 		handler.PUTRole(rec, req)
 		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)

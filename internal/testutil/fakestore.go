@@ -183,6 +183,18 @@ func NewFakeStore() *FakeStore {
 // Ensure FakeStore implements store.Store.
 var _ store.Store = (*FakeStore)(nil)
 
+// SeedUserAndAccount inserts a user and account directly into the FakeStore for test setup.
+func (f *FakeStore) SeedUserAndAccount(u *domain.User, a *domain.Account) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	uCopy := *u
+	aCopy := *a
+	f.accountsByID[a.ID] = &aCopy
+	f.accountsByUsername[a.Username] = &aCopy
+	f.usersByAccountID[a.ID] = &uCopy
+	return nil
+}
+
 const noCursorSentinel = "ZZZZZZZZZZZZZZZZZZZZZZZZZZ"
 
 type blockEntry struct {
@@ -2740,6 +2752,42 @@ func (f *FakeStore) UpdateUserDefaultQuotePolicy(ctx context.Context, accountID,
 	if u, ok := f.usersByAccountID[accountID]; ok {
 		u.DefaultQuotePolicy = policy
 		return nil
+	}
+	return domain.ErrNotFound
+}
+func (f *FakeStore) UpdateUserPreferences(ctx context.Context, in store.UpdateUserPreferencesInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, u := range f.usersByAccountID {
+		if u.ID == in.UserID {
+			u.DefaultPrivacy = in.DefaultPrivacy
+			u.DefaultSensitive = in.DefaultSensitive
+			u.DefaultLanguage = in.DefaultLanguage
+			u.DefaultQuotePolicy = in.DefaultQuotePolicy
+			return nil
+		}
+	}
+	return domain.ErrNotFound
+}
+func (f *FakeStore) UpdateUserEmail(ctx context.Context, userID, email string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, u := range f.usersByAccountID {
+		if u.ID == userID {
+			u.Email = email
+			return nil
+		}
+	}
+	return domain.ErrNotFound
+}
+func (f *FakeStore) UpdateUserPassword(ctx context.Context, userID, passwordHash string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, u := range f.usersByAccountID {
+		if u.ID == userID {
+			u.PasswordHash = passwordHash
+			return nil
+		}
 	}
 	return domain.ErrNotFound
 }

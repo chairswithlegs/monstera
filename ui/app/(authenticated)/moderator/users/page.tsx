@@ -44,7 +44,7 @@ function UsersList() {
     <div>
       <h1 className="text-2xl font-semibold text-foreground">Users</h1>
       <Card className="mt-6">
-        <CardContent className="p-0">
+        <CardContent>
           {users.length === 0 ? (
             <EmptyState message="No users." />
           ) : (

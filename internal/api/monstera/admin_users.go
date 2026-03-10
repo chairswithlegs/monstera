@@ -221,7 +221,7 @@ func (h *AdminUsersHandler) PUTRole(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	targetUser, err := h.accounts.GetUserByID(r.Context(), id)
+	_, targetUser, err := h.accounts.GetAccountWithUser(r.Context(), id)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return

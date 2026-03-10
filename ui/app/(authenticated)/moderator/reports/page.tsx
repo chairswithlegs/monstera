@@ -68,7 +68,7 @@ function ReportsList() {
         </TabsList>
       </Tabs>
       <Card className="mt-6">
-        <CardContent className="p-0">
+        <CardContent>
               {reports.length === 0 ? (
                 <EmptyState message="No reports." />
               ) : (
