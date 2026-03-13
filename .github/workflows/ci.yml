@@ -3,6 +3,12 @@ name: CI
 on:
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'ui/**'
+      - 'docs/**'
+      - 'federation-testing/**'
+      - '**/*.md'
+      - '**/*.txt'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
