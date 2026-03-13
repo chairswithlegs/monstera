@@ -1,0 +1,1 @@
+ALTER TABLE favourites DROP COLUMN IF EXISTS ap_id;

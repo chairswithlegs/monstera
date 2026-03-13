@@ -1,0 +1,1 @@
+ALTER TABLE favourites ADD COLUMN ap_id TEXT UNIQUE;

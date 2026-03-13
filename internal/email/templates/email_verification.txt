@@ -1,0 +1,11 @@
+{{.InstanceName}} — Confirm your email address
+
+Hello {{.Username}},
+
+Please confirm your email address to complete your registration on {{.InstanceName}}.
+
+Click the link below to confirm:
+
+{{.ConfirmURL}}
+
+If you did not create an account, you can safely ignore this email.

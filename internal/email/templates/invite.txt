@@ -1,0 +1,9 @@
+{{.InstanceName}} — You're Invited!
+
+{{.InviterUsername}} has invited you to join {{.InstanceName}}.
+
+Use the link below to create your account:
+
+{{.InviteURL}}
+
+Your invite code: {{.Code}}

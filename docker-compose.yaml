@@ -1,0 +1,99 @@
+services:
+  server:
+    profiles:
+      - app
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    ports:
+      - "8080:8080"
+    environment:
+      APP_ENV: production
+      APP_PORT: "8080"
+      INSTANCE_DOMAIN: localhost:8080
+      MONSTERA_UI_URL: http://localhost:3000
+      INSTANCE_NAME: Monstera
+      LOG_LEVEL: debug
+      DATABASE_URL: postgres://monstera:monstera@postgres:5432/monstera_fed?sslmode=disable
+      NATS_URL: nats://nats:4222
+      CACHE_DRIVER: memory
+      MEDIA_DRIVER: local
+      MEDIA_LOCAL_PATH: /data/media
+      MEDIA_BASE_URL: http://localhost:8080
+      EMAIL_DRIVER: noop
+      EMAIL_FROM: noreply@localhost
+      SECRET_KEY_BASE: "0000000000000000000000000000000000000000000000000000000000000000"
+    volumes:
+      - app_media:/data/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      minio:
+        condition: service_started
+
+  ui:
+    profiles:
+      - app
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+    ports:
+      - "3000:3000"
+    configs:
+      - source: ui_config
+        target: /usr/share/nginx/html/config/config.json
+    depends_on:
+      server:
+        condition: service_started
+
+  postgres:
+    profiles:
+      - dependencies
+      - app
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: monstera
+      POSTGRES_PASSWORD: monstera
+      POSTGRES_DB: monstera_fed
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U monstera -d monstera_fed"]
+      interval: 2s
+      timeout: 5s
+      retries: 5
+
+  nats:
+    profiles:
+      - dependencies
+      - app
+    image: nats:2
+    command: ["--jetstream", "--store_dir", "/data"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+
+  minio:
+    profiles:
+      - dependencies
+      - app
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+volumes:
+  app_media: {}
+
+configs:
+  ui_config:
+    content: |
+      {
+        "server_url": "http://localhost:8080"
+      }

@@ -1,0 +1,557 @@
+package activitypub
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/chairswithlegs/monstera/internal/activitypub/internal"
+	"github.com/chairswithlegs/monstera/internal/config"
+	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/testutil"
+)
+
+type mockDeliveryWorker struct {
+	publishFn func(context.Context, string, internal.OutboxDeliveryMessage) error
+	startFn   func(context.Context) error
+}
+
+func (m *mockDeliveryWorker) Publish(ctx context.Context, activityType string, msg internal.OutboxDeliveryMessage) error {
+	if m.publishFn != nil {
+		return m.publishFn(ctx, activityType, msg)
+	}
+	return nil
+}
+
+func (m *mockDeliveryWorker) Start(ctx context.Context) error {
+	if m.startFn != nil {
+		return m.startFn(ctx)
+	}
+	return nil
+}
+
+type mockFanoutWorker struct {
+	publishFn func(ctx context.Context, activityType string, msg internal.OutboxFanoutMessage) error
+	startFn   func(context.Context) error
+}
+
+func (m *mockFanoutWorker) Publish(ctx context.Context, activityType string, msg internal.OutboxFanoutMessage) error {
+	if m.publishFn != nil {
+		return m.publishFn(ctx, activityType, msg)
+	}
+	return nil
+}
+
+func (m *mockFanoutWorker) Start(ctx context.Context) error {
+	if m.startFn != nil {
+		return m.startFn(ctx)
+	}
+	return nil
+}
+
+// newTestSubscriber builds a FederationSubscriber wired to the given mocks.
+func newTestSubscriber(deliveryWorker mockDeliveryWorker, fanoutWorker mockFanoutWorker) *FederationSubscriber {
+	return &FederationSubscriber{
+		delivery: &deliveryWorker,
+		fanout:   &fanoutWorker,
+		cfg:      &config.Config{InstanceDomain: "example.com"},
+	}
+}
+
+// makeMsg encodes a DomainEvent with the given type and payload into a mock NATS message.
+func makeMsg(t *testing.T, eventType string, payload any) *testutil.MockJetstreamMsg {
+	t.Helper()
+	payloadJSON, err := json.Marshal(payload)
+	require.NoError(t, err)
+	ev := domain.DomainEvent{ID: "ev01", EventType: eventType, Payload: payloadJSON}
+	data, err := json.Marshal(ev)
+	require.NoError(t, err)
+	return &testutil.MockJetstreamMsg{DataBytes: data}
+}
+
+// localAccount returns a minimal local domain.Account.
+func localAccount(id string) *domain.Account {
+	return &domain.Account{
+		ID:       id,
+		Username: "alice",
+		APID:     "https://example.com/users/alice",
+	}
+}
+
+// remoteAccount returns a minimal remote domain.Account with an inbox URL on remote.example.
+func remoteAccount(id string) *domain.Account {
+	d := "remote.example"
+	return &domain.Account{
+		ID:       id,
+		Username: "bob",
+		Domain:   &d,
+		APID:     "https://remote.example/users/bob",
+		InboxURL: "https://remote.example/inbox",
+	}
+}
+
+func TestFederationSubscriber_processMessage_InvalidJSON_Acks(t *testing.T) {
+	t.Parallel()
+	s := newTestSubscriber(mockDeliveryWorker{}, mockFanoutWorker{})
+	acked := false
+	msg := &testutil.MockJetstreamMsg{DataBytes: []byte("not json"), AckFn: func() { acked = true }}
+	s.processMessage(context.Background(), msg)
+	assert.True(t, acked)
+}
+
+func TestFederationSubscriber_processMessage_SSEOnlyEvent_AcksWithoutPublish(t *testing.T) {
+	t.Parallel()
+	sseEvents := []string{
+		domain.EventStatusCreatedRemote,
+		domain.EventStatusDeletedRemote,
+		domain.EventNotificationCreated,
+	}
+	for _, evType := range sseEvents {
+		evType := evType
+		t.Run(evType, func(t *testing.T) {
+			t.Parallel()
+			published := false
+			fanout := mockFanoutWorker{publishFn: func(context.Context, string, internal.OutboxFanoutMessage) error {
+				published = true
+				return nil
+			}}
+			delivery := mockDeliveryWorker{publishFn: func(context.Context, string, internal.OutboxDeliveryMessage) error {
+				published = true
+				return nil
+			}}
+			s := newTestSubscriber(delivery, fanout)
+			acked := false
+			msg := makeMsg(t, evType, map[string]any{})
+			msg.AckFn = func() { acked = true }
+			s.processMessage(context.Background(), msg)
+			assert.True(t, acked)
+			assert.False(t, published)
+		})
+	}
+}
+
+func TestFederationSubscriber_processMessage_UnknownEventType_AcksWithoutPublish(t *testing.T) {
+	t.Parallel()
+	published := false
+	fanout := mockFanoutWorker{publishFn: func(context.Context, string, internal.OutboxFanoutMessage) error {
+		published = true
+		return nil
+	}}
+	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
+	acked := false
+	msg := makeMsg(t, "unknown.event.type", map[string]any{})
+	msg.AckFn = func() { acked = true }
+	s.processMessage(context.Background(), msg)
+	assert.True(t, acked)
+	assert.False(t, published)
+}
+
+func TestFederationSubscriber_processMessage_HandlerError_Naks(t *testing.T) {
+	t.Parallel()
+	fanout := mockFanoutWorker{publishFn: func(context.Context, string, internal.OutboxFanoutMessage) error {
+		return errors.New("nats down")
+	}}
+	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
+	naked := false
+	author := localAccount("01author")
+	status := &domain.Status{ID: "01status", APID: "https://example.com/statuses/01status"}
+	msg := makeMsg(t, domain.EventStatusCreated, domain.StatusCreatedPayload{Status: status, Author: author})
+	msg.NakFn = func() { naked = true }
+	s.processMessage(context.Background(), msg)
+	assert.True(t, naked)
+}
+
+func TestFederationSubscriber_processMessage_HandlerSuccess_Acks(t *testing.T) {
+	t.Parallel()
+	fanout := mockFanoutWorker{}
+	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
+	acked := false
+	author := localAccount("01author")
+	status := &domain.Status{ID: "01status", APID: "https://example.com/statuses/01status"}
+	msg := makeMsg(t, domain.EventStatusCreated, domain.StatusCreatedPayload{Status: status, Author: author})
+	msg.AckFn = func() { acked = true }
+	s.processMessage(context.Background(), msg)
+	assert.True(t, acked)
+}
+
+func TestFederationSubscriber_handleStatusCreated_PublishesFanout(t *testing.T) {
+	t.Parallel()
+	var got internal.OutboxFanoutMessage
+	var gotType string
+	fanout := mockFanoutWorker{publishFn: func(_ context.Context, actType string, msg internal.OutboxFanoutMessage) error {
+		gotType = actType
+		got = msg
+		return nil
+	}}
+	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
+
+	author := localAccount("01author")
+	status := &domain.Status{ID: "01status", APID: "https://example.com/statuses/01status"}
+	payload := domain.StatusCreatedPayload{Status: status, Author: author}
+
+	err := s.handleStatusCreated(context.Background(), domainEvent(t, domain.EventStatusCreated, payload))
+	require.NoError(t, err)
+	assert.Equal(t, "create", gotType)
+	assert.Equal(t, status.APID, got.ActivityID)
+	assert.Equal(t, author.ID, got.SenderID)
+	assert.NotEmpty(t, got.Activity)
+}
+
+func TestFederationSubscriber_handleStatusCreated_FallsBackToGeneratedID(t *testing.T) {
+	t.Parallel()
+	var got internal.OutboxFanoutMessage
+	fanout := mockFanoutWorker{publishFn: func(_ context.Context, _ string, msg internal.OutboxFanoutMessage) error {
+		got = msg
+		return nil
+	}}
+	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
+
+	author := localAccount("01author")
+	// No APID or URI set — subscriber should generate a URL
+	status := &domain.Status{ID: "01status"}
+	payload := domain.StatusCreatedPayload{Status: status, Author: author}
+
+	err := s.handleStatusCreated(context.Background(), domainEvent(t, domain.EventStatusCreated, payload))
+	require.NoError(t, err)
+	assert.Contains(t, got.ActivityID, "https://example.com/activities/")
+}
+
+// --- handleStatusDeleted ---
+
+func TestFederationSubscriber_handleStatusDeleted_NonLocal_Skips(t *testing.T) {
+	t.Parallel()
+	published := false
+	fanout := mockFanoutWorker{publishFn: func(context.Context, string, internal.OutboxFanoutMessage) error {
+		published = true
+		return nil
+	}}
+	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
+
+	author := localAccount("01author")
+	payload := domain.StatusDeletedPayload{
+		StatusID:  "01status",
+		AccountID: author.ID,
+		Author:    author,
+		Local:     false,
+	}
+	err := s.handleStatusDeleted(context.Background(), domainEvent(t, domain.EventStatusDeleted, payload))
+	require.NoError(t, err)
+	assert.False(t, published)
+}
+
+func TestFederationSubscriber_handleStatusDeleted_Local_PublishesFanout(t *testing.T) {
+	t.Parallel()
+	var got internal.OutboxFanoutMessage
+	var gotType string
+	fanout := mockFanoutWorker{publishFn: func(_ context.Context, actType string, msg internal.OutboxFanoutMessage) error {
+		gotType = actType
+		got = msg
+		return nil
+	}}
+	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
+
+	author := localAccount("01author")
+	apID := "https://example.com/statuses/01status"
+	payload := domain.StatusDeletedPayload{
+		StatusID:  "01status",
+		AccountID: author.ID,
+		Author:    author,
+		Local:     true,
+		APID:      apID,
+	}
+	err := s.handleStatusDeleted(context.Background(), domainEvent(t, domain.EventStatusDeleted, payload))
+	require.NoError(t, err)
+	assert.Equal(t, "delete", gotType)
+	assert.Equal(t, apID+"#delete", got.ActivityID)
+	assert.Equal(t, author.ID, got.SenderID)
+}
+
+func TestFederationSubscriber_handleStatusDeleted_Local_FallsBackToGeneratedID(t *testing.T) {
+	t.Parallel()
+	var got internal.OutboxFanoutMessage
+	fanout := mockFanoutWorker{publishFn: func(_ context.Context, _ string, msg internal.OutboxFanoutMessage) error {
+		got = msg
+		return nil
+	}}
+	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
+
+	author := localAccount("01author")
+	payload := domain.StatusDeletedPayload{
+		StatusID:  "01status",
+		AccountID: author.ID,
+		Author:    author,
+		Local:     true,
+		// No APID or URI
+	}
+	err := s.handleStatusDeleted(context.Background(), domainEvent(t, domain.EventStatusDeleted, payload))
+	require.NoError(t, err)
+	assert.Contains(t, got.ActivityID, "https://example.com/statuses/01status#delete")
+}
+
+// --- handleStatusUpdated ---
+
+func TestFederationSubscriber_handleStatusUpdated_PublishesFanout(t *testing.T) {
+	t.Parallel()
+	var got internal.OutboxFanoutMessage
+	var gotType string
+	fanout := mockFanoutWorker{publishFn: func(_ context.Context, actType string, msg internal.OutboxFanoutMessage) error {
+		gotType = actType
+		got = msg
+		return nil
+	}}
+	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
+
+	author := localAccount("01author")
+	status := &domain.Status{ID: "01status", APID: "https://example.com/statuses/01status"}
+	payload := domain.StatusUpdatedPayload{Status: status, Author: author}
+
+	err := s.handleStatusUpdated(context.Background(), domainEvent(t, domain.EventStatusUpdated, payload))
+	require.NoError(t, err)
+	assert.Equal(t, "update", gotType)
+	assert.Equal(t, status.APID+"#update", got.ActivityID)
+	assert.Equal(t, author.ID, got.SenderID)
+}
+
+func TestFederationSubscriber_handleFollowCreated_NoTargetInbox_Skips(t *testing.T) {
+	t.Parallel()
+	published := false
+	delivery := mockDeliveryWorker{publishFn: func(context.Context, string, internal.OutboxDeliveryMessage) error {
+		published = true
+		return nil
+	}}
+	s := newTestSubscriber(delivery, mockFanoutWorker{})
+
+	actor := localAccount("01actor")
+	target := &domain.Account{ID: "01target", Username: "bob", APID: "https://remote.example/users/bob"} // no inbox
+	payload := domain.FollowCreatedPayload{
+		Follow: &domain.Follow{ID: "01follow"},
+		Actor:  actor,
+		Target: target,
+	}
+	err := s.handleFollowCreated(context.Background(), domainEvent(t, domain.EventFollowCreated, payload))
+	require.NoError(t, err)
+	assert.False(t, published)
+}
+
+func TestFederationSubscriber_handleFollowCreated_WithTargetInbox_PublishesDelivery(t *testing.T) {
+	t.Parallel()
+	var got internal.OutboxDeliveryMessage
+	var gotType string
+	delivery := mockDeliveryWorker{publishFn: func(_ context.Context, actType string, msg internal.OutboxDeliveryMessage) error {
+		gotType = actType
+		got = msg
+		return nil
+	}}
+	s := newTestSubscriber(delivery, mockFanoutWorker{})
+
+	actor := localAccount("01actor")
+	target := remoteAccount("01target")
+	follow := &domain.Follow{ID: "01follow"}
+	payload := domain.FollowCreatedPayload{Follow: follow, Actor: actor, Target: target}
+
+	err := s.handleFollowCreated(context.Background(), domainEvent(t, domain.EventFollowCreated, payload))
+	require.NoError(t, err)
+	assert.Equal(t, "follow", gotType)
+	assert.Equal(t, target.InboxURL, got.TargetInbox)
+	assert.Equal(t, actor.ID, got.SenderID)
+	assert.Contains(t, got.ActivityID, "https://example.com/activities/")
+}
+
+func TestFederationSubscriber_handleFollowRemoved_NoTargetInbox_Skips(t *testing.T) {
+	t.Parallel()
+	published := false
+	delivery := mockDeliveryWorker{publishFn: func(context.Context, string, internal.OutboxDeliveryMessage) error {
+		published = true
+		return nil
+	}}
+	s := newTestSubscriber(delivery, mockFanoutWorker{})
+
+	actor := localAccount("01actor")
+	target := &domain.Account{ID: "01target", Username: "bob"} // no inbox
+	payload := domain.FollowRemovedPayload{FollowID: "01follow", Actor: actor, Target: target}
+
+	err := s.handleFollowRemoved(context.Background(), domainEvent(t, domain.EventFollowRemoved, payload))
+	require.NoError(t, err)
+	assert.False(t, published)
+}
+
+func TestFederationSubscriber_handleFollowRemoved_WithTargetInbox_PublishesUndo(t *testing.T) {
+	t.Parallel()
+	var got internal.OutboxDeliveryMessage
+	var gotType string
+	delivery := mockDeliveryWorker{publishFn: func(_ context.Context, actType string, msg internal.OutboxDeliveryMessage) error {
+		gotType = actType
+		got = msg
+		return nil
+	}}
+	s := newTestSubscriber(delivery, mockFanoutWorker{})
+
+	actor := localAccount("01actor")
+	target := remoteAccount("01target")
+	payload := domain.FollowRemovedPayload{FollowID: "01follow", Actor: actor, Target: target}
+
+	err := s.handleFollowRemoved(context.Background(), domainEvent(t, domain.EventFollowRemoved, payload))
+	require.NoError(t, err)
+	assert.Equal(t, "undo", gotType)
+	assert.Equal(t, target.InboxURL, got.TargetInbox)
+	assert.Equal(t, actor.ID, got.SenderID)
+	assert.Contains(t, got.ActivityID, "undo-01follow")
+}
+
+func TestFederationSubscriber_handleFollowAccepted_NoActorInbox_Skips(t *testing.T) {
+	t.Parallel()
+	published := false
+	delivery := mockDeliveryWorker{publishFn: func(context.Context, string, internal.OutboxDeliveryMessage) error {
+		published = true
+		return nil
+	}}
+	s := newTestSubscriber(delivery, mockFanoutWorker{})
+
+	target := localAccount("01target")
+	actor := &domain.Account{ID: "01actor", Username: "bob"} // no inbox
+	follow := &domain.Follow{ID: "01follow"}
+	payload := domain.FollowAcceptedPayload{Follow: follow, Target: target, Actor: actor}
+
+	err := s.handleFollowAccepted(context.Background(), domainEvent(t, domain.EventFollowAccepted, payload))
+	require.NoError(t, err)
+	assert.False(t, published)
+}
+
+func TestFederationSubscriber_handleFollowAccepted_WithActorInbox_PublishesAccept(t *testing.T) {
+	t.Parallel()
+	var got internal.OutboxDeliveryMessage
+	var gotType string
+	delivery := mockDeliveryWorker{publishFn: func(_ context.Context, actType string, msg internal.OutboxDeliveryMessage) error {
+		gotType = actType
+		got = msg
+		return nil
+	}}
+	s := newTestSubscriber(delivery, mockFanoutWorker{})
+
+	target := localAccount("01target")
+	actor := remoteAccount("01actor")
+	follow := &domain.Follow{ID: "01follow"}
+	payload := domain.FollowAcceptedPayload{Follow: follow, Target: target, Actor: actor}
+
+	err := s.handleFollowAccepted(context.Background(), domainEvent(t, domain.EventFollowAccepted, payload))
+	require.NoError(t, err)
+	assert.Equal(t, "accept", gotType)
+	assert.Equal(t, actor.InboxURL, got.TargetInbox)
+	assert.Equal(t, target.ID, got.SenderID)
+	assert.Contains(t, got.ActivityID, "accept-01follow")
+}
+
+func TestFederationSubscriber_handleBlockCreated_NoTargetInbox_Skips(t *testing.T) {
+	t.Parallel()
+	published := false
+	delivery := mockDeliveryWorker{publishFn: func(context.Context, string, internal.OutboxDeliveryMessage) error {
+		published = true
+		return nil
+	}}
+	s := newTestSubscriber(delivery, mockFanoutWorker{})
+
+	actor := localAccount("01actor")
+	target := &domain.Account{ID: "01target", Username: "bob"} // no inbox
+	payload := domain.BlockCreatedPayload{Actor: actor, Target: target}
+
+	err := s.handleBlockCreated(context.Background(), domainEvent(t, domain.EventBlockCreated, payload))
+	require.NoError(t, err)
+	assert.False(t, published)
+}
+
+func TestFederationSubscriber_handleBlockCreated_WithTargetInbox_PublishesBlock(t *testing.T) {
+	t.Parallel()
+	var got internal.OutboxDeliveryMessage
+	var gotType string
+	delivery := mockDeliveryWorker{publishFn: func(_ context.Context, actType string, msg internal.OutboxDeliveryMessage) error {
+		gotType = actType
+		got = msg
+		return nil
+	}}
+	s := newTestSubscriber(delivery, mockFanoutWorker{})
+
+	actor := localAccount("01actor")
+	target := remoteAccount("01target")
+	payload := domain.BlockCreatedPayload{Actor: actor, Target: target}
+
+	err := s.handleBlockCreated(context.Background(), domainEvent(t, domain.EventBlockCreated, payload))
+	require.NoError(t, err)
+	assert.Equal(t, "block", gotType)
+	assert.Equal(t, target.InboxURL, got.TargetInbox)
+	assert.Equal(t, actor.ID, got.SenderID)
+}
+
+func TestFederationSubscriber_handleBlockRemoved_NoTargetInbox_Skips(t *testing.T) {
+	t.Parallel()
+	published := false
+	delivery := mockDeliveryWorker{publishFn: func(context.Context, string, internal.OutboxDeliveryMessage) error {
+		published = true
+		return nil
+	}}
+	s := newTestSubscriber(delivery, mockFanoutWorker{})
+
+	actor := localAccount("01actor")
+	target := &domain.Account{ID: "01target", Username: "bob"} // no inbox
+	payload := domain.BlockRemovedPayload{Actor: actor, Target: target}
+
+	err := s.handleBlockRemoved(context.Background(), domainEvent(t, domain.EventBlockRemoved, payload))
+	require.NoError(t, err)
+	assert.False(t, published)
+}
+
+func TestFederationSubscriber_handleBlockRemoved_WithTargetInbox_PublishesUndoBlock(t *testing.T) {
+	t.Parallel()
+	var got internal.OutboxDeliveryMessage
+	var gotType string
+	delivery := mockDeliveryWorker{publishFn: func(_ context.Context, actType string, msg internal.OutboxDeliveryMessage) error {
+		gotType = actType
+		got = msg
+		return nil
+	}}
+	s := newTestSubscriber(delivery, mockFanoutWorker{})
+
+	actor := localAccount("01actor")
+	target := remoteAccount("01target")
+	payload := domain.BlockRemovedPayload{Actor: actor, Target: target}
+
+	err := s.handleBlockRemoved(context.Background(), domainEvent(t, domain.EventBlockRemoved, payload))
+	require.NoError(t, err)
+	assert.Equal(t, "undo", gotType)
+	assert.Equal(t, target.InboxURL, got.TargetInbox)
+	assert.Equal(t, actor.ID, got.SenderID)
+	assert.Contains(t, got.ActivityID, "undo-block-")
+}
+
+func TestFederationSubscriber_handleAccountUpdated_PublishesFanout(t *testing.T) {
+	t.Parallel()
+	var got internal.OutboxFanoutMessage
+	var gotType string
+	fanout := mockFanoutWorker{publishFn: func(_ context.Context, actType string, msg internal.OutboxFanoutMessage) error {
+		gotType = actType
+		got = msg
+		return nil
+	}}
+	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
+
+	account := localAccount("01account")
+	payload := domain.AccountUpdatedPayload{Account: account}
+
+	err := s.handleAccountUpdated(context.Background(), domainEvent(t, domain.EventAccountUpdated, payload))
+	require.NoError(t, err)
+	assert.Equal(t, "update", gotType)
+	assert.Equal(t, account.ID, got.SenderID)
+	assert.NotEmpty(t, got.ActivityID)
+	assert.NotEmpty(t, got.Activity)
+}
+
+// domainEvent is a helper that encodes an event type + payload into a domain.DomainEvent.
+func domainEvent(t *testing.T, eventType string, payload any) domain.DomainEvent {
+	t.Helper()
+	payloadJSON, err := json.Marshal(payload)
+	require.NoError(t, err)
+	return domain.DomainEvent{ID: "ev01", EventType: eventType, Payload: payloadJSON}
+}

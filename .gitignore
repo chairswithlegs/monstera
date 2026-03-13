@@ -1,0 +1,13 @@
+# Cursor files
+.cursor/mcp.json
+.cursor/plans
+
+# Claude files
+.claude/settings.json
+plans
+
+# Build artifacts
+bin/
+
+# Federation testing
+/federation-testing/elk-storage

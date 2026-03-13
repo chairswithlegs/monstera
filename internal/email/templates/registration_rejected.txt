@@ -1,0 +1,7 @@
+Your registration at {{.InstanceName}}
+
+We're sorry, but your registration was not approved at this time.
+{{if .Reason}}
+
+Reason: {{.Reason}}
+{{end}}

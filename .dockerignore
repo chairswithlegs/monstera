@@ -1,0 +1,17 @@
+.git
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose*.yaml
+*.md
+bin/
+vendor/
+*.test
+coverage.*
+.env
+.env.*
+
+# UI build artifacts (image builds from source)
+ui/node_modules
+ui/.next
+ui/out
