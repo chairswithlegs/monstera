@@ -19,8 +19,15 @@ From the repo root:
 docker compose -f federation-testing/docker-compose.yaml up --build -d
 ```
 
-**Init containers** (`init-a` and `init-b`) run automatically before the app servers start: they apply migrations and seed each database (default users: admin, moderator, alice; password: `password`). No separate migrate/seed step is required.
+Next, you can seed the users by running:
 
+```bash
+# Seed an admin user in monstera.local (email: admin@example.com, password: password)
+docker compose -f federation-testing/docker-compose.yaml exec server-a -- server user create admin admin@example.com password Admin admin
+
+# Seed an admin user in monstera2.local (email: admin@example.com, password: password)
+docker compose -f federation-testing/docker-compose.yaml exec server-b -- server user create admin admin@example.com password Admin admin
+```
 To **reset the databases** and start from scratch (drops all data), remove volumes then bring the stack back up:
 
 ```bash

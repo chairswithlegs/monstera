@@ -19,5 +19,5 @@ func Execute() error {
 }
 
 func init() {
-	rootCmd.AddCommand(migrateCmd, serveCmd)
+	rootCmd.AddCommand(migrateCmd, serveCmd, userCmd)
 }

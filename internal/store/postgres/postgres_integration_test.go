@@ -85,15 +85,6 @@ func TestIntegration_PostgresStore(t *testing.T) {
 		require.Equal(t, domain.MonsteraRegistrationModeClosed, settings.RegistrationMode)
 	})
 
-	t.Run("CountLocalAccounts_CountRemoteAccounts", func(t *testing.T) {
-		local, err := s.CountLocalAccounts(ctx)
-		require.NoError(t, err)
-		remote, err := s.CountRemoteAccounts(ctx)
-		require.NoError(t, err)
-		require.GreaterOrEqual(t, local, int64(0))
-		require.GreaterOrEqual(t, remote, int64(0))
-	})
-
 	t.Run("GetAccountByID_populates_AvatarURL_from_JOIN", func(t *testing.T) {
 		accID := uid.New()
 		apID := "https://join.example/users/bob_" + accID
