@@ -68,7 +68,7 @@ func runUserCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	if acc != nil {
-		return fmt.Errorf("user already exists")
+		return errors.New("user already exists")
 	}
 
 	// Create the user
