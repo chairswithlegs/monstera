@@ -15,7 +15,7 @@ func setEnv(t *testing.T, key, value string) {
 func setRequiredEnvs(t *testing.T) {
 	t.Helper()
 	setEnv(t, "INSTANCE_DOMAIN", "test.example.com")
-	setEnv(t, "DATABASE_URL", "postgres://localhost/test")
+	setEnv(t, "DATABASE_HOST", "localhost")
 	setEnv(t, "NATS_URL", "nats://localhost:4222")
 	setEnv(t, "MEDIA_BASE_URL", "https://test.example.com/media")
 	setEnv(t, "MEDIA_LOCAL_PATH", "/tmp/media")

@@ -48,8 +48,9 @@ func run() error {
 	logger := observability.NewLogger(cfg.AppEnv, cfg.LogLevel)
 	slog.SetDefault(logger)
 	ctx := context.Background()
+	connString := store.DatabaseConnectionString(cfg, false)
 
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	pool, err := pgxpool.New(ctx, connString)
 	if err != nil {
 		return fmt.Errorf("database: %w", err)
 	}
@@ -59,7 +60,7 @@ func run() error {
 	}
 
 	slog.InfoContext(ctx, "Running database migrations")
-	if err := store.RunUp(cfg.DatabaseURL); err != nil {
+	if err := store.RunUp(connString); err != nil {
 		return fmt.Errorf("migrate up: %w", err)
 	}
 	slog.InfoContext(ctx, "Database migrations completed")

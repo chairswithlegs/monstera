@@ -14,7 +14,8 @@ services:
       MONSTERA_UI_URL: http://localhost:3000
       INSTANCE_NAME: Monstera
       LOG_LEVEL: debug
-      DATABASE_URL: postgres://monstera:monstera@postgres:5432/monstera_fed?sslmode=disable
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
       NATS_URL: nats://nats:4222
       CACHE_DRIVER: memory
       MEDIA_DRIVER: local
@@ -56,11 +57,11 @@ services:
     environment:
       POSTGRES_USER: monstera
       POSTGRES_PASSWORD: monstera
-      POSTGRES_DB: monstera_fed
+      POSTGRES_DB: monstera
     ports:
       - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U monstera -d monstera_fed"]
+      test: ["CMD-SHELL", "pg_isready -U monstera -d monstera"]
       interval: 2s
       timeout: 5s
       retries: 5
