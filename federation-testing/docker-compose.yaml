@@ -31,31 +31,6 @@ services:
     networks:
       - federation
 
-  init-a:
-    build:
-      context: ..
-      dockerfile: federation-testing/Dockerfile.init
-    environment:
-      APP_ENV: development
-      INSTANCE_DOMAIN: monstera.local
-      MONSTERA_UI_URL: http://localhost:3000
-      LOG_LEVEL: info
-      DATABASE_HOST: postgres-a
-      DATABASE_PORT: 5432
-      NATS_URL: nats://nats-a:4222
-      MEDIA_BASE_URL: https://monstera.local
-      MEDIA_LOCAL_PATH: /data/media
-      EMAIL_FROM: noreply@monstera.local
-      SECRET_KEY_BASE: "0000000000000000000000000000000000000000000000000000000000000001"
-    depends_on:
-      postgres-a:
-        condition: service_healthy
-      nats-a:
-        condition: service_started
-    restart: "no"
-    networks:
-      - federation
-
   server-a:
     build:
       context: ..
@@ -80,10 +55,10 @@ services:
     volumes:
       - app_a_media:/data/media
     depends_on:
-      init-a:
-        condition: service_completed_successfully
       nats-a:
         condition: service_started
+      postgres-a:
+        condition: service_healthy
     networks:
       - federation
 
@@ -99,31 +74,6 @@ services:
     depends_on:
       server-a:
         condition: service_started
-
-  init-b:
-    build:
-      context: ..
-      dockerfile: federation-testing/Dockerfile.init
-    environment:
-      APP_ENV: development
-      INSTANCE_DOMAIN: monstera2.local
-      MONSTERA_UI_URL: http://localhost:3001
-      LOG_LEVEL: info
-      DATABASE_HOST: postgres-b
-      DATABASE_PORT: 5432
-      NATS_URL: nats://nats-b:4222
-      MEDIA_BASE_URL: https://monstera2.local
-      MEDIA_LOCAL_PATH: /data/media
-      EMAIL_FROM: noreply@monstera2.local
-      SECRET_KEY_BASE: "0000000000000000000000000000000000000000000000000000000000000002"
-    depends_on:
-      postgres-b:
-        condition: service_healthy
-      nats-b:
-        condition: service_started
-    restart: "no"
-    networks:
-      - federation
 
   server-b:
     build:
@@ -149,10 +99,10 @@ services:
     volumes:
       - app_b_media:/data/media
     depends_on:
-      init-b:
-        condition: service_completed_successfully
       nats-b:
         condition: service_started
+      postgres-b:
+        condition: service_healthy
     networks:
       - federation
 

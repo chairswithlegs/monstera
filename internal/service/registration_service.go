@@ -20,6 +20,7 @@ type PendingRegistration struct {
 
 // RegistrationService handles pending registrations and invite codes.
 type RegistrationService interface {
+	Confirm(ctx context.Context, userID string) error
 	ListPending(ctx context.Context) ([]PendingRegistration, error)
 	Approve(ctx context.Context, moderatorID, userID string) error
 	Reject(ctx context.Context, moderatorID, userID, reason string) error
@@ -59,6 +60,16 @@ func NewRegistrationService(s store.Store, approvedMail AccountApprovedMailer, r
 	}
 }
 
+// Confirm marks a user as confirmed.
+func (svc *registrationService) Confirm(ctx context.Context, userID string) error {
+	err := svc.store.ConfirmUser(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("ConfirmUser(%s): %w", userID, err)
+	}
+	return nil
+}
+
+// ListPending returns a list of pending registrations.
 func (svc *registrationService) ListPending(ctx context.Context) ([]PendingRegistration, error) {
 	users, err := svc.store.GetPendingRegistrations(ctx)
 	if err != nil {
@@ -75,6 +86,7 @@ func (svc *registrationService) ListPending(ctx context.Context) ([]PendingRegis
 	return out, nil
 }
 
+// Approve confirms a user, records the action, and sends an email notifying the user.
 func (svc *registrationService) Approve(ctx context.Context, moderatorID, userID string) error {
 	u, err := svc.store.GetUserByID(ctx, userID)
 	if err != nil {
@@ -106,6 +118,7 @@ func (svc *registrationService) Approve(ctx context.Context, moderatorID, userID
 	return nil
 }
 
+// Reject rejects a user, records the action, and sends an email notifying the user.
 func (svc *registrationService) Reject(ctx context.Context, moderatorID, userID, reason string) error {
 	u, err := svc.store.GetUserByID(ctx, userID)
 	if err != nil {
@@ -140,6 +153,7 @@ func (svc *registrationService) Reject(ctx context.Context, moderatorID, userID,
 	return nil
 }
 
+// CreateInvite creates a new invite code.
 func (svc *registrationService) CreateInvite(ctx context.Context, createdByUserID string, maxUses *int, expiresAt *time.Time) (*domain.Invite, error) {
 	code, err := generateInviteCode()
 	if err != nil {
@@ -171,6 +185,7 @@ func generateInviteCode() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+// ListInvites returns a list of invites created by the given user.
 func (svc *registrationService) ListInvites(ctx context.Context, createdByUserID string) ([]domain.Invite, error) {
 	invites, err := svc.store.ListInvitesByCreator(ctx, createdByUserID)
 	if err != nil {
@@ -179,6 +194,7 @@ func (svc *registrationService) ListInvites(ctx context.Context, createdByUserID
 	return invites, nil
 }
 
+// RevokeInvite revokes an invite.
 func (svc *registrationService) RevokeInvite(ctx context.Context, inviteID string) error {
 	if err := svc.store.DeleteInvite(ctx, inviteID); err != nil {
 		return fmt.Errorf("DeleteInvite: %w", err)
@@ -186,6 +202,7 @@ func (svc *registrationService) RevokeInvite(ctx context.Context, inviteID strin
 	return nil
 }
 
+// ValidateInviteCode validates an invite code.
 func (svc *registrationService) ValidateInviteCode(ctx context.Context, code string) (*domain.Invite, error) {
 	inv, err := svc.store.GetInviteByCode(ctx, code)
 	if err != nil {

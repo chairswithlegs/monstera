@@ -63,7 +63,9 @@ migrate-down:
 	go run ./cmd/server migrate down-all || true
 
 seed:
-	go run ./cmd/seed
+	go run ./cmd/server user create admin admin@example.com password Admin admin
+	go run ./cmd/server user create moderator mod@example.com password Moderator moderator
+	go run ./cmd/server user create alice alice@example.com password Alice user
 
 loadtest:
 	# 1. Start full stack, reset database, and seed

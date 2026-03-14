@@ -31,7 +31,6 @@ Monstera is a self-hosted **ActivityPub server** written in Go 1.26 that exposes
 monstera/
 ├── cmd/
 │   ├── server/          # Main HTTP server binary
-│   ├── seed/            # Database seed utility
 │   └── loadtest/        # Load testing utility
 ├── internal/
 │   ├── domain/          # Domain types and error sentinels (ErrNotFound, etc.)
