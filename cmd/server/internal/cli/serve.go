@@ -76,7 +76,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	observability.SetMetrics(metrics)
 
 	// Setup database and run migrations
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	pool, err := pgxpool.New(ctx, store.DatabaseConnectionString(cfg, true))
 	if err != nil {
 		return fmt.Errorf("database: %w", err)
 	}
@@ -85,7 +85,8 @@ func runServe(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("database ping: %w", err)
 	}
 
-	if err := store.RunUp(cfg.DatabaseURL); err != nil {
+	// Run migrations (TODO: determine if this should be removed)
+	if err := store.RunUp(store.DatabaseConnectionString(cfg, false)); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
 

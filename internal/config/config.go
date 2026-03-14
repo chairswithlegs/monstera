@@ -26,9 +26,13 @@ type Config struct {
 	InstanceName   string
 	LogLevel       string
 
-	DatabaseURL          string
+	DatabaseHost         string
+	DatabasePort         string
+	DatabaseName         string
+	DatabaseUsername     string
+	DatabasePassword     string
 	DatabaseMaxOpenConns int
-	DatabaseMaxIdleConns int
+	DatabaseSSLMode      string
 
 	NATSUrl       string
 	NATSCredsFile string
@@ -72,9 +76,13 @@ func Load() (*Config, error) {
 		InstanceName:   envString("INSTANCE_NAME", "Monstera"),
 		LogLevel:       envString("LOG_LEVEL", "info"),
 
-		DatabaseURL:          envStringRequired("DATABASE_URL", &errs),
+		DatabaseHost:         envStringRequired("DATABASE_HOST", &errs),
+		DatabasePort:         envString("DATABASE_PORT", "5432"),
+		DatabaseName:         envString("DATABASE_NAME", "monstera"),
+		DatabaseUsername:     envString("DATABASE_USERNAME", "monstera"),
+		DatabasePassword:     envString("DATABASE_PASSWORD", "monstera"),
 		DatabaseMaxOpenConns: envInt("DATABASE_MAX_OPEN_CONNS", 20),
-		DatabaseMaxIdleConns: envInt("DATABASE_MAX_IDLE_CONNS", 5),
+		DatabaseSSLMode:      envString("DATABASE_SSL_MODE", "disable"),
 
 		NATSUrl:       envStringRequired("NATS_URL", &errs),
 		NATSCredsFile: envString("NATS_CREDS_FILE", ""),

@@ -2,11 +2,10 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 
+	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -40,12 +39,9 @@ func init() {
 
 func runMigrateUp(cmd *cobra.Command, _ []string) error {
 	ctx := context.Background()
-	url := os.Getenv("DATABASE_URL")
-	if url == "" {
-		return errors.New("DATABASE_URL is required")
-	}
+	connString := getDatabaseConnectionString()
 	slog.InfoContext(ctx, "Applying database migrations")
-	if err := store.RunUp(url); err != nil {
+	if err := store.RunUp(connString); err != nil {
 		return fmt.Errorf("migrate up: %w", err)
 	}
 	slog.InfoContext(ctx, "Database migrations applied")
@@ -54,12 +50,9 @@ func runMigrateUp(cmd *cobra.Command, _ []string) error {
 
 func runMigrateDown(cmd *cobra.Command, _ []string) error {
 	ctx := context.Background()
-	url := os.Getenv("DATABASE_URL")
-	if url == "" {
-		return errors.New("DATABASE_URL is required")
-	}
+	connString := getDatabaseConnectionString()
 	slog.InfoContext(ctx, "Rolling back database migrations")
-	if err := store.RunDown(url); err != nil {
+	if err := store.RunDown(connString); err != nil {
 		return fmt.Errorf("migrate down: %w", err)
 	}
 	slog.InfoContext(ctx, "Database migrations rolled back")
@@ -68,14 +61,19 @@ func runMigrateDown(cmd *cobra.Command, _ []string) error {
 
 func runMigrateDownAll(cmd *cobra.Command, _ []string) error {
 	ctx := context.Background()
-	url := os.Getenv("DATABASE_URL")
-	if url == "" {
-		return errors.New("DATABASE_URL is required")
-	}
+	connString := getDatabaseConnectionString()
 	slog.InfoContext(ctx, "Rolling back all database migrations")
-	if err := store.RunDownAll(url); err != nil {
+	if err := store.RunDownAll(connString); err != nil {
 		return fmt.Errorf("migrate down-all: %w", err)
 	}
 	slog.InfoContext(ctx, "Database migrations rolled back")
 	return nil
+}
+
+func getDatabaseConnectionString() string {
+	cfg, err := config.Load()
+	if err != nil {
+		panic(err)
+	}
+	return store.DatabaseConnectionString(cfg, false)
 }

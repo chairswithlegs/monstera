@@ -1,10 +1,12 @@
 # Federation testing
 
-Runs two Monstera instances (**app-a** and **app-b**) behind Caddy so you can test federation locally (follow, deliver activities, receive replies).
+Runs two Monstera instances behind Caddy so you can test federation locally (follow, deliver activities, receive replies).
 
 ## Prerequisites
 
-1. **Hostnames** — Add to `/etc/hosts`:
+Hostname resolution is required for this work correctly. On linux, you can configure it like so:
+
+**Hostnames** — Add to `/etc/hosts`:
    ```
    127.0.0.1   monstera.local monstera2.local
    ```
@@ -40,7 +42,7 @@ The docker compose stack brings up a local instance of Elk at localhost:5314. Na
 
 ## TLS and self-signed certs
 
-Caddy uses `local_certs`, so it serves self-signed certificates for `monstera.local` and `monstera2.local`. Browsers will prompt to accept them. The stack sets `APP_ENV=development`, so the app defaults `FEDERATION_INSECURE_SKIP_TLS_VERIFY=true`: the federation HTTP client (WebFinger and actor fetch) skips TLS verification. Search for remote users (e.g. `admin@monstera2.local`) from one instance therefore works without extra setup. In production, leave `APP_ENV=production` so TLS is verified.
+Caddy uses `local_certs`, so it serves self-signed certificates for `monstera.local` and `monstera2.local`. Browsers will prompt to accept them. The stack sets `APP_ENV=development`, so the app defaults `FEDERATION_INSECURE_SKIP_TLS_VERIFY=true`: the federation HTTP client (WebFinger and actor fetch) skips TLS verification. Search for remote users (e.g. `admin@monstera2.local`) from one instance therefore works without extra setup.
 
 ## Stop
 

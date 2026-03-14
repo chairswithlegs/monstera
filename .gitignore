@@ -4,6 +4,7 @@
 
 # Claude files
 .claude/settings.json
+.claude/settings.local.json
 plans
 
 # Build artifacts

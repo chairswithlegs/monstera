@@ -4,22 +4,26 @@ package service
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/store/postgres"
 	"github.com/stretchr/testify/require"
 )
 
 func TestIntegration_RegisterUser_CreateStatus_HomeTimeline(t *testing.T) {
-	url := os.Getenv("DATABASE_URL")
-	require.NotEmpty(t, url, "DATABASE_URL must be set for integration test")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	connString := store.DatabaseConnectionString(cfg, false)
 	ctx := context.Background()
 
-	pool, err := pgxpool.New(ctx, url)
+	pool, err := pgxpool.New(ctx, connString)
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 

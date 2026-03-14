@@ -40,7 +40,8 @@ services:
       INSTANCE_DOMAIN: monstera.local
       MONSTERA_UI_URL: http://localhost:3000
       LOG_LEVEL: info
-      DATABASE_URL: postgres://monstera:monstera@postgres-a:5432/monstera_fed?sslmode=disable
+      DATABASE_HOST: postgres-a
+      DATABASE_PORT: 5432
       NATS_URL: nats://nats-a:4222
       MEDIA_BASE_URL: https://monstera.local
       MEDIA_LOCAL_PATH: /data/media
@@ -66,7 +67,8 @@ services:
       INSTANCE_NAME: Monstera A (local)
       MONSTERA_UI_URL: http://localhost:3000
       LOG_LEVEL: debug
-      DATABASE_URL: postgres://monstera:monstera@postgres-a:5432/monstera_fed?sslmode=disable
+      DATABASE_HOST: postgres-a
+      DATABASE_PORT: 5432
       NATS_URL: nats://nats-a:4222
       CACHE_DRIVER: memory
       MEDIA_DRIVER: local
@@ -107,7 +109,8 @@ services:
       INSTANCE_DOMAIN: monstera2.local
       MONSTERA_UI_URL: http://localhost:3001
       LOG_LEVEL: info
-      DATABASE_URL: postgres://monstera:monstera@postgres-b:5432/monstera_fed?sslmode=disable
+      DATABASE_HOST: postgres-b
+      DATABASE_PORT: 5432
       NATS_URL: nats://nats-b:4222
       MEDIA_BASE_URL: https://monstera2.local
       MEDIA_LOCAL_PATH: /data/media
@@ -133,7 +136,8 @@ services:
       INSTANCE_NAME: Monstera B (local)
       MONSTERA_UI_URL: http://localhost:3001
       LOG_LEVEL: debug
-      DATABASE_URL: postgres://monstera:monstera@postgres-b:5432/monstera_fed?sslmode=disable
+      DATABASE_HOST: postgres-b
+      DATABASE_PORT: 5432
       NATS_URL: nats://nats-b:4222
       CACHE_DRIVER: memory
       MEDIA_DRIVER: local
@@ -170,11 +174,11 @@ services:
     environment:
       POSTGRES_USER: monstera
       POSTGRES_PASSWORD: monstera
-      POSTGRES_DB: monstera_fed
+      POSTGRES_DB: monstera
     ports:
       - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U monstera -d monstera_fed"]
+      test: ["CMD-SHELL", "pg_isready -U monstera -d monstera"]
       interval: 2s
       timeout: 5s
       retries: 5
@@ -188,11 +192,11 @@ services:
     environment:
       POSTGRES_USER: monstera
       POSTGRES_PASSWORD: monstera
-      POSTGRES_DB: monstera_fed
+      POSTGRES_DB: monstera
     ports:
       - "5434:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U monstera -d monstera_fed"]
+      test: ["CMD-SHELL", "pg_isready -U monstera -d monstera"]
       interval: 2s
       timeout: 5s
       retries: 5

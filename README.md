@@ -50,7 +50,7 @@ All configuration is via environment variables (12-factor).
 | Variable | Description |
 |----------|-------------|
 | `INSTANCE_DOMAIN` | Public hostname (e.g. `social.example.com`) |
-| `DATABASE_URL` | PostgreSQL connection string |
+| `DATABASE_HOST` | PostgreSQL hostname (e.g. `postgres`) |
 | `NATS_URL` | NATS server URL |
 | `MEDIA_BASE_URL` | Base URL for media (e.g. `https://social.example.com/media`) |
 | `EMAIL_FROM` | From address for outgoing email |

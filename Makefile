@@ -17,9 +17,8 @@ start:
 	docker compose -f docker-compose.yaml --profile app up --build -d --wait
 	sleep 5 # wait for the services to be ready
 	
-	# Run migrations and seed
+	# Reset and seed database
 	make migrate-down
-	make migrate-up
 	make seed
 
 stop:
@@ -29,9 +28,8 @@ start-dev:
 	docker compose -f docker-compose.yaml --profile dependencies up --build -d --wait
 	sleep 5 # wait for the services to be ready
 	
-	# Run migrations and seed
+	# Reset and seed database
 	make migrate-down
-	make migrate-up
 	make seed
 
 	# Run server and UI in parallel
@@ -68,11 +66,10 @@ seed:
 	go run ./cmd/seed
 
 loadtest:
-	# 1. Start full stack and reset DB
+	# 1. Start full stack, reset database, and seed
 	docker compose -f docker-compose.yaml --profile app up --build -d --wait
 	sleep 5
 	$(MAKE) migrate-down
-	$(MAKE) migrate-up
 	$(MAKE) seed
 
 	# 2. Build static Linux binary and deploy into the server container
@@ -80,10 +77,11 @@ loadtest:
 	docker cp /tmp/loadtest-linux monstera-server-1:/tmp/loadtest
 
 	# 3. Provision token, run tests, always tear down
+	# TODO: move loadtest into a docker compose service for portability and to centralize config
 	@set -e; \
 	trap 'docker compose -f docker-compose.yaml --profile app down' EXIT; \
 	TOKEN=$$(docker exec monstera-server-1 /tmp/loadtest setup \
-	  --db-url "postgres://monstera:monstera@postgres:5432/monstera_fed?sslmode=disable" \
+	  --db-url "postgres://monstera:monstera@postgres:5432/monstera?sslmode=disable" \
 	  --username $(LOADTEST_USERNAME)); \
 	echo "=== Inbox flood ==="; \
 	docker exec monstera-server-1 /tmp/loadtest inbox \
@@ -97,7 +95,7 @@ loadtest:
 	  --followers $(LOADTEST_FANOUT_FOLLOWERS) \
 	  --instances $(LOADTEST_FANOUT_INSTANCES) \
 	  --server-url http://localhost:8080 \
-	  --db-url "postgres://monstera:monstera@postgres:5432/monstera_fed?sslmode=disable" \
+	  --db-url "postgres://monstera:monstera@postgres:5432/monstera?sslmode=disable" \
 	  --nats-url "nats://nats:4222" \
 	  --token "$$TOKEN" \
 	  --timeout 60s \
