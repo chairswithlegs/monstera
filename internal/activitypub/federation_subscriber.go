@@ -11,6 +11,7 @@ import (
 
 	"github.com/chairswithlegs/monstera/internal/activitypub/blocklist"
 	"github.com/chairswithlegs/monstera/internal/activitypub/internal"
+	"github.com/chairswithlegs/monstera/internal/activitypub/vocab"
 	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/events"
@@ -145,9 +146,9 @@ func (s *FederationSubscriber) handleStatusCreated(ctx context.Context, event do
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal status.created payload: %w", err)
 	}
-	note := StatusToNote(payload.Status, payload.Author, s.cfg.InstanceDomain)
+	note := vocab.StatusToNote(payload.Status, payload.Author, s.cfg.InstanceDomain)
 	activityID := s.statusActivityID(payload.Status)
-	create, err := WrapInCreate(activityID, note)
+	create, err := vocab.NewCreateNoteActivity(activityID, note)
 	if err != nil {
 		return fmt.Errorf("wrap create: %w", err)
 	}
@@ -182,7 +183,7 @@ func (s *FederationSubscriber) handleStatusDeleted(ctx context.Context, event do
 		objectID = fmt.Sprintf("https://%s/statuses/%s", s.cfg.InstanceDomain, payload.StatusID)
 	}
 	actorID := s.accountActorID(payload.Author)
-	deleteAct, err := NewDeleteActivity(objectID+"#delete", actorID, objectID)
+	deleteAct, err := vocab.NewDeleteActivity(objectID+"#delete", actorID, objectID)
 	if err != nil {
 		return fmt.Errorf("new delete activity: %w", err)
 	}
@@ -206,10 +207,10 @@ func (s *FederationSubscriber) handleStatusUpdated(ctx context.Context, event do
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal status.updated payload: %w", err)
 	}
-	note := StatusToNote(payload.Status, payload.Author, s.cfg.InstanceDomain)
+	note := vocab.StatusToNote(payload.Status, payload.Author, s.cfg.InstanceDomain)
 	activityID := s.statusActivityID(payload.Status)
 	actorID := s.accountActorID(payload.Author)
-	update, err := WrapInUpdate(activityID+"#update", actorID, note)
+	update, err := vocab.NewUpdateNoteActivity(activityID+"#update", actorID, note)
 	if err != nil {
 		return fmt.Errorf("wrap update: %w", err)
 	}
@@ -239,7 +240,7 @@ func (s *FederationSubscriber) handleFollowCreated(ctx context.Context, event do
 	actorID := s.accountActorID(payload.Actor)
 	targetID := s.accountActorID(payload.Target)
 	activityID := fmt.Sprintf("https://%s/activities/%s", s.cfg.InstanceDomain, payload.Follow.ID)
-	follow, err := NewFollowActivity(activityID, actorID, targetID)
+	follow, err := vocab.NewFollowActivity(activityID, actorID, targetID)
 	if err != nil {
 		return fmt.Errorf("new follow activity: %w", err)
 	}
@@ -270,12 +271,12 @@ func (s *FederationSubscriber) handleFollowRemoved(ctx context.Context, event do
 	actorID := s.accountActorID(payload.Actor)
 	targetID := s.accountActorID(payload.Target)
 	followActivityID := fmt.Sprintf("https://%s/activities/%s", s.cfg.InstanceDomain, payload.FollowID)
-	inner, err := NewFollowActivity(followActivityID, actorID, targetID)
+	inner, err := vocab.NewFollowActivity(followActivityID, actorID, targetID)
 	if err != nil {
 		return fmt.Errorf("new follow for undo: %w", err)
 	}
 	undoID := fmt.Sprintf("https://%s/activities/undo-%s", s.cfg.InstanceDomain, payload.FollowID)
-	undo, err := NewUndoActivity(undoID, actorID, inner)
+	undo, err := vocab.NewUndoActivity(undoID, actorID, inner)
 	if err != nil {
 		return fmt.Errorf("new undo activity: %w", err)
 	}
@@ -306,12 +307,12 @@ func (s *FederationSubscriber) handleFollowAccepted(ctx context.Context, event d
 	targetID := s.accountActorID(payload.Target)
 	actorID := s.accountActorID(payload.Actor)
 	followActivityID := fmt.Sprintf("https://%s/activities/%s", s.cfg.InstanceDomain, payload.Follow.ID)
-	inner, err := NewFollowActivity(followActivityID, actorID, targetID)
+	inner, err := vocab.NewFollowActivity(followActivityID, actorID, targetID)
 	if err != nil {
 		return fmt.Errorf("new follow for accept: %w", err)
 	}
 	acceptID := fmt.Sprintf("https://%s/activities/accept-%s", s.cfg.InstanceDomain, payload.Follow.ID)
-	accept, err := NewAcceptActivity(acceptID, targetID, inner)
+	accept, err := vocab.NewAcceptActivity(acceptID, targetID, inner)
 	if err != nil {
 		return fmt.Errorf("new accept activity: %w", err)
 	}
@@ -342,7 +343,7 @@ func (s *FederationSubscriber) handleBlockCreated(ctx context.Context, event dom
 	actorID := s.accountActorID(payload.Actor)
 	targetID := s.accountActorID(payload.Target)
 	activityID := fmt.Sprintf("https://%s/activities/%s", s.cfg.InstanceDomain, uid.New())
-	block, err := NewBlockActivity(activityID, actorID, targetID)
+	block, err := vocab.NewBlockActivity(activityID, actorID, targetID)
 	if err != nil {
 		return fmt.Errorf("new block activity: %w", err)
 	}
@@ -373,12 +374,12 @@ func (s *FederationSubscriber) handleBlockRemoved(ctx context.Context, event dom
 	actorID := s.accountActorID(payload.Actor)
 	targetID := s.accountActorID(payload.Target)
 	blockID := fmt.Sprintf("https://%s/activities/block-%s-%s", s.cfg.InstanceDomain, payload.Actor.ID, payload.Target.ID)
-	inner, err := NewBlockActivity(blockID, actorID, targetID)
+	inner, err := vocab.NewBlockActivity(blockID, actorID, targetID)
 	if err != nil {
 		return fmt.Errorf("new block for undo: %w", err)
 	}
 	undoID := fmt.Sprintf("https://%s/activities/undo-block-%s-%s", s.cfg.InstanceDomain, payload.Actor.ID, payload.Target.ID)
-	undo, err := NewUndoActivity(undoID, actorID, inner)
+	undo, err := vocab.NewUndoActivity(undoID, actorID, inner)
 	if err != nil {
 		return fmt.Errorf("new undo activity: %w", err)
 	}
@@ -403,10 +404,10 @@ func (s *FederationSubscriber) handleAccountUpdated(ctx context.Context, event d
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal account.updated payload: %w", err)
 	}
-	actor := AccountToActor(payload.Account, s.cfg.InstanceDomain)
+	actor := vocab.AccountToActor(payload.Account, s.cfg.InstanceDomain)
 	actorID := actor.ID
 	activityID := fmt.Sprintf("https://%s/activities/%s", s.cfg.InstanceDomain, uid.New())
-	update, err := WrapInUpdateActor(activityID, actorID, actor)
+	update, err := vocab.NewUpdateActorActivity(activityID, actorID, actor)
 	if err != nil {
 		return fmt.Errorf("wrap update actor: %w", err)
 	}

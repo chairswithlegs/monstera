@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	ap "github.com/chairswithlegs/monstera/internal/activitypub"
+	"github.com/chairswithlegs/monstera/internal/activitypub/vocab"
 	"github.com/chairswithlegs/monstera/internal/api"
 	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/service"
@@ -44,10 +44,10 @@ func (h *CollectionsHandler) GETFollowers(w http.ResponseWriter, r *http.Request
 	}
 	base := "https://" + h.config.InstanceDomain
 	id := base + "/users/" + username + "/followers"
-	coll := ap.OrderedCollection{
-		Context:    ap.DefaultContext,
+	coll := vocab.OrderedCollection{
+		Context:    vocab.DefaultContext,
 		ID:         id,
-		Type:       "OrderedCollection",
+		Type:       vocab.ObjectTypeOrderedCollection,
 		TotalItems: int(count),
 	}
 	w.Header().Set("Cache-Control", "max-age=300")
@@ -73,10 +73,10 @@ func (h *CollectionsHandler) GETFollowing(w http.ResponseWriter, r *http.Request
 	}
 	base := "https://" + h.config.InstanceDomain
 	id := base + "/users/" + username + "/following"
-	coll := ap.OrderedCollection{
-		Context:    ap.DefaultContext,
+	coll := vocab.OrderedCollection{
+		Context:    vocab.DefaultContext,
 		ID:         id,
-		Type:       "OrderedCollection",
+		Type:       vocab.ObjectTypeOrderedCollection,
 		TotalItems: int(count),
 	}
 	w.Header().Set("Cache-Control", "max-age=300")
@@ -107,7 +107,7 @@ func (h *CollectionsHandler) GETFeatured(w http.ResponseWriter, r *http.Request)
 		if err != nil || st == nil {
 			continue
 		}
-		note := ap.StatusToNote(st, account, h.config.InstanceDomain)
+		note := vocab.StatusToNote(st, account, h.config.InstanceDomain)
 		raw, err := json.Marshal(note)
 		if err != nil {
 			continue
@@ -116,10 +116,10 @@ func (h *CollectionsHandler) GETFeatured(w http.ResponseWriter, r *http.Request)
 	}
 	base := "https://" + h.config.InstanceDomain
 	id := base + "/users/" + username + "/collections/featured"
-	coll := ap.OrderedCollection{
-		Context:      ap.DefaultContext,
+	coll := vocab.OrderedCollection{
+		Context:      vocab.DefaultContext,
 		ID:           id,
-		Type:         "OrderedCollection",
+		Type:         vocab.ObjectTypeOrderedCollection,
 		TotalItems:   len(orderedItems),
 		OrderedItems: orderedItems,
 	}

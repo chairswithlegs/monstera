@@ -19,9 +19,12 @@ import (
 	"github.com/chairswithlegs/monstera/internal/config"
 	natsutil "github.com/chairswithlegs/monstera/internal/nats"
 	"github.com/chairswithlegs/monstera/internal/observability"
+	"github.com/chairswithlegs/monstera/internal/ssrf"
 )
 
 const outboxUserAgent = "Monstera/1.0"
+
+var outboxDeliveryTimeout = 30 * time.Second
 
 // OutboxDeliveryMessage is the payload for outbound ActivityPub delivery (e.g. to NATS ACTIVITYPUB stream).
 type OutboxDeliveryMessage struct {
@@ -56,19 +59,26 @@ func NewOutboxDeliveryWorker(
 	signer OutboxHTTPSigner,
 	cfg *config.Config,
 ) *outboxDeliveryWorker {
-	transport := &http.Transport{}
-	if cfg.FederationInsecureSkipTLS {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // G402: intentional for development federation with self-signed certs
-	}
-	client := &http.Client{
-		Timeout:   30 * time.Second,
-		Transport: transport,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 3 {
-				return errors.New("too many redirects")
-			}
-			return nil
-		},
+	var client *http.Client
+	if cfg.AppEnv != "production" && cfg.FederationInsecureSkipTLS {
+		transport := &http.Transport{}
+		if cfg.FederationInsecureSkipTLS {
+			transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // G402: intentional for development federation with self-signed certs
+		}
+		client = &http.Client{
+			Timeout:   outboxDeliveryTimeout,
+			Transport: transport,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= 3 {
+					return errors.New("too many redirects")
+				}
+				return nil
+			},
+		}
+	} else {
+		client = ssrf.NewHTTPClient(ssrf.HTTPClientOptions{
+			Timeout: outboxDeliveryTimeout,
+		})
 	}
 	return &outboxDeliveryWorker{
 		js:        js,
@@ -188,9 +198,7 @@ func (w *outboxDeliveryWorker) processMessage(ctx context.Context, msg jetstream
 }
 
 func (w *outboxDeliveryWorker) deliverHTTP(ctx context.Context, delivery OutboxDeliveryMessage) (int, error) {
-	deliverCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(deliverCtx, http.MethodPost, delivery.TargetInbox, bytes.NewReader(delivery.Activity))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, delivery.TargetInbox, bytes.NewReader(delivery.Activity))
 	if err != nil {
 		return 0, fmt.Errorf("new request: %w", err)
 	}

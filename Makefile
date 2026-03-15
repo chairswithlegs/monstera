@@ -28,15 +28,16 @@ start-dev:
 	docker compose -f docker-compose.yaml --profile dependencies up --build -d --wait
 	sleep 5 # wait for the services to be ready
 	
-	# Reset and seed database
+	# Reset database
 	make migrate-down
-	make seed
 
 	# Run server and UI in parallel
-	@trap 'kill $$MONSTERA_PID $$UI_PID 2>/dev/null; docker compose -f docker-compose.yaml --profile dependencies down; exit 0' INT TERM; \
+	@trap 'kill $$MONSTERA_PID $$UI_PID $$SEED_PID 2>/dev/null; docker compose -f docker-compose.yaml --profile dependencies down; exit 0' INT TERM; \
 	go run ./cmd/server serve & MONSTERA_PID=$$!; \
 	(cd ui && npm run dev) & UI_PID=$$!; \
 	wait
+
+	# TODO: seed a user while the server is running
 
 test:
 	go test -race -count=1 ./...

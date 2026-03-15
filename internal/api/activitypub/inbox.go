@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	ap "github.com/chairswithlegs/monstera/internal/activitypub"
+	"github.com/chairswithlegs/monstera/internal/activitypub/vocab"
 	"github.com/chairswithlegs/monstera/internal/api"
 	"github.com/chairswithlegs/monstera/internal/cache"
 	"github.com/chairswithlegs/monstera/internal/config"
@@ -54,7 +55,7 @@ func (h *InboxHandler) POSTInbox(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	var activity ap.Activity
+	var activity vocab.Activity
 	if err := json.Unmarshal(body, &activity); err != nil {
 		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "invalid activity json"), slog.Any("error", err))
 		err := api.NewBadRequestError("invalid activity json")
@@ -63,8 +64,8 @@ func (h *InboxHandler) POSTInbox(w http.ResponseWriter, r *http.Request) {
 	}
 	// Enforce that the key used to sign belongs to the same domain as the activity actor.
 	// Compliant activities have an actor IRI and key IDs are IRIs; both must parse to a host.
-	keyDomain := ap.DomainFromKeyID(keyID)
-	actorDomain := ap.DomainFromActorID(activity.Actor)
+	keyDomain := vocab.DomainFromIRI(keyID)
+	actorDomain := vocab.DomainFromIRI(activity.Actor)
 	if keyDomain == "" || actorDomain == "" {
 		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "cannot verify key attribution"), slog.String("key_id", keyID), slog.String("actor", activity.Actor))
 		err := api.NewBadRequestError("cannot verify key attribution")

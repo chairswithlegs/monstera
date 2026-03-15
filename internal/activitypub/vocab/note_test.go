@@ -1,4 +1,4 @@
-package activitypub
+package vocab
 
 import (
 	"testing"
@@ -35,7 +35,7 @@ func TestStatusToNote(t *testing.T) {
 	note := StatusToNote(status, account, instanceDomain)
 	require.NotNil(t, note)
 	require.Equal(t, "https://example.com/statuses/01STATUS", note.ID)
-	require.Equal(t, "Note", note.Type)
+	require.Equal(t, ObjectTypeNote, note.Type)
 	require.Equal(t, "https://example.com/users/alice", note.AttributedTo)
 	require.Equal(t, "<p>Hello world</p>", note.Content)
 	require.Equal(t, []string{PublicAddress}, note.To)

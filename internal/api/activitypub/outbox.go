@@ -12,7 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	ap "github.com/chairswithlegs/monstera/internal/activitypub"
+	"github.com/chairswithlegs/monstera/internal/activitypub/vocab"
 	"github.com/chairswithlegs/monstera/internal/api"
 	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/domain"
@@ -56,10 +56,10 @@ func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 			api.HandleError(w, r, err)
 			return
 		}
-		coll := ap.OrderedCollection{
-			Context:    ap.DefaultContext,
+		coll := vocab.OrderedCollection{
+			Context:    vocab.DefaultContext,
 			ID:         outboxID,
-			Type:       "OrderedCollection",
+			Type:       vocab.ObjectTypeOrderedCollection,
 			TotalItems: int(total),
 			First:      outboxID + "?page=true",
 		}
@@ -110,7 +110,7 @@ func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 		if activityID == "" {
 			activityID = fmt.Sprintf("%s/statuses/%s", base, publicStatuses[i].ID)
 		}
-		create, err := ap.WrapInCreate(activityID, note)
+		create, err := vocab.NewCreateNoteActivity(activityID, note)
 		if err != nil {
 			slog.WarnContext(r.Context(), "outbox: wrap create failed", slog.String("status_id", publicStatuses[i].ID), slog.Any("error", err))
 			continue
@@ -126,10 +126,10 @@ func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 	if maxID != "" {
 		pageID = outboxID + "?page=true&max_id=" + url.QueryEscape(maxID)
 	}
-	pageResp := ap.OrderedCollectionPage{
-		Context:      ap.DefaultContext,
+	pageResp := vocab.OrderedCollectionPage{
+		Context:      vocab.DefaultContext,
 		ID:           pageID,
-		Type:         "OrderedCollectionPage",
+		Type:         vocab.ObjectTypeOrderedCollectionPage,
 		TotalItems:   len(orderedItems),
 		PartOf:       outboxID,
 		OrderedItems: orderedItems,
@@ -142,7 +142,7 @@ func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusOK, pageResp)
 }
 
-func statusToNote(s *domain.Status, actorID, base string) *ap.Note {
+func statusToNote(s *domain.Status, actorID, base string) *vocab.Note {
 	content := ""
 	if s.Content != nil && *s.Content != "" {
 		content = *s.Content
@@ -167,13 +167,13 @@ func statusToNote(s *domain.Status, actorID, base string) *ap.Note {
 	if s.EditedAt != nil {
 		updated = s.EditedAt.Format(time.RFC3339)
 	}
-	return &ap.Note{
-		Context:      ap.DefaultContext,
+	return &vocab.Note{
+		Context:      vocab.DefaultContext,
 		ID:           noteID,
-		Type:         "Note",
+		Type:         vocab.ObjectTypeNote,
 		AttributedTo: actorID,
 		Content:      content,
-		To:           []string{ap.PublicAddress},
+		To:           []string{vocab.PublicAddress},
 		InReplyTo:    inReplyToIRI,
 		Published:    published,
 		Updated:      updated,

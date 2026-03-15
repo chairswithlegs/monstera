@@ -175,7 +175,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	followSvc := service.NewFollowService(s, accountSvc)
 	notificationSvc := service.NewNotificationService(s)
 	mediaSvc := service.NewMediaService(s, mediaStore, cfg.MediaMaxBytes)
-	remoteResolver := ap.NewRemoteAccountResolver(accountSvc, cfg.InstanceDomain, cfg)
+	remoteResolver := ap.NewRemoteAccountResolver(accountSvc, cfg)
 	searchSvc := service.NewSearchService(s, remoteResolver, logger)
 	trendsSvc := service.NewTrendsService(s)
 	cardSvc := service.NewCardService(s)

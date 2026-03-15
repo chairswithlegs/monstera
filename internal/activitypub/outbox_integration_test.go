@@ -55,6 +55,8 @@ func TestDeliveryWorker_PullDeliverAndNoDuplicate(t *testing.T) {
 		NATSUrl:                     url,
 		InstanceDomain:              "test.example",
 		FederationWorkerConcurrency: 1,
+		AppEnv:                      "development",
+		FederationInsecureSkipTLS:   true,
 	}
 	client, err := natsutil.New(cfg)
 	require.NoError(t, err)
@@ -161,6 +163,8 @@ func TestOutboxFanoutWorker_Integration(t *testing.T) {
 		NATSUrl:                     url,
 		InstanceDomain:              "test.example",
 		FederationWorkerConcurrency: 1,
+		AppEnv:                      "development",
+		FederationInsecureSkipTLS:   true,
 	}
 	client, err := natsutil.New(cfg)
 	require.NoError(t, err)

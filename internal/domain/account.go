@@ -6,10 +6,10 @@ import (
 )
 
 type Account struct {
-	ID            string
-	Username      string
-	Domain        *string
-	DisplayName   *string
+	ID            string  // Internal ID for the account.
+	Username      string  // Username for the account. This maps to the ActivityPub Actor "preferredUsername" field.
+	Domain        *string // Domain for the account, null for local accounts.
+	DisplayName   *string // Vanity name for the account. This maps to the ActivityPub Actor "name" field.
 	Note          *string
 	AvatarMediaID *string
 	HeaderMediaID *string
@@ -18,12 +18,12 @@ type Account struct {
 	HeaderURL           string
 	PublicKey           string
 	PrivateKey          *string
-	InboxURL            string
-	OutboxURL           string
-	FollowersURL        string
-	FollowingURL        string
-	APID                string
-	APRaw               json.RawMessage
+	InboxURL            string          // ActivityPub Inbox URL.
+	OutboxURL           string          // ActivityPub Outbox URL.
+	FollowersURL        string          // ActivityPub Followers URL.
+	FollowingURL        string          // ActivityPub Following URL.
+	APID                string          // ActivityPub IRI for the account.
+	APRaw               json.RawMessage // Raw ActivityPub Actor document.
 	FollowersCount      int
 	FollowingCount      int
 	StatusesCount       int

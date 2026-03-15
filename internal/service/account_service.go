@@ -71,10 +71,6 @@ type CreateAccountInput struct {
 
 // Create creates a local account. For local accounts (no domain), generates an RSA key pair and builds AP URLs from instanceBaseURL.
 func (svc *accountService) Create(ctx context.Context, in CreateAccountInput) (*domain.Account, error) {
-	return svc.createAccountWithStore(ctx, svc.store, in)
-}
-
-func (svc *accountService) createAccountWithStore(ctx context.Context, s store.Store, in CreateAccountInput) (*domain.Account, error) {
 	if in.Username == "" {
 		return nil, fmt.Errorf("CreateAccount: %w", domain.ErrValidation)
 	}
@@ -83,6 +79,8 @@ func (svc *accountService) createAccountWithStore(ctx context.Context, s store.S
 		return nil, fmt.Errorf("CreateAccount: %w", err)
 	}
 	id := uid.New()
+
+	// Build AP IRIs from instanceBaseURL and username.
 	apID := fmt.Sprintf("%s/users/%s", svc.instanceBaseURL, in.Username)
 	inboxURL := fmt.Sprintf("%s/users/%s/inbox", svc.instanceBaseURL, in.Username)
 	outboxURL := fmt.Sprintf("%s/users/%s/outbox", svc.instanceBaseURL, in.Username)
@@ -106,7 +104,7 @@ func (svc *accountService) createAccountWithStore(ctx context.Context, s store.S
 		Bot:          in.Bot,
 		Locked:       in.Locked,
 	}
-	acc, err := s.CreateAccount(ctx, storeIn)
+	acc, err := svc.store.CreateAccount(ctx, storeIn)
 	if err != nil {
 		return nil, fmt.Errorf("CreateAccount: %w", err)
 	}
@@ -163,7 +161,7 @@ func (svc *accountService) Register(ctx context.Context, in RegisterInput) (*dom
 	}
 	var created *domain.Account
 	err = svc.store.WithTx(ctx, func(tx store.Store) error {
-		acc, err := svc.createAccountWithStore(ctx, tx, CreateAccountInput{
+		acc, err := svc.Create(ctx, CreateAccountInput{
 			Username:    in.Username,
 			DisplayName: in.DisplayName,
 			Note:        in.Note,
@@ -171,7 +169,7 @@ func (svc *accountService) Register(ctx context.Context, in RegisterInput) (*dom
 			Locked:      false,
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("Create: %w", err)
 		}
 		userID := uid.New()
 		_, err = tx.CreateUser(ctx, store.CreateUserInput{
@@ -242,25 +240,30 @@ func (svc *accountService) GetLocalByUsername(ctx context.Context, username stri
 
 // CreateOrUpdateRemoteInput is the input for creating or updating a remote account from federation.
 type CreateOrUpdateRemoteInput struct {
-	APID         string
-	Username     string
-	Domain       string
-	DisplayName  *string
-	Note         *string
-	PublicKey    string
-	InboxURL     string
-	OutboxURL    string
-	FollowersURL string
-	FollowingURL string
-	Bot          bool
-	Locked       bool
-	ApRaw        []byte
+	APID           string
+	Username       string
+	Domain         string
+	DisplayName    *string
+	Note           *string
+	PublicKey      string
+	InboxURL       string
+	OutboxURL      string
+	FollowersURL   string
+	FollowingURL   string
+	Bot            bool
+	Locked         bool
+	FollowersCount int
+	FollowingCount int
+	StatusesCount  int
+	ApRaw          []byte
 }
 
 // CreateOrUpdateRemoteAccount creates a remote account from federation input, or updates it if it already exists by APID.
 func (svc *accountService) CreateOrUpdateRemoteAccount(ctx context.Context, in CreateOrUpdateRemoteInput) (*domain.Account, error) {
+	// Check if the account already exists.
 	existing, err := svc.store.GetAccountByAPID(ctx, in.APID)
 	if err == nil {
+		// TODO: Verify that we are allowing updates to all the correct fields.
 		if err := svc.store.UpdateAccount(ctx, store.UpdateAccountInput{
 			ID:          existing.ID,
 			DisplayName: in.DisplayName,
@@ -282,6 +285,12 @@ func (svc *accountService) CreateOrUpdateRemoteAccount(ctx context.Context, in C
 		}
 		return acc, nil
 	}
+
+	if !errors.Is(err, domain.ErrNotFound) {
+		return nil, fmt.Errorf("CreateOrUpdateRemoteAccount GetAccountByAPID: %w", err)
+	}
+
+	// Since the account does not exist, create it.
 	dom := in.Domain
 	storeIn := store.CreateAccountInput{
 		ID:           uid.New(),
@@ -307,6 +316,8 @@ func (svc *accountService) CreateOrUpdateRemoteAccount(ctx context.Context, in C
 }
 
 // Suspend suspends the account by ID (e.g. for Delete{Person}).
+// TODO: it doesn't make sense to suspend a remote account.
+// We should add validation to ensure the account is local.
 func (svc *accountService) Suspend(ctx context.Context, accountID string) error {
 	if err := svc.store.SuspendAccount(ctx, accountID); err != nil {
 		return fmt.Errorf("Suspend(%s): %w", accountID, err)

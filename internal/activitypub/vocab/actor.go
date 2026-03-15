@@ -1,4 +1,4 @@
-package activitypub
+package vocab
 
 import (
 	"fmt"
@@ -7,10 +7,30 @@ import (
 	"github.com/chairswithlegs/monstera/internal/domain"
 )
 
-const (
-	actorTypePerson  = "Person"
-	actorTypeService = "Service"
-)
+// Actor represents an AP Person (user account). Served at GET /users/:username.
+//
+// Fields follow Mastodon's Actor shape so that remote instances recognise
+// all profile metadata.
+type Actor struct {
+	Context                   interface{} `json:"@context"`
+	ID                        string      `json:"id"`
+	Type                      ObjectType  `json:"type"` // "Person" | "Service" (for bot accounts)
+	PreferredUsername         string      `json:"preferredUsername"`
+	Name                      string      `json:"name,omitempty"`
+	Summary                   string      `json:"summary,omitempty"` // bio HTML
+	URL                       string      `json:"url"`
+	Inbox                     string      `json:"inbox"`
+	Outbox                    string      `json:"outbox"`
+	Followers                 string      `json:"followers"`
+	Following                 string      `json:"following"`
+	Featured                  string      `json:"featured,omitempty"`
+	PublicKey                 PublicKey   `json:"publicKey"`
+	Endpoints                 *Endpoints  `json:"endpoints,omitempty"`
+	Icon                      *Icon       `json:"icon,omitempty"`  // avatar image
+	Image                     *Icon       `json:"image,omitempty"` // header image
+	ManuallyApprovesFollowers bool        `json:"manuallyApprovesFollowers"`
+	Published                 string      `json:"published,omitempty"` // ISO 8601
+}
 
 // AccountToActor builds an ActivityPub Actor from a domain account.
 // instanceDomain is the host (e.g. "example.com") for building IRIs.
@@ -20,9 +40,9 @@ func AccountToActor(a *domain.Account, instanceDomain string) *Actor {
 	if id == "" {
 		id = base + "/users/" + a.Username
 	}
-	actorType := actorTypePerson
+	actorType := ObjectTypePerson
 	if a.Bot {
-		actorType = actorTypeService
+		actorType = ObjectTypeService
 	}
 	name := ""
 	if a.DisplayName != nil && *a.DisplayName != "" {
@@ -75,40 +95,4 @@ func AccountToActor(a *domain.Account, instanceDomain string) *Actor {
 		actor.Image = &Icon{Type: "Image", URL: a.HeaderURL}
 	}
 	return actor
-}
-
-// StatusToNote builds an ActivityPub Note from a domain status and its author account.
-// instanceDomain is the scheme + host (e.g. "example.com") for building IRIs.
-func StatusToNote(s *domain.Status, account *domain.Account, instanceDomain string) *Note {
-	content := ""
-	if s.Content != nil {
-		content = *s.Content
-	} else if s.Text != nil {
-		content = *s.Text
-	}
-	noteID := s.APID
-	if noteID == "" {
-		noteID = s.URI
-	}
-	if noteID == "" {
-		noteID = fmt.Sprintf("https://%s/statuses/%s", instanceDomain, s.ID)
-	}
-	actorID := account.APID
-	if actorID == "" {
-		actorID = fmt.Sprintf("https://%s/users/%s", instanceDomain, account.Username)
-	}
-	published := s.CreatedAt.Format(time.RFC3339)
-	note := &Note{
-		Context:      DefaultContext,
-		ID:           noteID,
-		Type:         "Note",
-		AttributedTo: actorID,
-		Content:      content,
-		To:           []string{PublicAddress},
-		Published:    published,
-		URL:          noteID,
-		Sensitive:    s.Sensitive,
-		Summary:      s.ContentWarning,
-	}
-	return note
 }
