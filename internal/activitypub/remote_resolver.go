@@ -41,15 +41,6 @@ type JRD struct {
 	Aliases []string  `json:"aliases,omitempty"`
 }
 
-// actorDetails contains additional data about an actor that is not part of the Actor document.
-// These values are sourced from the actor's IRI endpoints.
-type actorDetails struct {
-	FollowersCount   int      `json:"followersCount"`
-	FollowingCount   int      `json:"followingCount"`
-	StatusesCount    int      `json:"statusesCount"`
-	FeaturedStatuses []string `json:"featuredStatuses"`
-}
-
 // RemoteAccountResolver resolves a remote account by acct (user@domain) via WebFinger and actor fetch.
 // Used by the Mastodon search API when resolve=true.
 //
@@ -122,6 +113,10 @@ func (r *RemoteAccountResolver) ResolveRemoteAccount(ctx context.Context, acct s
 // ResolveRemoteAccountByIRI resolves the given actor IRI to a domain.Account.
 // If the account already exists and is not stale, returns it.
 // Otherwise, fetches the actor document, creates/updates the account, and returns it.
+//
+// TODO: currently, we aren't fetching additional details from a remote actor's IRI endpoints.
+// This means we don't have things like the actor's followers count, following count, or statuses.
+// When resolving an actor, we should also fetch these details.
 func (r *RemoteAccountResolver) ResolveRemoteAccountByIRI(ctx context.Context, actorIRI string) (*domain.Account, error) {
 	acc, err := r.accounts.GetByAPID(ctx, actorIRI)
 	if err == nil && !r.isRemoteActorAccountStale(acc) {
@@ -141,14 +136,6 @@ func (r *RemoteAccountResolver) fetchActor(ctx context.Context, actorIRI string)
 		return nil, fmt.Errorf("actor fetch: %w", err)
 	}
 	return &actor, nil
-}
-
-// fetchActorDetails fetches the details of an actor from the given IRI endpoints.
-// TODO: currently, we aren't fetching additional details from a remote actor's IRI endpoints.
-// This means we don't have things like the actor's followers count, following count, or statuses.
-// When resolving an actor, we should also fetch these details.
-func (r *RemoteAccountResolver) fetchActorDetails(ctx context.Context, a *vocab.Actor) (*actorDetails, error) {
-	return &actorDetails{}, nil
 }
 
 func (r *RemoteAccountResolver) fetchWebFingerActorIRI(ctx context.Context, acct string) (string, error) {
@@ -193,7 +180,7 @@ func (r *RemoteAccountResolver) SyncActorToStore(ctx context.Context, actor *voc
 	// In the future, we may want to add fallback logic for broader interoperability.
 	username := actor.PreferredUsername
 	if username == "" {
-		return nil, fmt.Errorf("SyncActorToStore: username is missing")
+		return nil, errors.New("SyncActorToStore: username is missing")
 	}
 
 	// Sanitize username strictly
@@ -243,5 +230,9 @@ func (r *RemoteAccountResolver) resolveIRIDocument(ctx context.Context, iri stri
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("resolveIRIDocument: status %d", resp.StatusCode)
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	err = json.NewDecoder(resp.Body).Decode(out)
+	if err != nil {
+		return fmt.Errorf("resolveIRIDocument decode: %w", err)
+	}
+	return nil
 }

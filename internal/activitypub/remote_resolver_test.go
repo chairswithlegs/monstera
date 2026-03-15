@@ -268,7 +268,7 @@ func TestRemoteAccountResolver_FetchActor_success(t *testing.T) {
 	assert.Equal(t, "https://example.com/ap/users/115871897412638518#main-key", out.PublicKey.ID)
 	assert.Equal(t, "https://example.com/ap/users/115871897412638518", out.PublicKey.Owner)
 	assert.Equal(t, "-----BEGIN PUBLIC KEY-----nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnqsKxoOwP/8Ic01DuvIVnglLrxMHWswc7hBSnoYuyzCLt+Iok/6kDGzKKalONU03uxcMDeXX7QwdSWH6mWQzwn6HtjIBCKUSk32H3MPgEyyZR0HC6jP2YbrJ2QZ8S+8oUNQ9yt8gJKzUKdE2QjRVP5ndvLCFbqcILE/64g9468F0gogccTjSYcTBYMzLkgM5bEAvlH5XvOgov+Ck0PkNnuBn4hx9Oc9zuTRTRKz9Ps81ZcmDNNOU33FEp0UKDC//NxmDBQtu8OcPlNG7u6ZxWpFTnxc8JH5gyL6CeursnqGgR+tmXJQ7Y0emOgkltdjT/3sOglJCezXAyCZ2h5NtJjhwwn3QIDAQABn-----END PUBLIC KEY-----n", out.PublicKey.PublicKeyPem)
-	assert.Equal(t, false, out.ManuallyApprovesFollowers)
+	assert.False(t, out.ManuallyApprovesFollowers)
 	assert.Equal(t, "2026-01-10T00:00:00Z", out.Published)
 }
 

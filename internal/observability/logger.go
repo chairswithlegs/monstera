@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -46,7 +47,11 @@ func (h *monsteraLogHandler) Handle(ctx context.Context, r slog.Record) error {
 	if accountID != "" {
 		r.AddAttrs(slog.String("account_id", accountID))
 	}
-	return h.handler.Handle(ctx, r)
+	err := h.handler.Handle(ctx, r)
+	if err != nil {
+		return fmt.Errorf("monstera log handler: %w", err)
+	}
+	return nil
 }
 
 func (h *monsteraLogHandler) Enabled(ctx context.Context, level slog.Level) bool {

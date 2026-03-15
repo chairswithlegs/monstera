@@ -64,7 +64,7 @@ func (h *InboxHandler) POSTInbox(w http.ResponseWriter, r *http.Request) {
 	}
 	// Enforce that the key used to sign belongs to the same domain as the activity actor.
 	// Compliant activities have an actor IRI and key IDs are IRIs; both must parse to a host.
-	keyDomain := vocab.DomainFromKeyID(keyID)
+	keyDomain := vocab.DomainFromIRI(keyID)
 	actorDomain := vocab.DomainFromIRI(activity.Actor)
 	if keyDomain == "" || actorDomain == "" {
 		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "cannot verify key attribution"), slog.String("key_id", keyID), slog.String("actor", activity.Actor))

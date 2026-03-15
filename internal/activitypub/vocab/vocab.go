@@ -115,64 +115,6 @@ type Attachment struct {
 	Height    int        `json:"height,omitempty"`
 }
 
-// Actor represents an AP Person (user account). Served at GET /users/:username.
-//
-// Fields follow Mastodon's Actor shape so that remote instances recognise
-// all profile metadata.
-type Actor struct {
-	Context                   interface{} `json:"@context"`
-	ID                        string      `json:"id"`
-	Type                      ObjectType  `json:"type"` // "Person" | "Service" (for bot accounts)
-	PreferredUsername         string      `json:"preferredUsername"`
-	Name                      string      `json:"name,omitempty"`
-	Summary                   string      `json:"summary,omitempty"` // bio HTML
-	URL                       string      `json:"url"`
-	Inbox                     string      `json:"inbox"`
-	Outbox                    string      `json:"outbox"`
-	Followers                 string      `json:"followers"`
-	Following                 string      `json:"following"`
-	Featured                  string      `json:"featured,omitempty"`
-	PublicKey                 PublicKey   `json:"publicKey"`
-	Endpoints                 *Endpoints  `json:"endpoints,omitempty"`
-	Icon                      *Icon       `json:"icon,omitempty"`  // avatar image
-	Image                     *Icon       `json:"image,omitempty"` // header image
-	ManuallyApprovesFollowers bool        `json:"manuallyApprovesFollowers"`
-	Published                 string      `json:"published,omitempty"` // ISO 8601
-}
-
-// Note represents an AP Note (status/post). The core content type in the
-// Mastodon federation protocol.
-//
-// ContentMap is a Mastodon extension that maps language codes to localised
-// content.
-type Note struct {
-	Context      interface{}        `json:"@context,omitempty"`
-	ID           string             `json:"id"`
-	Type         ObjectType         `json:"type"` // "Note"
-	AttributedTo string             `json:"attributedTo"`
-	Content      string             `json:"content"` // rendered HTML
-	ContentMap   map[string]string  `json:"contentMap,omitempty"`
-	Source       *NoteSource        `json:"source,omitempty"`
-	To           []string           `json:"to"`
-	Cc           []string           `json:"cc,omitempty"`
-	InReplyTo    *string            `json:"inReplyTo"` // null or parent Note IRI
-	Published    string             `json:"published"` // ISO 8601
-	Updated      string             `json:"updated,omitempty"`
-	URL          string             `json:"url"`
-	Sensitive    bool               `json:"sensitive"`
-	Summary      *string            `json:"summary"` // content warning; null if none
-	Tag          []Tag              `json:"tag,omitempty"`
-	Attachment   []Attachment       `json:"attachment,omitempty"`
-	Replies      *OrderedCollection `json:"replies,omitempty"`
-}
-
-// NoteSource preserves the original plain-text or Markdown source.
-// Mastodon includes this for editable posts.
-type NoteSource struct {
-	Content   string `json:"content"`
-	MediaType string `json:"mediaType"` // "text/plain"
-}
-
 // OrderedCollection represents an AP OrderedCollection.
 // Used for outbox, followers, following, and featured endpoints.
 // When OrderedItems is non-nil, it is serialized (inline items); otherwise First may point to a page.
