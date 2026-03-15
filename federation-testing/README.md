@@ -23,10 +23,10 @@ Next, you can seed the users by running:
 
 ```bash
 # Seed an admin user in monstera.local (email: admin@example.com, password: password)
-docker compose -f federation-testing/docker-compose.yaml exec server-a -- server user create admin admin@example.com password Admin admin
+docker compose -f federation-testing/docker-compose.yaml exec server-a ./server user create admin admin@example.com password Admin admin
 
 # Seed an admin user in monstera2.local (email: admin@example.com, password: password)
-docker compose -f federation-testing/docker-compose.yaml exec server-b -- server user create admin admin@example.com password Admin admin
+docker compose -f federation-testing/docker-compose.yaml exec server-b ./server user create admin admin@example.com password Admin admin
 ```
 To **reset the databases** and start from scratch (drops all data), remove volumes then bring the stack back up:
 

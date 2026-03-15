@@ -28,7 +28,37 @@ func NewLogger(env, level string) *slog.Logger {
 	} else {
 		handler = slog.NewTextHandler(os.Stderr, opts)
 	}
-	return slog.New(handler)
+	return slog.New(&monsteraLogHandler{handler: handler})
+}
+
+// monsteraLogHandler is a thin wrapper around the default slog.Handler
+// It exists to automatically add common internal attributes to the record.
+type monsteraLogHandler struct {
+	handler slog.Handler
+}
+
+func (h *monsteraLogHandler) Handle(ctx context.Context, r slog.Record) error {
+	requestID := RequestIDFromContext(ctx)
+	if requestID != "" {
+		r.AddAttrs(slog.String("request_id", requestID))
+	}
+	accountID := AccountIDFromContext(ctx)
+	if accountID != "" {
+		r.AddAttrs(slog.String("account_id", accountID))
+	}
+	return h.handler.Handle(ctx, r)
+}
+
+func (h *monsteraLogHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.handler.Enabled(ctx, level)
+}
+
+func (h *monsteraLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return h.handler.WithAttrs(attrs)
+}
+
+func (h *monsteraLogHandler) WithGroup(name string) slog.Handler {
+	return h.handler.WithGroup(name)
 }
 
 func parseLevel(level string) slog.Level {
@@ -44,30 +74,42 @@ func parseLevel(level string) slog.Level {
 	}
 }
 
-func RequestLogger() func(http.Handler) http.Handler {
+// RequestIDMiddlware generates a request ID and stores it in the request context.
+func RequestIDMiddlware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			requestID := generateRequestID()
-			ctx := WithRequestID(r.Context(), requestID)
+			ctx := context.WithValue(r.Context(), requestIDKey, requestID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func generateRequestID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b[:4]) + "-" + hex.EncodeToString(b[4:6]) + "-" + hex.EncodeToString(b[6:8]) + "-" + hex.EncodeToString(b[8:10]) + "-" + hex.EncodeToString(b[10:])
+}
+
+// RequestLoggerMiddleware is a middleware that logs the request.
+func RequestLoggerMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			rec := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
-			rec.Header().Set("X-Request-Id", requestID)
-			next.ServeHTTP(rec, r.WithContext(ctx))
+			next.ServeHTTP(rec, r)
 			attrs := []any{
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.Int("status", rec.status),
 				slog.Int64("duration_ms", time.Since(start).Milliseconds()),
-				slog.String("request_id", requestID),
 			}
-			if accountID := AccountIDFromContext(ctx); accountID != "" {
-				attrs = append(attrs, slog.String("account_id", accountID))
-			}
-			slog.InfoContext(ctx, "request", attrs...)
+			slog.InfoContext(r.Context(), "request", attrs...)
 		})
 	}
 }
 
+// responseRecorder is a wrapper around the http.ResponseWriter that records the status code.
 type responseRecorder struct {
 	http.ResponseWriter
 	status int
@@ -78,25 +120,18 @@ func (r *responseRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
-func generateRequestID() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b[:4]) + "-" + hex.EncodeToString(b[4:6]) + "-" + hex.EncodeToString(b[6:8]) + "-" + hex.EncodeToString(b[8:10]) + "-" + hex.EncodeToString(b[10:])
-}
-
-func WithRequestID(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, requestIDKey, id)
-}
-
+// RequestIDFromContext retrieves the request ID that was added to the context by the RequestIDMiddleware.
 func RequestIDFromContext(ctx context.Context) string {
 	id, _ := ctx.Value(requestIDKey).(string)
 	return id
 }
 
+// WithAccountID stores the account ID in the context.
 func WithAccountID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, accountIDKey, id)
 }
 
+// AccountIDFromContext retrieves the account ID from the context.
 func AccountIDFromContext(ctx context.Context) string {
 	id, _ := ctx.Value(accountIDKey).(string)
 	return id

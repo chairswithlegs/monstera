@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	ap "github.com/chairswithlegs/monstera/internal/activitypub"
+	"github.com/chairswithlegs/monstera/internal/activitypub/vocab"
 	"github.com/chairswithlegs/monstera/internal/cache"
 	"github.com/chairswithlegs/monstera/internal/config"
 )
@@ -66,7 +67,7 @@ type mockInboxProcessor struct {
 	called bool
 }
 
-func (p *mockInboxProcessor) Process(ctx context.Context, activity *ap.Activity) error {
+func (p *mockInboxProcessor) Process(ctx context.Context, activity *vocab.Activity) error {
 	p.called = true
 	return nil
 }

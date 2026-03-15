@@ -86,25 +86,33 @@ func New(deps Deps) http.Handler {
 
 	r.Use(chimw.RequestID)
 	r.Use(chimw.RealIP)
-	r.Use(observability.RequestLogger())
+	r.Use(observability.RequestIDMiddlware())
+	r.Use(observability.RequestLoggerMiddleware())
 	r.Use(observability.MetricsMiddleware())
 	r.Use(middleware.Recoverer())
 	r.Use(middleware.CORS)
 
 	r.Group(func(r chi.Router) {
 		r.Use(chimw.Timeout(30 * time.Second))
+
+		// Health check routes
 		r.Get("/healthz/live", deps.Health.GETLiveness)
 		r.Get("/healthz/ready", deps.Health.GETReadiness)
+
+		// ActivityPub routes
+		// TODO: determine if any of these routes should be prefixed
 		r.Get("/.well-known/webfinger", deps.WebFinger.GETWebFinger)
 		r.Get("/.well-known/nodeinfo", deps.NodeInfoPtr.GETNodeInfoPointer)
 		r.Get("/nodeinfo/2.0", deps.NodeInfo.GETNodeInfo)
+		r.Post("/inbox", deps.Inbox.POSTInbox)
+
+		// Note: these routes map to the IRIs generated for local accounts
+		r.Post("/users/{username}/inbox", deps.Inbox.POSTInbox)
 		r.Get("/users/{username}/outbox", deps.Outbox.GETOutbox)
 		r.Get("/users/{username}/followers", deps.Collections.GETFollowers)
 		r.Get("/users/{username}/following", deps.Collections.GETFollowing)
 		r.Get("/users/{username}/collections/featured", deps.Collections.GETFeatured)
 		r.Get("/users/{username}", deps.Actor.GETActor)
-		r.Post("/users/{username}/inbox", deps.Inbox.POSTInbox)
-		r.Post("/inbox", deps.Inbox.POSTInbox)
 	})
 
 	// Mastodon API routes (v2)

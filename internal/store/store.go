@@ -10,6 +10,8 @@ import (
 // Store is the persistence abstraction. All methods use domain types so that
 // the service layer and callers depend only on store and domain, not on any
 // specific SQL implementation (e.g. postgres).
+//
+// TODO: organize methods into logical groups.
 type Store interface {
 	CreateAccount(ctx context.Context, in CreateAccountInput) (*domain.Account, error)
 	GetAccountByID(ctx context.Context, id string) (*domain.Account, error)

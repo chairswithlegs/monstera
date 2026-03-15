@@ -10,17 +10,19 @@ import (
 	"mvdan.cc/xurls/v2"
 )
 
+// MentionResolver resolves a mention (username, optional domain) to an account.
+type MentionResolver func(username string, domain *string) *domain.Account
+
 // MentionRef is a resolved @mention for persistence.
+// TODO: this could be internalized to the status write service.
 type MentionRef struct {
 	Username  string
 	Domain    *string
 	AccountID string
 }
 
-// MentionResolver resolves a mention (username, optional domain) to an account.
-type MentionResolver func(username string, domain *string) *domain.Account
-
 // RenderResult is the output of the content rendering pipeline.
+// TODO: this could be internalized to the status write service.
 type RenderResult struct {
 	HTML     string
 	Mentions []MentionRef
@@ -34,6 +36,9 @@ var (
 )
 
 // Render transforms plain text to HTML with mentions and hashtags extracted.
+// TODO: this is only used by the status write service, and the mention resolver is just an abstraction
+// of the account service, which is already a dependency of the status write service.
+// We should consider moving this logic into the status write service.
 func Render(text string, instanceDomain string, resolve MentionResolver) (RenderResult, error) {
 	// TODO: figure out if there is a standard for how to santize this content
 	strict := bluemonday.StrictPolicy()
@@ -98,6 +103,8 @@ func replaceMentions(text string, resolve MentionResolver, out *[]MentionRef) st
 	return text
 }
 
+// TODO: when we move the functions into the status write service, we can remove the instanceDomain parameter
+// since it is already set on the status write service.
 func replaceHashtags(text string, instanceDomain string) (string, []string) {
 	var tags []string
 	seen := make(map[string]bool)

@@ -32,16 +32,6 @@ func TestNewLogger(t *testing.T) {
 	}
 }
 
-func TestWithRequestID_roundTrip(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	assert.Empty(t, RequestIDFromContext(ctx))
-
-	ctx = WithRequestID(ctx, "req-123")
-	assert.Equal(t, "req-123", RequestIDFromContext(ctx))
-}
-
 func TestWithAccountID_roundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -52,20 +42,31 @@ func TestWithAccountID_roundTrip(t *testing.T) {
 	assert.Equal(t, "01ARZ3NDEKTSV4RRFFQ69G5FAV", AccountIDFromContext(ctx))
 }
 
-func TestRequestLogger_setsHeaderAndLogs(t *testing.T) {
+func TestRequestIDMiddlware_GeneratesRequestID(t *testing.T) {
 	t.Parallel()
 
-	handler := RequestLogger()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var ctx context.Context
+	handler := RequestIDMiddlware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		ctx = r.Context()
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.NotEmpty(t, RequestIDFromContext(ctx))
+}
+
+func TestRequestLoggerMiddleware(t *testing.T) {
+	t.Parallel()
+
+	handler := RequestLoggerMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte("ok"))
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
-
 	handler.ServeHTTP(rec, req)
-
 	assert.Equal(t, http.StatusCreated, rec.Code)
-	assert.NotEmpty(t, rec.Header().Get("X-Request-Id"))
-	assert.Equal(t, "ok", rec.Body.String())
 }

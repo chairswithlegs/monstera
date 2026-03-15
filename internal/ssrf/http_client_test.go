@@ -1,4 +1,4 @@
-package internal
+package ssrf
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 func TestNewSecureEgressHTTPClient(t *testing.T) {
 	t.Parallel()
 
-	client := NewSecureEgressHTTPClient()
+	client := NewHTTPClient(HTTPClientOptions{})
 	require.NotNil(t, client)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com", nil)
@@ -29,7 +29,7 @@ func TestNewSecureEgressHTTPClient(t *testing.T) {
 func TestNewSecureEgressHTTPClient_InvalidPort(t *testing.T) {
 	t.Parallel()
 
-	client := NewSecureEgressHTTPClient()
+	client := NewHTTPClient(HTTPClientOptions{})
 	require.NotNil(t, client)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com:8080", nil)
@@ -45,7 +45,7 @@ func TestNewSecureEgressHTTPClient_InvalidPort(t *testing.T) {
 func TestNewSecureEgressHTTPClient_InvalidAddress(t *testing.T) {
 	t.Parallel()
 
-	client := NewSecureEgressHTTPClient()
+	client := NewHTTPClient(HTTPClientOptions{})
 	require.NotNil(t, client)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://localhost", nil)

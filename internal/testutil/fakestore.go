@@ -217,6 +217,13 @@ func (f *FakeStore) SeedUserAndAccount(u *domain.User, a *domain.Account) error 
 	return nil
 }
 
+func (f *FakeStore) SeedAccount(a *domain.Account) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.accountsByID[a.ID] = a
+	f.accountsByUsername[a.Username] = a
+}
+
 const noCursorSentinel = "ZZZZZZZZZZZZZZZZZZZZZZZZZZ"
 
 type blockEntry struct {

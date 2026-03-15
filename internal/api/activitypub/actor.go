@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	ap "github.com/chairswithlegs/monstera/internal/activitypub"
+	"github.com/chairswithlegs/monstera/internal/activitypub/vocab"
 	"github.com/chairswithlegs/monstera/internal/api"
 	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/service"
@@ -35,7 +35,7 @@ func (h *ActorHandler) GETActor(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	actor := ap.AccountToActor(acc, h.config.InstanceDomain)
+	actor := vocab.AccountToActor(acc, h.config.InstanceDomain)
 	w.Header().Set("Cache-Control", "max-age=300")
 	api.WriteActivityJSON(w, http.StatusOK, actor)
 }

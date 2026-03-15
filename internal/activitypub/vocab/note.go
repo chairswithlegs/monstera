@@ -1,4 +1,4 @@
-package activitypub
+package vocab
 
 import (
 	"fmt"
@@ -7,10 +7,38 @@ import (
 	"github.com/chairswithlegs/monstera/internal/domain"
 )
 
-const (
-	actorTypePerson  = "Person"
-	actorTypeService = "Service"
-)
+// Note represents an AP Note (status/post). The core content type in the
+// Mastodon federation protocol.
+//
+// ContentMap is a Mastodon extension that maps language codes to localised
+// content.
+type Note struct {
+	Context      interface{}        `json:"@context,omitempty"`
+	ID           string             `json:"id"`
+	Type         ObjectType         `json:"type"` // "Note"
+	AttributedTo string             `json:"attributedTo"`
+	Content      string             `json:"content"` // rendered HTML
+	ContentMap   map[string]string  `json:"contentMap,omitempty"`
+	Source       *NoteSource        `json:"source,omitempty"`
+	To           []string           `json:"to"`
+	Cc           []string           `json:"cc,omitempty"`
+	InReplyTo    *string            `json:"inReplyTo"` // null or parent Note IRI
+	Published    string             `json:"published"` // ISO 8601
+	Updated      string             `json:"updated,omitempty"`
+	URL          string             `json:"url"`
+	Sensitive    bool               `json:"sensitive"`
+	Summary      *string            `json:"summary"` // content warning; null if none
+	Tag          []Tag              `json:"tag,omitempty"`
+	Attachment   []Attachment       `json:"attachment,omitempty"`
+	Replies      *OrderedCollection `json:"replies,omitempty"`
+}
+
+// NoteSource preserves the original plain-text or Markdown source.
+// Mastodon includes this for editable posts.
+type NoteSource struct {
+	Content   string `json:"content"`
+	MediaType string `json:"mediaType"` // "text/plain"
+}
 
 // AccountToActor builds an ActivityPub Actor from a domain account.
 // instanceDomain is the host (e.g. "example.com") for building IRIs.
@@ -20,9 +48,9 @@ func AccountToActor(a *domain.Account, instanceDomain string) *Actor {
 	if id == "" {
 		id = base + "/users/" + a.Username
 	}
-	actorType := actorTypePerson
+	actorType := ObjectTypePerson
 	if a.Bot {
-		actorType = actorTypeService
+		actorType = ObjectTypeService
 	}
 	name := ""
 	if a.DisplayName != nil && *a.DisplayName != "" {

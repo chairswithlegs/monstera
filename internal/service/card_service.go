@@ -13,7 +13,7 @@ import (
 	"golang.org/x/net/html"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
-	"github.com/chairswithlegs/monstera/internal/service/internal"
+	"github.com/chairswithlegs/monstera/internal/ssrf"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/microcosm-cc/bluemonday"
 )
@@ -37,7 +37,7 @@ type cardService struct {
 // NewCardService returns a CardService backed by the given store.
 func NewCardService(s store.Store) CardService {
 	// Use a secure egress HTTP client to protect against SSRF attacks.
-	client := internal.NewSecureEgressHTTPClient()
+	client := ssrf.NewHTTPClient(ssrf.HTTPClientOptions{})
 	return &cardService{store: s, httpClient: client}
 }
 
