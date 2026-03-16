@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/service"
 )
 
 // Actor represents an AP Person (user account). Served at GET /users/:username.
@@ -12,24 +13,24 @@ import (
 // Fields follow Mastodon's Actor shape so that remote instances recognise
 // all profile metadata.
 type Actor struct {
-	Context                   interface{} `json:"@context"`
-	ID                        string      `json:"id"`
-	Type                      ObjectType  `json:"type"` // "Person" | "Service" (for bot accounts)
-	PreferredUsername         string      `json:"preferredUsername"`
-	Name                      string      `json:"name,omitempty"`
-	Summary                   string      `json:"summary,omitempty"` // bio HTML
-	URL                       string      `json:"url"`
-	Inbox                     string      `json:"inbox"`
-	Outbox                    string      `json:"outbox"`
-	Followers                 string      `json:"followers"`
-	Following                 string      `json:"following"`
-	Featured                  string      `json:"featured,omitempty"`
-	PublicKey                 PublicKey   `json:"publicKey"`
-	Endpoints                 *Endpoints  `json:"endpoints,omitempty"`
-	Icon                      *Icon       `json:"icon,omitempty"`  // avatar image
-	Image                     *Icon       `json:"image,omitempty"` // header image
-	ManuallyApprovesFollowers bool        `json:"manuallyApprovesFollowers"`
-	Published                 string      `json:"published,omitempty"` // ISO 8601
+	Context                   any        `json:"@context"`
+	ID                        string     `json:"id"`
+	Type                      ObjectType `json:"type"` // "Person" | "Service" (for bot accounts)
+	PreferredUsername         string     `json:"preferredUsername"`
+	Name                      string     `json:"name,omitempty"`
+	Summary                   string     `json:"summary,omitempty"` // bio HTML
+	URL                       string     `json:"url"`
+	Inbox                     string     `json:"inbox"`
+	Outbox                    string     `json:"outbox"`
+	Followers                 string     `json:"followers"`
+	Following                 string     `json:"following"`
+	Featured                  string     `json:"featured,omitempty"`
+	PublicKey                 PublicKey  `json:"publicKey"`
+	Endpoints                 *Endpoints `json:"endpoints,omitempty"`
+	Icon                      *Icon      `json:"icon,omitempty"`  // avatar image
+	Image                     *Icon      `json:"image,omitempty"` // header image
+	ManuallyApprovesFollowers bool       `json:"manuallyApprovesFollowers"`
+	Published                 string     `json:"published,omitempty"` // ISO 8601
 }
 
 // AccountToActor builds an ActivityPub Actor from a domain account.
@@ -95,4 +96,28 @@ func AccountToActor(a *domain.Account, instanceDomain string) *Actor {
 		actor.Image = &Icon{Type: "Image", URL: a.HeaderURL}
 	}
 	return actor
+}
+
+// ActorToServiceInput maps a sanitized Actor to a service.CreateOrUpdateRemoteInput.
+// Caller is responsible for sanitizing actor.PreferredUsername, actor.Name, and
+// actor.Summary before calling. apRaw is the marshalled original actor JSON.
+func ActorToServiceInput(actor *Actor, apRaw []byte) service.CreateOrUpdateRemoteInput {
+	dom := DomainFromIRI(actor.ID)
+	displayName := actor.Name
+	note := actor.Summary
+	return service.CreateOrUpdateRemoteInput{
+		APID:         actor.ID,
+		Username:     actor.PreferredUsername,
+		Domain:       dom,
+		DisplayName:  &displayName,
+		Note:         &note,
+		PublicKey:    actor.PublicKey.PublicKeyPem,
+		InboxURL:     actor.Inbox,
+		OutboxURL:    actor.Outbox,
+		FollowersURL: actor.Followers,
+		FollowingURL: actor.Following,
+		Bot:          actor.Type == ObjectTypeService,
+		Locked:       actor.ManuallyApprovesFollowers,
+		ApRaw:        apRaw,
+	}
 }

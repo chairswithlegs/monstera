@@ -2,19 +2,13 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/store"
-	"github.com/chairswithlegs/monstera/internal/uid"
 )
-
-// Quote-related methods implement Mastodon-style quotes: quoted_status_id, quote_approval_policy,
-// quote approvals, revoke, and quoted_update notifications. See docs/mastodon-api-* for the plan.
 
 // StatusVisibilityChecker allows callers to check if a viewer can see a status (visibility + blocks).
 // TimelineService depends on this narrow interface to filter list timelines.
@@ -22,46 +16,46 @@ type StatusVisibilityChecker interface {
 	CanViewStatus(ctx context.Context, st *domain.Status, viewerAccountID *string) (bool, error)
 }
 
-// StatusService handles status lookup, enrichment, and local state mutations (bookmark, pin, mute, etc.).
-// Write operations with cross-service side effects (create, delete, reblog, favourite, update) live in StatusWriteService.
+// StatusService handles status lookup, enrichment, and read-only queries.
+// Write operations with side effects (create, delete, reblog, favourite, bookmark, pin, etc.) live in StatusWriteService.
 type StatusService interface {
 	StatusVisibilityChecker
+
+	// Core status reads.
 	GetByID(ctx context.Context, id string) (*domain.Status, error)
 	GetByAPID(ctx context.Context, apID string) (*domain.Status, error)
-	GetFavouriteByAPID(ctx context.Context, apID string) (*domain.Favourite, error)
-	GetFavouriteByAccountAndStatus(ctx context.Context, accountID, statusID string) (*domain.Favourite, error)
 	GetByIDEnriched(ctx context.Context, id string, viewerAccountID *string) (EnrichedStatus, error)
 	GetContext(ctx context.Context, statusID string, viewerAccountID *string) (ContextResult, error)
-	GetFavouritedBy(ctx context.Context, statusID string, viewerAccountID *string, maxID *string, limit int) ([]*domain.Account, error)
-	GetRebloggedBy(ctx context.Context, statusID string, viewerAccountID *string, maxID *string, limit int) ([]*domain.Account, error)
-	Bookmark(ctx context.Context, accountID, statusID string) (EnrichedStatus, error)
-	Unbookmark(ctx context.Context, accountID, statusID string) (EnrichedStatus, error)
-	IsBookmarked(ctx context.Context, accountID, statusID string) (bool, error)
-	Pin(ctx context.Context, accountID, statusID string) (EnrichedStatus, error)
-	Unpin(ctx context.Context, accountID, statusID string) (EnrichedStatus, error)
-	ListPinnedStatusIDs(ctx context.Context, accountID string) ([]string, error)
 	GetStatusHistory(ctx context.Context, statusID string, viewerAccountID *string) ([]domain.StatusEdit, error)
 	GetStatusSource(ctx context.Context, statusID string, viewerAccountID *string) (text, spoilerText string, err error)
 
-	CreateScheduledStatus(ctx context.Context, accountID string, params []byte, scheduledAt time.Time) (*domain.ScheduledStatus, error)
+	// Favourite reads.
+	GetFavouriteByAPID(ctx context.Context, apID string) (*domain.Favourite, error)
+	GetFavouriteByAccountAndStatus(ctx context.Context, accountID, statusID string) (*domain.Favourite, error)
+	GetFavouritedBy(ctx context.Context, statusID string, viewerAccountID *string, maxID *string, limit int) ([]*domain.Account, error)
+	GetRebloggedBy(ctx context.Context, statusID string, viewerAccountID *string, maxID *string, limit int) ([]*domain.Account, error)
+
+	// Bookmark reads.
+	IsBookmarked(ctx context.Context, accountID, statusID string) (bool, error)
+
+	// Pin reads.
+	ListPinnedStatusIDs(ctx context.Context, accountID string) ([]string, error)
+
+	// Scheduled status reads.
 	GetScheduledStatus(ctx context.Context, id, accountID string) (*domain.ScheduledStatus, error)
 	ListScheduledStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.ScheduledStatus, error)
-	UpdateScheduledStatus(ctx context.Context, id, accountID string, params []byte, scheduledAt time.Time) (*domain.ScheduledStatus, error)
-	DeleteScheduledStatus(ctx context.Context, id, accountID string) error
 
+	// Poll reads.
 	GetPoll(ctx context.Context, pollID string, viewerAccountID *string) (*EnrichedPoll, error)
-	RecordVote(ctx context.Context, pollID, accountID string, optionIndices []int) (*EnrichedPoll, error)
 
-	MuteConversation(ctx context.Context, accountID, statusID string) error
-	UnmuteConversation(ctx context.Context, accountID, statusID string) error
+	// Conversation reads.
 	GetConversationRoot(ctx context.Context, statusID string) (string, error)
 	IsConversationMutedForViewer(ctx context.Context, viewerAccountID, statusID string) (bool, error)
 	ListMutedConversationIDs(ctx context.Context, accountID string) ([]string, error)
 
+	// Quote reads.
 	GetQuoteApproval(ctx context.Context, quotingStatusID string) (*domain.QuoteApprovalRecord, error)
-	UpdateQuoteApprovalPolicy(ctx context.Context, accountID, statusID, policy string) error
 	ListQuotesOfStatus(ctx context.Context, quotedStatusID string, maxID *string, limit int, viewerAccountID *string) ([]EnrichedStatus, error)
-	RevokeQuote(ctx context.Context, accountID, quotedStatusID, quotingStatusID string) error
 }
 
 type statusService struct {
@@ -98,38 +92,6 @@ func (svc *statusService) GetByAPID(ctx context.Context, apID string) (*domain.S
 		return nil, fmt.Errorf("GetStatusByAPID(%s): %w", apID, err)
 	}
 	return st, nil
-}
-
-// CreateRemoteStatusInput is the input for creating a remote status (e.g. from federation).
-type CreateRemoteStatusInput struct {
-	AccountID      string
-	URI            string
-	Text           *string
-	Content        *string
-	ContentWarning *string
-	Visibility     string
-	Language       *string
-	InReplyToID    *string
-	MediaIDs       []string // optional; attached after status is created (max 4)
-	APID           string
-	ApRaw          []byte
-	Sensitive      bool
-}
-
-// CreateRemoteReblogInput is the input for creating a remote reblog (e.g. from federation Announce).
-type CreateRemoteReblogInput struct {
-	AccountID        string
-	ActivityAPID     string
-	ObjectStatusAPID string
-	ApRaw            []byte
-}
-
-// UpdateRemoteStatusInput is the input for updating a remote status (e.g. from federation Update{Note}).
-type UpdateRemoteStatusInput struct {
-	Text           *string
-	Content        *string
-	ContentWarning *string
-	Sensitive      bool
 }
 
 // GetFavouriteByAPID returns the favourite by its ActivityPub ID (for Undo Like).
@@ -368,105 +330,6 @@ func (svc *statusService) GetPoll(ctx context.Context, pollID string, viewerAcco
 	return enriched, nil
 }
 
-// RecordVote records the viewer's vote on a poll (replacing any existing vote). Returns the updated EnrichedPoll.
-func (svc *statusService) RecordVote(ctx context.Context, pollID, accountID string, optionIndices []int) (*EnrichedPoll, error) {
-	poll, err := svc.store.GetPollByID(ctx, pollID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			return nil, fmt.Errorf("RecordVote: %w", domain.ErrNotFound)
-		}
-		return nil, fmt.Errorf("RecordVote: %w", err)
-	}
-	if poll.ExpiresAt != nil && poll.ExpiresAt.Before(time.Now()) {
-		return nil, fmt.Errorf("RecordVote: %w", domain.ErrUnprocessable)
-	}
-	st, err := svc.store.GetStatusByID(ctx, poll.StatusID)
-	if err != nil {
-		return nil, fmt.Errorf("RecordVote: %w", err)
-	}
-	viewerID := &accountID
-	ok, err := svc.canViewStatus(ctx, st, viewerID)
-	if err != nil {
-		return nil, fmt.Errorf("RecordVote: %w", err)
-	}
-	if !ok {
-		return nil, fmt.Errorf("RecordVote: %w", domain.ErrNotFound)
-	}
-	opts, err := svc.store.ListPollOptions(ctx, pollID)
-	if err != nil {
-		return nil, fmt.Errorf("RecordVote: %w", err)
-	}
-	if len(optionIndices) == 0 {
-		return nil, fmt.Errorf("RecordVote: %w", domain.ErrValidation)
-	}
-	if !poll.Multiple && len(optionIndices) > 1 {
-		return nil, fmt.Errorf("RecordVote: %w", domain.ErrValidation)
-	}
-	for _, idx := range optionIndices {
-		if idx < 0 || idx >= len(opts) {
-			return nil, fmt.Errorf("RecordVote: %w", domain.ErrValidation)
-		}
-	}
-	if err := svc.store.DeletePollVotesByAccount(ctx, pollID, accountID); err != nil {
-		return nil, fmt.Errorf("RecordVote: %w", err)
-	}
-	for _, idx := range optionIndices {
-		optionID := opts[idx].ID
-		voteID := uid.New()
-		if err := svc.store.CreatePollVote(ctx, voteID, pollID, accountID, optionID); err != nil {
-			return nil, fmt.Errorf("RecordVote: %w", err)
-		}
-	}
-	return svc.getPollEnriched(ctx, pollID, &accountID)
-}
-
-func resolveVisibilityService(reqVis, defaultVis string) string {
-	if reqVis != "" {
-		switch reqVis {
-		case domain.VisibilityPublic, domain.VisibilityUnlisted, domain.VisibilityPrivate, domain.VisibilityDirect:
-			return reqVis
-		}
-	}
-	if defaultVis != "" {
-		switch defaultVis {
-		case domain.VisibilityPublic, domain.VisibilityUnlisted, domain.VisibilityPrivate, domain.VisibilityDirect:
-			return defaultVis
-		}
-	}
-	return domain.VisibilityPublic
-}
-
-// Bookmark adds the status to the account's bookmarks. Idempotent if already bookmarked.
-func (svc *statusService) Bookmark(ctx context.Context, accountID, statusID string) (EnrichedStatus, error) {
-	st, err := svc.store.GetStatusByID(ctx, statusID)
-	if err != nil || st.DeletedAt != nil {
-		return EnrichedStatus{}, fmt.Errorf("Bookmark: %w", domain.ErrNotFound)
-	}
-	viewerID := &accountID
-	ok, err := svc.canViewStatus(ctx, st, viewerID)
-	if err != nil {
-		return EnrichedStatus{}, err
-	}
-	if !ok {
-		return EnrichedStatus{}, fmt.Errorf("Bookmark: %w", domain.ErrNotFound)
-	}
-	err = svc.store.CreateBookmark(ctx, store.CreateBookmarkInput{
-		ID:        uid.New(),
-		AccountID: accountID,
-		StatusID:  statusID,
-	})
-	if err != nil && !errors.Is(err, domain.ErrConflict) {
-		return EnrichedStatus{}, fmt.Errorf("CreateBookmark: %w", err)
-	}
-	return svc.GetByIDEnriched(ctx, statusID, &accountID)
-}
-
-// Unbookmark removes the status from the account's bookmarks.
-func (svc *statusService) Unbookmark(ctx context.Context, accountID, statusID string) (EnrichedStatus, error) {
-	_ = svc.store.DeleteBookmark(ctx, accountID, statusID)
-	return svc.GetByIDEnriched(ctx, statusID, &accountID)
-}
-
 // IsBookmarked returns whether the account has bookmarked the status.
 func (svc *statusService) IsBookmarked(ctx context.Context, accountID, statusID string) (bool, error) {
 	ok, err := svc.store.IsBookmarked(ctx, accountID, statusID)
@@ -474,55 +337,6 @@ func (svc *statusService) IsBookmarked(ctx context.Context, accountID, statusID 
 		return false, fmt.Errorf("IsBookmarked: %w", err)
 	}
 	return ok, nil
-}
-
-const maxPinsPerAccount = 5
-
-func (svc *statusService) Pin(ctx context.Context, accountID, statusID string) (EnrichedStatus, error) {
-	st, err := svc.store.GetStatusByID(ctx, statusID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			return EnrichedStatus{}, fmt.Errorf("Pin: %w", domain.ErrNotFound)
-		}
-		return EnrichedStatus{}, fmt.Errorf("Pin: %w", err)
-	}
-	if st.AccountID != accountID {
-		return EnrichedStatus{}, fmt.Errorf("Pin: %w", domain.ErrForbidden)
-	}
-	if st.Visibility != "public" && st.Visibility != "unlisted" {
-		return EnrichedStatus{}, fmt.Errorf("Pin: %w", domain.ErrUnprocessable)
-	}
-	if st.ReblogOfID != nil && *st.ReblogOfID != "" {
-		return EnrichedStatus{}, fmt.Errorf("Pin: %w", domain.ErrUnprocessable)
-	}
-	count, err := svc.store.CountAccountPins(ctx, accountID)
-	if err != nil {
-		return EnrichedStatus{}, fmt.Errorf("Pin: %w", err)
-	}
-	if count >= maxPinsPerAccount {
-		return EnrichedStatus{}, fmt.Errorf("Pin: %w", domain.ErrUnprocessable)
-	}
-	if err := svc.store.CreateAccountPin(ctx, accountID, statusID); err != nil {
-		return EnrichedStatus{}, fmt.Errorf("Pin: %w", err)
-	}
-	return svc.GetByIDEnriched(ctx, statusID, &accountID)
-}
-
-func (svc *statusService) Unpin(ctx context.Context, accountID, statusID string) (EnrichedStatus, error) {
-	st, err := svc.store.GetStatusByID(ctx, statusID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			return EnrichedStatus{}, fmt.Errorf("Unpin: %w", domain.ErrNotFound)
-		}
-		return EnrichedStatus{}, fmt.Errorf("Unpin: %w", err)
-	}
-	if st.AccountID != accountID {
-		return EnrichedStatus{}, fmt.Errorf("Unpin: %w", domain.ErrForbidden)
-	}
-	if err := svc.store.DeleteAccountPin(ctx, accountID, statusID); err != nil {
-		return EnrichedStatus{}, fmt.Errorf("Unpin: %w", err)
-	}
-	return svc.GetByIDEnriched(ctx, statusID, &accountID)
 }
 
 func (svc *statusService) ListPinnedStatusIDs(ctx context.Context, accountID string) ([]string, error) {
@@ -583,28 +397,6 @@ func (svc *statusService) GetStatusSource(ctx context.Context, statusID string, 
 	return t, spoiler, nil
 }
 
-func (svc *statusService) CreateScheduledStatus(ctx context.Context, accountID string, params []byte, scheduledAt time.Time) (*domain.ScheduledStatus, error) {
-	now := time.Now()
-	if !scheduledAt.After(now) {
-		return nil, fmt.Errorf("CreateScheduledStatus scheduled_at must be in the future: %w", domain.ErrValidation)
-	}
-	var p domain.ScheduledStatusParams
-	if err := json.Unmarshal(params, &p); err != nil {
-		return nil, fmt.Errorf("CreateScheduledStatus invalid params: %w", domain.ErrValidation)
-	}
-	id := uid.New()
-	s, err := svc.store.CreateScheduledStatus(ctx, store.CreateScheduledStatusInput{
-		ID:          id,
-		AccountID:   accountID,
-		Params:      params,
-		ScheduledAt: scheduledAt,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("CreateScheduledStatus: %w", err)
-	}
-	return s, nil
-}
-
 func (svc *statusService) GetScheduledStatus(ctx context.Context, id, accountID string) (*domain.ScheduledStatus, error) {
 	s, err := svc.store.GetScheduledStatusByID(ctx, id)
 	if err != nil {
@@ -628,53 +420,6 @@ func (svc *statusService) ListScheduledStatuses(ctx context.Context, accountID s
 		return nil, fmt.Errorf("ListScheduledStatuses: %w", err)
 	}
 	return list, nil
-}
-
-func (svc *statusService) UpdateScheduledStatus(ctx context.Context, id, accountID string, params []byte, scheduledAt time.Time) (*domain.ScheduledStatus, error) {
-	s, err := svc.store.GetScheduledStatusByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			return nil, fmt.Errorf("UpdateScheduledStatus: %w", err)
-		}
-		return nil, fmt.Errorf("UpdateScheduledStatus: %w", err)
-	}
-	if s.AccountID != accountID {
-		return nil, domain.ErrNotFound
-	}
-	var p domain.ScheduledStatusParams
-	if err := json.Unmarshal(params, &p); err != nil {
-		return nil, fmt.Errorf("UpdateScheduledStatus invalid params: %w", domain.ErrValidation)
-	}
-	now := time.Now()
-	if !scheduledAt.After(now) {
-		return nil, fmt.Errorf("UpdateScheduledStatus scheduled_at must be in the future: %w", domain.ErrValidation)
-	}
-	updated, err := svc.store.UpdateScheduledStatus(ctx, store.UpdateScheduledStatusInput{
-		ID:          id,
-		Params:      params,
-		ScheduledAt: scheduledAt,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("UpdateScheduledStatus: %w", err)
-	}
-	return updated, nil
-}
-
-func (svc *statusService) DeleteScheduledStatus(ctx context.Context, id, accountID string) error {
-	s, err := svc.store.GetScheduledStatusByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			return fmt.Errorf("DeleteScheduledStatus: %w", err)
-		}
-		return fmt.Errorf("DeleteScheduledStatus: %w", err)
-	}
-	if s.AccountID != accountID {
-		return domain.ErrNotFound
-	}
-	if err := svc.store.DeleteScheduledStatus(ctx, id); err != nil {
-		return fmt.Errorf("DeleteScheduledStatus: %w", err)
-	}
-	return nil
 }
 
 // ContextResult holds ancestors and descendants for a status thread.
@@ -786,30 +531,6 @@ func (svc *statusService) GetRebloggedBy(ctx context.Context, statusID string, v
 	return out, nil
 }
 
-// MuteConversation mutes the conversation (thread) containing the given status for the account.
-func (svc *statusService) MuteConversation(ctx context.Context, accountID, statusID string) error {
-	root, err := svc.store.GetConversationRoot(ctx, statusID)
-	if err != nil {
-		return fmt.Errorf("MuteConversation GetConversationRoot: %w", err)
-	}
-	if err := svc.store.CreateConversationMute(ctx, accountID, root); err != nil {
-		return fmt.Errorf("CreateConversationMute: %w", err)
-	}
-	return nil
-}
-
-// UnmuteConversation unmutes the conversation containing the given status for the account.
-func (svc *statusService) UnmuteConversation(ctx context.Context, accountID, statusID string) error {
-	root, err := svc.store.GetConversationRoot(ctx, statusID)
-	if err != nil {
-		return fmt.Errorf("UnmuteConversation GetConversationRoot: %w", err)
-	}
-	if err := svc.store.DeleteConversationMute(ctx, accountID, root); err != nil {
-		return fmt.Errorf("DeleteConversationMute: %w", err)
-	}
-	return nil
-}
-
 // GetConversationRoot returns the root status ID of the conversation (thread) containing the given status.
 func (svc *statusService) GetConversationRoot(ctx context.Context, statusID string) (string, error) {
 	root, err := svc.store.GetConversationRoot(ctx, statusID)
@@ -850,39 +571,7 @@ func (svc *statusService) GetQuoteApproval(ctx context.Context, quotingStatusID 
 	return rec, nil
 }
 
-// UpdateQuoteApprovalPolicy updates the quote_approval_policy of a status (Mastodon-style quotes).
-// Caller must be the status owner. Policy must be non-empty; use domain.QuotePolicy* constants.
-func (svc *statusService) UpdateQuoteApprovalPolicy(ctx context.Context, accountID, statusID, policy string) error {
-	if strings.TrimSpace(policy) == "" {
-		return fmt.Errorf("UpdateQuoteApprovalPolicy: %w", domain.ErrValidation)
-	}
-	st, err := svc.store.GetStatusByID(ctx, statusID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			return fmt.Errorf("UpdateQuoteApprovalPolicy: %w", domain.ErrNotFound)
-		}
-		return fmt.Errorf("UpdateQuoteApprovalPolicy: %w", err)
-	}
-	if st.AccountID != accountID {
-		return fmt.Errorf("UpdateQuoteApprovalPolicy: %w", domain.ErrForbidden)
-	}
-	if st.Visibility == domain.VisibilityPrivate || st.Visibility == domain.VisibilityDirect {
-		policy = domain.QuotePolicyNobody
-	} else {
-		switch policy {
-		case domain.QuotePolicyPublic, domain.QuotePolicyFollowers, domain.QuotePolicyNobody:
-			// valid
-		default:
-			return fmt.Errorf("UpdateQuoteApprovalPolicy: %w", domain.ErrValidation)
-		}
-	}
-	if err := svc.store.UpdateStatusQuoteApprovalPolicy(ctx, statusID, policy); err != nil {
-		return fmt.Errorf("UpdateQuoteApprovalPolicy: %w", err)
-	}
-	return nil
-}
-
-// ListQuotesOfStatus returns enriched statuses that quote the given status (Mastodon-style quotes, non-revoked).
+// ListQuotesOfStatus returns enriched statuses that quote the given status (non-revoked).
 // Viewer must be able to see the quoted status.
 func (svc *statusService) ListQuotesOfStatus(ctx context.Context, quotedStatusID string, maxID *string, limit int, viewerAccountID *string) ([]EnrichedStatus, error) {
 	quoted, err := svc.store.GetStatusByID(ctx, quotedStatusID)
@@ -915,29 +604,4 @@ func (svc *statusService) ListQuotesOfStatus(ctx context.Context, quotedStatusID
 		out = append(out, enriched)
 	}
 	return out, nil
-}
-
-// RevokeQuote revokes a quote of the given status by the quoting status (Mastodon-style quotes).
-// Caller must be the author of the quoted status.
-func (svc *statusService) RevokeQuote(ctx context.Context, accountID, quotedStatusID, quotingStatusID string) error {
-	quoted, err := svc.store.GetStatusByID(ctx, quotedStatusID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			return fmt.Errorf("RevokeQuote: %w", domain.ErrNotFound)
-		}
-		return fmt.Errorf("RevokeQuote: %w", err)
-	}
-	if quoted.AccountID != accountID {
-		return fmt.Errorf("RevokeQuote: %w", domain.ErrForbidden)
-	}
-	if err := svc.store.RevokeQuote(ctx, quotedStatusID, quotingStatusID); err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			return fmt.Errorf("RevokeQuote: %w", domain.ErrNotFound)
-		}
-		return fmt.Errorf("RevokeQuote: %w", err)
-	}
-	if err := svc.store.DecrementQuotesCount(ctx, quotedStatusID); err != nil {
-		return fmt.Errorf("RevokeQuote DecrementQuotesCount: %w", err)
-	}
-	return nil
 }

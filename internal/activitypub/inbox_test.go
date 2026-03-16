@@ -627,7 +627,7 @@ func newInboxProcessorForTest(t *testing.T, fake *testutil.FakeStore, cfg *confi
 	_ = bl.Refresh(context.Background())
 	instanceBaseURL := "https://example.com"
 	if cfg != nil && cfg.InstanceDomain != "" {
-		instanceBaseURL = "https://" + cfg.InstanceDomain
+		instanceBaseURL = cfg.InstanceBaseURL()
 	}
 	accountSvc := service.NewAccountService(fake, instanceBaseURL)
 	followSvc := service.NewFollowService(fake, service.NewAccountService(fake, "https://example.com"))

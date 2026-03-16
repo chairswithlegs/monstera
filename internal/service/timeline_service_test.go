@@ -35,7 +35,7 @@ func TestTimelineService_Home(t *testing.T) {
 	require.NoError(t, err)
 
 	text := "My first post"
-	_, err = statusWriteSvc.Create(ctx, CreateWithContentInput{
+	_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
 		Text:       text,
 		Visibility: domain.VisibilityPublic,
@@ -77,7 +77,7 @@ func TestTimelineService_Home_respects_limit(t *testing.T) {
 	require.NoError(t, err)
 	for i := 0; i < 5; i++ {
 		text := "post"
-		_, err = statusWriteSvc.Create(ctx, CreateWithContentInput{
+		_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
 			AccountID:  acc.ID,
 			Text:       text,
 			Visibility: domain.VisibilityPublic,
@@ -102,7 +102,7 @@ func TestTimelineService_PublicLocal(t *testing.T) {
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 	text := "Public post"
-	_, err = statusWriteSvc.Create(ctx, CreateWithContentInput{
+	_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
 		Text:       text,
 		Visibility: domain.VisibilityPublic,
@@ -159,7 +159,7 @@ func TestTimelineService_HomeEnriched_one_status(t *testing.T) {
 	require.NoError(t, err)
 
 	text := "Hello world"
-	_, err = statusWriteSvc.Create(ctx, CreateWithContentInput{
+	_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
 		Text:       text,
 		Visibility: domain.VisibilityPublic,
@@ -205,7 +205,7 @@ func TestTimelineService_ListTimelineEnriched_excludes_private_status_when_list_
 	require.NoError(t, err)
 
 	privText := "private post"
-	_, err = statusWriteSvc.Create(ctx, CreateWithContentInput{
+	_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
 		AccountID:  bob.ID,
 		Text:       privText,
 		Visibility: domain.VisibilityPrivate,
@@ -253,7 +253,7 @@ func TestTimelineService_ListTimelineEnriched_includes_private_status_when_list_
 	require.NoError(t, err)
 
 	privText := "private post"
-	_, err = statusWriteSvc.Create(ctx, CreateWithContentInput{
+	_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
 		AccountID:  bob.ID,
 		Text:       privText,
 		Visibility: domain.VisibilityPrivate,

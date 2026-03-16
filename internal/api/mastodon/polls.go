@@ -14,12 +14,13 @@ import (
 
 // PollsHandler handles GET /api/v1/polls/:id and POST /api/v1/polls/:id/votes.
 type PollsHandler struct {
-	statuses service.StatusService
+	statuses     service.StatusService
+	statusWrites service.StatusWriteService
 }
 
 // NewPollsHandler returns a new PollsHandler.
-func NewPollsHandler(statuses service.StatusService) *PollsHandler {
-	return &PollsHandler{statuses: statuses}
+func NewPollsHandler(statuses service.StatusService, statusWrites service.StatusWriteService) *PollsHandler {
+	return &PollsHandler{statuses: statuses, statusWrites: statusWrites}
 }
 
 // GETPoll handles GET /api/v1/polls/:id. Optional auth; when authenticated, voted and own_votes are set.
@@ -69,7 +70,7 @@ func (h *PollsHandler) POSTVotes(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	poll, err := h.statuses.RecordVote(ctx, id, account.ID, req.Choices)
+	poll, err := h.statusWrites.RecordVote(ctx, id, account.ID, req.Choices)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)

@@ -51,7 +51,7 @@ type httpSignatureService struct {
 	client         *http.Client
 	cache          cache.Store
 	accountService service.AccountService
-	instanceDomain string
+	instanceBase   string
 }
 
 // NewHTTPSignatureService returns an HTTPSignatureService that builds its HTTP client from cfg.
@@ -61,7 +61,7 @@ func NewHTTPSignatureService(cfg *config.Config, c cache.Store, a service.Accoun
 		client:         federationHTTPClient(cfg),
 		cache:          c,
 		accountService: a,
-		instanceDomain: cfg.InstanceDomain,
+		instanceBase:   cfg.InstanceBaseURL(),
 	}
 }
 
@@ -199,7 +199,7 @@ func (s *httpSignatureService) SignWithSenderID(ctx context.Context, r *http.Req
 	if err != nil {
 		return fmt.Errorf("httpsignature: invalid private key for %s: %w", senderID, err)
 	}
-	keyID := actorKeyID(account, s.instanceDomain)
+	keyID := actorKeyID(account, s.instanceBase)
 	return s.sign(r, keyID, privateKey)
 }
 
@@ -252,10 +252,10 @@ func (s *httpSignatureService) sign(r *http.Request, keyID string, privateKey *r
 }
 
 // actorKeyID returns the ActivityPub key ID for the account (APID + "#main-key").
-func actorKeyID(account *domain.Account, instanceDomain string) string {
+func actorKeyID(account *domain.Account, instanceBase string) string {
 	base := account.APID
 	if base == "" {
-		base = fmt.Sprintf("https://%s/users/%s", instanceDomain, account.Username)
+		base = fmt.Sprintf("%s/users/%s", instanceBase, account.Username)
 	}
 	return base + "#main-key"
 }

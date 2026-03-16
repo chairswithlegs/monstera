@@ -15,7 +15,7 @@ const (
 	maxNotificationLimit     = 40
 )
 
-// NotificationService handles notification listing.
+// NotificationService handles the creation and management of notifications.
 type NotificationService interface {
 	Create(ctx context.Context, accountID, fromID, notifType string, statusID *string) error
 	CreateAndEmit(ctx context.Context, recipientID string, fromAccount *domain.Account, notifType string, statusID *string) error
@@ -49,8 +49,7 @@ func (svc *notificationService) Create(ctx context.Context, accountID, fromID, n
 	return nil
 }
 
-// CreateAndEmit creates a notification and emits a notification.created domain
-// event so SSE subscribers can push it to connected clients.
+// CreateAndEmit creates a notification and emits a notification.created domain event.
 func (svc *notificationService) CreateAndEmit(ctx context.Context, recipientID string, fromAccount *domain.Account, notifType string, statusID *string) error {
 	notif, err := svc.store.CreateNotification(ctx, store.CreateNotificationInput{
 		ID:        uid.New(),

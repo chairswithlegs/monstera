@@ -31,7 +31,7 @@ func TestCollectionsHandler_GETFollowers(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fake.ConfirmUser(ctx, "01USERALICE"))
 	cfg := &config.Config{InstanceDomain: "example.com"}
-	accountSvc := service.NewAccountService(fake, "https://"+cfg.InstanceDomain)
+	accountSvc := service.NewAccountService(fake, cfg.InstanceBaseURL())
 	statusSvc := service.NewStatusService(fake, "https://example.com", cfg.InstanceDomain, 5000)
 	h := NewCollectionsHandler(accountSvc, statusSvc, cfg)
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/followers", nil)
@@ -63,7 +63,7 @@ func TestCollectionsHandler_GETFollowing(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fake.ConfirmUser(ctx, "01USERALICE"))
 	cfg := &config.Config{InstanceDomain: "example.com"}
-	accountSvc := service.NewAccountService(fake, "https://"+cfg.InstanceDomain)
+	accountSvc := service.NewAccountService(fake, cfg.InstanceBaseURL())
 	statusSvc := service.NewStatusService(fake, "https://example.com", cfg.InstanceDomain, 5000)
 	h := NewCollectionsHandler(accountSvc, statusSvc, cfg)
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/following", nil)
@@ -95,7 +95,7 @@ func TestCollectionsHandler_GETFeatured(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fake.ConfirmUser(ctx, "01USERALICE"))
 	cfg := &config.Config{InstanceDomain: "example.com"}
-	accountSvc := service.NewAccountService(fake, "https://"+cfg.InstanceDomain)
+	accountSvc := service.NewAccountService(fake, cfg.InstanceBaseURL())
 	statusSvc := service.NewStatusService(fake, "https://example.com", cfg.InstanceDomain, 5000)
 	h := NewCollectionsHandler(accountSvc, statusSvc, cfg)
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/collections/featured", nil)

@@ -1,16 +1,5 @@
 package vocab
 
-import (
-	"encoding/json"
-)
-
-// TODO: the translation between ActivityPub and Domain models is spread throughout codebase
-// We should consolidate the translation logic into this package.
-// Specifically, we need:
-// - ability to convert domain events -> outgoing activities (used by the federation subscriber)
-// - ability to convert incoming activities -> service inputs (used by the inbox processor)
-// - ability to convert domain models -> AP objects (used by the AP API handlers)
-
 // PublicAddress is the ActivityStreams public addressing constant.
 // Activities addressed to this IRI are visible to anyone.
 const PublicAddress = "https://www.w3.org/ns/activitystreams#Public"
@@ -46,11 +35,12 @@ var DefaultContext = []any{
 // Object is the base ActivityStreams object. All AP types embed it.
 // Fields shared across Actor, Note, Activity, and Collection types.
 type Object struct {
-	Context interface{} `json:"@context,omitempty"`
-	ID      string      `json:"id"`
-	Type    ObjectType  `json:"type"`
+	Context any        `json:"@context,omitempty"`
+	ID      string     `json:"id"`
+	Type    ObjectType `json:"type"`
 }
 
+// ObjectType is the AP "type" field discriminator.
 type ObjectType string
 
 const (
@@ -113,28 +103,4 @@ type Attachment struct {
 	Blurhash  string     `json:"blurhash,omitempty"`
 	Width     int        `json:"width,omitempty"`
 	Height    int        `json:"height,omitempty"`
-}
-
-// OrderedCollection represents an AP OrderedCollection.
-// Used for outbox, followers, following, and featured endpoints.
-// When OrderedItems is non-nil, it is serialized (inline items); otherwise First may point to a page.
-type OrderedCollection struct {
-	Context      interface{}       `json:"@context,omitempty"`
-	ID           string            `json:"id"`
-	Type         ObjectType        `json:"type"` // "OrderedCollection"
-	TotalItems   int               `json:"totalItems"`
-	First        string            `json:"first,omitempty"`        // URL of first page
-	OrderedItems []json.RawMessage `json:"orderedItems,omitempty"` // inline items when present
-}
-
-// OrderedCollectionPage represents a page within an OrderedCollection.
-type OrderedCollectionPage struct {
-	Context      interface{}       `json:"@context,omitempty"`
-	ID           string            `json:"id"`
-	Type         ObjectType        `json:"type"` // "OrderedCollectionPage"
-	TotalItems   int               `json:"totalItems"`
-	PartOf       string            `json:"partOf"`
-	Next         string            `json:"next,omitempty"`
-	Prev         string            `json:"prev,omitempty"`
-	OrderedItems []json.RawMessage `json:"orderedItems"`
 }

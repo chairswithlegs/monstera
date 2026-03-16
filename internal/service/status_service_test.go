@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -26,10 +25,9 @@ func TestStatusService_GetByID(t *testing.T) {
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
-	text := "Hello"
-	created, err := statusWriteSvc.Create(ctx, CreateWithContentInput{
+	created, err := statusWriteSvc.Create(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
-		Text:       text,
+		Text:       "Hello",
 		Visibility: domain.VisibilityPublic,
 	})
 	require.NoError(t, err)
@@ -51,115 +49,139 @@ func TestStatusService_GetByID_not_found(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
 
-func TestStatusService_Delete(t *testing.T) {
+func TestStatusService_GetByAPID(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
-	conversationSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
-	text := "To be deleted"
-	st, err := statusWriteSvc.Create(ctx, CreateWithContentInput{
-		AccountID:  acc.ID,
-		Text:       text,
-		Visibility: domain.VisibilityPublic,
-	})
-	require.NoError(t, err)
-
-	err = statusWriteSvc.Delete(ctx, st.Status.ID)
-	require.NoError(t, err)
-
-	_, err = statusSvc.GetByID(ctx, st.Status.ID)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, domain.ErrNotFound)
-}
-
-func TestStatusService_Create_empty_text_returns_validation(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	fake := testutil.NewFakeStore()
-	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
-	conversationSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-
-	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
-	require.NoError(t, err)
-
-	_, err = statusWriteSvc.Create(ctx, CreateWithContentInput{
+	result, err := statusWriteSvc.Create(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
 		Username:   acc.Username,
-		Text:       "   ",
+		Text:       "Hello",
 		Visibility: domain.VisibilityPublic,
 	})
-	require.Error(t, err)
-	assert.ErrorIs(t, err, domain.ErrValidation)
-}
-
-func TestStatusService_Create_over_char_limit_returns_validation(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	fake := testutil.NewFakeStore()
-	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 10)
-	conversationSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, "https://example.com", "example.com", 10)
-
-	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 
-	_, err = statusWriteSvc.Create(ctx, CreateWithContentInput{
-		AccountID:  acc.ID,
-		Username:   acc.Username,
-		Text:       "this is way over ten characters",
-		Visibility: domain.VisibilityPublic,
+	t.Run("found by APID", func(t *testing.T) {
+		got, err := statusSvc.GetByAPID(ctx, result.Status.APID)
+		require.NoError(t, err)
+		assert.Equal(t, result.Status.ID, got.ID)
 	})
-	require.Error(t, err)
-	assert.ErrorIs(t, err, domain.ErrValidation)
+
+	t.Run("not found returns ErrNotFound", func(t *testing.T) {
+		_, err := statusSvc.GetByAPID(ctx, "https://example.com/nonexistent")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, domain.ErrNotFound)
+	})
 }
 
-func TestStatusService_Create_success_returns_result_with_author(t *testing.T) {
+func TestStatusService_IsBookmarked(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
-	conversationSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
-
-	result, err := statusWriteSvc.Create(ctx, CreateWithContentInput{
+	result, err := statusWriteSvc.Create(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
-		Username:   acc.Username,
-		Text:       "Hello world",
+		Text:       "bookmarkable",
 		Visibility: domain.VisibilityPublic,
 	})
 	require.NoError(t, err)
-	require.NotNil(t, result.Status)
-	require.NotNil(t, result.Author)
-	assert.Equal(t, acc.ID, result.Status.AccountID)
-	assert.Equal(t, acc.ID, result.Author.ID)
-	assert.Equal(t, "Hello world", *result.Status.Text)
-	assert.Empty(t, result.Mentions)
-	assert.Empty(t, result.Tags)
-	assert.Empty(t, result.Media)
-	assert.Contains(t, result.Status.URI, "/users/alice/statuses/")
+	statusID := result.Status.ID
+
+	t.Run("not bookmarked returns false", func(t *testing.T) {
+		ok, err := statusSvc.IsBookmarked(ctx, acc.ID, statusID)
+		require.NoError(t, err)
+		assert.False(t, ok)
+	})
+
+	t.Run("after bookmark returns true", func(t *testing.T) {
+		err := fake.CreateBookmark(ctx, store.CreateBookmarkInput{
+			ID:        uid.New(),
+			AccountID: acc.ID,
+			StatusID:  statusID,
+		})
+		require.NoError(t, err)
+		ok, err := statusSvc.IsBookmarked(ctx, acc.ID, statusID)
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
 }
 
-func TestStatusService_Create_no_mention_notification_when_mentionee_muted_conversation(t *testing.T) {
+func TestStatusService_GetPoll(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
-	conversationSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
+
+	acc, err := accountSvc.Register(ctx, RegisterInput{
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hash",
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	result, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID:         acc.ID,
+		Username:          acc.Username,
+		Text:              "Poll?",
+		Visibility:        domain.VisibilityPublic,
+		DefaultVisibility: domain.VisibilityPublic,
+		Poll: &PollInput{
+			Options:          []string{"Yes", "No"},
+			ExpiresInSeconds: 3600,
+			Multiple:         false,
+		},
+		PollLimits: &PollLimits{
+			MaxOptions:    4,
+			MinExpiration: 300,
+			MaxExpiration: 2629746,
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result.Poll)
+	pollID := result.Poll.Poll.ID
+
+	t.Run("returns enriched poll with options", func(t *testing.T) {
+		poll, err := statusSvc.GetPoll(ctx, pollID, nil)
+		require.NoError(t, err)
+		require.NotNil(t, poll)
+		assert.Equal(t, pollID, poll.Poll.ID)
+		assert.Len(t, poll.Options, 2)
+		assert.False(t, poll.Voted)
+	})
+
+	t.Run("with viewer sets voted field", func(t *testing.T) {
+		poll, err := statusSvc.GetPoll(ctx, pollID, &acc.ID)
+		require.NoError(t, err)
+		assert.False(t, poll.Voted)
+	})
+
+	t.Run("not found returns ErrNotFound", func(t *testing.T) {
+		_, err := statusSvc.GetPoll(ctx, "01H0000000000000000000000", nil)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, domain.ErrNotFound)
+	})
+}
+
+func TestStatusService_GetScheduledStatus(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 
 	alice, err := accountSvc.Register(ctx, RegisterInput{
 		Username:     "alice",
@@ -176,29 +198,33 @@ func TestStatusService_Create_no_mention_notification_when_mentionee_muted_conve
 	})
 	require.NoError(t, err)
 
-	root, err := statusWriteSvc.Create(ctx, CreateWithContentInput{
-		AccountID:  alice.ID,
-		Username:   alice.Username,
-		Text:       "root post",
-		Visibility: domain.VisibilityPublic,
-	})
-	require.NoError(t, err)
-
-	err = statusSvc.MuteConversation(ctx, bob.ID, root.Status.ID)
-	require.NoError(t, err)
-
-	_, err = statusWriteSvc.Create(ctx, CreateWithContentInput{
+	schedID := uid.New()
+	_, err = fake.CreateScheduledStatus(ctx, store.CreateScheduledStatusInput{
+		ID:          schedID,
 		AccountID:   alice.ID,
-		Username:    alice.Username,
-		Text:        "hey @bob",
-		Visibility:  domain.VisibilityPublic,
-		InReplyToID: &root.Status.ID,
+		Params:      []byte(`{"text":"scheduled"}`),
+		ScheduledAt: time.Now().Add(1 * time.Hour),
 	})
 	require.NoError(t, err)
 
-	notifs, err := fake.ListNotifications(ctx, bob.ID, nil, 10)
-	require.NoError(t, err)
-	assert.Empty(t, notifs, "bob should receive no mention notification when conversation is muted")
+	t.Run("owner gets scheduled status", func(t *testing.T) {
+		s, err := statusSvc.GetScheduledStatus(ctx, schedID, alice.ID)
+		require.NoError(t, err)
+		assert.Equal(t, schedID, s.ID)
+		assert.Equal(t, alice.ID, s.AccountID)
+	})
+
+	t.Run("other account returns ErrNotFound", func(t *testing.T) {
+		_, err := statusSvc.GetScheduledStatus(ctx, schedID, bob.ID)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, domain.ErrNotFound)
+	})
+
+	t.Run("nonexistent returns ErrNotFound", func(t *testing.T) {
+		_, err := statusSvc.GetScheduledStatus(ctx, "01H0000000000000000000000", alice.ID)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, domain.ErrNotFound)
+	})
 }
 
 func TestStatusService_GetByIDEnriched_private_returns_ErrNotFound_when_unauthenticated(t *testing.T) {
@@ -211,10 +237,9 @@ func TestStatusService_GetByIDEnriched_private_returns_ErrNotFound_when_unauthen
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
-	text := privatePostText
-	st, err := statusWriteSvc.Create(ctx, CreateWithContentInput{
+	st, err := statusWriteSvc.Create(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
-		Text:       text,
+		Text:       privatePostText,
 		Visibility: domain.VisibilityPrivate,
 	})
 	require.NoError(t, err)
@@ -234,10 +259,9 @@ func TestStatusService_GetByIDEnriched_private_returns_success_when_viewer_is_au
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
-	text := privatePostText
-	st, err := statusWriteSvc.Create(ctx, CreateWithContentInput{
+	st, err := statusWriteSvc.Create(ctx, CreateStatusInput{
 		AccountID:  acc.ID,
-		Text:       text,
+		Text:       privatePostText,
 		Visibility: domain.VisibilityPrivate,
 	})
 	require.NoError(t, err)
@@ -262,10 +286,9 @@ func TestStatusService_GetByIDEnriched_returns_ErrNotFound_when_viewer_blocked_b
 	require.NoError(t, err)
 	viewer, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
 	require.NoError(t, err)
-	text := "public post"
-	st, err := statusWriteSvc.Create(ctx, CreateWithContentInput{
+	st, err := statusWriteSvc.Create(ctx, CreateStatusInput{
 		AccountID:  author.ID,
-		Text:       text,
+		Text:       "public post",
 		Visibility: domain.VisibilityPublic,
 	})
 	require.NoError(t, err)
@@ -275,196 +298,6 @@ func TestStatusService_GetByIDEnriched_returns_ErrNotFound_when_viewer_blocked_b
 	_, err = statusSvc.GetByIDEnriched(ctx, st.Status.ID, &viewer.ID)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrNotFound)
-}
-
-func TestStatusService_PublishScheduled(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	fake := testutil.NewFakeStore()
-	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
-	conversationSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-
-	acc, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
-	})
-	require.NoError(t, err)
-
-	params := domain.ScheduledStatusParams{Text: "published by worker", Language: "en"}
-	paramsJSON, err := json.Marshal(params)
-	require.NoError(t, err)
-
-	schedID := uid.New()
-	_, err = fake.CreateScheduledStatus(ctx, store.CreateScheduledStatusInput{
-		ID:          schedID,
-		AccountID:   acc.ID,
-		Params:      paramsJSON,
-		ScheduledAt: time.Now().Add(-1 * time.Minute),
-	})
-	require.NoError(t, err)
-
-	err = statusWriteSvc.PublishScheduled(ctx, schedID)
-	require.NoError(t, err)
-
-	_, err = fake.GetScheduledStatusByID(ctx, schedID)
-	require.Error(t, err)
-	require.ErrorIs(t, err, domain.ErrNotFound)
-
-	statuses, err := fake.GetAccountPublicStatuses(ctx, acc.ID, nil, 10)
-	require.NoError(t, err)
-	require.Len(t, statuses, 1)
-	assert.Contains(t, *statuses[0].Content, "published by worker")
-}
-
-// TestStatusService_workerPublishScheduled simulates the scheduled-status worker: list due, then publish each.
-func TestStatusService_workerPublishScheduled(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	fake := testutil.NewFakeStore()
-	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
-	conversationSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-
-	acc, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
-	})
-	require.NoError(t, err)
-
-	dueParams, err := json.Marshal(domain.ScheduledStatusParams{Text: "due post", Language: "en"})
-	require.NoError(t, err)
-	futureParams, err := json.Marshal(domain.ScheduledStatusParams{Text: "future post", Language: "en"})
-	require.NoError(t, err)
-
-	dueID := uid.New()
-	futureID := uid.New()
-	_, err = fake.CreateScheduledStatus(ctx, store.CreateScheduledStatusInput{
-		ID:          dueID,
-		AccountID:   acc.ID,
-		Params:      dueParams,
-		ScheduledAt: time.Now().Add(-1 * time.Hour),
-	})
-	require.NoError(t, err)
-	_, err = fake.CreateScheduledStatus(ctx, store.CreateScheduledStatusInput{
-		ID:          futureID,
-		AccountID:   acc.ID,
-		Params:      futureParams,
-		ScheduledAt: time.Now().Add(2 * time.Hour),
-	})
-	require.NoError(t, err)
-
-	dueList, err := fake.ListScheduledStatusesDue(ctx, 20)
-	require.NoError(t, err)
-	require.Len(t, dueList, 1)
-	assert.Equal(t, dueID, dueList[0].ID)
-
-	for i := range dueList {
-		err = statusWriteSvc.PublishScheduled(ctx, dueList[i].ID)
-		require.NoError(t, err)
-	}
-
-	_, err = fake.GetScheduledStatusByID(ctx, dueID)
-	require.Error(t, err)
-	require.ErrorIs(t, err, domain.ErrNotFound)
-	_, err = fake.GetScheduledStatusByID(ctx, futureID)
-	require.NoError(t, err)
-
-	statuses, err := fake.GetAccountPublicStatuses(ctx, acc.ID, nil, 10)
-	require.NoError(t, err)
-	require.Len(t, statuses, 1)
-	assert.Contains(t, *statuses[0].Content, "due post")
-}
-
-func TestStatusService_Create_quote(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	fake := testutil.NewFakeStore()
-	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
-	conversationSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-
-	alice, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
-	})
-	require.NoError(t, err)
-	bob, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "bob",
-		Email:        "bob@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
-	})
-	require.NoError(t, err)
-
-	quotedID := uid.New()
-	_, err = fake.CreateStatus(ctx, store.CreateStatusInput{
-		ID:                  quotedID,
-		URI:                 "https://example.com/statuses/" + quotedID,
-		AccountID:           alice.ID,
-		Text:                testutil.StrPtr("original"),
-		Content:             testutil.StrPtr("<p>original</p>"),
-		Visibility:          domain.VisibilityPublic,
-		QuoteApprovalPolicy: domain.QuotePolicyPublic,
-		APID:                "https://example.com/statuses/" + quotedID,
-		Local:               true,
-	})
-	require.NoError(t, err)
-
-	t.Run("success creates quote and approval", func(t *testing.T) {
-		enriched, err := statusWriteSvc.Create(ctx, CreateWithContentInput{
-			AccountID:      bob.ID,
-			Username:       "bob",
-			Text:           "quoting alice",
-			Visibility:     domain.VisibilityPublic,
-			QuotedStatusID: &quotedID,
-		})
-		require.NoError(t, err)
-		require.NotNil(t, enriched.Status)
-		assert.Equal(t, quotedID, *enriched.Status.QuotedStatusID)
-		assert.Equal(t, domain.QuotePolicyPublic, enriched.Status.QuoteApprovalPolicy)
-		approval, err := fake.GetQuoteApproval(ctx, enriched.Status.ID)
-		require.NoError(t, err)
-		require.NotNil(t, approval)
-		assert.Nil(t, approval.RevokedAt)
-		quoted, _ := fake.GetStatusByID(ctx, quotedID)
-		require.NotNil(t, quoted)
-		assert.Equal(t, 1, quoted.QuotesCount)
-	})
-
-	t.Run("quote_approval_policy nobody returns ErrForbidden for non-author", func(t *testing.T) {
-		nobodyID := uid.New()
-		_, err := fake.CreateStatus(ctx, store.CreateStatusInput{
-			ID:                  nobodyID,
-			URI:                 "https://example.com/statuses/" + nobodyID,
-			AccountID:           alice.ID,
-			Text:                testutil.StrPtr("nobody"),
-			Content:             testutil.StrPtr("<p>nobody</p>"),
-			Visibility:          domain.VisibilityPublic,
-			QuoteApprovalPolicy: domain.QuotePolicyNobody,
-			APID:                "https://example.com/statuses/" + nobodyID,
-			Local:               true,
-		})
-		require.NoError(t, err)
-		_, err = statusWriteSvc.Create(ctx, CreateWithContentInput{
-			AccountID:      bob.ID,
-			Username:       "bob",
-			Text:           "trying to quote",
-			Visibility:     domain.VisibilityPublic,
-			QuotedStatusID: &nobodyID,
-		})
-		require.Error(t, err)
-		assert.ErrorIs(t, err, domain.ErrForbidden)
-	})
 }
 
 func TestStatusService_ListQuotesOfStatus(t *testing.T) {
@@ -503,7 +336,7 @@ func TestStatusService_ListQuotesOfStatus(t *testing.T) {
 	})
 
 	t.Run("after creating quote returns one status", func(t *testing.T) {
-		enriched, err := statusWriteSvc.Create(ctx, CreateWithContentInput{
+		enriched, err := statusWriteSvc.Create(ctx, CreateStatusInput{
 			AccountID:      acc.ID,
 			Username:       "alice",
 			Text:           "a quote",
@@ -522,211 +355,4 @@ func TestStatusService_ListQuotesOfStatus(t *testing.T) {
 		require.Error(t, err)
 		assert.ErrorIs(t, err, domain.ErrNotFound)
 	})
-}
-
-func TestStatusService_RevokeQuote(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	fake := testutil.NewFakeStore()
-	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
-
-	alice, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
-	})
-	require.NoError(t, err)
-	bob, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "bob",
-		Email:        "bob@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
-	})
-	require.NoError(t, err)
-
-	quotedID := uid.New()
-	_, err = fake.CreateStatus(ctx, store.CreateStatusInput{
-		ID:         quotedID,
-		URI:        "https://example.com/statuses/" + quotedID,
-		AccountID:  alice.ID,
-		Text:       testutil.StrPtr("alice post"),
-		Content:    testutil.StrPtr("<p>alice</p>"),
-		Visibility: domain.VisibilityPublic,
-		APID:       "https://example.com/statuses/" + quotedID,
-		Local:      true,
-	})
-	require.NoError(t, err)
-	quotingID := uid.New()
-	_, err = fake.CreateStatus(ctx, store.CreateStatusInput{
-		ID:                  quotingID,
-		URI:                 "https://example.com/statuses/" + quotingID,
-		AccountID:           bob.ID,
-		Text:                testutil.StrPtr("bob quote"),
-		Content:             testutil.StrPtr("<p>bob quote</p>"),
-		Visibility:          domain.VisibilityPublic,
-		QuotedStatusID:      &quotedID,
-		QuoteApprovalPolicy: domain.QuotePolicyPublic,
-		APID:                "https://example.com/statuses/" + quotingID,
-		Local:               true,
-	})
-	require.NoError(t, err)
-	require.NoError(t, fake.CreateQuoteApproval(ctx, quotingID, quotedID))
-	require.NoError(t, fake.IncrementQuotesCount(ctx, quotedID))
-
-	t.Run("non-owner returns ErrForbidden", func(t *testing.T) {
-		err := statusSvc.RevokeQuote(ctx, bob.ID, quotedID, quotingID)
-		require.Error(t, err)
-		assert.ErrorIs(t, err, domain.ErrForbidden)
-	})
-
-	t.Run("owner revokes success", func(t *testing.T) {
-		err := statusSvc.RevokeQuote(ctx, alice.ID, quotedID, quotingID)
-		require.NoError(t, err)
-		approval, err := fake.GetQuoteApproval(ctx, quotingID)
-		require.NoError(t, err)
-		require.NotNil(t, approval)
-		assert.NotNil(t, approval.RevokedAt)
-		quoted, _ := fake.GetStatusByID(ctx, quotedID)
-		require.NotNil(t, quoted)
-		assert.Equal(t, 0, quoted.QuotesCount)
-	})
-
-	t.Run("nonexistent quoting status returns ErrNotFound", func(t *testing.T) {
-		err := statusSvc.RevokeQuote(ctx, alice.ID, quotedID, "01H0000000000000000000000")
-		require.Error(t, err)
-		assert.ErrorIs(t, err, domain.ErrNotFound)
-	})
-}
-
-func TestStatusService_UpdateQuoteApprovalPolicy(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	fake := testutil.NewFakeStore()
-	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
-
-	alice, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
-	})
-	require.NoError(t, err)
-	bob, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "bob",
-		Email:        "bob@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
-	})
-	require.NoError(t, err)
-
-	statusID := uid.New()
-	_, err = fake.CreateStatus(ctx, store.CreateStatusInput{
-		ID:         statusID,
-		URI:        "https://example.com/statuses/" + statusID,
-		AccountID:  alice.ID,
-		Text:       testutil.StrPtr("my status"),
-		Content:    testutil.StrPtr("<p>my status</p>"),
-		Visibility: domain.VisibilityPublic,
-		APID:       "https://example.com/statuses/" + statusID,
-		Local:      true,
-	})
-	require.NoError(t, err)
-
-	t.Run("owner updates policy success", func(t *testing.T) {
-		err := statusSvc.UpdateQuoteApprovalPolicy(ctx, alice.ID, statusID, domain.QuotePolicyFollowers)
-		require.NoError(t, err)
-		st, _ := fake.GetStatusByID(ctx, statusID)
-		require.NotNil(t, st)
-		assert.Equal(t, domain.QuotePolicyFollowers, st.QuoteApprovalPolicy)
-	})
-
-	t.Run("non-owner returns ErrForbidden", func(t *testing.T) {
-		err := statusSvc.UpdateQuoteApprovalPolicy(ctx, bob.ID, statusID, domain.QuotePolicyNobody)
-		require.Error(t, err)
-		assert.ErrorIs(t, err, domain.ErrForbidden)
-	})
-
-	t.Run("invalid policy returns ErrValidation", func(t *testing.T) {
-		err := statusSvc.UpdateQuoteApprovalPolicy(ctx, alice.ID, statusID, "invalid")
-		require.Error(t, err)
-		assert.ErrorIs(t, err, domain.ErrValidation)
-	})
-
-	t.Run("nonexistent status returns ErrNotFound", func(t *testing.T) {
-		err := statusSvc.UpdateQuoteApprovalPolicy(ctx, alice.ID, "01H0000000000000000000000", domain.QuotePolicyPublic)
-		require.Error(t, err)
-		assert.ErrorIs(t, err, domain.ErrNotFound)
-	})
-}
-
-func TestStatusService_Update_quoted_update_notification(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	fake := testutil.NewFakeStore()
-	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
-	convSvc := NewConversationService(fake, statusSvc)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, convSvc, "https://example.com", "example.com", 500)
-
-	alice, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
-	})
-	require.NoError(t, err)
-	bob, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "bob",
-		Email:        "bob@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
-	})
-	require.NoError(t, err)
-
-	quotedID := uid.New()
-	_, err = fake.CreateStatus(ctx, store.CreateStatusInput{
-		ID:         quotedID,
-		URI:        "https://example.com/statuses/" + quotedID,
-		AccountID:  alice.ID,
-		Text:       testutil.StrPtr("original"),
-		Content:    testutil.StrPtr("<p>original</p>"),
-		Visibility: domain.VisibilityPublic,
-		APID:       "https://example.com/statuses/" + quotedID,
-		Local:      true,
-	})
-	require.NoError(t, err)
-	quotingID := uid.New()
-	_, err = fake.CreateStatus(ctx, store.CreateStatusInput{
-		ID:                  quotingID,
-		URI:                 "https://example.com/statuses/" + quotingID,
-		AccountID:           bob.ID,
-		Text:                testutil.StrPtr("bob quote"),
-		Content:             testutil.StrPtr("<p>bob quote</p>"),
-		Visibility:          domain.VisibilityPublic,
-		QuotedStatusID:      &quotedID,
-		QuoteApprovalPolicy: domain.QuotePolicyPublic,
-		APID:                "https://example.com/statuses/" + quotingID,
-		Local:               true,
-	})
-	require.NoError(t, err)
-	require.NoError(t, fake.CreateQuoteApproval(ctx, quotingID, quotedID))
-
-	_, err = statusWriteSvc.Update(ctx, alice.ID, quotedID, "edited text", "", false)
-	require.NoError(t, err)
-
-	notifications, err := fake.ListNotifications(ctx, bob.ID, nil, 20)
-	require.NoError(t, err)
-	var quotedUpdate *domain.Notification
-	for i := range notifications {
-		if notifications[i].Type == domain.NotificationTypeQuotedUpdate {
-			quotedUpdate = &notifications[i]
-			break
-		}
-	}
-	require.NotNil(t, quotedUpdate, "quoter should receive quoted_update notification")
-	assert.Equal(t, alice.ID, quotedUpdate.FromID)
-	assert.Equal(t, quotingID, *quotedUpdate.StatusID)
 }

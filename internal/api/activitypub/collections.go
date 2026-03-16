@@ -42,14 +42,9 @@ func (h *CollectionsHandler) GETFollowers(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, err)
 		return
 	}
-	base := "https://" + h.config.InstanceDomain
+	base := h.config.InstanceBaseURL()
 	id := base + "/users/" + username + "/followers"
-	coll := vocab.OrderedCollection{
-		Context:    vocab.DefaultContext,
-		ID:         id,
-		Type:       vocab.ObjectTypeOrderedCollection,
-		TotalItems: int(count),
-	}
+	coll := vocab.NewOrderedCollection(id, int(count))
 	w.Header().Set("Cache-Control", "max-age=300")
 	api.WriteActivityJSON(w, http.StatusOK, coll)
 }
@@ -71,14 +66,9 @@ func (h *CollectionsHandler) GETFollowing(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, err)
 		return
 	}
-	base := "https://" + h.config.InstanceDomain
+	base := h.config.InstanceBaseURL()
 	id := base + "/users/" + username + "/following"
-	coll := vocab.OrderedCollection{
-		Context:    vocab.DefaultContext,
-		ID:         id,
-		Type:       vocab.ObjectTypeOrderedCollection,
-		TotalItems: int(count),
-	}
+	coll := vocab.NewOrderedCollection(id, int(count))
 	w.Header().Set("Cache-Control", "max-age=300")
 	api.WriteActivityJSON(w, http.StatusOK, coll)
 }
@@ -107,22 +97,16 @@ func (h *CollectionsHandler) GETFeatured(w http.ResponseWriter, r *http.Request)
 		if err != nil || st == nil {
 			continue
 		}
-		note := vocab.StatusToNote(st, account, h.config.InstanceDomain)
+		note := vocab.StatusToNote(st, account, h.config.InstanceBaseURL())
 		raw, err := json.Marshal(note)
 		if err != nil {
 			continue
 		}
 		orderedItems = append(orderedItems, raw)
 	}
-	base := "https://" + h.config.InstanceDomain
+	base := h.config.InstanceBaseURL()
 	id := base + "/users/" + username + "/collections/featured"
-	coll := vocab.OrderedCollection{
-		Context:      vocab.DefaultContext,
-		ID:           id,
-		Type:         vocab.ObjectTypeOrderedCollection,
-		TotalItems:   len(orderedItems),
-		OrderedItems: orderedItems,
-	}
+	coll := vocab.NewOrderedCollectionWithItems(id, orderedItems)
 	w.Header().Set("Cache-Control", "max-age=300")
 	api.WriteActivityJSON(w, http.StatusOK, coll)
 }

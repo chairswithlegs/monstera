@@ -33,9 +33,9 @@ const (
 func TestActorKeyID(t *testing.T) {
 	t.Parallel()
 	acc := &domain.Account{APID: "https://example.com/users/alice", Username: "alice"}
-	assert.Equal(t, "https://example.com/users/alice#main-key", actorKeyID(acc, "example.com"))
+	assert.Equal(t, "https://example.com/users/alice#main-key", actorKeyID(acc, "https://example.com"))
 	acc.APID = ""
-	assert.Equal(t, "https://example.com/users/alice#main-key", actorKeyID(acc, "example.com"))
+	assert.Equal(t, "https://example.com/users/alice#main-key", actorKeyID(acc, "https://example.com"))
 }
 
 func TestParseRSAPrivateKeyPEM(t *testing.T) {
@@ -149,7 +149,7 @@ func TestNewHTTPSignatureService(t *testing.T) {
 	require.NotNil(t, svc)
 	impl, ok := svc.(*httpSignatureService)
 	require.True(t, ok)
-	assert.Equal(t, testHost, impl.instanceDomain)
+	assert.Equal(t, "https://"+testHost, impl.instanceBase)
 }
 
 func TestSign_GET_setsHeaders(t *testing.T) {
