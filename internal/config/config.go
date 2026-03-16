@@ -191,6 +191,11 @@ func (c *Config) IsDevelopment() bool {
 	return c.AppEnv == appEnvDevelopment
 }
 
+// InstanceBaseURL returns the canonical base URL for this instance (e.g. "https://example.com").
+func (c *Config) InstanceBaseURL() string {
+	return "https://" + c.InstanceDomain
+}
+
 // SecretKeyBytes returns the raw secret key bytes from SECRET_KEY_BASE (hex or raw string).
 // Callers must ensure Config has been validated (Load() or Validate() succeeded).
 func (c *Config) SecretKeyBytes() ([]byte, error) {

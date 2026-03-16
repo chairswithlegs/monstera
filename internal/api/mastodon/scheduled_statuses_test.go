@@ -24,7 +24,8 @@ func TestScheduledStatusesHandler_GETScheduledStatuses(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
-	handler := NewScheduledStatusesHandler(statusSvc)
+	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, service.NewConversationService(st, statusSvc), "https://example.com", "example.com", 500)
+	handler := NewScheduledStatusesHandler(statusSvc, statusWriteSvc)
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -70,7 +71,8 @@ func TestScheduledStatusesHandler_GETScheduledStatus(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
-	handler := NewScheduledStatusesHandler(statusSvc)
+	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, service.NewConversationService(st, statusSvc), "https://example.com", "example.com", 500)
+	handler := NewScheduledStatusesHandler(statusSvc, statusWriteSvc)
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -133,7 +135,8 @@ func TestScheduledStatusesHandler_PUTScheduledStatus(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
-	handler := NewScheduledStatusesHandler(statusSvc)
+	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, service.NewConversationService(st, statusSvc), "https://example.com", "example.com", 500)
+	handler := NewScheduledStatusesHandler(statusSvc, statusWriteSvc)
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -221,7 +224,8 @@ func TestScheduledStatusesHandler_DELETEScheduledStatus(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
-	handler := NewScheduledStatusesHandler(statusSvc)
+	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, service.NewConversationService(st, statusSvc), "https://example.com", "example.com", 500)
+	handler := NewScheduledStatusesHandler(statusSvc, statusWriteSvc)
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
 		Username:     "alice",

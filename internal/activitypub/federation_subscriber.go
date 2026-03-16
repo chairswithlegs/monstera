@@ -146,7 +146,8 @@ func (s *FederationSubscriber) handleStatusCreated(ctx context.Context, event do
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal status.created payload: %w", err)
 	}
-	note := vocab.StatusToNote(payload.Status, payload.Author, s.cfg.InstanceDomain)
+	base := s.cfg.InstanceBaseURL()
+	note := vocab.StatusToNote(payload.Status, payload.Author, base)
 	activityID := s.statusActivityID(payload.Status)
 	create, err := vocab.NewCreateNoteActivity(activityID, note)
 	if err != nil {
@@ -180,9 +181,9 @@ func (s *FederationSubscriber) handleStatusDeleted(ctx context.Context, event do
 		objectID = payload.URI
 	}
 	if objectID == "" {
-		objectID = fmt.Sprintf("https://%s/statuses/%s", s.cfg.InstanceDomain, payload.StatusID)
+		objectID = fmt.Sprintf("%s/statuses/%s", s.cfg.InstanceBaseURL(), payload.StatusID)
 	}
-	actorID := s.accountActorID(payload.Author)
+	actorID := vocab.AccountActorID(payload.Author, s.cfg.InstanceBaseURL())
 	deleteAct, err := vocab.NewDeleteActivity(objectID+"#delete", actorID, objectID)
 	if err != nil {
 		return fmt.Errorf("new delete activity: %w", err)
@@ -207,9 +208,10 @@ func (s *FederationSubscriber) handleStatusUpdated(ctx context.Context, event do
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal status.updated payload: %w", err)
 	}
-	note := vocab.StatusToNote(payload.Status, payload.Author, s.cfg.InstanceDomain)
+	base := s.cfg.InstanceBaseURL()
+	note := vocab.StatusToNote(payload.Status, payload.Author, base)
 	activityID := s.statusActivityID(payload.Status)
-	actorID := s.accountActorID(payload.Author)
+	actorID := vocab.AccountActorID(payload.Author, base)
 	update, err := vocab.NewUpdateNoteActivity(activityID+"#update", actorID, note)
 	if err != nil {
 		return fmt.Errorf("wrap update: %w", err)
@@ -237,9 +239,10 @@ func (s *FederationSubscriber) handleFollowCreated(ctx context.Context, event do
 	if payload.Target.InboxURL == "" {
 		return nil
 	}
-	actorID := s.accountActorID(payload.Actor)
-	targetID := s.accountActorID(payload.Target)
-	activityID := fmt.Sprintf("https://%s/activities/%s", s.cfg.InstanceDomain, payload.Follow.ID)
+	base := s.cfg.InstanceBaseURL()
+	actorID := vocab.AccountActorID(payload.Actor, base)
+	targetID := vocab.AccountActorID(payload.Target, base)
+	activityID := fmt.Sprintf("%s/activities/%s", base, payload.Follow.ID)
 	follow, err := vocab.NewFollowActivity(activityID, actorID, targetID)
 	if err != nil {
 		return fmt.Errorf("new follow activity: %w", err)
@@ -268,14 +271,15 @@ func (s *FederationSubscriber) handleFollowRemoved(ctx context.Context, event do
 	if payload.Target.InboxURL == "" {
 		return nil
 	}
-	actorID := s.accountActorID(payload.Actor)
-	targetID := s.accountActorID(payload.Target)
-	followActivityID := fmt.Sprintf("https://%s/activities/%s", s.cfg.InstanceDomain, payload.FollowID)
+	base := s.cfg.InstanceBaseURL()
+	actorID := vocab.AccountActorID(payload.Actor, base)
+	targetID := vocab.AccountActorID(payload.Target, base)
+	followActivityID := fmt.Sprintf("%s/activities/%s", base, payload.FollowID)
 	inner, err := vocab.NewFollowActivity(followActivityID, actorID, targetID)
 	if err != nil {
 		return fmt.Errorf("new follow for undo: %w", err)
 	}
-	undoID := fmt.Sprintf("https://%s/activities/undo-%s", s.cfg.InstanceDomain, payload.FollowID)
+	undoID := fmt.Sprintf("%s/activities/undo-%s", base, payload.FollowID)
 	undo, err := vocab.NewUndoActivity(undoID, actorID, inner)
 	if err != nil {
 		return fmt.Errorf("new undo activity: %w", err)
@@ -304,14 +308,15 @@ func (s *FederationSubscriber) handleFollowAccepted(ctx context.Context, event d
 	if payload.Actor.InboxURL == "" {
 		return nil
 	}
-	targetID := s.accountActorID(payload.Target)
-	actorID := s.accountActorID(payload.Actor)
-	followActivityID := fmt.Sprintf("https://%s/activities/%s", s.cfg.InstanceDomain, payload.Follow.ID)
+	base := s.cfg.InstanceBaseURL()
+	targetID := vocab.AccountActorID(payload.Target, base)
+	actorID := vocab.AccountActorID(payload.Actor, base)
+	followActivityID := fmt.Sprintf("%s/activities/%s", base, payload.Follow.ID)
 	inner, err := vocab.NewFollowActivity(followActivityID, actorID, targetID)
 	if err != nil {
 		return fmt.Errorf("new follow for accept: %w", err)
 	}
-	acceptID := fmt.Sprintf("https://%s/activities/accept-%s", s.cfg.InstanceDomain, payload.Follow.ID)
+	acceptID := fmt.Sprintf("%s/activities/accept-%s", base, payload.Follow.ID)
 	accept, err := vocab.NewAcceptActivity(acceptID, targetID, inner)
 	if err != nil {
 		return fmt.Errorf("new accept activity: %w", err)
@@ -340,9 +345,10 @@ func (s *FederationSubscriber) handleBlockCreated(ctx context.Context, event dom
 	if payload.Target.InboxURL == "" {
 		return nil
 	}
-	actorID := s.accountActorID(payload.Actor)
-	targetID := s.accountActorID(payload.Target)
-	activityID := fmt.Sprintf("https://%s/activities/%s", s.cfg.InstanceDomain, uid.New())
+	base := s.cfg.InstanceBaseURL()
+	actorID := vocab.AccountActorID(payload.Actor, base)
+	targetID := vocab.AccountActorID(payload.Target, base)
+	activityID := fmt.Sprintf("%s/activities/%s", base, uid.New())
 	block, err := vocab.NewBlockActivity(activityID, actorID, targetID)
 	if err != nil {
 		return fmt.Errorf("new block activity: %w", err)
@@ -371,14 +377,15 @@ func (s *FederationSubscriber) handleBlockRemoved(ctx context.Context, event dom
 	if payload.Target.InboxURL == "" {
 		return nil
 	}
-	actorID := s.accountActorID(payload.Actor)
-	targetID := s.accountActorID(payload.Target)
-	blockID := fmt.Sprintf("https://%s/activities/block-%s-%s", s.cfg.InstanceDomain, payload.Actor.ID, payload.Target.ID)
+	base := s.cfg.InstanceBaseURL()
+	actorID := vocab.AccountActorID(payload.Actor, base)
+	targetID := vocab.AccountActorID(payload.Target, base)
+	blockID := fmt.Sprintf("%s/activities/block-%s-%s", base, payload.Actor.ID, payload.Target.ID)
 	inner, err := vocab.NewBlockActivity(blockID, actorID, targetID)
 	if err != nil {
 		return fmt.Errorf("new block for undo: %w", err)
 	}
-	undoID := fmt.Sprintf("https://%s/activities/undo-block-%s-%s", s.cfg.InstanceDomain, payload.Actor.ID, payload.Target.ID)
+	undoID := fmt.Sprintf("%s/activities/undo-block-%s-%s", base, payload.Actor.ID, payload.Target.ID)
 	undo, err := vocab.NewUndoActivity(undoID, actorID, inner)
 	if err != nil {
 		return fmt.Errorf("new undo activity: %w", err)
@@ -406,7 +413,7 @@ func (s *FederationSubscriber) handleAccountUpdated(ctx context.Context, event d
 	}
 	actor := vocab.AccountToActor(payload.Account, s.cfg.InstanceDomain)
 	actorID := actor.ID
-	activityID := fmt.Sprintf("https://%s/activities/%s", s.cfg.InstanceDomain, uid.New())
+	activityID := fmt.Sprintf("%s/activities/%s", s.cfg.InstanceBaseURL(), uid.New())
 	update, err := vocab.NewUpdateActorActivity(activityID, actorID, actor)
 	if err != nil {
 		return fmt.Errorf("wrap update actor: %w", err)
@@ -434,13 +441,5 @@ func (s *FederationSubscriber) statusActivityID(status *domain.Status) string {
 	if status.URI != "" {
 		return status.URI
 	}
-	return fmt.Sprintf("https://%s/activities/%s", s.cfg.InstanceDomain, uid.New())
-}
-
-// accountActorID derives an AP actor ID from an account.
-func (s *FederationSubscriber) accountActorID(account *domain.Account) string {
-	if account.APID != "" {
-		return account.APID
-	}
-	return fmt.Sprintf("https://%s/users/%s", s.cfg.InstanceDomain, account.Username)
+	return fmt.Sprintf("%s/activities/%s", s.cfg.InstanceBaseURL(), uid.New())
 }

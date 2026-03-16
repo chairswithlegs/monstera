@@ -86,7 +86,7 @@ func TestDeliveryWorker_PullDeliverAndNoDuplicate(t *testing.T) {
 	privPEM, err := generateTestKeyPair()
 	require.NoError(t, err)
 	senderID := uid.New()
-	apID := fmt.Sprintf("https://%s/users/alice", cfg.InstanceDomain)
+	apID := fmt.Sprintf("%s/users/alice", cfg.InstanceBaseURL())
 	inboxURL := srv.URL + "/inbox"
 
 	fake := testutil.NewFakeStore()
@@ -120,7 +120,7 @@ func TestDeliveryWorker_PullDeliverAndNoDuplicate(t *testing.T) {
 	cacheStore, err := cache.New(cache.Config{Driver: "memory"})
 	require.NoError(t, err)
 	defer func() { _ = cacheStore.Close() }()
-	accountSvc := service.NewAccountService(fake, "https://"+cfg.InstanceDomain)
+	accountSvc := service.NewAccountService(fake, cfg.InstanceBaseURL())
 	signer := NewHTTPSignatureService(cfg, cacheStore, accountSvc)
 	worker := internal.NewOutboxDeliveryWorker(client.JS, nil, signer, cfg)
 	require.NoError(t, worker.Publish(ctx, "create", delivery))
@@ -196,7 +196,7 @@ func TestOutboxFanoutWorker_Integration(t *testing.T) {
 	privPEM, err := generateTestKeyPair()
 	require.NoError(t, err)
 	senderID := uid.New()
-	apID := fmt.Sprintf("https://%s/users/alice", cfg.InstanceDomain)
+	apID := fmt.Sprintf("%s/users/alice", cfg.InstanceBaseURL())
 	inboxURL := srv.URL + "/inbox"
 
 	fake := testutil.NewFakeStore()
@@ -233,7 +233,7 @@ func TestOutboxFanoutWorker_Integration(t *testing.T) {
 	cacheStore, err := cache.New(cache.Config{Driver: "memory"})
 	require.NoError(t, err)
 	defer func() { _ = cacheStore.Close() }()
-	accountSvc := service.NewAccountService(fake, "https://"+cfg.InstanceDomain)
+	accountSvc := service.NewAccountService(fake, cfg.InstanceBaseURL())
 	followSvc := service.NewFollowService(fake, accountSvc)
 	signer := NewHTTPSignatureService(cfg, cacheStore, accountSvc)
 	outboxDeliveryWorker := internal.NewOutboxDeliveryWorker(client.JS, nil, signer, cfg)

@@ -172,8 +172,6 @@ func (r *RemoteAccountResolver) fetchWebFingerActorIRI(ctx context.Context, acct
 
 // SyncActorToStore creates or updates a domain.Account from an Actor document.
 func (r *RemoteAccountResolver) SyncActorToStore(ctx context.Context, actor *vocab.Actor) (*domain.Account, error) {
-	dom := vocab.DomainFromIRI(actor.ID)
-
 	// It is generally expected that Mastodon compatible clients will always set the preferredUsername,
 	// however it is not required by the ActivityPub spec.
 	// For now, we will throw an error if the username is missing.
@@ -190,21 +188,11 @@ func (r *RemoteAccountResolver) SyncActorToStore(ctx context.Context, actor *voc
 	note := bluemonday.UGCPolicy().Sanitize(actor.Summary)
 
 	apRaw, _ := json.Marshal(actor)
-	in := service.CreateOrUpdateRemoteInput{
-		APID:         actor.ID,
-		Username:     username,
-		Domain:       dom,
-		DisplayName:  &displayName,
-		Note:         &note,
-		PublicKey:    actor.PublicKey.PublicKeyPem,
-		InboxURL:     actor.Inbox,
-		OutboxURL:    actor.Outbox,
-		FollowersURL: actor.Followers,
-		FollowingURL: actor.Following,
-		Bot:          actor.Type == vocab.ObjectTypeService,
-		Locked:       actor.ManuallyApprovesFollowers,
-		ApRaw:        apRaw,
-	}
+	sanitized := *actor
+	sanitized.PreferredUsername = username
+	sanitized.Name = displayName
+	sanitized.Summary = note
+	in := vocab.ActorToServiceInput(&sanitized, apRaw)
 	acc, err := r.accounts.CreateOrUpdateRemoteAccount(ctx, in)
 	if err != nil {
 		return nil, fmt.Errorf("SyncActorToStore: %w", err)
@@ -216,7 +204,7 @@ func (r *RemoteAccountResolver) isRemoteActorAccountStale(acc *domain.Account) b
 	return acc.UpdatedAt.Before(time.Now().Add(-staleRemoteActorDuration))
 }
 
-func (r *RemoteAccountResolver) resolveIRIDocument(ctx context.Context, iri string, out interface{}) error {
+func (r *RemoteAccountResolver) resolveIRIDocument(ctx context.Context, iri string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, iri, nil)
 	if err != nil {
 		return fmt.Errorf("resolveIRIDocument new request: %w", err)

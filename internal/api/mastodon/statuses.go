@@ -94,7 +94,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 			api.HandleError(w, r, err)
 			return
 		}
-		s, err := h.statuses.CreateScheduledStatus(ctx, account.ID, paramsJSON, scheduledAt)
+		s, err := h.statusWrites.CreateScheduledStatus(ctx, account.ID, paramsJSON, scheduledAt)
 		if err != nil {
 			if errors.Is(err, domain.ErrValidation) {
 				api.HandleError(w, r, api.NewUnprocessableError("scheduled_at must be in the future"))
@@ -148,7 +148,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 		quotedStatusID = &req.QuotedStatusID
 	}
 
-	createInput := service.CreateWithContentInput{
+	createInput := service.CreateStatusInput{
 		AccountID:           account.ID,
 		Username:            account.Username,
 		Text:                req.Status,
@@ -266,7 +266,7 @@ func (h *StatusesHandler) POSTRevokeQuote(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	if err := h.statuses.RevokeQuote(r.Context(), account.ID, quotedStatusID, quotingStatusID); err != nil {
+	if err := h.statusWrites.RevokeQuote(r.Context(), account.ID, quotedStatusID, quotingStatusID); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
 			return
@@ -293,7 +293,7 @@ func (h *StatusesHandler) POSTPin(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	result, err := h.statuses.Pin(r.Context(), account.ID, id)
+	result, err := h.statusWrites.Pin(r.Context(), account.ID, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -327,7 +327,7 @@ func (h *StatusesHandler) POSTUnpin(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	result, err := h.statuses.Unpin(r.Context(), account.ID, id)
+	result, err := h.statusWrites.Unpin(r.Context(), account.ID, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -356,7 +356,7 @@ func (h *StatusesHandler) POSTMuteConversation(w http.ResponseWriter, r *http.Re
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	if err := h.statuses.MuteConversation(r.Context(), account.ID, id); err != nil {
+	if err := h.statusWrites.MuteConversation(r.Context(), account.ID, id); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
 			return
@@ -387,7 +387,7 @@ func (h *StatusesHandler) POSTUnmuteConversation(w http.ResponseWriter, r *http.
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	if err := h.statuses.UnmuteConversation(r.Context(), account.ID, id); err != nil {
+	if err := h.statusWrites.UnmuteConversation(r.Context(), account.ID, id); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
 			return
@@ -423,7 +423,13 @@ func (h *StatusesHandler) PUTStatuses(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	result, err := h.statusWrites.Update(r.Context(), account.ID, id, strings.TrimSpace(req.Status), req.SpoilerText, req.Sensitive)
+	result, err := h.statusWrites.Update(r.Context(), service.UpdateStatusInput{
+		AccountID:   account.ID,
+		StatusID:    id,
+		Text:        strings.TrimSpace(req.Status),
+		SpoilerText: req.SpoilerText,
+		Sensitive:   req.Sensitive,
+	})
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -475,7 +481,7 @@ func (h *StatusesHandler) PUTInteractionPolicy(w http.ResponseWriter, r *http.Re
 		return
 	}
 	policy := req.QuoteApprovalPolicy
-	if err := h.statuses.UpdateQuoteApprovalPolicy(r.Context(), account.ID, id, policy); err != nil {
+	if err := h.statusWrites.UpdateQuoteApprovalPolicy(r.Context(), account.ID, id, policy); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
 			return
@@ -609,7 +615,7 @@ func (h *StatusesHandler) POSTReblog(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	result, err := h.statusWrites.Reblog(r.Context(), account.ID, account.Username, id)
+	result, err := h.statusWrites.CreateReblog(r.Context(), account.ID, account.Username, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -642,7 +648,7 @@ func (h *StatusesHandler) POSTUnreblog(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	if err := h.statusWrites.Unreblog(r.Context(), account.ID, id); err != nil {
+	if err := h.statusWrites.DeleteReblog(r.Context(), account.ID, id); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
@@ -666,7 +672,7 @@ func (h *StatusesHandler) POSTFavourite(w http.ResponseWriter, r *http.Request) 
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	result, err := h.statusWrites.Favourite(r.Context(), account.ID, id)
+	result, err := h.statusWrites.CreateFavourite(r.Context(), account.ID, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -692,7 +698,7 @@ func (h *StatusesHandler) POSTUnfavourite(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	result, err := h.statusWrites.Unfavourite(r.Context(), account.ID, id)
+	result, err := h.statusWrites.DeleteFavourite(r.Context(), account.ID, id)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -714,7 +720,7 @@ func (h *StatusesHandler) POSTBookmark(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	result, err := h.statuses.Bookmark(r.Context(), account.ID, id)
+	result, err := h.statusWrites.Bookmark(r.Context(), account.ID, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -740,7 +746,7 @@ func (h *StatusesHandler) POSTUnbookmark(w http.ResponseWriter, r *http.Request)
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	result, err := h.statuses.Unbookmark(r.Context(), account.ID, id)
+	result, err := h.statusWrites.Unbookmark(r.Context(), account.ID, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)

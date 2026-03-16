@@ -27,7 +27,7 @@ func TestPollsHandler_GETPoll(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewPollsHandler(statusSvc)
+	handler := NewPollsHandler(statusSvc, statusWriteSvc)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "alice",
@@ -38,7 +38,7 @@ func TestPollsHandler_GETPoll(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a status with a poll via the service
-	result, err := statusWriteSvc.Create(ctx, service.CreateWithContentInput{
+	result, err := statusWriteSvc.Create(ctx, service.CreateStatusInput{
 		AccountID:         acc.ID,
 		Username:          acc.Username,
 		Text:              "Poll?",
@@ -101,7 +101,7 @@ func TestPollsHandler_POSTVotes(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewPollsHandler(statusSvc)
+	handler := NewPollsHandler(statusSvc, statusWriteSvc)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username:     "voter",
@@ -111,7 +111,7 @@ func TestPollsHandler_POSTVotes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	result, err := statusWriteSvc.Create(ctx, service.CreateWithContentInput{
+	result, err := statusWriteSvc.Create(ctx, service.CreateStatusInput{
 		AccountID:         acc.ID,
 		Username:          acc.Username,
 		Text:              "Vote?",

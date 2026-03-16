@@ -12,7 +12,7 @@ import (
 // (IRI reference) or an embedded JSON object (e.g. a full Note). Callers
 // use the accessor methods to decode it.
 type Activity struct {
-	Context   interface{}     `json:"@context,omitempty"`
+	Context   any             `json:"@context,omitempty"`
 	Type      ObjectType      `json:"type"`
 	ObjectRaw json.RawMessage `json:"object"`
 	ID        string          `json:"id"`           // Activity IRI

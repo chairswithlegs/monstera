@@ -37,7 +37,7 @@ func TestOutboxHandler_GETOutbox_collection(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fake.ConfirmUser(ctx, "01USERALICE"))
 	cfg := &config.Config{InstanceDomain: "example.com"}
-	accountSvc := service.NewAccountService(fake, "https://"+cfg.InstanceDomain)
+	accountSvc := service.NewAccountService(fake, cfg.InstanceBaseURL())
 	timelineSvc := service.NewTimelineService(fake, accountSvc, &allowAllVisibilityChecker{})
 	h := NewOutbox(accountSvc, timelineSvc, cfg)
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/outbox", nil)
@@ -77,7 +77,7 @@ func TestOutboxHandler_GETOutbox_page(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := &config.Config{InstanceDomain: "example.com"}
-	accountSvc := service.NewAccountService(fake, "https://"+cfg.InstanceDomain)
+	accountSvc := service.NewAccountService(fake, cfg.InstanceBaseURL())
 	timelineSvc := service.NewTimelineService(fake, accountSvc, &allowAllVisibilityChecker{})
 	h := NewOutbox(accountSvc, timelineSvc, cfg)
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/outbox?page=true", nil)

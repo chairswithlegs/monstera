@@ -1,7 +1,6 @@
 package activitypub
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/chairswithlegs/monstera/internal/api"
@@ -27,7 +26,7 @@ func (h *NodeInfoPointerHandler) GETNodeInfoPointer(w http.ResponseWriter, r *ht
 		Links: []apimodel.NodeInfoPointerLink{
 			{
 				Rel:  "http://nodeinfo.diaspora.software/ns/schema/2.0",
-				Href: fmt.Sprintf("https://%s/nodeinfo/2.0", h.config.InstanceDomain),
+				Href: h.config.InstanceBaseURL() + "/nodeinfo/2.0",
 			},
 		},
 	}

@@ -242,6 +242,7 @@ func (p *inbox) handleUndoFollow(ctx context.Context, activity *vocab.Activity) 
 
 	var follow *domain.Follow
 
+	// Attempt to find the follow by inner ID.
 	if inner.ID != "" {
 		if f, err := p.follows.GetFollowByAPID(ctx, inner.ID); err == nil {
 			if err := p.undoActorMatchesAccount(ctx, activity, f.AccountID); err != nil {
@@ -251,6 +252,7 @@ func (p *inbox) handleUndoFollow(ctx context.Context, activity *vocab.Activity) 
 		}
 	}
 
+	// If the follow is not found, try to finding it by looking up the actor and target accounts.
 	if follow == nil {
 		actorAccount, err := p.accounts.GetByAPID(ctx, inner.Actor)
 		if err != nil {
@@ -268,6 +270,11 @@ func (p *inbox) handleUndoFollow(ctx context.Context, activity *vocab.Activity) 
 		if err != nil {
 			return fmt.Errorf("inbox: GetFollow (UndoFollow): %w", err)
 		}
+	}
+
+	if follow == nil {
+		slog.DebugContext(ctx, "inbox: follow not found (UndoFollow)", slog.String("actor", inner.Actor), slog.String("object", inner.ID))
+		return nil
 	}
 
 	if delErr := p.follows.DeleteRemoteFollow(ctx, follow.AccountID, follow.TargetID); delErr != nil {
@@ -293,6 +300,7 @@ func (p *inbox) handleUndoLike(ctx context.Context, activity *vocab.Activity) er
 
 	var fav *domain.Favourite
 
+	// Attempt to find the favourite by inner ID.
 	if inner.ID != "" {
 		if f, err := p.statuses.GetFavouriteByAPID(ctx, inner.ID); err == nil {
 			if err := p.undoActorMatchesAccount(ctx, activity, f.AccountID); err != nil {
@@ -302,6 +310,7 @@ func (p *inbox) handleUndoLike(ctx context.Context, activity *vocab.Activity) er
 		}
 	}
 
+	// If the favourite is not found, try to finding it by looking up the actor and target accounts.
 	if fav == nil {
 		actorAccount, err := p.accounts.GetByAPID(ctx, inner.Actor)
 		if err != nil {
@@ -319,6 +328,11 @@ func (p *inbox) handleUndoLike(ctx context.Context, activity *vocab.Activity) er
 		if err != nil {
 			return fmt.Errorf("inbox: GetFavouriteByAccountAndStatus (UndoLike): %w", err)
 		}
+	}
+
+	if fav == nil {
+		slog.DebugContext(ctx, "inbox: favourite not found (UndoLike)", slog.String("actor", inner.Actor), slog.String("object", inner.ID))
+		return nil
 	}
 
 	return p.undoFavourite(ctx, fav)
@@ -342,7 +356,7 @@ func (p *inbox) handleUndoAnnounce(ctx context.Context, activity *vocab.Activity
 	if err != nil {
 		return fmt.Errorf("inbox: GetStatusByAPID (UndoAnnounce): %w", err)
 	}
-	if err := p.statusWrites.Unreblog(ctx, actorAccount.ID, originalStatus.ID); err != nil {
+	if err := p.statusWrites.DeleteReblog(ctx, actorAccount.ID, originalStatus.ID); err != nil {
 		return fmt.Errorf("inbox: Unreblog (UndoAnnounce): %w", err)
 	}
 	return nil
@@ -366,7 +380,7 @@ func (p *inbox) handleCreate(ctx context.Context, activity *vocab.Activity, _ st
 	if err != nil {
 		return fmt.Errorf("inbox: resolve actor %q: %w", activity.Actor, err)
 	}
-	visibility := p.resolveVisibility(note, author)
+	visibility := vocab.NoteVisibility(note, author.FollowersURL)
 
 	// If the visibility is private, the status is only meant for local followers.
 	if visibility == domain.VisibilityPrivate {
@@ -392,7 +406,7 @@ func (p *inbox) handleCreate(ctx context.Context, activity *vocab.Activity, _ st
 	}
 	createInput := p.buildCreateStatusInput(ctx, note, author, visibility)
 	// AP Note -> domain status
-	status, err := p.statusWrites.CreateRemote(ctx, createInput.in)
+	status, err := p.statusWrites.CreateRemote(ctx, createInput)
 	if err != nil {
 		if errors.Is(err, domain.ErrConflict) {
 			return nil
@@ -487,6 +501,7 @@ func (p *inbox) handleDelete(ctx context.Context, activity *vocab.Activity) erro
 	switch objectType {
 	case vocab.ObjectTypeTombstone, vocab.ObjectTypeNote, "":
 		objectID, ok := activity.ObjectID()
+		// TODO: this sort of Activity parsing belongs in the vocab package.
 		if !ok {
 			var obj struct {
 				ID string `json:"id"`
@@ -551,6 +566,7 @@ func (p *inbox) handleUpdate(ctx context.Context, activity *vocab.Activity) erro
 		if author.APID != activity.Actor {
 			return fmt.Errorf("%w: update: actor is not the author", ErrInboxFatal)
 		}
+
 		var cw *string
 		if note.Summary != nil {
 			sanitized := bluemonday.StrictPolicy().Sanitize(*note.Summary)
@@ -666,27 +682,6 @@ func (p *inbox) undoActorMatchesAccount(ctx context.Context, activity *vocab.Act
 	return nil
 }
 
-func (p *inbox) resolveVisibility(note *vocab.Note, author *domain.Account) string {
-	for _, addr := range note.To {
-		if addr == vocab.PublicAddress {
-			return domain.VisibilityPublic
-		}
-	}
-	for _, addr := range note.Cc {
-		if addr == vocab.PublicAddress {
-			return domain.VisibilityUnlisted
-		}
-	}
-	if author != nil {
-		for _, addr := range note.To {
-			if addr == author.FollowersURL {
-				return domain.VisibilityPrivate
-			}
-		}
-	}
-	return domain.VisibilityDirect
-}
-
 func (p *inbox) hasLocalFollower(ctx context.Context, remoteAccountID string) (bool, error) {
 	followers, err := p.follows.GetFollowers(ctx, remoteAccountID, nil, 1)
 	if err != nil {
@@ -712,16 +707,6 @@ func (p *inbox) hasLocalRecipient(ctx context.Context, to []string) (bool, error
 		}
 	}
 	return false, nil
-}
-
-func noteLanguage(note *vocab.Note) *string {
-	if len(note.ContentMap) == 0 {
-		return nil
-	}
-	for k := range note.ContentMap {
-		return &k
-	}
-	return nil
 }
 
 // storeRemoteMedia stores a reference to the remote media attachments.
@@ -765,12 +750,7 @@ func (p *inbox) processMentionNotifications(ctx context.Context, tags []vocab.Ta
 	}
 }
 
-// createStatusInput holds the result of buildCreateStatusInput.
-type createStatusInput struct {
-	in service.CreateRemoteStatusInput
-}
-
-func (p *inbox) buildCreateStatusInput(ctx context.Context, note *vocab.Note, author *domain.Account, visibility string) createStatusInput {
+func (p *inbox) buildCreateStatusInput(ctx context.Context, note *vocab.Note, author *domain.Account, visibility string) service.CreateRemoteStatusInput {
 	var inReplyToID *string
 	if note.InReplyTo != nil && *note.InReplyTo != "" {
 		if parent, err := p.statuses.GetByAPID(ctx, *note.InReplyTo); err == nil {
@@ -783,24 +763,23 @@ func (p *inbox) buildCreateStatusInput(ctx context.Context, note *vocab.Note, au
 		cw := bluemonday.StrictPolicy().Sanitize(*note.Summary)
 		contentWarning = &cw
 	}
-	apRaw, _ := json.Marshal(note)
 
 	// Sanitize content using UGC policy to retain safe HTML formatting from remote notes.
 	content := bluemonday.UGCPolicy().Sanitize(note.Content)
 
-	in := service.CreateRemoteStatusInput{
+	fields := vocab.NoteToStatusFields(note)
+	return service.CreateRemoteStatusInput{
 		AccountID:      author.ID,
-		URI:            note.ID,
+		URI:            fields.URI,
 		Text:           &content,
 		Content:        &content,
 		ContentWarning: contentWarning,
 		Visibility:     visibility,
-		Language:       noteLanguage(note),
+		Language:       fields.Language,
 		InReplyToID:    inReplyToID,
 		MediaIDs:       mediaIDs,
-		APID:           note.ID,
-		ApRaw:          apRaw,
-		Sensitive:      note.Sensitive,
+		APID:           fields.APID,
+		ApRaw:          fields.ApRaw,
+		Sensitive:      fields.Sensitive,
 	}
-	return createStatusInput{in: in}
 }

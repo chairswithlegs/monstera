@@ -75,6 +75,8 @@ type FakeStore struct {
 
 	domainBlocksByDomain map[string]*domain.DomainBlock // domain (normalized) -> block
 
+	bookmarksByKey map[string]struct{} // "accountID:statusID"
+
 	favouritesByID            map[string]*domain.Favourite // id -> favourite
 	favouritesByAPID          map[string]*domain.Favourite // apID -> favourite (when set)
 	favouritesByAccountStatus map[string]*domain.Favourite // accountID+":"+statusID -> favourite
@@ -175,6 +177,7 @@ func NewFakeStore() *FakeStore {
 		pollVotes:                 nil,
 		quoteApprovalsByQuoting:   make(map[string]*quoteApprovalEntry),
 		domainBlocksByDomain:      make(map[string]*domain.DomainBlock),
+		bookmarksByKey:            make(map[string]struct{}),
 		favouritesByID:            make(map[string]*domain.Favourite),
 		favouritesByAPID:          make(map[string]*domain.Favourite),
 		favouritesByAccountStatus: make(map[string]*domain.Favourite),
@@ -1691,10 +1694,20 @@ func (f *FakeStore) GetPendingFollowRequests(ctx context.Context, targetID strin
 }
 
 func (f *FakeStore) CreateBookmark(ctx context.Context, in store.CreateBookmarkInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := in.AccountID + ":" + in.StatusID
+	if _, exists := f.bookmarksByKey[key]; exists {
+		return domain.ErrConflict
+	}
+	f.bookmarksByKey[key] = struct{}{}
 	return nil
 }
 
 func (f *FakeStore) DeleteBookmark(ctx context.Context, accountID, statusID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.bookmarksByKey, accountID+":"+statusID)
 	return nil
 }
 
@@ -1703,7 +1716,10 @@ func (f *FakeStore) GetBookmarks(ctx context.Context, accountID string, maxID *s
 }
 
 func (f *FakeStore) IsBookmarked(ctx context.Context, accountID, statusID string) (bool, error) {
-	return false, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.bookmarksByKey[accountID+":"+statusID]
+	return ok, nil
 }
 
 func (f *FakeStore) CreateAccountPin(ctx context.Context, accountID, statusID string) error {
@@ -2277,9 +2293,19 @@ func (f *FakeStore) DecrementFavouritesCount(ctx context.Context, statusID strin
 	return nil
 }
 func (f *FakeStore) IncrementReblogsCount(ctx context.Context, statusID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if s, ok := f.statusesByID[statusID]; ok {
+		s.ReblogsCount++
+	}
 	return nil
 }
 func (f *FakeStore) DecrementReblogsCount(ctx context.Context, statusID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if s, ok := f.statusesByID[statusID]; ok && s.ReblogsCount > 0 {
+		s.ReblogsCount--
+	}
 	return nil
 }
 func (f *FakeStore) IncrementQuotesCount(ctx context.Context, quotedStatusID string) error {
@@ -2364,6 +2390,13 @@ func (f *FakeStore) IncrementRepliesCount(ctx context.Context, statusID string) 
 	return nil
 }
 func (f *FakeStore) GetReblogByAccountAndTarget(ctx context.Context, accountID, statusID string) (*domain.Status, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, s := range f.statusesByID {
+		if s.AccountID == accountID && s.ReblogOfID != nil && *s.ReblogOfID == statusID && s.DeletedAt == nil {
+			return s, nil
+		}
+	}
 	return nil, domain.ErrNotFound
 }
 func (f *FakeStore) UpdateAccount(ctx context.Context, in store.UpdateAccountInput) error {

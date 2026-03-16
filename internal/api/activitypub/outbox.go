@@ -2,13 +2,10 @@ package activitypub
 
 import (
 	"encoding/json"
-	"fmt"
-	"html"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -46,7 +43,7 @@ func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	base := "https://" + h.config.InstanceDomain
+	base := h.config.InstanceBaseURL()
 	outboxID := base + "/users/" + username + "/outbox"
 
 	page := r.URL.Query().Get("page")
@@ -56,13 +53,8 @@ func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 			api.HandleError(w, r, err)
 			return
 		}
-		coll := vocab.OrderedCollection{
-			Context:    vocab.DefaultContext,
-			ID:         outboxID,
-			Type:       vocab.ObjectTypeOrderedCollection,
-			TotalItems: int(total),
-			First:      outboxID + "?page=true",
-		}
+		coll := vocab.NewOrderedCollection(outboxID, int(total))
+		coll.First = outboxID + "?page=true"
 		w.Header().Set("Cache-Control", "max-age=60")
 		w.Header().Set("Content-Type", "application/activity+json; charset=utf-8")
 		api.WriteJSON(w, http.StatusOK, coll)
@@ -96,20 +88,10 @@ func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 	} else {
 		publicStatuses = statuses
 	}
-	actorID := account.APID
-	if actorID == "" {
-		actorID = fmt.Sprintf("%s/users/%s", base, account.Username)
-	}
 	var orderedItems []json.RawMessage
 	for i := range publicStatuses {
-		note := statusToNote(&publicStatuses[i], actorID, base)
-		activityID := publicStatuses[i].APID
-		if activityID == "" {
-			activityID = publicStatuses[i].URI
-		}
-		if activityID == "" {
-			activityID = fmt.Sprintf("%s/statuses/%s", base, publicStatuses[i].ID)
-		}
+		note := vocab.StatusToNote(&publicStatuses[i], account, base)
+		activityID := vocab.StatusNoteID(&publicStatuses[i], base)
 		create, err := vocab.NewCreateNoteActivity(activityID, note)
 		if err != nil {
 			slog.WarnContext(r.Context(), "outbox: wrap create failed", slog.String("status_id", publicStatuses[i].ID), slog.Any("error", err))
@@ -126,59 +108,11 @@ func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 	if maxID != "" {
 		pageID = outboxID + "?page=true&max_id=" + url.QueryEscape(maxID)
 	}
-	pageResp := vocab.OrderedCollectionPage{
-		Context:      vocab.DefaultContext,
-		ID:           pageID,
-		Type:         vocab.ObjectTypeOrderedCollectionPage,
-		TotalItems:   len(orderedItems),
-		PartOf:       outboxID,
-		OrderedItems: orderedItems,
-	}
+	pageResp := vocab.NewOrderedCollectionPage(pageID, outboxID, orderedItems)
 	if hasMore && len(publicStatuses) > 0 {
 		pageResp.Next = outboxID + "?page=true&max_id=" + url.QueryEscape(publicStatuses[len(publicStatuses)-1].ID)
 	}
 	w.Header().Set("Cache-Control", "max-age=60")
 	w.Header().Set("Content-Type", "application/activity+json; charset=utf-8")
 	api.WriteJSON(w, http.StatusOK, pageResp)
-}
-
-func statusToNote(s *domain.Status, actorID, base string) *vocab.Note {
-	content := ""
-	if s.Content != nil && *s.Content != "" {
-		content = *s.Content
-	} else if s.Text != nil && *s.Text != "" {
-		content = html.EscapeString(*s.Text)
-	}
-	noteID := s.APID
-	if noteID == "" {
-		noteID = s.URI
-	}
-	if noteID == "" {
-		noteID = fmt.Sprintf("%s/statuses/%s", base, s.ID)
-	}
-	inReplyTo := s.InReplyToID
-	var inReplyToIRI *string
-	if inReplyTo != nil && *inReplyTo != "" {
-		iri := fmt.Sprintf("%s/statuses/%s", base, *inReplyTo)
-		inReplyToIRI = &iri
-	}
-	published := s.CreatedAt.Format(time.RFC3339)
-	updated := ""
-	if s.EditedAt != nil {
-		updated = s.EditedAt.Format(time.RFC3339)
-	}
-	return &vocab.Note{
-		Context:      vocab.DefaultContext,
-		ID:           noteID,
-		Type:         vocab.ObjectTypeNote,
-		AttributedTo: actorID,
-		Content:      content,
-		To:           []string{vocab.PublicAddress},
-		InReplyTo:    inReplyToIRI,
-		Published:    published,
-		Updated:      updated,
-		URL:          noteID,
-		Sensitive:    s.Sensitive,
-		Summary:      s.ContentWarning,
-	}
 }

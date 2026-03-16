@@ -60,7 +60,7 @@ func (h *WebFingerHandler) GETWebFinger(w http.ResponseWriter, r *http.Request) 
 		api.HandleError(w, r, err)
 		return
 	}
-	actorURL := fmt.Sprintf("https://%s/users/%s", h.config.InstanceDomain, account.Username)
+	actorURL := fmt.Sprintf("%s/users/%s", h.config.InstanceBaseURL(), account.Username)
 	resp := apimodel.WebFingerResponse{
 		Subject: resource,
 		Aliases: []string{actorURL},
