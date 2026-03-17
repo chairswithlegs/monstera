@@ -25,13 +25,14 @@ func TestScheduledStatusesHandler_GETScheduledStatuses(t *testing.T) {
 	st := testutil.NewFakeStore()
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, service.NewConversationService(st, statusSvc), "https://example.com", "example.com", 500)
-	handler := NewScheduledStatusesHandler(statusSvc, statusWriteSvc)
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewScheduledStatusesHandler(statusSvc, scheduledSvc)
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -72,13 +73,14 @@ func TestScheduledStatusesHandler_GETScheduledStatus(t *testing.T) {
 	st := testutil.NewFakeStore()
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, service.NewConversationService(st, statusSvc), "https://example.com", "example.com", 500)
-	handler := NewScheduledStatusesHandler(statusSvc, statusWriteSvc)
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewScheduledStatusesHandler(statusSvc, scheduledSvc)
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -115,10 +117,10 @@ func TestScheduledStatusesHandler_GETScheduledStatus(t *testing.T) {
 
 	t.Run("other account scheduled status returns 404", func(t *testing.T) {
 		otherAcc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
-			Username:     "bob",
-			Email:        "bob@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "bob",
+			Email:    "bob@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/scheduled_statuses/"+schedID, nil)
@@ -136,13 +138,14 @@ func TestScheduledStatusesHandler_PUTScheduledStatus(t *testing.T) {
 	st := testutil.NewFakeStore()
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, service.NewConversationService(st, statusSvc), "https://example.com", "example.com", 500)
-	handler := NewScheduledStatusesHandler(statusSvc, statusWriteSvc)
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewScheduledStatusesHandler(statusSvc, scheduledSvc)
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -225,13 +228,14 @@ func TestScheduledStatusesHandler_DELETEScheduledStatus(t *testing.T) {
 	st := testutil.NewFakeStore()
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, service.NewConversationService(st, statusSvc), "https://example.com", "example.com", 500)
-	handler := NewScheduledStatusesHandler(statusSvc, statusWriteSvc)
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewScheduledStatusesHandler(statusSvc, scheduledSvc)
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 

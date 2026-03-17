@@ -9,21 +9,18 @@ import (
 	"github.com/chairswithlegs/monstera/internal/store"
 )
 
-// TODO: the scheduled statuses and pending cards jobs run at a fixed batch size and cadence,
-// This means there is a potential for these jobs to fall behind if there is too much work to do.
-// We should consider adding a scaling mechanism (e.g. a fanout) to handle this.
-
 const (
-	// maxScheduledStatusesToProcess is the maximum number of scheduled statuses to process in a single batch.
 	scheduledStatusesBatchSize = 100
-	// maxPendingCardsToProcess is the maximum number of pending cards to process in a single batch.
-	pendingCardsBatchSize = 100
+	pendingCardsBatchSize      = 100
 )
 
-// ScheduledStatuses returns a handler that publishes all due scheduled statuses.
-func ScheduledStatuses(svc service.StatusWriteService) func(context.Context) error {
+// ScheduledStatuses returns a handler that publishes all due scheduled statuses,
+// processing in batches until no more are due.
+func ScheduledStatuses(svc service.ScheduledStatusService) func(context.Context) error {
 	return func(ctx context.Context) error {
-		return svc.PublishDueStatuses(ctx, scheduledStatusesBatchSize)
+		return drainBatches(ctx, scheduledStatusesBatchSize, func(ctx context.Context, limit int) (int, error) {
+			return svc.PublishDueStatuses(ctx, limit)
+		})
 	}
 }
 
@@ -35,14 +32,13 @@ func UpdateTrendingIndexes(svc service.TrendsService) func(ctx context.Context) 
 	}
 }
 
-// ProcessPendingCards returns a job handler that fetches link preview cards for recent statuses.
+// ProcessPendingCards returns a job handler that fetches link preview cards for
+// recent statuses, processing in batches until no more are pending.
 func ProcessPendingCards(svc service.CardService) func(context.Context) error {
 	return func(ctx context.Context) error {
-		_, err := svc.ProcessPendingCards(ctx, pendingCardsBatchSize)
-		if err != nil {
-			return fmt.Errorf("ProcessPendingCards: %w", err)
-		}
-		return nil
+		return drainBatches(ctx, pendingCardsBatchSize, func(ctx context.Context, limit int) (int, error) {
+			return svc.ProcessPendingCards(ctx, limit)
+		})
 	}
 }
 
@@ -51,5 +47,23 @@ func ProcessPendingCards(svc service.CardService) func(context.Context) error {
 func CleanupOutboxEvents(s store.Store, retention time.Duration) func(context.Context) error {
 	return func(ctx context.Context) error {
 		return s.DeletePublishedOutboxEventsBefore(ctx, time.Now().Add(-retention))
+	}
+}
+
+// drainBatches calls processFn repeatedly with the given batch size until a
+// batch returns fewer items than the limit (meaning the queue is drained) or
+// the context is cancelled.
+func drainBatches(ctx context.Context, batchSize int, processFn func(ctx context.Context, limit int) (int, error)) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("drainBatches: %w", err)
+		}
+		processed, err := processFn(ctx, batchSize)
+		if err != nil {
+			return err
+		}
+		if processed < batchSize {
+			return nil
+		}
 	}
 }

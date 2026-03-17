@@ -51,6 +51,7 @@ linters:
       - path: _test\.go
         linters:
           - gosec
+          - noctx
           - wrapcheck
       - path: internal/store/postgres/generated/
         linters:

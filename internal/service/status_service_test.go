@@ -15,6 +15,59 @@ import (
 
 const privatePostText = "private post"
 
+func TestStatusService_EnrichStatuses(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
+
+	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	created, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID:  acc.ID,
+		Text:       "Hello",
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+
+	enriched, err := statusSvc.EnrichStatuses(ctx, []*domain.Status{created.Status}, EnrichOpts{})
+	require.NoError(t, err)
+	require.Len(t, enriched, 1)
+	assert.Equal(t, created.Status.ID, enriched[0].Status.ID)
+	assert.Equal(t, "alice", enriched[0].Author.Username)
+	assert.Empty(t, enriched[0].Mentions)
+	assert.Empty(t, enriched[0].Tags)
+	assert.Empty(t, enriched[0].Media)
+	assert.Nil(t, enriched[0].Card)
+	assert.Nil(t, enriched[0].Poll)
+}
+
+func TestStatusService_EnrichStatuses_withIncludeCard(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
+
+	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	created, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID:  acc.ID,
+		Text:       "Hello https://example.com",
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+
+	enriched, err := statusSvc.EnrichStatuses(ctx, []*domain.Status{created.Status}, EnrichOpts{IncludeCard: true})
+	require.NoError(t, err)
+	require.Len(t, enriched, 1)
+	assert.Equal(t, created.Status.ID, enriched[0].Status.ID)
+	assert.NotNil(t, enriched[0].Author)
+}
+
 func TestStatusService_GetByID(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -80,43 +133,6 @@ func TestStatusService_GetByAPID(t *testing.T) {
 	})
 }
 
-func TestStatusService_IsBookmarked(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	fake := testutil.NewFakeStore()
-	accountSvc := NewAccountService(fake, "https://example.com")
-	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
-	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
-
-	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
-	require.NoError(t, err)
-	result, err := statusWriteSvc.Create(ctx, CreateStatusInput{
-		AccountID:  acc.ID,
-		Text:       "bookmarkable",
-		Visibility: domain.VisibilityPublic,
-	})
-	require.NoError(t, err)
-	statusID := result.Status.ID
-
-	t.Run("not bookmarked returns false", func(t *testing.T) {
-		ok, err := statusSvc.IsBookmarked(ctx, acc.ID, statusID)
-		require.NoError(t, err)
-		assert.False(t, ok)
-	})
-
-	t.Run("after bookmark returns true", func(t *testing.T) {
-		err := fake.CreateBookmark(ctx, store.CreateBookmarkInput{
-			ID:        uid.New(),
-			AccountID: acc.ID,
-			StatusID:  statusID,
-		})
-		require.NoError(t, err)
-		ok, err := statusSvc.IsBookmarked(ctx, acc.ID, statusID)
-		require.NoError(t, err)
-		assert.True(t, ok)
-	})
-}
-
 func TestStatusService_GetPoll(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -126,10 +142,10 @@ func TestStatusService_GetPoll(t *testing.T) {
 	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -184,17 +200,17 @@ func TestStatusService_GetScheduledStatus(t *testing.T) {
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 
 	alice, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	bob, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "bob",
-		Email:        "bob@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "bob",
+		Email:    "bob@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -310,10 +326,10 @@ func TestStatusService_ListQuotesOfStatus(t *testing.T) {
 	statusWriteSvc := NewStatusWriteService(fake, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	quotedID := uid.New()

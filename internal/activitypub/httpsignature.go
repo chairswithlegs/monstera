@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/chairswithlegs/monstera/internal/cache"
-	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
 )
@@ -49,19 +48,22 @@ type HTTPSignatureService interface {
 // httpSignatureService is the default in-package implementation of HTTPSignatureService.
 type httpSignatureService struct {
 	client         *http.Client
-	cache          cache.Store
+	sharedCache    cache.SharedStore // replay detection (cross-pod)
+	localCache     cache.Store       // public key cache (per-pod)
 	accountService service.AccountService
 	instanceBase   string
 }
 
-// NewHTTPSignatureService returns an HTTPSignatureService that builds its HTTP client from cfg.
-// When cfg.FederationInsecureSkipTLS is true, the client skips TLS verification (for development).
-func NewHTTPSignatureService(cfg *config.Config, c cache.Store, a service.AccountService) HTTPSignatureService {
+// NewHTTPSignatureService returns an HTTPSignatureService.
+// sharedCache is used for replay detection (must be shared across pods).
+// localCache is used for public key caching (per-pod in-memory is fine).
+func NewHTTPSignatureService(insecureSkipTLS bool, instanceBaseURL string, sharedCache cache.SharedStore, localCache cache.Store, a service.AccountService) HTTPSignatureService {
 	return &httpSignatureService{
-		client:         federationHTTPClient(cfg),
-		cache:          c,
+		client:         federationHTTPClient(insecureSkipTLS),
+		sharedCache:    sharedCache,
+		localCache:     localCache,
 		accountService: a,
-		instanceBase:   cfg.InstanceBaseURL(),
+		instanceBase:   instanceBaseURL,
 	}
 }
 
@@ -143,11 +145,11 @@ func (s *httpSignatureService) Verify(ctx context.Context, r *http.Request) (key
 	}
 
 	replayKey := replayCacheKey(sig.keyID, dateStr, requestTarget(r))
-	exists, _ := s.cache.Exists(ctx, replayKey)
+	exists, _ := s.sharedCache.Exists(ctx, replayKey)
 	if exists {
 		return "", errors.New("httpsig: replay detected")
 	}
-	_ = s.cache.Set(ctx, replayKey, []byte("1"), replayTTL)
+	_ = s.sharedCache.Set(ctx, replayKey, []byte("1"), replayTTL)
 
 	return sig.keyID, nil
 }
@@ -155,7 +157,7 @@ func (s *httpSignatureService) Verify(ctx context.Context, r *http.Request) (key
 // FetchRemotePublicKey returns the RSA public key for keyID, from cache or by fetching the actor document.
 func (s *httpSignatureService) FetchRemotePublicKey(ctx context.Context, keyID string) (*rsa.PublicKey, error) {
 	ck := pubKeyCacheKey(keyID)
-	b, err := s.cache.Get(ctx, ck)
+	b, err := s.localCache.Get(ctx, ck)
 	if err == nil {
 		block, _ := pem.Decode(b)
 		if block != nil {
@@ -166,7 +168,7 @@ func (s *httpSignatureService) FetchRemotePublicKey(ctx context.Context, keyID s
 				}
 			}
 		}
-		_ = s.cache.Delete(ctx, ck)
+		_ = s.localCache.Delete(ctx, ck)
 	}
 
 	pubKey, err := s.fetchFromRemote(ctx, keyID)
@@ -178,7 +180,7 @@ func (s *httpSignatureService) FetchRemotePublicKey(ctx context.Context, keyID s
 		return nil, fmt.Errorf("httpsignature: marshal public key: %w", err)
 	}
 	block := &pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}
-	_ = s.cache.Set(ctx, ck, pem.EncodeToMemory(block), pubkeyCacheTTL)
+	_ = s.localCache.Set(ctx, ck, pem.EncodeToMemory(block), pubkeyCacheTTL)
 	return pubKey, nil
 }
 
@@ -360,7 +362,7 @@ func sha256Sum(data []byte) []byte {
 
 // evictKey removes the cached key for keyID so the next FetchRemotePublicKey will refetch from remote.
 func (s *httpSignatureService) evictKey(ctx context.Context, keyID string) {
-	_ = s.cache.Delete(ctx, pubKeyCacheKey(keyID))
+	_ = s.localCache.Delete(ctx, pubKeyCacheKey(keyID))
 }
 
 func (s *httpSignatureService) fetchFromRemote(ctx context.Context, keyID string) (*rsa.PublicKey, error) {
@@ -415,8 +417,8 @@ func (s *httpSignatureService) fetchFromRemote(ctx context.Context, keyID string
 	return pk, nil
 }
 
-func federationHTTPClient(cfg *config.Config) *http.Client {
-	if cfg == nil || !cfg.FederationInsecureSkipTLS {
+func federationHTTPClient(insecureSkipTLS bool) *http.Client {
+	if !insecureSkipTLS {
 		return http.DefaultClient
 	}
 	return &http.Client{

@@ -80,12 +80,7 @@ func (svc *featuredTagService) DeleteFeaturedTag(ctx context.Context, accountID,
 }
 
 func (svc *featuredTagService) GetSuggestions(ctx context.Context, accountID string, limit int) ([]domain.Hashtag, []int64, error) {
-	if limit <= 0 {
-		limit = 10
-	}
-	if limit > 40 {
-		limit = 40
-	}
+	limit = ClampLimit(limit, 10, 40)
 	tags, counts, err := svc.store.ListFeaturedTagSuggestions(ctx, accountID, limit)
 	if err != nil {
 		return nil, nil, fmt.Errorf("ListFeaturedTagSuggestions: %w", err)

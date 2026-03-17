@@ -42,15 +42,15 @@ func TestWithAccountID_roundTrip(t *testing.T) {
 	assert.Equal(t, "01ARZ3NDEKTSV4RRFFQ69G5FAV", AccountIDFromContext(ctx))
 }
 
-func TestRequestIDMiddlware_GeneratesRequestID(t *testing.T) {
+func TestRequestIDMiddleware_GeneratesRequestID(t *testing.T) {
 	t.Parallel()
 
 	var ctx context.Context
-	handler := RequestIDMiddlware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequestIDMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		ctx = r.Context()
 	}))
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -65,7 +65,7 @@ func TestRequestLoggerMiddleware(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusCreated, rec.Code)

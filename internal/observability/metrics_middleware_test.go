@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,7 +26,7 @@ func TestMetricsMiddleware_incrementsCounter(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/01ABC", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/accounts/01ABC", nil)
 	rec := httptest.NewRecorder()
 
 	r.ServeHTTP(rec, req)

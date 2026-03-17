@@ -25,10 +25,10 @@ func TestReportsHandler_POSTReports(t *testing.T) {
 	handler := NewReportsHandler(moderationSvc, accountSvc, "example.com")
 
 	reporter, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "reporter",
-		Email:        "reporter@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "reporter",
+		Email:    "reporter@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	target, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "target"})

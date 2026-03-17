@@ -38,7 +38,7 @@ func (q *Queries) GetQuoteApproval(ctx context.Context, quotingStatusID string) 
 }
 
 const listQuotesOfStatus = `-- name: ListQuotesOfStatus :many
-SELECT s.id, s.uri, s.account_id, s.text, s.content, s.content_warning, s.visibility, s.language, s.in_reply_to_id, s.reblog_of_id, s.ap_id, s.ap_raw, s.sensitive, s.local, s.edited_at, s.replies_count, s.reblogs_count, s.favourites_count, s.created_at, s.updated_at, s.deleted_at, s.in_reply_to_account_id, s.conversation_id, s.quoted_status_id, s.quote_approval_policy, s.quotes_count FROM statuses s
+SELECT s.id, s.uri, s.account_id, s.text, s.content, s.content_warning, s.visibility, s.language, s.in_reply_to_id, s.reblog_of_id, s.ap_id, s.sensitive, s.local, s.edited_at, s.replies_count, s.reblogs_count, s.favourites_count, s.created_at, s.updated_at, s.deleted_at, s.in_reply_to_account_id, s.conversation_id, s.quoted_status_id, s.quote_approval_policy, s.quotes_count FROM statuses s
 INNER JOIN quote_approvals qa ON qa.quoting_status_id = s.id
 WHERE qa.quoted_status_id = $1 AND qa.revoked_at IS NULL AND s.deleted_at IS NULL
   AND ($2::text IS NULL OR s.id < $2)
@@ -73,7 +73,6 @@ func (q *Queries) ListQuotesOfStatus(ctx context.Context, arg ListQuotesOfStatus
 			&i.InReplyToID,
 			&i.ReblogOfID,
 			&i.ApID,
-			&i.ApRaw,
 			&i.Sensitive,
 			&i.Local,
 			&i.EditedAt,

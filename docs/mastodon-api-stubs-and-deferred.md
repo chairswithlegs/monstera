@@ -16,18 +16,18 @@ These endpoints are registered and return a valid response shape (typically an e
 
 ---
 
-## Deferred endpoints (no handler / 404)
+## Implemented (previously deferred)
 
-These Mastodon API endpoints are **not** registered. Requests return 404. They are documented as deferred or "optional later" in the plan or roadmap.
+These endpoints were previously deferred but are now fully implemented.
 
-| Method | Endpoint | Reason |
+| Method | Endpoint | Status |
 |--------|----------|--------|
-| GET | `/api/v1/push/subscription` | Web Push subscriptions not implemented. Plan §1.2: "optional later … push subscription". Roadmap: "Push notification subscriptions (Web Push)" — medium effort; requires VAPID, subscription storage, and push delivery. |
-| POST | `/api/v1/push/subscription` | Same as above. |
-| PUT | `/api/v1/push/subscription` | Same as above. |
-| DELETE | `/api/v1/push/subscription` | Same as above. |
+| GET | `/api/v1/push/subscription` | Implemented — returns the current Web Push subscription for the access token, or 404 if none exists. |
+| POST | `/api/v1/push/subscription` | Implemented — creates a Web Push subscription with VAPID. |
+| PUT | `/api/v1/push/subscription` | Implemented — updates alert preferences and policy. |
+| DELETE | `/api/v1/push/subscription` | Implemented — removes the subscription. |
 
-**Note:** Mastodon documents that GET returns the current subscription or 404 when none exists. Returning 404 for GET is therefore valid when push is unsupported; some clients may still request it and need to handle 404.
+See [07-notifications-and-push.md](architecture/07-notifications-and-push.md) for the architecture of the Web Push delivery pipeline.
 
 ---
 

@@ -15,6 +15,91 @@ When helping with Mastodon API tasks:
 
 ---
 
+## Monstera Codebase Conventions
+
+When working on Mastodon API code in Monstera, follow these codebase-specific conventions. These reflect the current project structure after the service decomposition refactoring.
+
+### Handler package layout
+
+Handlers live in `internal/api/mastodon/`. Large handlers are split into `{resource}_{concern}.go` files:
+
+```
+internal/api/mastodon/
+├── statuses.go              # StatusesHandler — core CRUD and reads
+├── statuses_actions.go      # Reblog, favourite, bookmark, pin actions
+├── statuses_context.go      # Thread context endpoint
+├── accounts.go              # AccountsHandler — core account endpoints
+├── accounts_relationships.go # Follow, block, mute relationship actions
+├── accounts_tags.go         # Hashtag follow/unfollow via TagFollowService
+├── conversations.go         # Conversations endpoints
+├── streaming.go             # SSE streaming endpoint
+├── polls.go                 # Poll vote endpoint
+├── scheduled_statuses.go    # Scheduled status CRUD
+├── helpers.go               # Shared request parsing helpers
+├── apimodel/                # Response DTOs and domain→API conversion
+│   ├── account.go           # Account and Relationship entities
+│   ├── status.go            # Status entity (with viewer-relative fields)
+│   └── status_test.go
+└── sse/                     # SSE streaming infrastructure
+    ├── hub.go               # Hub fans out NATS core pub/sub to SSE clients
+    ├── subscriber.go        # Consumes DOMAIN_EVENTS stream → publishes SSE events
+    └── event.go             # SSEEvent wire format and NATS subject constants
+```
+
+### Service decomposition
+
+Handlers depend on decomposed service interfaces — each handler takes only the services it needs:
+
+| Service | Purpose | Used by |
+|---------|---------|---------|
+| `StatusService` | Read-only lookups + `EnrichStatuses` for hydration | StatusesHandler, TimelineHandler, SearchHandler |
+| `StatusWriteService` | Local status CRUD (Create, Update, Delete) | StatusesHandler |
+| `StatusInteractionService` | User-initiated interactions (Reblog, Favourite, Bookmark, Pin, RecordVote) | StatusesHandler (actions), PollsHandler |
+| `RemoteStatusWriteService` | Federation-only — not used by API handlers | — |
+| `ScheduledStatusService` | Scheduled status CRUD (Create, Update, Delete, PublishDueStatuses) | ScheduledStatusesHandler |
+| `FollowService` | Local follow/unfollow/block/mute | AccountsHandler (relationships) |
+| `RemoteFollowService` | Federation-only — not used by API handlers | — |
+| `TagFollowService` | Hashtag follow/unfollow (FollowTag, UnfollowTag, ListFollowedTags) | AccountsHandler (tags) |
+| `AccountService` | Account lookups and updates | AccountsHandler, auth middleware |
+| `ConversationService` | Direct message conversations | ConversationsHandler |
+
+### Centralized status enrichment
+
+`StatusService.EnrichStatuses(ctx, statuses, opts)` is the canonical way to hydrate statuses with accounts, mentions, tags, media, and viewer-relative flags. Use `EnrichOpts` to control optional fields:
+
+```go
+enriched, err := svc.statuses.EnrichStatuses(ctx, statuses, service.EnrichOpts{
+    IncludeCard: true,
+    IncludePoll: true,
+    ViewerID:    &accountID,
+})
+```
+
+Never duplicate enrichment logic in handlers or other services — delegate to `EnrichStatuses`.
+
+### SSE streaming
+
+SSE infrastructure lives in `internal/api/mastodon/sse/` (not `internal/events/sse/`). The package contains:
+- **Hub**: Manages SSE client connections, fans out NATS core pub/sub messages to connected clients
+- **Subscriber**: Consumes domain events from the `DOMAIN_EVENTS` NATS stream (consumer: `events.ConsumerSSE`) and publishes formatted SSE events to NATS core subjects
+- **Event**: Wire format (`SSEEvent`), NATS subject constants, and stream-key mapping
+
+The streaming handler in `streaming.go` connects clients to the Hub via `Hub.Subscribe(ctx, streamKey)`.
+
+### Account entity — new fields
+
+The `domain.Account` type includes:
+- `ProfileURL` — human-readable profile page URL (from AP Actor `url` field for remote accounts; computed at render time for local accounts)
+- `Fields` — `json.RawMessage` of profile metadata parsed from AP `PropertyValue` attachments: `[{"name":"...","value":"..."}]`
+
+These are mapped to the Mastodon Account entity's `url` and `fields` arrays in `apimodel`.
+
+### NATS package
+
+NATS utilities live in `internal/natsutil` (not `internal/nats`). This package provides `Client`, `Publisher`, `Subscriber`, and `Subscription` interfaces.
+
+---
+
 ## Reference Docs
 
 | Resource | URL |
@@ -198,9 +283,20 @@ The most-referenced entity. Get this shape right — clients use it everywhere.
   "statuses_count": 100,
   "last_status_at": "2024-06-01",       ← date string, not datetime
   "emojis": [],
-  "fields": []
+  "fields": [                          ← array of {name, value, verified_at} objects
+    {
+      "name": "Website",
+      "value": "<a href=\"https://example.com\">example.com</a>",
+      "verified_at": null
+    }
+  ]
 }
 ```
+
+> **`fields`**: Array of profile metadata fields. Each has `name` (string), `value` (HTML string),
+> and `verified_at` (ISO 8601 datetime or `null`). In Monstera, fields are stored as `json.RawMessage`
+> on `domain.Account.Fields` (parsed from AP `PropertyValue` attachments). The `verified_at` is always
+> `null` for remote accounts since only the originating server can verify link ownership.
 
 ### `GET /api/v1/verify_credentials`
 
@@ -364,6 +460,10 @@ data:
 - Write `200 OK` and flush before waiting for events — don't block on first event
 - Send a heartbeat comment (`: thump\n\n`) every ~15 seconds to keep the connection alive through proxies
 - Subscribe the connection to the appropriate pub/sub channel for the requested stream type
+
+> **Monstera note**: SSE infrastructure lives in `internal/api/mastodon/sse/`. The `Hub` manages
+> client connections using NATS core pub/sub for fan-out. The `Subscriber` consumes from the
+> `DOMAIN_EVENTS` NATS JetStream and publishes formatted SSE events to NATS core subjects.
 
 ### WebSocket
 

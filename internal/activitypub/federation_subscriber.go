@@ -9,10 +9,9 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/chairswithlegs/monstera/internal/activitypub/blocklist"
 	"github.com/chairswithlegs/monstera/internal/activitypub/internal"
 	"github.com/chairswithlegs/monstera/internal/activitypub/vocab"
-	"github.com/chairswithlegs/monstera/internal/config"
+	"github.com/chairswithlegs/monstera/internal/blocklist"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/events"
 	"github.com/chairswithlegs/monstera/internal/service"
@@ -23,40 +22,47 @@ import (
 // translates them into ActivityPub activities, and sends them to the outbox workers
 // for delivery and fanout.
 type FederationSubscriber struct {
-	js       jetstream.JetStream
-	fanout   internal.OutboxFanoutWorker
-	delivery internal.OutboxDeliveryWorker
-	cfg      *config.Config
+	js              jetstream.JetStream
+	fanout          internal.OutboxFanoutWorker
+	delivery        internal.OutboxDeliveryWorker
+	instanceBaseURL string
+	instanceDomain  string
 }
 
 // NewFederationSubscriber creates a federation subscriber.
 func NewFederationSubscriber(
 	js jetstream.JetStream,
-	followers service.FollowService,
+	followers service.RemoteFollowService,
 	bl *blocklist.BlocklistCache,
 	signer HTTPSignatureService,
-	cfg *config.Config,
+	instanceBaseURL string,
+	instanceDomain string,
+	appEnv string,
+	insecureSkipTLS bool,
+	workerConcurrency int,
 ) *FederationSubscriber {
-	delivery := internal.NewOutboxDeliveryWorker(js, bl, signer, cfg)
-	fanout := internal.NewOutboxFanoutWorker(js, followers, delivery, cfg)
+	delivery := internal.NewOutboxDeliveryWorker(js, bl, signer, appEnv, insecureSkipTLS, workerConcurrency)
+	fanout := internal.NewOutboxFanoutWorker(js, followers, delivery, workerConcurrency)
 
 	return &FederationSubscriber{
-		js:       js,
-		delivery: delivery,
-		fanout:   fanout,
-		cfg:      cfg,
+		js:              js,
+		delivery:        delivery,
+		fanout:          fanout,
+		instanceBaseURL: instanceBaseURL,
+		instanceDomain:  instanceDomain,
 	}
 }
 
 // Start subscribes to the domain-events-federation consumer and processes
 // messages via the outbox workers until ctx is cancelled.
 func (s *FederationSubscriber) Start(ctx context.Context) error {
-	// Start the outbox workers
 	go func() {
 		errc := make(chan error, 2)
 		go func() { errc <- s.delivery.Start(ctx) }()
 		go func() { errc <- s.fanout.Start(ctx) }()
-		<-errc
+		if err := <-errc; err != nil && ctx.Err() == nil {
+			slog.ErrorContext(ctx, "federation subscriber: outbox worker failed", slog.Any("error", err))
+		}
 	}()
 
 	// Start the federation consumer
@@ -65,7 +71,7 @@ func (s *FederationSubscriber) Start(ctx context.Context) error {
 		return fmt.Errorf("federation subscriber: get consumer: %w", err)
 	}
 
-	slog.Info("federation subscriber started",
+	slog.InfoContext(ctx, "federation subscriber started",
 		slog.String("consumer", events.ConsumerFederation),
 	)
 
@@ -77,7 +83,7 @@ func (s *FederationSubscriber) Start(ctx context.Context) error {
 		jetstream.PullExpiry(5*time.Second),
 		jetstream.ConsumeErrHandler(func(_ jetstream.ConsumeContext, err error) {
 			if ctx.Err() == nil {
-				slog.Warn("federation subscriber consume error", slog.Any("error", err))
+				slog.WarnContext(ctx, "federation subscriber consume error", slog.Any("error", err))
 			}
 		}),
 	)
@@ -86,16 +92,22 @@ func (s *FederationSubscriber) Start(ctx context.Context) error {
 	}
 
 	<-ctx.Done()
-	slog.Info("federation subscriber stopping")
+	slog.InfoContext(ctx, "federation subscriber stopping")
 	consCtx.Stop()
 	<-consCtx.Closed()
 	return nil
 }
 
 func (s *FederationSubscriber) processMessage(ctx context.Context, msg jetstream.Msg) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.ErrorContext(ctx, "federation subscriber: panic in processMessage", slog.Any("panic", r), slog.String("subject", msg.Subject()))
+			_ = msg.Nak()
+		}
+	}()
 	var event domain.DomainEvent
 	if err := json.Unmarshal(msg.Data(), &event); err != nil {
-		slog.Warn("federation subscriber: invalid event payload", slog.Any("error", err))
+		slog.WarnContext(ctx, "federation subscriber: invalid event payload", slog.Any("error", err))
 		_ = msg.Ack()
 		return
 	}
@@ -120,8 +132,17 @@ func (s *FederationSubscriber) processMessage(ctx context.Context, msg jetstream
 		err = s.handleBlockRemoved(ctx, event)
 	case domain.EventAccountUpdated:
 		err = s.handleAccountUpdated(ctx, event)
+	case domain.EventReblogCreated:
+		err = s.handleReblogCreated(ctx, event)
+	case domain.EventReblogRemoved:
+		err = s.handleReblogRemoved(ctx, event)
+	case domain.EventFavouriteCreated:
+		err = s.handleFavouriteCreated(ctx, event)
+	case domain.EventFavouriteRemoved:
+		err = s.handleFavouriteRemoved(ctx, event)
 	case domain.EventStatusCreatedRemote,
 		domain.EventStatusDeletedRemote,
+		domain.EventStatusUpdatedRemote,
 		domain.EventNotificationCreated:
 		// SSE-only events — ACK and skip.
 	default:
@@ -146,8 +167,21 @@ func (s *FederationSubscriber) handleStatusCreated(ctx context.Context, event do
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal status.created payload: %w", err)
 	}
-	base := s.cfg.InstanceBaseURL()
-	note := vocab.StatusToNote(payload.Status, payload.Author, base)
+	if payload.Author == nil || payload.Author.Domain != nil {
+		return nil
+	}
+	note, err := vocab.LocalStatusToNote(vocab.LocalStatusToNoteInput{
+		Status:       payload.Status,
+		Author:       payload.Author,
+		InstanceBase: s.instanceBaseURL,
+		Mentions:     payload.Mentions,
+		Tags:         payload.Tags,
+		Media:        payload.Media,
+		ParentAPID:   payload.ParentAPID,
+	})
+	if err != nil {
+		return fmt.Errorf("local status to note: %w", err)
+	}
 	activityID := s.statusActivityID(payload.Status)
 	create, err := vocab.NewCreateNoteActivity(activityID, note)
 	if err != nil {
@@ -181,9 +215,9 @@ func (s *FederationSubscriber) handleStatusDeleted(ctx context.Context, event do
 		objectID = payload.URI
 	}
 	if objectID == "" {
-		objectID = fmt.Sprintf("%s/statuses/%s", s.cfg.InstanceBaseURL(), payload.StatusID)
+		objectID = fmt.Sprintf("%s/statuses/%s", s.instanceBaseURL, payload.StatusID)
 	}
-	actorID := vocab.AccountActorID(payload.Author, s.cfg.InstanceBaseURL())
+	actorID := vocab.AccountActorID(payload.Author, s.instanceBaseURL)
 	deleteAct, err := vocab.NewDeleteActivity(objectID+"#delete", actorID, objectID)
 	if err != nil {
 		return fmt.Errorf("new delete activity: %w", err)
@@ -208,10 +242,23 @@ func (s *FederationSubscriber) handleStatusUpdated(ctx context.Context, event do
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal status.updated payload: %w", err)
 	}
-	base := s.cfg.InstanceBaseURL()
-	note := vocab.StatusToNote(payload.Status, payload.Author, base)
+	if payload.Author == nil || payload.Author.Domain != nil {
+		return nil
+	}
+	note, err := vocab.LocalStatusToNote(vocab.LocalStatusToNoteInput{
+		Status:       payload.Status,
+		Author:       payload.Author,
+		InstanceBase: s.instanceBaseURL,
+		Mentions:     payload.Mentions,
+		Tags:         payload.Tags,
+		Media:        payload.Media,
+		ParentAPID:   payload.ParentAPID,
+	})
+	if err != nil {
+		return fmt.Errorf("local status to note: %w", err)
+	}
 	activityID := s.statusActivityID(payload.Status)
-	actorID := vocab.AccountActorID(payload.Author, base)
+	actorID := vocab.AccountActorID(payload.Author, s.instanceBaseURL)
 	update, err := vocab.NewUpdateNoteActivity(activityID+"#update", actorID, note)
 	if err != nil {
 		return fmt.Errorf("wrap update: %w", err)
@@ -236,10 +283,10 @@ func (s *FederationSubscriber) handleFollowCreated(ctx context.Context, event do
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal follow.created payload: %w", err)
 	}
-	if payload.Target.InboxURL == "" {
+	if payload.Actor == nil || payload.Actor.Domain != nil {
 		return nil
 	}
-	base := s.cfg.InstanceBaseURL()
+	base := s.instanceBaseURL
 	actorID := vocab.AccountActorID(payload.Actor, base)
 	targetID := vocab.AccountActorID(payload.Target, base)
 	activityID := fmt.Sprintf("%s/activities/%s", base, payload.Follow.ID)
@@ -268,10 +315,10 @@ func (s *FederationSubscriber) handleFollowRemoved(ctx context.Context, event do
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal follow.removed payload: %w", err)
 	}
-	if payload.Target.InboxURL == "" {
+	if payload.Actor == nil || payload.Actor.Domain != nil {
 		return nil
 	}
-	base := s.cfg.InstanceBaseURL()
+	base := s.instanceBaseURL
 	actorID := vocab.AccountActorID(payload.Actor, base)
 	targetID := vocab.AccountActorID(payload.Target, base)
 	followActivityID := fmt.Sprintf("%s/activities/%s", base, payload.FollowID)
@@ -305,10 +352,10 @@ func (s *FederationSubscriber) handleFollowAccepted(ctx context.Context, event d
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal follow.accepted payload: %w", err)
 	}
-	if payload.Actor.InboxURL == "" {
+	if payload.Target == nil || payload.Target.Domain != nil {
 		return nil
 	}
-	base := s.cfg.InstanceBaseURL()
+	base := s.instanceBaseURL
 	targetID := vocab.AccountActorID(payload.Target, base)
 	actorID := vocab.AccountActorID(payload.Actor, base)
 	followActivityID := fmt.Sprintf("%s/activities/%s", base, payload.Follow.ID)
@@ -342,10 +389,10 @@ func (s *FederationSubscriber) handleBlockCreated(ctx context.Context, event dom
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal block.created payload: %w", err)
 	}
-	if payload.Target.InboxURL == "" {
+	if payload.Actor == nil || payload.Actor.Domain != nil {
 		return nil
 	}
-	base := s.cfg.InstanceBaseURL()
+	base := s.instanceBaseURL
 	actorID := vocab.AccountActorID(payload.Actor, base)
 	targetID := vocab.AccountActorID(payload.Target, base)
 	activityID := fmt.Sprintf("%s/activities/%s", base, uid.New())
@@ -374,10 +421,10 @@ func (s *FederationSubscriber) handleBlockRemoved(ctx context.Context, event dom
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal block.removed payload: %w", err)
 	}
-	if payload.Target.InboxURL == "" {
+	if payload.Actor == nil || payload.Actor.Domain != nil {
 		return nil
 	}
-	base := s.cfg.InstanceBaseURL()
+	base := s.instanceBaseURL
 	actorID := vocab.AccountActorID(payload.Actor, base)
 	targetID := vocab.AccountActorID(payload.Target, base)
 	blockID := fmt.Sprintf("%s/activities/block-%s-%s", base, payload.Actor.ID, payload.Target.ID)
@@ -411,9 +458,12 @@ func (s *FederationSubscriber) handleAccountUpdated(ctx context.Context, event d
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal account.updated payload: %w", err)
 	}
-	actor := vocab.AccountToActor(payload.Account, s.cfg.InstanceDomain)
+	if payload.Account == nil || payload.Account.Domain != nil {
+		return nil
+	}
+	actor := vocab.AccountToActor(payload.Account, s.instanceDomain)
 	actorID := actor.ID
-	activityID := fmt.Sprintf("%s/activities/%s", s.cfg.InstanceBaseURL(), uid.New())
+	activityID := fmt.Sprintf("%s/activities/%s", s.instanceBaseURL, uid.New())
 	update, err := vocab.NewUpdateActorActivity(activityID, actorID, actor)
 	if err != nil {
 		return fmt.Errorf("wrap update actor: %w", err)
@@ -433,6 +483,175 @@ func (s *FederationSubscriber) handleAccountUpdated(ctx context.Context, event d
 	return nil
 }
 
+func (s *FederationSubscriber) handleReblogCreated(ctx context.Context, event domain.DomainEvent) error {
+	var payload domain.ReblogCreatedPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return fmt.Errorf("unmarshal reblog.created payload: %w", err)
+	}
+	if payload.FromAccount == nil || payload.FromAccount.Domain != nil {
+		return nil
+	}
+	if payload.OriginalStatusAPID == "" {
+		return nil
+	}
+	base := s.instanceBaseURL
+	actorID := vocab.AccountActorID(payload.FromAccount, base)
+	followersURL := vocab.AccountFollowersURL(payload.FromAccount, base)
+	activityID := fmt.Sprintf("%s/activities/%s", base, uid.New())
+	announce, err := vocab.NewAnnounceActivity(
+		activityID, actorID, payload.OriginalStatusAPID,
+		[]string{vocab.PublicAddress}, []string{followersURL},
+	)
+	if err != nil {
+		return fmt.Errorf("new announce activity: %w", err)
+	}
+	raw, err := json.Marshal(announce)
+	if err != nil {
+		return fmt.Errorf("marshal announce: %w", err)
+	}
+	if payload.OriginalAuthor != nil && payload.OriginalAuthor.InboxURL != "" && payload.OriginalAuthor.Domain != nil {
+		err = s.delivery.Publish(ctx, "announce", internal.OutboxDeliveryMessage{
+			ActivityID:  activityID,
+			Activity:    raw,
+			TargetInbox: payload.OriginalAuthor.InboxURL,
+			SenderID:    payload.FromAccount.ID,
+		})
+		if err != nil {
+			return fmt.Errorf("publish announce to original author: %w", err)
+		}
+	}
+	err = s.fanout.Publish(ctx, "announce", internal.OutboxFanoutMessage{
+		ActivityID: activityID,
+		Activity:   raw,
+		SenderID:   payload.FromAccount.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("publish announce fanout: %w", err)
+	}
+	return nil
+}
+
+func (s *FederationSubscriber) handleFavouriteCreated(ctx context.Context, event domain.DomainEvent) error {
+	var payload domain.FavouriteCreatedPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return fmt.Errorf("unmarshal favourite.created payload: %w", err)
+	}
+	if payload.FromAccount == nil || payload.FromAccount.Domain != nil {
+		return nil
+	}
+	if payload.StatusAuthor == nil || payload.StatusAuthor.InboxURL == "" || payload.StatusAuthor.Domain == nil {
+		return nil
+	}
+	if payload.StatusAPID == "" {
+		return nil
+	}
+	base := s.instanceBaseURL
+	actorID := vocab.AccountActorID(payload.FromAccount, base)
+	statusAuthorIRI := vocab.AccountActorID(payload.StatusAuthor, base)
+	activityID := fmt.Sprintf("%s/activities/%s", base, uid.New())
+	like, err := vocab.NewLikeActivity(activityID, actorID, payload.StatusAPID, []string{statusAuthorIRI})
+	if err != nil {
+		return fmt.Errorf("new like activity: %w", err)
+	}
+	raw, err := json.Marshal(like)
+	if err != nil {
+		return fmt.Errorf("marshal like: %w", err)
+	}
+	err = s.delivery.Publish(ctx, "like", internal.OutboxDeliveryMessage{
+		ActivityID:  activityID,
+		Activity:    raw,
+		TargetInbox: payload.StatusAuthor.InboxURL,
+		SenderID:    payload.FromAccount.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("publish like: %w", err)
+	}
+	return nil
+}
+
+func (s *FederationSubscriber) handleReblogRemoved(ctx context.Context, event domain.DomainEvent) error {
+	var payload domain.ReblogRemovedPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return fmt.Errorf("unmarshal reblog.removed payload: %w", err)
+	}
+	if payload.FromAccount == nil || payload.FromAccount.Domain != nil {
+		return nil
+	}
+	if payload.OriginalStatusAPID == "" {
+		return nil
+	}
+	base := s.instanceBaseURL
+	actorID := vocab.AccountActorID(payload.FromAccount, base)
+	followersURL := vocab.AccountFollowersURL(payload.FromAccount, base)
+	announceID := fmt.Sprintf("%s/activities/%s", base, payload.ReblogStatusID)
+	inner, err := vocab.NewAnnounceActivity(
+		announceID, actorID, payload.OriginalStatusAPID,
+		[]string{vocab.PublicAddress}, []string{followersURL},
+	)
+	if err != nil {
+		return fmt.Errorf("new announce for undo: %w", err)
+	}
+	undoID := fmt.Sprintf("%s/activities/undo-%s", base, payload.ReblogStatusID)
+	undo, err := vocab.NewUndoActivity(undoID, actorID, inner)
+	if err != nil {
+		return fmt.Errorf("new undo announce activity: %w", err)
+	}
+	raw, err := json.Marshal(undo)
+	if err != nil {
+		return fmt.Errorf("marshal undo announce: %w", err)
+	}
+	if err := s.fanout.Publish(ctx, "undo", internal.OutboxFanoutMessage{
+		ActivityID: undoID,
+		Activity:   raw,
+		SenderID:   payload.FromAccount.ID,
+	}); err != nil {
+		return fmt.Errorf("publish undo announce: %w", err)
+	}
+	return nil
+}
+
+func (s *FederationSubscriber) handleFavouriteRemoved(ctx context.Context, event domain.DomainEvent) error {
+	var payload domain.FavouriteRemovedPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return fmt.Errorf("unmarshal favourite.removed payload: %w", err)
+	}
+	if payload.FromAccount == nil || payload.FromAccount.Domain != nil {
+		return nil
+	}
+	if payload.StatusAPID == "" {
+		return nil
+	}
+	if payload.StatusAuthor == nil || payload.StatusAuthor.InboxURL == "" || payload.StatusAuthor.Domain == nil {
+		return nil
+	}
+	base := s.instanceBaseURL
+	actorID := vocab.AccountActorID(payload.FromAccount, base)
+	statusAuthorIRI := vocab.AccountActorID(payload.StatusAuthor, base)
+	likeID := fmt.Sprintf("%s/activities/like-%s-%s", base, payload.AccountID, payload.StatusID)
+	inner, err := vocab.NewLikeActivity(likeID, actorID, payload.StatusAPID, []string{statusAuthorIRI})
+	if err != nil {
+		return fmt.Errorf("new like for undo: %w", err)
+	}
+	undoID := fmt.Sprintf("%s/activities/undo-like-%s-%s", base, payload.AccountID, payload.StatusID)
+	undo, err := vocab.NewUndoActivity(undoID, actorID, inner)
+	if err != nil {
+		return fmt.Errorf("new undo like activity: %w", err)
+	}
+	raw, err := json.Marshal(undo)
+	if err != nil {
+		return fmt.Errorf("marshal undo like: %w", err)
+	}
+	if err := s.delivery.Publish(ctx, "undo", internal.OutboxDeliveryMessage{
+		ActivityID:  undoID,
+		Activity:    raw,
+		TargetInbox: payload.StatusAuthor.InboxURL,
+		SenderID:    payload.FromAccount.ID,
+	}); err != nil {
+		return fmt.Errorf("publish undo like: %w", err)
+	}
+	return nil
+}
+
 // statusActivityID derives an activity ID from a status.
 func (s *FederationSubscriber) statusActivityID(status *domain.Status) string {
 	if status.APID != "" {
@@ -441,5 +660,5 @@ func (s *FederationSubscriber) statusActivityID(status *domain.Status) string {
 	if status.URI != "" {
 		return status.URI
 	}
-	return fmt.Sprintf("%s/activities/%s", s.cfg.InstanceBaseURL(), uid.New())
+	return fmt.Sprintf("%s/activities/%s", s.instanceBaseURL, uid.New())
 }

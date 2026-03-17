@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/chairswithlegs/monstera/internal/cache"
-	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/oauth"
 	"github.com/chairswithlegs/monstera/internal/service"
@@ -35,13 +34,12 @@ func TestHandler_POSTRegisterApp(t *testing.T) {
 	c, err := cache.New(cache.Config{Driver: "memory"})
 	require.NoError(t, err)
 	defer func() { _ = c.Close() }()
-	srv := oauth.NewServer(st, c, nil)
-	cfg := &config.Config{InstanceDomain: "example.com", MonsteraUiUrl: mustParseURL("https://ui.example.com")}
+	srv := oauth.NewServer(st, c, "")
 	authSvc := service.NewAuthService(st, "ui.example.com", oauth.MONSTERA_UI_APPLICATION_ID)
-	h := NewHandler(srv, authSvc, cfg)
+	h := NewHandler(srv, authSvc, mustParseURL("https://ui.example.com"))
 
 	t.Run("invalid JSON returns 400", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/apps", bytes.NewReader([]byte("not json")))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/apps", bytes.NewReader([]byte("not json")))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		h.POSTRegisterApp(rec, req)
@@ -51,7 +49,7 @@ func TestHandler_POSTRegisterApp(t *testing.T) {
 	t.Run("missing client_name returns 400", func(t *testing.T) {
 		body := map[string]string{"redirect_uris": "https://app.example/cb", "scopes": "read"}
 		enc, _ := json.Marshal(body)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/apps", bytes.NewReader(enc))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/apps", bytes.NewReader(enc))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		h.POSTRegisterApp(rec, req)
@@ -61,7 +59,7 @@ func TestHandler_POSTRegisterApp(t *testing.T) {
 	t.Run("missing redirect_uris returns 400", func(t *testing.T) {
 		body := map[string]string{"client_name": "My App", "scopes": "read"}
 		enc, _ := json.Marshal(body)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/apps", bytes.NewReader(enc))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/apps", bytes.NewReader(enc))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		h.POSTRegisterApp(rec, req)
@@ -76,7 +74,7 @@ func TestHandler_POSTRegisterApp(t *testing.T) {
 			"website":       "https://app.example",
 		}
 		enc, _ := json.Marshal(body)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/apps", bytes.NewReader(enc))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/apps", bytes.NewReader(enc))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		h.POSTRegisterApp(rec, req)
@@ -90,7 +88,7 @@ func TestHandler_POSTRegisterApp(t *testing.T) {
 
 	t.Run("happy path form returns 200", func(t *testing.T) {
 		form := "client_name=Form+App&redirect_uris=https://form.example/cb&scopes=read"
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/apps", bytes.NewReader([]byte(form)))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/apps", bytes.NewReader([]byte(form)))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rec := httptest.NewRecorder()
 		h.POSTRegisterApp(rec, req)
@@ -109,20 +107,19 @@ func TestHandler_GETAuthorize(t *testing.T) {
 	c, err := cache.New(cache.Config{Driver: "memory"})
 	require.NoError(t, err)
 	defer func() { _ = c.Close() }()
-	srv := oauth.NewServer(st, c, nil)
-	cfg := &config.Config{InstanceDomain: "example.com", MonsteraUiUrl: mustParseURL("https://ui.example.com")}
+	srv := oauth.NewServer(st, c, "")
 	authSvc := service.NewAuthService(st, "ui.example.com", oauth.MONSTERA_UI_APPLICATION_ID)
-	h := NewHandler(srv, authSvc, cfg)
+	h := NewHandler(srv, authSvc, mustParseURL("https://ui.example.com"))
 
 	t.Run("response_type not code returns 400", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=token&client_id=foo&redirect_uri=https://app.example/cb", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/oauth/authorize?response_type=token&client_id=foo&redirect_uri=https://app.example/cb", nil)
 		rec := httptest.NewRecorder()
 		h.GETAuthorize(rec, req)
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
 	})
 
 	t.Run("invalid client_id returns 400", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=nonexistent&redirect_uri=https://app.example/cb", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/oauth/authorize?response_type=code&client_id=nonexistent&redirect_uri=https://app.example/cb", nil)
 		rec := httptest.NewRecorder()
 		h.GETAuthorize(rec, req)
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -141,7 +138,7 @@ func TestHandler_GETAuthorize(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, app)
 
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id="+app.ClientID+"&redirect_uri=https://app.example/cb&state=xyz", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/oauth/authorize?response_type=code&client_id="+app.ClientID+"&redirect_uri=https://app.example/cb&state=xyz", nil)
 		rec := httptest.NewRecorder()
 		h.GETAuthorize(rec, req)
 		assert.Equal(t, http.StatusFound, rec.Code)
@@ -160,13 +157,12 @@ func TestHandler_POSTToken(t *testing.T) {
 	c, err := cache.New(cache.Config{Driver: "memory"})
 	require.NoError(t, err)
 	defer func() { _ = c.Close() }()
-	srv := oauth.NewServer(st, c, nil)
-	cfg := &config.Config{InstanceDomain: "example.com"}
+	srv := oauth.NewServer(st, c, "")
 	authSvc := service.NewAuthService(st, "", "")
-	h := NewHandler(srv, authSvc, cfg)
+	h := NewHandler(srv, authSvc, nil)
 
 	t.Run("invalid JSON returns 400", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", bytes.NewReader([]byte("not json")))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/oauth/token", bytes.NewReader([]byte("not json")))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		h.POSTToken(rec, req)
@@ -176,7 +172,7 @@ func TestHandler_POSTToken(t *testing.T) {
 	t.Run("unsupported grant_type returns 400", func(t *testing.T) {
 		body := map[string]string{"grant_type": "password", "client_id": "c", "client_secret": "s"}
 		enc, _ := json.Marshal(body)
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", bytes.NewReader(enc))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/oauth/token", bytes.NewReader(enc))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		h.POSTToken(rec, req)
@@ -196,7 +192,7 @@ func TestHandler_POSTToken(t *testing.T) {
 		require.NoError(t, err)
 
 		form := "grant_type=client_credentials&client_id=" + app.ClientID + "&client_secret=" + app.ClientSecret + "&scope=read"
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", bytes.NewReader([]byte(form)))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/oauth/token", bytes.NewReader([]byte(form)))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rec := httptest.NewRecorder()
 		h.POSTToken(rec, req)
@@ -214,13 +210,12 @@ func TestHandler_POSTRevoke(t *testing.T) {
 	c, err := cache.New(cache.Config{Driver: "memory"})
 	require.NoError(t, err)
 	defer func() { _ = c.Close() }()
-	srv := oauth.NewServer(st, c, nil)
-	cfg := &config.Config{InstanceDomain: "example.com"}
+	srv := oauth.NewServer(st, c, "")
 	authSvc := service.NewAuthService(st, "", "")
-	h := NewHandler(srv, authSvc, cfg)
+	h := NewHandler(srv, authSvc, nil)
 
 	t.Run("missing token returns 422", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/oauth/revoke", bytes.NewReader([]byte("")))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/oauth/revoke", bytes.NewReader([]byte("")))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rec := httptest.NewRecorder()
 		h.POSTRevoke(rec, req)
@@ -228,7 +223,7 @@ func TestHandler_POSTRevoke(t *testing.T) {
 	})
 
 	t.Run("happy path returns 200", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/oauth/revoke", bytes.NewReader([]byte("token=some-token")))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/oauth/revoke", bytes.NewReader([]byte("token=some-token")))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rec := httptest.NewRecorder()
 		h.POSTRevoke(rec, req)
@@ -243,10 +238,9 @@ func TestHandler_POSTLogin(t *testing.T) {
 	c, err := cache.New(cache.Config{Driver: "memory"})
 	require.NoError(t, err)
 	defer func() { _ = c.Close() }()
-	srv := oauth.NewServer(st, c, nil)
-	cfg := &config.Config{InstanceDomain: "example.com"}
+	srv := oauth.NewServer(st, c, "")
 	authSvc := service.NewAuthService(st, "", "")
-	h := NewHandler(srv, authSvc, cfg)
+	h := NewHandler(srv, authSvc, nil)
 
 	app, err := st.CreateApplication(ctx, store.CreateApplicationInput{
 		ID:           "app1",
@@ -277,7 +271,7 @@ func TestHandler_POSTLogin(t *testing.T) {
 	require.NoError(t, st.ConfirmUser(ctx, user.ID))
 
 	t.Run("invalid JSON returns 400", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/oauth/login", bytes.NewReader([]byte("not json")))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/oauth/login", bytes.NewReader([]byte("not json")))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		h.POSTLogin(rec, req)
@@ -292,7 +286,7 @@ func TestHandler_POSTLogin(t *testing.T) {
 			"redirect_uri": "https://app.example/cb",
 		}
 		enc, _ := json.Marshal(body)
-		req := httptest.NewRequest(http.MethodPost, "/oauth/login", bytes.NewReader(enc))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/oauth/login", bytes.NewReader(enc))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		h.POSTLogin(rec, req)
@@ -307,7 +301,7 @@ func TestHandler_POSTLogin(t *testing.T) {
 			"redirect_uri": "https://app.example/cb",
 		}
 		enc, _ := json.Marshal(body)
-		req := httptest.NewRequest(http.MethodPost, "/oauth/login", bytes.NewReader(enc))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/oauth/login", bytes.NewReader(enc))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		h.POSTLogin(rec, req)
@@ -324,7 +318,7 @@ func TestHandler_POSTLogin(t *testing.T) {
 			"state":        "abc",
 		}
 		enc, _ := json.Marshal(body)
-		req := httptest.NewRequest(http.MethodPost, "/oauth/login", bytes.NewReader(enc))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/oauth/login", bytes.NewReader(enc))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		h.POSTLogin(rec, req)

@@ -8,8 +8,9 @@ import (
 	"time"
 
 	"github.com/chairswithlegs/monstera/internal/api"
+	"github.com/chairswithlegs/monstera/internal/api/mastodon/sse"
 	"github.com/chairswithlegs/monstera/internal/api/middleware"
-	"github.com/chairswithlegs/monstera/internal/events/sse"
+	"github.com/chairswithlegs/monstera/internal/service"
 )
 
 const (
@@ -20,12 +21,13 @@ const (
 
 // StreamingHandler handles Mastodon streaming API endpoints.
 type StreamingHandler struct {
-	hub *sse.Hub
+	hub   *sse.Hub
+	lists service.ListService
 }
 
 // NewStreamingHandler returns a new StreamingHandler.
-func NewStreamingHandler(hub *sse.Hub) *StreamingHandler {
-	return &StreamingHandler{hub: hub}
+func NewStreamingHandler(hub *sse.Hub, lists service.ListService) *StreamingHandler {
+	return &StreamingHandler{hub: hub, lists: lists}
 }
 
 // GETHealth handles GET /api/v1/streaming/health. Returns 200 with body "OK" (plain text).
@@ -73,6 +75,37 @@ func (h *StreamingHandler) GETHashtag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	streamKey := sse.StreamHashtagPrefix + tag
+	h.serveSSE(w, r, streamKey)
+}
+
+// GETList handles GET /api/v1/streaming/list. Requires auth; ?list=:id required.
+func (h *StreamingHandler) GETList(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	listID := strings.TrimSpace(r.URL.Query().Get("list"))
+	if listID == "" {
+		api.HandleError(w, r, api.NewBadRequestError("list is required"))
+		return
+	}
+	if _, err := h.lists.GetList(r.Context(), account.ID, listID); err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	streamKey := sse.StreamListPrefix + listID
+	h.serveSSE(w, r, streamKey)
+}
+
+// GETDirect handles GET /api/v1/streaming/direct. Requires auth; stream key direct:{accountID}.
+func (h *StreamingHandler) GETDirect(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	streamKey := sse.StreamDirectPrefix + account.ID
 	h.serveSSE(w, r, streamKey)
 }
 

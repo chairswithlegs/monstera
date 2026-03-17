@@ -12,8 +12,6 @@ import (
 	"github.com/chairswithlegs/monstera/internal/api/monstera/apimodel"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
-	"github.com/chairswithlegs/monstera/internal/store"
-	"github.com/chairswithlegs/monstera/internal/uid"
 )
 
 // AdminAnnouncementsHandler handles Monstera admin announcement endpoints.
@@ -47,14 +45,11 @@ func (h *AdminAnnouncementsHandler) POSTAnnouncements(w http.ResponseWriter, r *
 		api.HandleError(w, r, err)
 		return
 	}
-	now := time.Now().UTC()
-	in := store.CreateAnnouncementInput{
-		ID:          uid.New(),
-		Content:     body.Content,
-		AllDay:      body.AllDay,
-		PublishedAt: now,
-		StartsAt:    body.ParsedStartsAt,
-		EndsAt:      body.ParsedEndsAt,
+	in := service.CreateAnnouncementInput{
+		Content:  body.Content,
+		AllDay:   body.AllDay,
+		StartsAt: body.ParsedStartsAt,
+		EndsAt:   body.ParsedEndsAt,
 	}
 	a, err := h.announcements.Create(r.Context(), in)
 	if err != nil {
@@ -117,7 +112,7 @@ func (h *AdminAnnouncementsHandler) PUTAnnouncement(w http.ResponseWriter, r *ht
 		api.HandleError(w, r, err)
 		return
 	}
-	in := store.UpdateAnnouncementInput{
+	in := service.UpdateAnnouncementInput{
 		ID:          id,
 		Content:     a.Content,
 		StartsAt:    a.StartsAt,

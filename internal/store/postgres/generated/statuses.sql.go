@@ -39,13 +39,13 @@ INSERT INTO statuses (
     id, uri, account_id, text, content, content_warning,
     visibility, language, in_reply_to_id, in_reply_to_account_id, reblog_of_id,
     quoted_status_id, quote_approval_policy, quotes_count,
-    ap_id, ap_raw, sensitive, local
+    ap_id, sensitive, local
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
     $7, $8, $9, $10, $11,
     $12, $13, 0,
-    $14, $15, $16, $17
-) RETURNING id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, ap_raw, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count
+    $14, $15, $16
+) RETURNING id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count
 `
 
 type CreateStatusParams struct {
@@ -63,7 +63,6 @@ type CreateStatusParams struct {
 	QuotedStatusID      *string `json:"quoted_status_id"`
 	QuoteApprovalPolicy string  `json:"quote_approval_policy"`
 	ApID                string  `json:"ap_id"`
-	ApRaw               []byte  `json:"ap_raw"`
 	Sensitive           bool    `json:"sensitive"`
 	Local               bool    `json:"local"`
 }
@@ -84,7 +83,6 @@ func (q *Queries) CreateStatus(ctx context.Context, arg CreateStatusParams) (Sta
 		arg.QuotedStatusID,
 		arg.QuoteApprovalPolicy,
 		arg.ApID,
-		arg.ApRaw,
 		arg.Sensitive,
 		arg.Local,
 	)
@@ -101,7 +99,6 @@ func (q *Queries) CreateStatus(ctx context.Context, arg CreateStatusParams) (Sta
 		&i.InReplyToID,
 		&i.ReblogOfID,
 		&i.ApID,
-		&i.ApRaw,
 		&i.Sensitive,
 		&i.Local,
 		&i.EditedAt,
@@ -197,7 +194,7 @@ func (q *Queries) DecrementRepliesCount(ctx context.Context, id string) error {
 }
 
 const getAccountPublicStatuses = `-- name: GetAccountPublicStatuses :many
-SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, ap_raw, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM statuses
+SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM statuses
 WHERE account_id = $1
   AND deleted_at IS NULL
   AND visibility = 'public'
@@ -234,7 +231,6 @@ func (q *Queries) GetAccountPublicStatuses(ctx context.Context, arg GetAccountPu
 			&i.InReplyToID,
 			&i.ReblogOfID,
 			&i.ApID,
-			&i.ApRaw,
 			&i.Sensitive,
 			&i.Local,
 			&i.EditedAt,
@@ -261,7 +257,7 @@ func (q *Queries) GetAccountPublicStatuses(ctx context.Context, arg GetAccountPu
 }
 
 const getAccountStatuses = `-- name: GetAccountStatuses :many
-SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, ap_raw, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM statuses
+SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM statuses
 WHERE account_id = $1
   AND deleted_at IS NULL
   AND reblog_of_id IS NULL
@@ -297,7 +293,6 @@ func (q *Queries) GetAccountStatuses(ctx context.Context, arg GetAccountStatuses
 			&i.InReplyToID,
 			&i.ReblogOfID,
 			&i.ApID,
-			&i.ApRaw,
 			&i.Sensitive,
 			&i.Local,
 			&i.EditedAt,
@@ -324,7 +319,7 @@ func (q *Queries) GetAccountStatuses(ctx context.Context, arg GetAccountStatuses
 }
 
 const getAccountStatusesWithBoosts = `-- name: GetAccountStatusesWithBoosts :many
-SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, ap_raw, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM statuses
+SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM statuses
 WHERE account_id = $1
   AND deleted_at IS NULL
   AND ($2::text IS NULL OR id < $2)
@@ -359,7 +354,6 @@ func (q *Queries) GetAccountStatusesWithBoosts(ctx context.Context, arg GetAccou
 			&i.InReplyToID,
 			&i.ReblogOfID,
 			&i.ApID,
-			&i.ApRaw,
 			&i.Sensitive,
 			&i.Local,
 			&i.EditedAt,
@@ -386,7 +380,7 @@ func (q *Queries) GetAccountStatusesWithBoosts(ctx context.Context, arg GetAccou
 }
 
 const getHomeTimeline = `-- name: GetHomeTimeline :many
-SELECT s.id, s.uri, s.account_id, s.text, s.content, s.content_warning, s.visibility, s.language, s.in_reply_to_id, s.reblog_of_id, s.ap_id, s.ap_raw, s.sensitive, s.local, s.edited_at, s.replies_count, s.reblogs_count, s.favourites_count, s.created_at, s.updated_at, s.deleted_at, s.in_reply_to_account_id, s.conversation_id, s.quoted_status_id, s.quote_approval_policy, s.quotes_count FROM statuses s
+SELECT s.id, s.uri, s.account_id, s.text, s.content, s.content_warning, s.visibility, s.language, s.in_reply_to_id, s.reblog_of_id, s.ap_id, s.sensitive, s.local, s.edited_at, s.replies_count, s.reblogs_count, s.favourites_count, s.created_at, s.updated_at, s.deleted_at, s.in_reply_to_account_id, s.conversation_id, s.quoted_status_id, s.quote_approval_policy, s.quotes_count FROM statuses s
 WHERE s.deleted_at IS NULL
   AND s.account_id IN (
       SELECT f.target_id FROM follows f
@@ -426,7 +420,6 @@ func (q *Queries) GetHomeTimeline(ctx context.Context, arg GetHomeTimelineParams
 			&i.InReplyToID,
 			&i.ReblogOfID,
 			&i.ApID,
-			&i.ApRaw,
 			&i.Sensitive,
 			&i.Local,
 			&i.EditedAt,
@@ -453,7 +446,7 @@ func (q *Queries) GetHomeTimeline(ctx context.Context, arg GetHomeTimelineParams
 }
 
 const getPublicTimeline = `-- name: GetPublicTimeline :many
-SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, ap_raw, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM statuses
+SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM statuses
 WHERE deleted_at IS NULL
   AND visibility = 'public'
   AND ($1::boolean = FALSE OR local = TRUE)
@@ -489,7 +482,6 @@ func (q *Queries) GetPublicTimeline(ctx context.Context, arg GetPublicTimelinePa
 			&i.InReplyToID,
 			&i.ReblogOfID,
 			&i.ApID,
-			&i.ApRaw,
 			&i.Sensitive,
 			&i.Local,
 			&i.EditedAt,
@@ -516,7 +508,7 @@ func (q *Queries) GetPublicTimeline(ctx context.Context, arg GetPublicTimelinePa
 }
 
 const getReblogByAccountAndTarget = `-- name: GetReblogByAccountAndTarget :one
-SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, ap_raw, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM statuses
+SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM statuses
 WHERE account_id = $1 AND reblog_of_id = $2 AND deleted_at IS NULL
 `
 
@@ -540,7 +532,6 @@ func (q *Queries) GetReblogByAccountAndTarget(ctx context.Context, arg GetReblog
 		&i.InReplyToID,
 		&i.ReblogOfID,
 		&i.ApID,
-		&i.ApRaw,
 		&i.Sensitive,
 		&i.Local,
 		&i.EditedAt,
@@ -560,7 +551,7 @@ func (q *Queries) GetReblogByAccountAndTarget(ctx context.Context, arg GetReblog
 }
 
 const getRebloggedBy = `-- name: GetRebloggedBy :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.ap_raw, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, am.url AS avatar_url, hm.url AS header_url
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, am.url AS avatar_url, hm.url AS header_url
 FROM accounts a
 INNER JOIN statuses s ON s.account_id = a.id
 LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
@@ -605,7 +596,6 @@ func (q *Queries) GetRebloggedBy(ctx context.Context, arg GetRebloggedByParams) 
 			&i.Account.FollowersUrl,
 			&i.Account.FollowingUrl,
 			&i.Account.ApID,
-			&i.Account.ApRaw,
 			&i.Account.Bot,
 			&i.Account.Locked,
 			&i.Account.Suspended,
@@ -619,6 +609,7 @@ func (q *Queries) GetRebloggedBy(ctx context.Context, arg GetRebloggedByParams) 
 			&i.Account.StatusesCount,
 			&i.Account.Fields,
 			&i.Account.LastStatusAt,
+			&i.Account.Url,
 			&i.AvatarUrl,
 			&i.HeaderUrl,
 		); err != nil {
@@ -634,15 +625,15 @@ func (q *Queries) GetRebloggedBy(ctx context.Context, arg GetRebloggedByParams) 
 
 const getStatusAncestors = `-- name: GetStatusAncestors :many
 WITH RECURSIVE ancestors AS (
-    SELECT st.id, st.uri, st.account_id, st.text, st.content, st.content_warning, st.visibility, st.language, st.in_reply_to_id, st.reblog_of_id, st.ap_id, st.ap_raw, st.sensitive, st.local, st.edited_at, st.replies_count, st.reblogs_count, st.favourites_count, st.created_at, st.updated_at, st.deleted_at, st.in_reply_to_account_id, st.conversation_id, st.quoted_status_id, st.quote_approval_policy, st.quotes_count FROM statuses st WHERE st.id = (
+    SELECT st.id, st.uri, st.account_id, st.text, st.content, st.content_warning, st.visibility, st.language, st.in_reply_to_id, st.reblog_of_id, st.ap_id, st.sensitive, st.local, st.edited_at, st.replies_count, st.reblogs_count, st.favourites_count, st.created_at, st.updated_at, st.deleted_at, st.in_reply_to_account_id, st.conversation_id, st.quoted_status_id, st.quote_approval_policy, st.quotes_count FROM statuses st WHERE st.id = (
         SELECT s2.in_reply_to_id FROM statuses s2 WHERE s2.id = $1 AND s2.deleted_at IS NULL
     )
     UNION ALL
-    SELECT s.id, s.uri, s.account_id, s.text, s.content, s.content_warning, s.visibility, s.language, s.in_reply_to_id, s.reblog_of_id, s.ap_id, s.ap_raw, s.sensitive, s.local, s.edited_at, s.replies_count, s.reblogs_count, s.favourites_count, s.created_at, s.updated_at, s.deleted_at, s.in_reply_to_account_id, s.conversation_id, s.quoted_status_id, s.quote_approval_policy, s.quotes_count FROM statuses s
+    SELECT s.id, s.uri, s.account_id, s.text, s.content, s.content_warning, s.visibility, s.language, s.in_reply_to_id, s.reblog_of_id, s.ap_id, s.sensitive, s.local, s.edited_at, s.replies_count, s.reblogs_count, s.favourites_count, s.created_at, s.updated_at, s.deleted_at, s.in_reply_to_account_id, s.conversation_id, s.quoted_status_id, s.quote_approval_policy, s.quotes_count FROM statuses s
     INNER JOIN ancestors a ON s.id = a.in_reply_to_id
     WHERE s.deleted_at IS NULL
 )
-SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, ap_raw, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM ancestors ORDER BY id ASC
+SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM ancestors ORDER BY id ASC
 `
 
 type GetStatusAncestorsRow struct {
@@ -657,7 +648,6 @@ type GetStatusAncestorsRow struct {
 	InReplyToID         *string            `json:"in_reply_to_id"`
 	ReblogOfID          *string            `json:"reblog_of_id"`
 	ApID                string             `json:"ap_id"`
-	ApRaw               []byte             `json:"ap_raw"`
 	Sensitive           bool               `json:"sensitive"`
 	Local               bool               `json:"local"`
 	EditedAt            pgtype.Timestamptz `json:"edited_at"`
@@ -695,7 +685,6 @@ func (q *Queries) GetStatusAncestors(ctx context.Context, id string) ([]GetStatu
 			&i.InReplyToID,
 			&i.ReblogOfID,
 			&i.ApID,
-			&i.ApRaw,
 			&i.Sensitive,
 			&i.Local,
 			&i.EditedAt,
@@ -722,7 +711,7 @@ func (q *Queries) GetStatusAncestors(ctx context.Context, id string) ([]GetStatu
 }
 
 const getStatusByAPID = `-- name: GetStatusByAPID :one
-SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, ap_raw, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM statuses WHERE ap_id = $1 AND deleted_at IS NULL
+SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM statuses WHERE ap_id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetStatusByAPID(ctx context.Context, apID string) (Status, error) {
@@ -740,7 +729,6 @@ func (q *Queries) GetStatusByAPID(ctx context.Context, apID string) (Status, err
 		&i.InReplyToID,
 		&i.ReblogOfID,
 		&i.ApID,
-		&i.ApRaw,
 		&i.Sensitive,
 		&i.Local,
 		&i.EditedAt,
@@ -760,7 +748,7 @@ func (q *Queries) GetStatusByAPID(ctx context.Context, apID string) (Status, err
 }
 
 const getStatusByID = `-- name: GetStatusByID :one
-SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, ap_raw, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM statuses WHERE id = $1 AND deleted_at IS NULL
+SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM statuses WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetStatusByID(ctx context.Context, id string) (Status, error) {
@@ -778,7 +766,6 @@ func (q *Queries) GetStatusByID(ctx context.Context, id string) (Status, error) 
 		&i.InReplyToID,
 		&i.ReblogOfID,
 		&i.ApID,
-		&i.ApRaw,
 		&i.Sensitive,
 		&i.Local,
 		&i.EditedAt,
@@ -799,13 +786,13 @@ func (q *Queries) GetStatusByID(ctx context.Context, id string) (Status, error) 
 
 const getStatusDescendants = `-- name: GetStatusDescendants :many
 WITH RECURSIVE descendants AS (
-    SELECT st.id, st.uri, st.account_id, st.text, st.content, st.content_warning, st.visibility, st.language, st.in_reply_to_id, st.reblog_of_id, st.ap_id, st.ap_raw, st.sensitive, st.local, st.edited_at, st.replies_count, st.reblogs_count, st.favourites_count, st.created_at, st.updated_at, st.deleted_at, st.in_reply_to_account_id, st.conversation_id, st.quoted_status_id, st.quote_approval_policy, st.quotes_count FROM statuses st WHERE st.in_reply_to_id = $1 AND st.deleted_at IS NULL
+    SELECT st.id, st.uri, st.account_id, st.text, st.content, st.content_warning, st.visibility, st.language, st.in_reply_to_id, st.reblog_of_id, st.ap_id, st.sensitive, st.local, st.edited_at, st.replies_count, st.reblogs_count, st.favourites_count, st.created_at, st.updated_at, st.deleted_at, st.in_reply_to_account_id, st.conversation_id, st.quoted_status_id, st.quote_approval_policy, st.quotes_count FROM statuses st WHERE st.in_reply_to_id = $1 AND st.deleted_at IS NULL
     UNION ALL
-    SELECT s.id, s.uri, s.account_id, s.text, s.content, s.content_warning, s.visibility, s.language, s.in_reply_to_id, s.reblog_of_id, s.ap_id, s.ap_raw, s.sensitive, s.local, s.edited_at, s.replies_count, s.reblogs_count, s.favourites_count, s.created_at, s.updated_at, s.deleted_at, s.in_reply_to_account_id, s.conversation_id, s.quoted_status_id, s.quote_approval_policy, s.quotes_count FROM statuses s
+    SELECT s.id, s.uri, s.account_id, s.text, s.content, s.content_warning, s.visibility, s.language, s.in_reply_to_id, s.reblog_of_id, s.ap_id, s.sensitive, s.local, s.edited_at, s.replies_count, s.reblogs_count, s.favourites_count, s.created_at, s.updated_at, s.deleted_at, s.in_reply_to_account_id, s.conversation_id, s.quoted_status_id, s.quote_approval_policy, s.quotes_count FROM statuses s
     INNER JOIN descendants d ON s.in_reply_to_id = d.id
     WHERE s.deleted_at IS NULL
 )
-SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, ap_raw, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM descendants ORDER BY id ASC
+SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM descendants ORDER BY id ASC
 `
 
 type GetStatusDescendantsRow struct {
@@ -820,7 +807,6 @@ type GetStatusDescendantsRow struct {
 	InReplyToID         *string            `json:"in_reply_to_id"`
 	ReblogOfID          *string            `json:"reblog_of_id"`
 	ApID                string             `json:"ap_id"`
-	ApRaw               []byte             `json:"ap_raw"`
 	Sensitive           bool               `json:"sensitive"`
 	Local               bool               `json:"local"`
 	EditedAt            pgtype.Timestamptz `json:"edited_at"`
@@ -858,7 +844,6 @@ func (q *Queries) GetStatusDescendants(ctx context.Context, inReplyToID *string)
 			&i.InReplyToID,
 			&i.ReblogOfID,
 			&i.ApID,
-			&i.ApRaw,
 			&i.Sensitive,
 			&i.Local,
 			&i.EditedAt,
@@ -1013,7 +998,7 @@ UPDATE statuses SET
     edited_at       = NOW(),
     updated_at      = NOW()
 WHERE id = $1
-RETURNING id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, ap_raw, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count
+RETURNING id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count
 `
 
 type UpdateStatusParams struct {
@@ -1045,7 +1030,6 @@ func (q *Queries) UpdateStatus(ctx context.Context, arg UpdateStatusParams) (Sta
 		&i.InReplyToID,
 		&i.ReblogOfID,
 		&i.ApID,
-		&i.ApRaw,
 		&i.Sensitive,
 		&i.Local,
 		&i.EditedAt,

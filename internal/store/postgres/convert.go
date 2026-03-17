@@ -9,6 +9,13 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+func ptrToString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 func pgTime(t pgtype.Timestamptz) time.Time {
 	if !t.Valid {
 		return time.Time{}
@@ -143,6 +150,7 @@ func ToDomainAccount(a db.Account) domain.Account {
 		FollowersURL:   a.FollowersUrl,
 		FollowingURL:   a.FollowingUrl,
 		APID:           a.ApID,
+		ProfileURL:     ptrToString(a.Url),
 		FollowersCount: int(a.FollowersCount),
 		FollowingCount: int(a.FollowingCount),
 		StatusesCount:  int(a.StatusesCount),
@@ -152,9 +160,6 @@ func ToDomainAccount(a db.Account) domain.Account {
 		Silenced:       a.Silenced,
 		CreatedAt:      pgTime(a.CreatedAt),
 		UpdatedAt:      pgTime(a.UpdatedAt),
-	}
-	if len(a.ApRaw) > 0 {
-		d.APRaw = json.RawMessage(a.ApRaw)
 	}
 	if len(a.Fields) > 0 {
 		d.Fields = json.RawMessage(a.Fields)
@@ -208,9 +213,6 @@ func ToDomainStatus(s db.Status) domain.Status {
 		CreatedAt:           pgTime(s.CreatedAt),
 		UpdatedAt:           pgTime(s.UpdatedAt),
 	}
-	if len(s.ApRaw) > 0 {
-		d.APRaw = json.RawMessage(s.ApRaw)
-	}
 	d.EditedAt = pgTimePtr(s.EditedAt)
 	d.DeletedAt = pgTimePtr(s.DeletedAt)
 	return d
@@ -226,84 +228,183 @@ func quoteApprovalToDomain(qa db.QuoteApproval) domain.QuoteApprovalRecord {
 	return d
 }
 
-// statusRowToDomain converts a status row (ancestors/descendants) to domain.Status.
-func statusRowToDomain(id, uri, accountID string, text, content, contentWarning *string, visibility string, language *string, inReplyToID, reblogOfID, quotedStatusID *string, quoteApprovalPolicy string, quotesCount int32, apID string, apRaw []byte, sensitive, local bool, editedAt, createdAt, updatedAt, deletedAt pgtype.Timestamptz, repliesCount, reblogsCount, favouritesCount int32, inReplyToAccountID *string) domain.Status {
+type statusRowParams struct {
+	id                  string
+	uri                 string
+	accountID           string
+	text                *string
+	content             *string
+	contentWarning      *string
+	visibility          string
+	language            *string
+	inReplyToID         *string
+	reblogOfID          *string
+	quotedStatusID      *string
+	quoteApprovalPolicy string
+	quotesCount         int32
+	apID                string
+	sensitive           bool
+	local               bool
+	editedAt            pgtype.Timestamptz
+	createdAt           pgtype.Timestamptz
+	updatedAt           pgtype.Timestamptz
+	deletedAt           pgtype.Timestamptz
+	repliesCount        int32
+	reblogsCount        int32
+	favouritesCount     int32
+	inReplyToAccountID  *string
+}
+
+func statusRowToDomain(p statusRowParams) domain.Status {
 	d := domain.Status{
-		ID:                  id,
-		URI:                 uri,
-		AccountID:           accountID,
-		Text:                text,
-		Content:             content,
-		ContentWarning:      contentWarning,
-		Visibility:          visibility,
-		Language:            language,
-		InReplyToID:         inReplyToID,
-		InReplyToAccountID:  inReplyToAccountID,
-		ReblogOfID:          reblogOfID,
-		QuotedStatusID:      quotedStatusID,
-		QuoteApprovalPolicy: quoteApprovalPolicy,
-		QuotesCount:         int(quotesCount),
-		APID:                apID,
-		Sensitive:           sensitive,
-		Local:               local,
-		RepliesCount:        int(repliesCount),
-		ReblogsCount:        int(reblogsCount),
-		FavouritesCount:     int(favouritesCount),
-		CreatedAt:           pgTime(createdAt),
-		UpdatedAt:           pgTime(updatedAt),
+		ID:                  p.id,
+		URI:                 p.uri,
+		AccountID:           p.accountID,
+		Text:                p.text,
+		Content:             p.content,
+		ContentWarning:      p.contentWarning,
+		Visibility:          p.visibility,
+		Language:            p.language,
+		InReplyToID:         p.inReplyToID,
+		InReplyToAccountID:  p.inReplyToAccountID,
+		ReblogOfID:          p.reblogOfID,
+		QuotedStatusID:      p.quotedStatusID,
+		QuoteApprovalPolicy: p.quoteApprovalPolicy,
+		QuotesCount:         int(p.quotesCount),
+		APID:                p.apID,
+		Sensitive:           p.sensitive,
+		Local:               p.local,
+		RepliesCount:        int(p.repliesCount),
+		ReblogsCount:        int(p.reblogsCount),
+		FavouritesCount:     int(p.favouritesCount),
+		CreatedAt:           pgTime(p.createdAt),
+		UpdatedAt:           pgTime(p.updatedAt),
 	}
-	if len(apRaw) > 0 {
-		d.APRaw = json.RawMessage(apRaw)
-	}
-	d.EditedAt = pgTimePtr(editedAt)
-	d.DeletedAt = pgTimePtr(deletedAt)
+	d.EditedAt = pgTimePtr(p.editedAt)
+	d.DeletedAt = pgTimePtr(p.deletedAt)
 	return d
 }
 
 // AncestorRowToDomain converts GetStatusAncestorsRow to domain.Status.
 func AncestorRowToDomain(r db.GetStatusAncestorsRow) domain.Status {
-	return statusRowToDomain(
-		r.ID, r.Uri, r.AccountID, r.Text, r.Content, r.ContentWarning,
-		r.Visibility, r.Language, r.InReplyToID, r.ReblogOfID, r.QuotedStatusID, r.QuoteApprovalPolicy, r.QuotesCount,
-		r.ApID, r.ApRaw,
-		r.Sensitive, r.Local, r.EditedAt, r.CreatedAt, r.UpdatedAt, r.DeletedAt,
-		r.RepliesCount, r.ReblogsCount, r.FavouritesCount, r.InReplyToAccountID,
-	)
+	return statusRowToDomain(statusRowParams{
+		id:                  r.ID,
+		uri:                 r.Uri,
+		accountID:           r.AccountID,
+		text:                r.Text,
+		content:             r.Content,
+		contentWarning:      r.ContentWarning,
+		visibility:          r.Visibility,
+		language:            r.Language,
+		inReplyToID:         r.InReplyToID,
+		reblogOfID:          r.ReblogOfID,
+		quotedStatusID:      r.QuotedStatusID,
+		quoteApprovalPolicy: r.QuoteApprovalPolicy,
+		quotesCount:         r.QuotesCount,
+		apID:                r.ApID,
+		sensitive:           r.Sensitive,
+		local:               r.Local,
+		editedAt:            r.EditedAt,
+		createdAt:           r.CreatedAt,
+		updatedAt:           r.UpdatedAt,
+		deletedAt:           r.DeletedAt,
+		repliesCount:        r.RepliesCount,
+		reblogsCount:        r.ReblogsCount,
+		favouritesCount:     r.FavouritesCount,
+		inReplyToAccountID:  r.InReplyToAccountID,
+	})
 }
 
 // DescendantRowToDomain converts GetStatusDescendantsRow to domain.Status.
 func DescendantRowToDomain(r db.GetStatusDescendantsRow) domain.Status {
-	return statusRowToDomain(
-		r.ID, r.Uri, r.AccountID, r.Text, r.Content, r.ContentWarning,
-		r.Visibility, r.Language, r.InReplyToID, r.ReblogOfID, r.QuotedStatusID, r.QuoteApprovalPolicy, r.QuotesCount,
-		r.ApID, r.ApRaw,
-		r.Sensitive, r.Local, r.EditedAt, r.CreatedAt, r.UpdatedAt, r.DeletedAt,
-		r.RepliesCount, r.ReblogsCount, r.FavouritesCount, r.InReplyToAccountID,
-	)
+	return statusRowToDomain(statusRowParams{
+		id:                  r.ID,
+		uri:                 r.Uri,
+		accountID:           r.AccountID,
+		text:                r.Text,
+		content:             r.Content,
+		contentWarning:      r.ContentWarning,
+		visibility:          r.Visibility,
+		language:            r.Language,
+		inReplyToID:         r.InReplyToID,
+		reblogOfID:          r.ReblogOfID,
+		quotedStatusID:      r.QuotedStatusID,
+		quoteApprovalPolicy: r.QuoteApprovalPolicy,
+		quotesCount:         r.QuotesCount,
+		apID:                r.ApID,
+		sensitive:           r.Sensitive,
+		local:               r.Local,
+		editedAt:            r.EditedAt,
+		createdAt:           r.CreatedAt,
+		updatedAt:           r.UpdatedAt,
+		deletedAt:           r.DeletedAt,
+		repliesCount:        r.RepliesCount,
+		reblogsCount:        r.ReblogsCount,
+		favouritesCount:     r.FavouritesCount,
+		inReplyToAccountID:  r.InReplyToAccountID,
+	})
 }
 
 // FavouritesTimelineRowToDomain converts GetFavouritesTimelineRow to domain.Status.
 // Favourites query does not select quote columns; use zero values.
 func FavouritesTimelineRowToDomain(r db.GetFavouritesTimelineRow) domain.Status {
-	return statusRowToDomain(
-		r.ID, r.Uri, r.AccountID, r.Text, r.Content, r.ContentWarning,
-		r.Visibility, r.Language, r.InReplyToID, r.ReblogOfID, nil, "", 0,
-		r.ApID, r.ApRaw,
-		r.Sensitive, r.Local, r.EditedAt, r.CreatedAt, r.UpdatedAt, r.DeletedAt,
-		r.RepliesCount, r.ReblogsCount, r.FavouritesCount, r.InReplyToAccountID,
-	)
+	return statusRowToDomain(statusRowParams{
+		id:                  r.ID,
+		uri:                 r.Uri,
+		accountID:           r.AccountID,
+		text:                r.Text,
+		content:             r.Content,
+		contentWarning:      r.ContentWarning,
+		visibility:          r.Visibility,
+		language:            r.Language,
+		inReplyToID:         r.InReplyToID,
+		reblogOfID:          r.ReblogOfID,
+		quotedStatusID:      nil,
+		quoteApprovalPolicy: "",
+		quotesCount:         0,
+		apID:                r.ApID,
+		sensitive:           r.Sensitive,
+		local:               r.Local,
+		editedAt:            r.EditedAt,
+		createdAt:           r.CreatedAt,
+		updatedAt:           r.UpdatedAt,
+		deletedAt:           r.DeletedAt,
+		repliesCount:        r.RepliesCount,
+		reblogsCount:        r.ReblogsCount,
+		favouritesCount:     r.FavouritesCount,
+		inReplyToAccountID:  r.InReplyToAccountID,
+	})
 }
 
 // BookmarksTimelineRowToDomain converts GetBookmarksTimelineRow to domain.Status.
 // Bookmarks query does not select quote columns; use zero values.
 func BookmarksTimelineRowToDomain(r db.GetBookmarksTimelineRow) domain.Status {
-	return statusRowToDomain(
-		r.ID, r.Uri, r.AccountID, r.Text, r.Content, r.ContentWarning,
-		r.Visibility, r.Language, r.InReplyToID, r.ReblogOfID, nil, "", 0,
-		r.ApID, r.ApRaw,
-		r.Sensitive, r.Local, r.EditedAt, r.CreatedAt, r.UpdatedAt, r.DeletedAt,
-		r.RepliesCount, r.ReblogsCount, r.FavouritesCount, r.InReplyToAccountID,
-	)
+	return statusRowToDomain(statusRowParams{
+		id:                  r.ID,
+		uri:                 r.Uri,
+		accountID:           r.AccountID,
+		text:                r.Text,
+		content:             r.Content,
+		contentWarning:      r.ContentWarning,
+		visibility:          r.Visibility,
+		language:            r.Language,
+		inReplyToID:         r.InReplyToID,
+		reblogOfID:          r.ReblogOfID,
+		quotedStatusID:      nil,
+		quoteApprovalPolicy: "",
+		quotesCount:         0,
+		apID:                r.ApID,
+		sensitive:           r.Sensitive,
+		local:               r.Local,
+		editedAt:            r.EditedAt,
+		createdAt:           r.CreatedAt,
+		updatedAt:           r.UpdatedAt,
+		deletedAt:           r.DeletedAt,
+		repliesCount:        r.RepliesCount,
+		reblogsCount:        r.ReblogsCount,
+		favouritesCount:     r.FavouritesCount,
+		inReplyToAccountID:  r.InReplyToAccountID,
+	})
 }
 
 // ToDomainUser converts a sqlc db.User to a domain.User.
@@ -389,6 +490,23 @@ func ToDomainHashtag(h db.Hashtag) domain.Hashtag {
 		Name:      h.Name,
 		CreatedAt: pgTime(h.CreatedAt),
 		UpdatedAt: pgTime(h.UpdatedAt),
+	}
+}
+
+func toDomainPushSubscription(ps db.PushSubscription) domain.PushSubscription {
+	var alerts domain.PushAlerts
+	_ = json.Unmarshal(ps.Alerts, &alerts)
+	return domain.PushSubscription{
+		ID:            ps.ID,
+		AccessTokenID: ps.AccessTokenID,
+		AccountID:     ps.AccountID,
+		Endpoint:      ps.Endpoint,
+		KeyP256DH:     ps.KeyP256dh,
+		KeyAuth:       ps.KeyAuth,
+		Alerts:        alerts,
+		Policy:        ps.Policy,
+		CreatedAt:     pgTime(ps.CreatedAt),
+		UpdatedAt:     pgTime(ps.UpdatedAt),
 	}
 }
 
@@ -496,6 +614,7 @@ func ToDomainMediaAttachment(m db.MediaAttachment) domain.MediaAttachment {
 		AccountID:   m.AccountID,
 		StatusID:    m.StatusID,
 		Type:        m.Type,
+		ContentType: m.ContentType,
 		StorageKey:  m.StorageKey,
 		URL:         m.Url,
 		PreviewURL:  m.PreviewUrl,

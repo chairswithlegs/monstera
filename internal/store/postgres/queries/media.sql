@@ -1,6 +1,6 @@
 -- name: CreateMediaAttachment :one
-INSERT INTO media_attachments (id, account_id, type, storage_key, url, preview_url, remote_url, description, blurhash, meta)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO media_attachments (id, account_id, type, content_type, storage_key, url, preview_url, remote_url, description, blurhash, meta)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING *;
 
 -- name: GetMediaAttachment :one

@@ -13,3 +13,5 @@ Design doc: `docs/architecture/01-high-level-system-architecture.md`
 - Viewer-relative fields (`favourited`, `reblogged`) resolved via batch lookup after fetching the main entities.
 - `acct` field: `username` for local, `username@domain` for remote.
 - Request body validation: use `api.DecodeAndValidateJSON` for JSON-only endpoints or `parseXxxRequest` helpers for mixed JSON/form. See `internal/api/CLAUDE.md` for details.
+- SSE streaming: the `sse/` subpackage contains the SSE hub, NATS subscriber, and event formatting. The hub manages client connections; the subscriber consumes domain events from the `DOMAIN_EVENTS` NATS stream (via the `domain-events-sse` consumer) and publishes to the hub.
+- Handler file decomposition: large handlers are split into `{resource}_{concern}.go` files (e.g. `statuses_actions.go` for reblog/favourite/bookmark/pin, `statuses_context.go` for thread context, `accounts_relationships.go` for follow/block/mute).

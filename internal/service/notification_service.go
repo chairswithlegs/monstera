@@ -2,10 +2,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
-	"github.com/chairswithlegs/monstera/internal/events"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/uid"
 )
@@ -15,14 +15,15 @@ const (
 	maxNotificationLimit     = 40
 )
 
-// NotificationService handles the creation and management of notifications.
+// NotificationService handles read and management of notifications.
+// Notification creation is handled by the NotificationSubscriber
+// (internal/events/notification_subscriber.go) which reacts to domain events.
 type NotificationService interface {
-	Create(ctx context.Context, accountID, fromID, notifType string, statusID *string) error
-	CreateAndEmit(ctx context.Context, recipientID string, fromAccount *domain.Account, notifType string, statusID *string) error
 	List(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Notification, error)
 	Get(ctx context.Context, id, accountID string) (*domain.Notification, error)
 	Clear(ctx context.Context, accountID string) error
 	Dismiss(ctx context.Context, id, accountID string) error
+	CreateAndEmit(ctx context.Context, recipientID, fromAccountID, notifType string, statusID *string) error
 }
 
 type notificationService struct {
@@ -32,44 +33,6 @@ type notificationService struct {
 // NewNotificationService returns a NotificationService.
 func NewNotificationService(s store.Store) NotificationService {
 	return &notificationService{store: s}
-}
-
-// Create creates a single notification (e.g. for inbox follow, mention, favourite, reblog).
-func (svc *notificationService) Create(ctx context.Context, accountID, fromID, notifType string, statusID *string) error {
-	_, err := svc.store.CreateNotification(ctx, store.CreateNotificationInput{
-		ID:        uid.New(),
-		AccountID: accountID,
-		FromID:    fromID,
-		Type:      notifType,
-		StatusID:  statusID,
-	})
-	if err != nil {
-		return fmt.Errorf("CreateNotification: %w", err)
-	}
-	return nil
-}
-
-// CreateAndEmit creates a notification and emits a notification.created domain event.
-func (svc *notificationService) CreateAndEmit(ctx context.Context, recipientID string, fromAccount *domain.Account, notifType string, statusID *string) error {
-	notif, err := svc.store.CreateNotification(ctx, store.CreateNotificationInput{
-		ID:        uid.New(),
-		AccountID: recipientID,
-		FromID:    fromAccount.ID,
-		Type:      notifType,
-		StatusID:  statusID,
-	})
-	if err != nil {
-		return fmt.Errorf("CreateNotification: %w", err)
-	}
-	if err := events.EmitEvent(ctx, svc.store, domain.EventNotificationCreated, "notification", notif.ID, domain.NotificationCreatedPayload{
-		RecipientAccountID: recipientID,
-		Notification:       notif,
-		FromAccount:        fromAccount,
-		StatusID:           statusID,
-	}); err != nil {
-		return fmt.Errorf("emit notification event: %w", err)
-	}
-	return nil
 }
 
 // List returns notifications for the account with cursor pagination.
@@ -110,6 +73,47 @@ func (svc *notificationService) Clear(ctx context.Context, accountID string) err
 func (svc *notificationService) Dismiss(ctx context.Context, id, accountID string) error {
 	if err := svc.store.DismissNotification(ctx, id, accountID); err != nil {
 		return fmt.Errorf("DismissNotification: %w", err)
+	}
+	return nil
+}
+
+// CreateAndEmit atomically creates a notification and emits a notification.created
+// event within a single transaction.
+func (svc *notificationService) CreateAndEmit(ctx context.Context, recipientID, fromAccountID, notifType string, statusID *string) error {
+	if err := svc.store.WithTx(ctx, func(tx store.Store) error {
+		notif, err := tx.CreateNotification(ctx, store.CreateNotificationInput{
+			ID:        uid.New(),
+			AccountID: recipientID,
+			FromID:    fromAccountID,
+			Type:      notifType,
+			StatusID:  statusID,
+		})
+		if err != nil {
+			return fmt.Errorf("CreateNotification: %w", err)
+		}
+		fromAccount, err := tx.GetAccountByID(ctx, fromAccountID)
+		if err != nil {
+			return fmt.Errorf("GetAccountByID(from): %w", err)
+		}
+		payload := domain.NotificationCreatedPayload{
+			RecipientAccountID: recipientID,
+			Notification:       notif,
+			FromAccount:        fromAccount,
+			StatusID:           statusID,
+		}
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("marshal notification.created payload: %w", err)
+		}
+		return tx.InsertOutboxEvent(ctx, store.InsertOutboxEventInput{
+			ID:            uid.New(),
+			EventType:     domain.EventNotificationCreated,
+			AggregateType: "notification",
+			AggregateID:   notif.ID,
+			Payload:       raw,
+		})
+	}); err != nil {
+		return fmt.Errorf("CreateAndEmit: %w", err)
 	}
 	return nil
 }

@@ -130,24 +130,3 @@ func TestIsDevelopment(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, cfg.IsDevelopment())
 }
-
-func TestDeriveKey_deterministic(t *testing.T) {
-	setRequiredEnvs(t)
-	cfg, err := Load()
-	require.NoError(t, err)
-
-	key1 := cfg.DeriveKey("monstera-csrf", 32)
-	key2 := cfg.DeriveKey("monstera-csrf", 32)
-	assert.Equal(t, key1, key2)
-	assert.Len(t, key1, 32)
-}
-
-func TestDeriveKey_differentPurposeDifferentOutput(t *testing.T) {
-	setRequiredEnvs(t)
-	cfg, err := Load()
-	require.NoError(t, err)
-
-	key1 := cfg.DeriveKey("monstera-csrf", 32)
-	key2 := cfg.DeriveKey("monstera-email-token", 32)
-	assert.NotEqual(t, key1, key2)
-}

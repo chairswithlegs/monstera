@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/chairswithlegs/monstera/internal/store"
@@ -44,8 +43,7 @@ func TestWebFingerHandler_GETWebFinger(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fake.ConfirmUser(ctx, "01USERALICE"))
 
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	h := NewWebFingerHandler(service.NewAccountService(fake, cfg.InstanceBaseURL()), cfg)
+	h := NewWebFingerHandler(service.NewAccountService(fake, "https://example.com"), "example.com", "https://example.com")
 
 	r := httptest.NewRequest(http.MethodGet, "/.well-known/webfinger?resource=acct:alice@example.com", nil)
 	r = r.WithContext(ctx)
@@ -72,8 +70,7 @@ func TestWebFingerHandler_GETWebFinger(t *testing.T) {
 
 func TestWebFingerHandler_missingResource(t *testing.T) {
 	t.Parallel()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	h := NewWebFingerHandler(service.NewAccountService(testutil.NewFakeStore(), cfg.InstanceBaseURL()), cfg)
+	h := NewWebFingerHandler(service.NewAccountService(testutil.NewFakeStore(), "https://example.com"), "example.com", "https://example.com")
 	r := httptest.NewRequest(http.MethodGet, "/.well-known/webfinger", nil)
 	w := httptest.NewRecorder()
 	h.GETWebFinger(w, r)
@@ -87,8 +84,7 @@ func TestWebFingerHandler_wrongDomain(t *testing.T) {
 	_, _ = fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID: "01HXXX", Username: "alice", APID: "https://example.com/users/alice",
 	})
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	h := NewWebFingerHandler(service.NewAccountService(fake, cfg.InstanceBaseURL()), cfg)
+	h := NewWebFingerHandler(service.NewAccountService(fake, "https://example.com"), "example.com", "https://example.com")
 	r := httptest.NewRequest(http.MethodGet, "/.well-known/webfinger?resource=acct:alice@other.com", nil)
 	r = r.WithContext(ctx)
 	w := httptest.NewRecorder()
@@ -114,8 +110,7 @@ func TestWebFingerHandler_pendingUser_returnsNotFound(t *testing.T) {
 	require.NoError(t, err)
 	// Do not call ConfirmUser — user remains pending.
 
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	h := NewWebFingerHandler(service.NewAccountService(fake, cfg.InstanceBaseURL()), cfg)
+	h := NewWebFingerHandler(service.NewAccountService(fake, "https://example.com"), "example.com", "https://example.com")
 	r := httptest.NewRequest(http.MethodGet, "/.well-known/webfinger?resource=acct:pending@example.com", nil)
 	r = r.WithContext(ctx)
 	w := httptest.NewRecorder()

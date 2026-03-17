@@ -22,14 +22,20 @@ type Activity struct {
 	Published string          `json:"published,omitempty"`
 }
 
-// ObjectID returns the object field as a plain IRI string.
-// Returns ("", false) if the object is an embedded JSON object rather than a string.
+// ObjectID returns the object's IRI. It handles both a plain string object
+// ("https://...") and an embedded JSON object with an "id" field.
 func (a *Activity) ObjectID() (string, bool) {
 	var id string
-	if err := json.Unmarshal(a.ObjectRaw, &id); err != nil {
-		return "", false
+	if err := json.Unmarshal(a.ObjectRaw, &id); err == nil && id != "" {
+		return id, true
 	}
-	return id, true
+	var obj struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(a.ObjectRaw, &obj); err == nil && obj.ID != "" {
+		return obj.ID, true
+	}
+	return "", false
 }
 
 // ObjectType peeks at the "type" field of the embedded object without fully
@@ -202,5 +208,40 @@ func NewUpdateActorActivity(activityID, actorID string, actor *Actor) (*Activity
 		Type:      ObjectTypeUpdate,
 		Actor:     actorID,
 		ObjectRaw: raw,
+	}, nil
+}
+
+// NewAnnounceActivity constructs an Announce activity. objectID is the original status APID.
+// to and cc carry the activity-level addressing (e.g. Public + followers).
+func NewAnnounceActivity(activityID, actorID, objectID string, to, cc []string) (*Activity, error) {
+	objRaw, err := json.Marshal(objectID)
+	if err != nil {
+		return nil, fmt.Errorf("marshal announce object: %w", err)
+	}
+	return &Activity{
+		Context:   DefaultContext,
+		ID:        activityID,
+		Type:      ObjectTypeAnnounce,
+		Actor:     actorID,
+		ObjectRaw: objRaw,
+		To:        to,
+		Cc:        cc,
+	}, nil
+}
+
+// NewLikeActivity constructs a Like activity. objectID is the original status APID.
+// to should contain the status author's actor IRI per AP spec §1 Example 5.
+func NewLikeActivity(activityID, actorID, objectID string, to []string) (*Activity, error) {
+	objRaw, err := json.Marshal(objectID)
+	if err != nil {
+		return nil, fmt.Errorf("marshal like object: %w", err)
+	}
+	return &Activity{
+		Context:   DefaultContext,
+		ID:        activityID,
+		Type:      ObjectTypeLike,
+		Actor:     actorID,
+		ObjectRaw: objRaw,
+		To:        to,
 	}, nil
 }

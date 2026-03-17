@@ -33,10 +33,10 @@ func TestListsHandler_GETLists(t *testing.T) {
 
 	t.Run("authenticated no lists returns 200 and empty array", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "alice",
-			Email:        "alice@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "alice",
+			Email:    "alice@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 
@@ -52,10 +52,10 @@ func TestListsHandler_GETLists(t *testing.T) {
 
 	t.Run("authenticated with lists returns 200 and list array", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "bob",
-			Email:        "bob@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "bob",
+			Email:    "bob@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 
@@ -85,10 +85,10 @@ func TestListsHandler_GETList(t *testing.T) {
 	handler := NewListsHandler(listSvc, accountSvc, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -137,10 +137,10 @@ func TestListsHandler_GETList(t *testing.T) {
 
 	t.Run("list exists for another account returns 403", func(t *testing.T) {
 		otherAcc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "other",
-			Email:        "other@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "other",
+			Email:    "other@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		l, err := listSvc.CreateList(ctx, otherAcc.ID, "Their list", domain.ListRepliesPolicyList, false)
@@ -164,10 +164,10 @@ func TestListsHandler_POSTLists(t *testing.T) {
 	handler := NewListsHandler(listSvc, accountSvc, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -226,10 +226,10 @@ func TestListsHandler_PUTList(t *testing.T) {
 	handler := NewListsHandler(listSvc, accountSvc, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -278,10 +278,10 @@ func TestListsHandler_PUTList(t *testing.T) {
 
 	t.Run("list for another account returns 403", func(t *testing.T) {
 		otherAcc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "other",
-			Email:        "other@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "other",
+			Email:    "other@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		l, err := listSvc.CreateList(ctx, otherAcc.ID, "Their list", domain.ListRepliesPolicyList, false)
@@ -327,10 +327,10 @@ func TestListsHandler_DELETEList(t *testing.T) {
 	handler := NewListsHandler(listSvc, accountSvc, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -362,10 +362,10 @@ func TestListsHandler_DELETEList(t *testing.T) {
 
 	t.Run("list for another account returns 403", func(t *testing.T) {
 		otherAcc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "other",
-			Email:        "other@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "other",
+			Email:    "other@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		l, err := listSvc.CreateList(ctx, otherAcc.ID, "Their list", domain.ListRepliesPolicyList, false)
@@ -405,10 +405,10 @@ func TestListsHandler_GETListAccounts(t *testing.T) {
 	handler := NewListsHandler(listSvc, accountSvc, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -440,10 +440,10 @@ func TestListsHandler_GETListAccounts(t *testing.T) {
 
 	t.Run("list for another account returns 403", func(t *testing.T) {
 		otherAcc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "other",
-			Email:        "other@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "other",
+			Email:    "other@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		l, err := listSvc.CreateList(ctx, otherAcc.ID, "Their list", domain.ListRepliesPolicyList, false)
@@ -506,10 +506,10 @@ func TestListsHandler_POSTListAccounts(t *testing.T) {
 	handler := NewListsHandler(listSvc, accountSvc, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -558,10 +558,10 @@ func TestListsHandler_POSTListAccounts(t *testing.T) {
 
 	t.Run("list for another account returns 403", func(t *testing.T) {
 		otherAcc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "other",
-			Email:        "other@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "other",
+			Email:    "other@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		l, err := listSvc.CreateList(ctx, otherAcc.ID, "Their list", domain.ListRepliesPolicyList, false)
@@ -594,7 +594,7 @@ func TestListsHandler_POSTListAccounts(t *testing.T) {
 		handler.POSTListAccounts(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		ids, err := listSvc.ListListAccountIDs(ctx, l.ID)
+		ids, err := st.ListListAccountIDs(ctx, l.ID)
 		require.NoError(t, err)
 		assert.Contains(t, ids, member.ID)
 	})
@@ -609,10 +609,10 @@ func TestListsHandler_DELETEListAccounts(t *testing.T) {
 	handler := NewListsHandler(listSvc, accountSvc, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -661,10 +661,10 @@ func TestListsHandler_DELETEListAccounts(t *testing.T) {
 
 	t.Run("list for another account returns 403", func(t *testing.T) {
 		otherAcc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "other",
-			Email:        "other@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "other",
+			Email:    "other@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		l, err := listSvc.CreateList(ctx, otherAcc.ID, "Their list", domain.ListRepliesPolicyList, false)
@@ -697,7 +697,7 @@ func TestListsHandler_DELETEListAccounts(t *testing.T) {
 		handler.DELETEListAccounts(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		ids, err := listSvc.ListListAccountIDs(ctx, l.ID)
+		ids, err := st.ListListAccountIDs(ctx, l.ID)
 		require.NoError(t, err)
 		assert.NotContains(t, ids, member.ID)
 	})

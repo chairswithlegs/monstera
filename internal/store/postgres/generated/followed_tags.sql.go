@@ -11,6 +11,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const isFollowingTag = `-- name: IsFollowingTag :one
+SELECT EXISTS(
+    SELECT 1 FROM account_followed_tags WHERE account_id = $1 AND tag_id = $2
+) AS following
+`
+
+type IsFollowingTagParams struct {
+	AccountID string `json:"account_id"`
+	TagID     string `json:"tag_id"`
+}
+
+func (q *Queries) IsFollowingTag(ctx context.Context, arg IsFollowingTagParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isFollowingTag, arg.AccountID, arg.TagID)
+	var following bool
+	err := row.Scan(&following)
+	return following, err
+}
+
 const followTag = `-- name: FollowTag :exec
 INSERT INTO account_followed_tags (id, account_id, tag_id)
 VALUES ($1, $2, $3)

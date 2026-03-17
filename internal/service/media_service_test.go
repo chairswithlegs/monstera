@@ -99,6 +99,8 @@ func TestMediaService_Upload_success(t *testing.T) {
 	require.NotNil(t, result.Attachment)
 	assert.Equal(t, acc.ID, result.Attachment.AccountID)
 	assert.Equal(t, domain.MediaTypeImage, result.Attachment.Type)
+	require.NotNil(t, result.Attachment.ContentType)
+	assert.Equal(t, "image/jpeg", *result.Attachment.ContentType)
 	assert.NotEmpty(t, result.Attachment.StorageKey)
 	assert.Contains(t, result.Attachment.URL, "https://media.example.com/")
 	assert.Equal(t, "alt text", *result.Attachment.Description)

@@ -20,43 +20,13 @@ type AnnouncementReactionCount struct {
 	Me    bool
 }
 
-type Mute struct {
-	ID                string
-	AccountID         string
-	TargetID          string
-	HideNotifications bool
-	CreatedAt         time.Time
-}
-
-type Block struct {
-	ID        string
-	AccountID string
-	TargetID  string
-	CreatedAt time.Time
-}
-
-type Hashtag struct {
-	ID        string
-	Name      string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
-
-// FeaturedTag is a hashtag featured on an account's profile.
-type FeaturedTag struct {
-	ID            string
-	AccountID     string
-	TagID         string
-	Name          string
-	StatusesCount int
-	LastStatusAt  *time.Time
-	CreatedAt     time.Time
-}
-
-type Favourite struct {
-	ID        string
-	AccountID string
-	StatusID  string
-	APID      string
-	CreatedAt time.Time
+// KnownInstance represents a remote instance discovered through federation.
+type KnownInstance struct {
+	ID              string
+	Domain          string
+	Software        *string
+	SoftwareVersion *string
+	FirstSeenAt     time.Time
+	LastSeenAt      time.Time
+	AccountsCount   int64
 }

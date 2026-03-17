@@ -19,10 +19,10 @@ func TestMarkerService_SetMarker_invalidTimeline(t *testing.T) {
 	markerSvc := NewMarkerService(st)
 
 	account, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 

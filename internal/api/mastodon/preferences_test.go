@@ -24,10 +24,10 @@ func TestPreferencesHandler_GETPreferences(t *testing.T) {
 	handler := NewPreferencesHandler(accountSvc)
 
 	account, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 

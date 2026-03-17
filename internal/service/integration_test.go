@@ -17,9 +17,7 @@ import (
 
 func TestIntegration_RegisterUser_CreateStatus_HomeTimeline(t *testing.T) {
 	cfg, err := config.Load()
-	if err != nil {
-		t.Fatalf("failed to load config: %v", err)
-	}
+	require.NoError(t, err, "failed to load config")
 	connString := store.DatabaseConnectionString(cfg, false)
 	ctx := context.Background()
 
@@ -35,10 +33,10 @@ func TestIntegration_RegisterUser_CreateStatus_HomeTimeline(t *testing.T) {
 	statusWriteSvc := NewStatusWriteService(s, statusSvc, NewConversationService(s, statusSvc), instanceBaseURL, "test.example.com", 500)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "integration_user",
-		Email:        "integration@test.example.com",
-		PasswordHash: "hashedpassword",
-		Role:         domain.RoleUser,
+		Username: "integration_user",
+		Email:    "integration@test.example.com",
+		Password: "hashedpassword",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, acc)
@@ -52,15 +50,15 @@ func TestIntegration_RegisterUser_CreateStatus_HomeTimeline(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, st)
 
-	home, err := timelineSvc.Home(ctx, acc.ID, nil, 10)
+	home, err := timelineSvc.HomeEnriched(ctx, acc.ID, nil, 10)
 	require.NoError(t, err)
 	require.NotEmpty(t, home, "home timeline should contain the created status")
 	var found bool
 	for i := range home {
-		if home[i].ID == st.Status.ID {
+		if home[i].Status.ID == st.Status.ID {
 			found = true
-			require.Equal(t, text, *home[i].Text)
-			require.Equal(t, acc.ID, home[i].AccountID)
+			require.Equal(t, text, *home[i].Status.Text)
+			require.Equal(t, acc.ID, home[i].Status.AccountID)
 			break
 		}
 	}

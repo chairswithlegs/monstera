@@ -24,6 +24,12 @@ INSERT INTO list_accounts (list_id, account_id) VALUES ($1, $2) ON CONFLICT (lis
 -- name: RemoveAccountFromList :exec
 DELETE FROM list_accounts WHERE list_id = $1 AND account_id = $2;
 
+-- name: GetListIDsByMemberAccountID :many
+SELECT la.list_id FROM list_accounts la
+INNER JOIN lists l ON l.id = la.list_id
+WHERE la.account_id = $1
+ORDER BY la.list_id;
+
 -- name: GetListTimeline :many
 SELECT s.* FROM statuses s
 INNER JOIN list_accounts la ON la.account_id = s.account_id

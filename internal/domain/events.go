@@ -13,9 +13,15 @@ const (
 	EventFollowCreated       = "follow.created"
 	EventFollowRemoved       = "follow.removed"
 	EventFollowAccepted      = "follow.accepted"
+	EventFollowRequested     = "follow.requested"
+	EventFavouriteCreated    = "favourite.created"
+	EventFavouriteRemoved    = "favourite.removed"
+	EventReblogCreated       = "reblog.created"
+	EventReblogRemoved       = "reblog.removed"
 	EventBlockCreated        = "block.created"
 	EventBlockRemoved        = "block.removed"
 	EventAccountUpdated      = "account.updated"
+	EventStatusUpdatedRemote = "status.updated.remote"
 	EventNotificationCreated = "notification.created"
 )
 
@@ -39,6 +45,7 @@ type StatusCreatedPayload struct {
 	Tags                []Hashtag         `json:"tags"`
 	Media               []MediaAttachment `json:"media"`
 	MentionedAccountIDs []string          `json:"mentioned_account_ids"`
+	ParentAPID          string            `json:"parent_ap_id,omitempty"`
 }
 
 // StatusDeletedPayload carries data for a deleted status.
@@ -56,8 +63,12 @@ type StatusDeletedPayload struct {
 
 // StatusUpdatedPayload carries data for an edited status.
 type StatusUpdatedPayload struct {
-	Status *Status  `json:"status"`
-	Author *Account `json:"author"`
+	Status     *Status           `json:"status"`
+	Author     *Account          `json:"author"`
+	Mentions   []*Account        `json:"mentions"`
+	Tags       []Hashtag         `json:"tags"`
+	Media      []MediaAttachment `json:"media"`
+	ParentAPID string            `json:"parent_ap_id,omitempty"`
 }
 
 // FollowCreatedPayload carries data when a local user follows someone.
@@ -92,6 +103,54 @@ type BlockCreatedPayload struct {
 type BlockRemovedPayload struct {
 	Actor  *Account `json:"actor"`
 	Target *Account `json:"target"`
+}
+
+// FollowRequestedPayload carries data for a pending follow request from a remote user.
+type FollowRequestedPayload struct {
+	Follow *Follow  `json:"follow"`
+	Actor  *Account `json:"actor"`
+	Target *Account `json:"target"`
+}
+
+// FavouriteCreatedPayload carries data when a status is favourited.
+type FavouriteCreatedPayload struct {
+	AccountID      string   `json:"account_id"`
+	StatusID       string   `json:"status_id"`
+	StatusAuthorID string   `json:"status_author_id"`
+	FromAccount    *Account `json:"from_account"`
+	StatusAuthor   *Account `json:"status_author,omitempty"`
+	StatusAPID     string   `json:"status_ap_id,omitempty"`
+}
+
+// ReblogCreatedPayload carries data when a status is reblogged.
+type ReblogCreatedPayload struct {
+	AccountID          string   `json:"account_id"`
+	ReblogStatusID     string   `json:"reblog_status_id"`
+	OriginalStatusID   string   `json:"original_status_id"`
+	OriginalAuthorID   string   `json:"original_author_id"`
+	FromAccount        *Account `json:"from_account"`
+	OriginalAuthor     *Account `json:"original_author,omitempty"`
+	OriginalStatusAPID string   `json:"original_status_ap_id,omitempty"`
+}
+
+// FavouriteRemovedPayload carries data when a favourite is removed (undo like).
+type FavouriteRemovedPayload struct {
+	AccountID      string   `json:"account_id"`
+	StatusID       string   `json:"status_id"`
+	StatusAuthorID string   `json:"status_author_id"`
+	FromAccount    *Account `json:"from_account"`
+	StatusAuthor   *Account `json:"status_author,omitempty"`
+	StatusAPID     string   `json:"status_ap_id,omitempty"`
+}
+
+// ReblogRemovedPayload carries data when a reblog is removed (undo announce).
+type ReblogRemovedPayload struct {
+	AccountID          string   `json:"account_id"`
+	ReblogStatusID     string   `json:"reblog_status_id"`
+	OriginalStatusID   string   `json:"original_status_id"`
+	OriginalAuthorID   string   `json:"original_author_id"`
+	FromAccount        *Account `json:"from_account"`
+	OriginalStatusAPID string   `json:"original_status_ap_id,omitempty"`
 }
 
 // AccountUpdatedPayload carries data when a user updates their profile.

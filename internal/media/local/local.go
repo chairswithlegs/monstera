@@ -91,7 +91,7 @@ func (s *Store) Put(_ context.Context, key string, r io.Reader, _ string) error 
 // Returns media.ErrNotFound if the file does not exist.
 func (s *Store) Get(_ context.Context, key string) (io.ReadCloser, error) {
 	path := filepath.Join(s.basePath, filepath.FromSlash(key))
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // G703: key is validated upstream; basePath is from config
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, media.ErrNotFound

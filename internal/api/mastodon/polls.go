@@ -2,6 +2,7 @@ package mastodon
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -15,12 +16,12 @@ import (
 // PollsHandler handles GET /api/v1/polls/:id and POST /api/v1/polls/:id/votes.
 type PollsHandler struct {
 	statuses     service.StatusService
-	statusWrites service.StatusWriteService
+	interactions service.StatusInteractionService
 }
 
 // NewPollsHandler returns a new PollsHandler.
-func NewPollsHandler(statuses service.StatusService, statusWrites service.StatusWriteService) *PollsHandler {
-	return &PollsHandler{statuses: statuses, statusWrites: statusWrites}
+func NewPollsHandler(statuses service.StatusService, interactions service.StatusInteractionService) *PollsHandler {
+	return &PollsHandler{statuses: statuses, interactions: interactions}
 }
 
 // GETPoll handles GET /api/v1/polls/:id. Optional auth; when authenticated, voted and own_votes are set.
@@ -52,6 +53,23 @@ type POSTVotesRequest struct {
 	Choices []int `json:"choices"`
 }
 
+func (r *POSTVotesRequest) Validate() error {
+	if len(r.Choices) == 0 {
+		return fmt.Errorf("validate votes: %w", api.NewUnprocessableError("choices is required"))
+	}
+	seen := make(map[int]struct{}, len(r.Choices))
+	for _, c := range r.Choices {
+		if c < 0 {
+			return fmt.Errorf("validate votes: %w", api.NewUnprocessableError("choices contains invalid index"))
+		}
+		if _, dup := seen[c]; dup {
+			return fmt.Errorf("validate votes: %w", api.NewUnprocessableError("choices contains duplicate index"))
+		}
+		seen[c] = struct{}{}
+	}
+	return nil
+}
+
 // POSTVotes handles POST /api/v1/polls/:id/votes.
 func (h *PollsHandler) POSTVotes(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -66,11 +84,11 @@ func (h *PollsHandler) POSTVotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req POSTVotesRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
+	if err := api.DecodeAndValidateJSON(r, &req); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
-	poll, err := h.statusWrites.RecordVote(ctx, id, account.ID, req.Choices)
+	poll, err := h.interactions.RecordVote(ctx, id, account.ID, req.Choices)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)

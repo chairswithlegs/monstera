@@ -19,13 +19,13 @@ import (
 
 // ScheduledStatusesHandler handles GET/PUT/DELETE /api/v1/scheduled_statuses.
 type ScheduledStatusesHandler struct {
-	statuses     service.StatusService
-	statusWrites service.StatusWriteService
+	statuses  service.StatusService
+	scheduled service.ScheduledStatusService
 }
 
 // NewScheduledStatusesHandler returns a new ScheduledStatusesHandler.
-func NewScheduledStatusesHandler(statuses service.StatusService, statusWrites service.StatusWriteService) *ScheduledStatusesHandler {
-	return &ScheduledStatusesHandler{statuses: statuses, statusWrites: statusWrites}
+func NewScheduledStatusesHandler(statuses service.StatusService, scheduled service.ScheduledStatusService) *ScheduledStatusesHandler {
+	return &ScheduledStatusesHandler{statuses: statuses, scheduled: scheduled}
 }
 
 // mastodonScheduledParams returns params as a Mastodon-shaped JSON object (with application_id, poll: null, etc.) for client compatibility.
@@ -181,7 +181,7 @@ func (h *ScheduledStatusesHandler) PUTScheduledStatus(w http.ResponseWriter, r *
 	if len(req.Params) > 0 {
 		params = req.Params
 	}
-	updated, err := h.statusWrites.UpdateScheduledStatus(ctx, id, account.ID, params, req.parsedScheduledAt)
+	updated, err := h.scheduled.UpdateScheduledStatus(ctx, id, account.ID, params, req.parsedScheduledAt)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -210,7 +210,7 @@ func (h *ScheduledStatusesHandler) DELETEScheduledStatus(w http.ResponseWriter, 
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	err := h.statusWrites.DeleteScheduledStatus(ctx, id, account.ID)
+	err := h.scheduled.DeleteScheduledStatus(ctx, id, account.ID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)

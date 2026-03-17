@@ -79,8 +79,8 @@ func parseLevel(level string) slog.Level {
 	}
 }
 
-// RequestIDMiddlware generates a request ID and stores it in the request context.
-func RequestIDMiddlware() func(http.Handler) http.Handler {
+// RequestIDMiddleware generates a request ID and stores it in the request context.
+func RequestIDMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			requestID := generateRequestID()

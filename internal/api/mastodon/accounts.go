@@ -1,8 +1,11 @@
 package mastodon
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -10,7 +13,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/microcosm-cc/bluemonday"
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/chairswithlegs/monstera/internal/api"
 	"github.com/chairswithlegs/monstera/internal/api/mastodon/apimodel"
@@ -23,6 +25,7 @@ import (
 type AccountsHandler struct {
 	accounts       service.AccountService
 	follows        service.FollowService
+	tagFollows     service.TagFollowService
 	timeline       service.TimelineService
 	settings       service.MonsteraSettingsService
 	media          service.MediaService
@@ -31,8 +34,8 @@ type AccountsHandler struct {
 }
 
 // NewAccountsHandler returns a new AccountsHandler. follows may be nil to disable follow endpoints; timeline is required for GET account statuses.
-func NewAccountsHandler(accounts service.AccountService, follows service.FollowService, timeline service.TimelineService, settings service.MonsteraSettingsService, media service.MediaService, mediaMaxBytes int64, instanceDomain string) *AccountsHandler {
-	return &AccountsHandler{accounts: accounts, follows: follows, timeline: timeline, settings: settings, media: media, mediaMaxBytes: mediaMaxBytes, instanceDomain: instanceDomain}
+func NewAccountsHandler(accounts service.AccountService, follows service.FollowService, tagFollows service.TagFollowService, timeline service.TimelineService, settings service.MonsteraSettingsService, media service.MediaService, mediaMaxBytes int64, instanceDomain string) *AccountsHandler {
+	return &AccountsHandler{accounts: accounts, follows: follows, tagFollows: tagFollows, timeline: timeline, settings: settings, media: media, mediaMaxBytes: mediaMaxBytes, instanceDomain: instanceDomain}
 }
 
 // GETVerifyCredentials handles GET /api/v1/accounts/verify_credentials.
@@ -122,15 +125,7 @@ func (h *AccountsHandler) GETAccountsLookup(w http.ResponseWriter, r *http.Reque
 // GETDirectory handles GET /api/v1/directory. Auth optional. Returns discoverable/local accounts.
 func (h *AccountsHandler) GETDirectory(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	limit := DefaultListLimit
-	if l := q.Get("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 {
-			limit = n
-			if limit > MaxListLimit {
-				limit = MaxListLimit
-			}
-		}
-	}
+	limit := parseLimitParam(r, DefaultListLimit, MaxListLimit)
 	offset := 0
 	if o := q.Get("offset"); o != "" {
 		if n, err := strconv.Atoi(o); err == nil && n > 0 {
@@ -155,100 +150,6 @@ func (h *AccountsHandler) GETDirectory(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
-// POSTFollow handles POST /api/v1/accounts/:id/follow. Auth required.
-func (h *AccountsHandler) POSTFollow(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	targetID := chi.URLParam(r, "id")
-	if err := api.ValidateRequiredField(targetID, "target_id"); err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	target, err := h.accounts.GetByID(r.Context(), targetID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	rel, err := h.follows.Follow(r.Context(), account.ID, target.ID)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	api.WriteJSON(w, http.StatusOK, apimodel.ToRelationship(rel))
-}
-
-// POSTUnfollow handles POST /api/v1/accounts/:id/unfollow. Auth required.
-func (h *AccountsHandler) POSTUnfollow(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	targetID := chi.URLParam(r, "id")
-	if err := api.ValidateRequiredField(targetID, "target_id"); err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	target, err := h.accounts.GetByID(r.Context(), targetID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	rel, err := h.follows.Unfollow(r.Context(), account.ID, target.ID)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	api.WriteJSON(w, http.StatusOK, apimodel.ToRelationship(rel))
-}
-
-// GETRelationships handles GET /api/v1/accounts/relationships?id[]=... Returns []Relationship for each requested id.
-func (h *AccountsHandler) GETRelationships(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	ids := r.URL.Query()["id[]"]
-	if len(ids) == 0 {
-		api.WriteJSON(w, http.StatusOK, []apimodel.Relationship{})
-		return
-	}
-	out := make([]apimodel.Relationship, 0, len(ids))
-	for _, targetID := range ids {
-		if targetID == "" {
-			continue
-		}
-		target, err := h.accounts.GetByID(r.Context(), targetID)
-		if err != nil {
-			if errors.Is(err, domain.ErrNotFound) {
-				api.HandleError(w, r, api.ErrNotFound)
-				return
-			}
-			api.HandleError(w, r, err)
-			return
-		}
-		rel, err := h.accounts.GetRelationship(r.Context(), account.ID, target.ID)
-		if err != nil {
-			api.HandleError(w, r, err)
-			return
-		}
-		out = append(out, apimodel.ToRelationship(rel))
-	}
-	api.WriteJSON(w, http.StatusOK, out)
-}
-
 // PATCHUpdateCredentials handles PATCH /api/v1/accounts/update_credentials.
 func (h *AccountsHandler) PATCHUpdateCredentials(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
@@ -256,71 +157,60 @@ func (h *AccountsHandler) PATCHUpdateCredentials(w http.ResponseWriter, r *http.
 		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
+	input, err := h.parseUpdateCredentialsRequest(w, r, account)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	acc, _, err := h.accounts.GetAccountWithUser(r.Context(), account.ID)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	if len(input.Fields) == 0 {
+		input.Fields = acc.Fields
+	}
+	updated, updatedUser, err := h.accounts.UpdateCredentials(r.Context(), *input)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, apimodel.ToAccountWithSource(updated, updatedUser, h.instanceDomain))
+}
 
-	// Cap total request body to 2 files + overhead to prevent disk exhaustion.
-	// ParseMultipartForm spills to temp files beyond maxMemory, with no disk limit otherwise.
+// parseUpdateCredentialsRequest parses the multipart/form request body for
+// PATCHUpdateCredentials, uploading avatar/header files and returning the
+// service input. w is needed for http.MaxBytesReader.
+func (h *AccountsHandler) parseUpdateCredentialsRequest(w http.ResponseWriter, r *http.Request, account *domain.Account) (*service.UpdateCredentialsInput, error) {
 	const formOverhead = 64 * 1024
 	maxBody := 2*h.mediaMaxBytes + formOverhead
 	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 	if err := r.ParseMultipartForm(h.mediaMaxBytes); err != nil {
-		slog.ErrorContext(r.Context(), "failed to parse multipart form", slog.Any("error", err))
-		// Fall back to regular form parsing for urlencoded requests (no file uploads).
+		slog.DebugContext(r.Context(), "failed to parse multipart form, falling back to form parse", slog.Any("error", err))
 		if r.Form == nil {
 			if err := r.ParseForm(); err != nil {
-				slog.ErrorContext(r.Context(), "failed to parse form", slog.Any("error", err))
-				api.HandleError(w, r, api.NewBadRequestError("failed to parse form"))
-				return
+				return nil, fmt.Errorf("parse form: %w", api.NewBadRequestError("failed to parse form"))
 			}
 		}
 	}
 
 	form := r.Form
-
-	// Sanitize display name and note using UGC policy to retain formatting elements
-	// but remove scripts, iframes, etc.
-	displayName := api.FormValue(form, "display_name")
-	displayName = bluemonday.UGCPolicy().Sanitize(displayName)
-	note := api.FormValue(form, "note")
-	note = bluemonday.UGCPolicy().Sanitize(note)
-
+	displayName := bluemonday.UGCPolicy().Sanitize(api.FormValue(form, "display_name"))
+	note := bluemonday.UGCPolicy().Sanitize(api.FormValue(form, "note"))
 	locked := api.FormValueIsTruthy(form, "locked")
 	bot := api.FormValueIsTruthy(form, "bot")
 
 	var avatarMediaID, headerMediaID *string
-
-	// Avatar and header sent as direct file uploads (multipart) per the Mastodon API spec.
-	avatarFile, avatarFH, err := r.FormFile("avatar")
-	if err == nil {
-		defer func() { _ = avatarFile.Close() }()
-		ct := avatarFH.Header.Get("Content-Type")
-		if ct == "" {
-			ct = contentTypeOctetStream
+	if h.media != nil {
+		var err error
+		avatarMediaID, err = h.uploadFormFile(r, "avatar", account.ID, h.media.UploadAvatar)
+		if err != nil {
+			return nil, err
 		}
-		result, uploadErr := h.media.UploadAvatar(r.Context(), account.ID, avatarFile, ct)
-		if uploadErr != nil {
-			api.HandleError(w, r, uploadErr)
-			return
+		headerMediaID, err = h.uploadFormFile(r, "header", account.ID, h.media.UploadHeader)
+		if err != nil {
+			return nil, err
 		}
-		avatarMediaID = &result.Attachment.ID
-	} else if !errors.Is(err, http.ErrMissingFile) {
-		slog.ErrorContext(r.Context(), "failed to get avatar file from request", slog.Any("error", err))
-	}
-
-	headerFile, headerFH, err := r.FormFile("header")
-	if err == nil {
-		defer func() { _ = headerFile.Close() }()
-		ct := headerFH.Header.Get("Content-Type")
-		if ct == "" {
-			ct = contentTypeOctetStream
-		}
-		result, uploadErr := h.media.UploadHeader(r.Context(), account.ID, headerFile, ct)
-		if uploadErr != nil {
-			api.HandleError(w, r, uploadErr)
-			return
-		}
-		headerMediaID = &result.Attachment.ID
-	} else if !errors.Is(err, http.ErrMissingFile) {
-		slog.ErrorContext(r.Context(), "failed to get header file from request", slog.Any("error", err))
 	}
 
 	var displayNamePtr, notePtr *string
@@ -330,7 +220,6 @@ func (h *AccountsHandler) PATCHUpdateCredentials(w http.ResponseWriter, r *http.
 	if note != "" {
 		notePtr = &note
 	}
-	fields := parseFieldsAttributes(form)
 	quotePolicy := api.FormValue(form, "source[quote_policy]")
 	if quotePolicy == "" {
 		quotePolicy = api.FormValue(form, "quote_policy")
@@ -339,15 +228,8 @@ func (h *AccountsHandler) PATCHUpdateCredentials(w http.ResponseWriter, r *http.
 	if quotePolicy != "" {
 		defaultQuotePolicy = &quotePolicy
 	}
-	acc, _, err := h.accounts.GetAccountWithUser(r.Context(), account.ID)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	if len(fields) == 0 {
-		fields = acc.Fields
-	}
-	updated, updatedUser, err := h.accounts.UpdateCredentials(r.Context(), service.UpdateCredentialsInput{
+
+	return &service.UpdateCredentialsInput{
 		AccountID:          account.ID,
 		DisplayName:        displayNamePtr,
 		Note:               notePtr,
@@ -356,13 +238,36 @@ func (h *AccountsHandler) PATCHUpdateCredentials(w http.ResponseWriter, r *http.
 		Locked:             locked,
 		Bot:                bot,
 		DefaultQuotePolicy: defaultQuotePolicy,
-		Fields:             fields,
-	})
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
+		Fields:             parseFieldsAttributes(form),
+	}, nil
+}
+
+type uploadFunc func(ctx context.Context, accountID string, file io.Reader, contentType string) (*service.UploadResult, error)
+
+// uploadFormFile extracts a named file from the multipart form, uploads it
+// via the provided upload function, and returns the resulting media attachment ID.
+func (h *AccountsHandler) uploadFormFile(r *http.Request, field string, accountID string, upload uploadFunc) (*string, error) {
+	if r.MultipartForm == nil {
+		return nil, nil
 	}
-	api.WriteJSON(w, http.StatusOK, apimodel.ToAccountWithSource(updated, updatedUser, h.instanceDomain))
+	file, fh, err := r.FormFile(field)
+	if errors.Is(err, http.ErrMissingFile) {
+		return nil, nil
+	}
+	if err != nil {
+		slog.ErrorContext(r.Context(), "failed to get "+field+" file from request", slog.Any("error", err))
+		return nil, nil
+	}
+	defer func() { _ = file.Close() }()
+	ct := fh.Header.Get("Content-Type")
+	if ct == "" {
+		ct = contentTypeOctetStream
+	}
+	result, err := upload(r.Context(), accountID, file, ct)
+	if err != nil {
+		return nil, err
+	}
+	return &result.Attachment.ID, nil
 }
 
 func parseFieldsAttributes(form map[string][]string) json.RawMessage {
@@ -456,340 +361,6 @@ func firstLastIDsFromAccountStatuses(enriched []service.EnrichedStatus) (firstID
 	return enriched[0].Status.ID, enriched[len(enriched)-1].Status.ID
 }
 
-// GETFollowers handles GET /api/v1/accounts/:id/followers.
-func (h *AccountsHandler) GETFollowers(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	targetID := chi.URLParam(r, "id")
-	if targetID == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	target, err := h.accounts.GetByID(r.Context(), targetID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	// TODO: if target locked and viewer does not follow, return empty
-	params := PageParamsFromRequest(r)
-	followers, err := h.follows.GetFollowers(r.Context(), target.ID, optionalString(params.MaxID), params.Limit)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	out := make([]apimodel.Account, 0, len(followers))
-	for _, a := range followers {
-		out = append(out, apimodel.ToAccount(&a, h.instanceDomain))
-	}
-	firstID, lastID := firstLastIDsFromAccounts(followers)
-	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
-		w.Header().Set("Link", link)
-	}
-	api.WriteJSON(w, http.StatusOK, out)
-}
-
-func firstLastIDsFromAccounts(list []domain.Account) (firstID, lastID string) {
-	if len(list) == 0 {
-		return "", ""
-	}
-	return list[0].ID, list[len(list)-1].ID
-}
-
-// GETFollowing handles GET /api/v1/accounts/:id/following.
-func (h *AccountsHandler) GETFollowing(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	targetID := chi.URLParam(r, "id")
-	if targetID == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	target, err := h.accounts.GetByID(r.Context(), targetID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	params := PageParamsFromRequest(r)
-	list, err := h.follows.GetFollowing(r.Context(), target.ID, optionalString(params.MaxID), params.Limit)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	out := make([]apimodel.Account, 0, len(list))
-	for _, a := range list {
-		out = append(out, apimodel.ToAccount(&a, h.instanceDomain))
-	}
-	firstID, lastID := firstLastIDsFromAccounts(list)
-	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
-		w.Header().Set("Link", link)
-	}
-	api.WriteJSON(w, http.StatusOK, out)
-}
-
-// GETBlocks handles GET /api/v1/blocks. Returns paginated blocked accounts for the authenticated user.
-func (h *AccountsHandler) GETBlocks(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	params := PageParamsFromRequest(r)
-	limit := DefaultListLimit
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 {
-			limit = n
-			if limit > MaxListLimit {
-				limit = MaxListLimit
-			}
-		}
-	}
-	blocks, nextCursor, err := h.follows.ListBlockedAccounts(r.Context(), account.ID, optionalString(params.MaxID), limit)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	out := make([]apimodel.Account, 0, len(blocks))
-	for i := range blocks {
-		out = append(out, apimodel.ToAccount(&blocks[i], h.instanceDomain))
-	}
-	if nextCursor != nil && *nextCursor != "" {
-		if link := linkHeaderWithNext(AbsoluteRequestURL(r, h.instanceDomain), *nextCursor); link != "" {
-			w.Header().Set("Link", link)
-		}
-	}
-	api.WriteJSON(w, http.StatusOK, out)
-}
-
-// GETMutes handles GET /api/v1/mutes. Returns paginated muted accounts for the authenticated user.
-func (h *AccountsHandler) GETMutes(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	params := PageParamsFromRequest(r)
-	limit := DefaultListLimit
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 {
-			limit = n
-			if limit > MaxListLimit {
-				limit = MaxListLimit
-			}
-		}
-	}
-	mutes, nextCursor, err := h.follows.ListMutedAccounts(r.Context(), account.ID, optionalString(params.MaxID), limit)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	out := make([]apimodel.Account, 0, len(mutes))
-	for i := range mutes {
-		out = append(out, apimodel.ToAccount(&mutes[i], h.instanceDomain))
-	}
-	if nextCursor != nil && *nextCursor != "" {
-		if link := linkHeaderWithNext(AbsoluteRequestURL(r, h.instanceDomain), *nextCursor); link != "" {
-			w.Header().Set("Link", link)
-		}
-	}
-	api.WriteJSON(w, http.StatusOK, out)
-}
-
-// POSTBlock handles POST /api/v1/accounts/:id/block.
-func (h *AccountsHandler) POSTBlock(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	targetID := chi.URLParam(r, "id")
-	if targetID == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	target, err := h.accounts.GetByID(r.Context(), targetID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	rel, err := h.follows.Block(r.Context(), account.ID, target.ID)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	api.WriteJSON(w, http.StatusOK, apimodel.ToRelationship(rel))
-}
-
-// POSTUnblock handles POST /api/v1/accounts/:id/unblock.
-func (h *AccountsHandler) POSTUnblock(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	targetID := chi.URLParam(r, "id")
-	if targetID == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	target, err := h.accounts.GetByID(r.Context(), targetID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	rel, err := h.follows.Unblock(r.Context(), account.ID, target.ID)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	api.WriteJSON(w, http.StatusOK, apimodel.ToRelationship(rel))
-}
-
-// POSTMute handles POST /api/v1/accounts/:id/mute.
-func (h *AccountsHandler) POSTMute(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	targetID := chi.URLParam(r, "id")
-	if targetID == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	target, err := h.accounts.GetByID(r.Context(), targetID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-
-	if r.Form == nil {
-		_ = r.ParseForm()
-	}
-	hideNotifications := false
-	if r.Form != nil {
-		hideNotifications = api.FormValueIsTruthy(r.Form, "notifications")
-	}
-	rel, err := h.follows.Mute(r.Context(), account.ID, target.ID, hideNotifications)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	api.WriteJSON(w, http.StatusOK, apimodel.ToRelationship(rel))
-}
-
-// POSTUnmute handles POST /api/v1/accounts/:id/unmute.
-func (h *AccountsHandler) POSTUnmute(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	targetID := chi.URLParam(r, "id")
-	if targetID == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	target, err := h.accounts.GetByID(r.Context(), targetID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	rel, err := h.follows.Unmute(r.Context(), account.ID, target.ID)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	api.WriteJSON(w, http.StatusOK, apimodel.ToRelationship(rel))
-}
-
-// GETFollowedTags handles GET /api/v1/followed_tags.
-func (h *AccountsHandler) GETFollowedTags(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	params := PageParamsFromRequest(r)
-	limit := DefaultListLimit
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 {
-			limit = n
-			if limit > MaxListLimit {
-				limit = MaxListLimit
-			}
-		}
-	}
-	tags, nextCursor, err := h.follows.ListFollowedTags(r.Context(), account.ID, optionalString(params.MaxID), limit)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	out := make([]apimodel.Tag, 0, len(tags))
-	for i := range tags {
-		out = append(out, apimodel.FollowedTagFromDomain(tags[i], h.instanceDomain))
-	}
-	if nextCursor != nil && *nextCursor != "" {
-		if link := linkHeaderWithNext(AbsoluteRequestURL(r, h.instanceDomain), *nextCursor); link != "" {
-			w.Header().Set("Link", link)
-		}
-	}
-	api.WriteJSON(w, http.StatusOK, out)
-}
-
-// POSTFollowedTags handles POST /api/v1/followed_tags. Body: { "name": "hashtag" }.
-func (h *AccountsHandler) POSTFollowedTags(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	var body apimodel.PostFollowedTagRequest
-	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	tag, err := h.follows.FollowTag(r.Context(), account.ID, body.Name)
-	if err != nil {
-		if errors.Is(err, domain.ErrValidation) {
-			api.HandleError(w, r, api.NewUnprocessableError("Validation failed: Tag is invalid"))
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	api.WriteJSON(w, http.StatusOK, apimodel.FollowedTagFromDomain(*tag, h.instanceDomain))
-}
-
 // POSTAccounts handles POST /api/v1/accounts (public registration endpoint).
 func (h *AccountsHandler) POSTAccounts(w http.ResponseWriter, r *http.Request) {
 	var body apimodel.RegisterAccountRequest
@@ -808,16 +379,10 @@ func (h *AccountsHandler) POSTAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-
 	acc, err := h.accounts.Register(r.Context(), service.RegisterInput{
 		Username:           body.Username,
 		Email:              body.Email,
-		PasswordHash:       string(hash),
+		Password:           body.Password,
 		Role:               domain.RoleUser,
 		RegistrationReason: body.Reason,
 		InviteCode:         body.InviteCode,
@@ -832,23 +397,4 @@ func (h *AccountsHandler) POSTAccounts(w http.ResponseWriter, r *http.Request) {
 		Account: apimodel.ToAccount(acc, h.instanceDomain),
 		Pending: pending,
 	})
-}
-
-// DELETEFollowedTag handles DELETE /api/v1/followed_tags/:id. id is the tag ID.
-func (h *AccountsHandler) DELETEFollowedTag(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	tagID := chi.URLParam(r, "id")
-	if tagID == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	if err := h.follows.UnfollowTag(r.Context(), account.ID, tagID); err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	api.WriteJSON(w, http.StatusOK, map[string]any{})
 }

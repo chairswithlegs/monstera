@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/chairswithlegs/monstera/internal/api"
-	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/oauth"
 	"github.com/chairswithlegs/monstera/internal/service"
@@ -16,21 +15,21 @@ import (
 
 // Handler holds dependencies for the OAuth HTTP endpoints.
 type Handler struct {
-	oauth *oauth.Server
-	auth  service.AuthService
-	cfg   *config.Config
+	oauth         *oauth.Server
+	auth          service.AuthService
+	monsteraUIURL *url.URL
 }
 
 // NewHandler constructs an OAuth Handler.
 func NewHandler(
 	oauth *oauth.Server,
 	auth service.AuthService,
-	cfg *config.Config,
+	monsteraUIURL *url.URL,
 ) *Handler {
 	return &Handler{
-		oauth: oauth,
-		auth:  auth,
-		cfg:   cfg,
+		oauth:         oauth,
+		auth:          auth,
+		monsteraUIURL: monsteraUIURL,
 	}
 }
 
@@ -81,14 +80,14 @@ func (h *Handler) POSTRegisterApp(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		if err := r.ParseForm(); err != nil {
+		if err := r.ParseForm(); err != nil { //nolint:gosec // G120: body size limited by global MaxBodySize middleware
 			api.HandleError(w, r, api.NewBadRequestError("invalid request body"))
 			return
 		}
-		name = strings.TrimSpace(r.FormValue("client_name"))
-		redirectURIs = strings.TrimSpace(r.FormValue("redirect_uris"))
-		scopes = r.FormValue("scopes")
-		website = r.FormValue("website")
+		name = strings.TrimSpace(r.Form.Get("client_name"))
+		redirectURIs = strings.TrimSpace(r.Form.Get("redirect_uris"))
+		scopes = r.Form.Get("scopes")
+		website = r.Form.Get("website")
 	}
 
 	if name == "" {
@@ -155,7 +154,7 @@ func (h *Handler) GETAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Forward all OAuth params to the Monstera UI OAuth authorize page
-	authorizeURL := h.cfg.MonsteraUiUrl.JoinPath("/oauth/authorize")
+	authorizeURL := h.monsteraUIURL.JoinPath("/oauth/authorize")
 	authorizeQuery := authorizeURL.Query()
 	authorizeQuery.Set("client_id", clientID)
 	authorizeQuery.Set("redirect_uri", redirectURI)
@@ -250,7 +249,7 @@ func (h *Handler) POSTLogin(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusOK, map[string]string{"redirect_url": redirectURL.String()})
 }
 
-// tokenRequestBody is the JSON body for POST /oauth/token (some clients send JSON instead of form). (some clients send JSON instead of form).
+// tokenRequestBody is the JSON body for POST /oauth/token (some clients send JSON instead of form).
 type tokenRequestBody struct {
 	GrantType    string `json:"grant_type"`
 	Code         string `json:"code"`
@@ -280,17 +279,17 @@ func (h *Handler) POSTToken(w http.ResponseWriter, r *http.Request) {
 		codeVerifier = body.CodeVerifier
 		scope = body.Scope
 	} else {
-		if err := r.ParseForm(); err != nil {
+		if err := r.ParseForm(); err != nil { //nolint:gosec // G120: body size limited by global MaxBodySize middleware
 			api.HandleError(w, r, api.NewBadRequestError("invalid request body"))
 			return
 		}
-		grantType = r.FormValue("grant_type")
-		code = r.FormValue("code")
-		redirectURI = r.FormValue("redirect_uri")
-		clientID = r.FormValue("client_id")
-		clientSecret = r.FormValue("client_secret")
-		codeVerifier = r.FormValue("code_verifier")
-		scope = r.FormValue("scope")
+		grantType = r.Form.Get("grant_type")
+		code = r.Form.Get("code")
+		redirectURI = r.Form.Get("redirect_uri")
+		clientID = r.Form.Get("client_id")
+		clientSecret = r.Form.Get("client_secret")
+		codeVerifier = r.Form.Get("code_verifier")
+		scope = r.Form.Get("scope")
 	}
 
 	switch grantType {
@@ -329,12 +328,12 @@ func (h *Handler) POSTToken(w http.ResponseWriter, r *http.Request) {
 
 // POSTRevoke handles POST /oauth/revoke (RFC 7009).
 func (h *Handler) POSTRevoke(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseForm(); err != nil { //nolint:gosec // G120: body size limited by global MaxBodySize middleware
 		api.HandleError(w, r, api.NewBadRequestError("invalid request body"))
 		return
 	}
 
-	token := r.FormValue("token")
+	token := r.Form.Get("token")
 	if err := api.ValidateRequiredField(token, "token"); err != nil {
 		api.HandleError(w, r, err)
 		return

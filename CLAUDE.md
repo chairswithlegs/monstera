@@ -1,3 +1,11 @@
+## Issue Tracking
+Use Beads (`bd`) for all work tracking. Run `bd quickstart` to get started.
+*   File issues for any work taking longer than 2 minutes
+*   Check `bd ready --json` to find unblocked work
+*   Update issue status as you work
+*   File discovered bugs/issues immediately rather than ignoring them
+*   Mark Beads issues as In-Progress while you work on it. Mark as closed when finished.
+
 # Monstera Project
 
 Monstera is a self-hosted **ActivityPub server** written in Go 1.26 that exposes a **Mastodon-compatible REST API**. Any Mastodon client (Ivory, Tusky, Elk, Mona, etc.) connects without modification.
@@ -32,23 +40,24 @@ monstera/
 │   ├── store/           # Storage interface; postgres/ has the sqlc implementation
 │   ├── service/         # Business logic — depends on store, never on api
 │   ├── api/
-│   │   ├── mastodon/    # Mastodon REST handlers
+│   │   ├── mastodon/    # Mastodon REST handlers; sse/ subpackage for SSE streaming
 │   │   ├── activitypub/ # ActivityPub HTTP endpoints (inbox, outbox, WebFinger)
 │   │   ├── oauth/       # OAuth 2.0 endpoints
 │   │   ├── monstera/    # Monstera-specific API endpoints
 │   │   ├── middleware/  # HTTP middleware (auth, logging, etc.)
 │   │   └── router/      # Route registration
 │   ├── activitypub/     # ActivityPub logic (HTTP Signatures, federation delivery, federation subscriber)
-│   ├── outbox/          # Transactional outbox poller and DOMAIN_EVENTS stream config
+│   ├── blocklist/       # Domain blocklist cache
 │   ├── oauth/           # OAuth 2.0 flows
 │   ├── media/           # Media processing; local/ and s3/ storage drivers
 │   ├── cache/           # Cache interface + implementation
 │   ├── email/           # Email interface + implementation
-│   ├── nats/            # NATS JetStream integration
-│   ├── events/          # Event and type definitions, SSE implementation
+│   ├── natsutil/        # NATS JetStream integration
+│   ├── events/          # Event and type definitions, outbox poller, notification subscriber
 │   ├── scheduler/       # Background job scheduler; jobs/ for job definitions
 │   ├── observability/   # Metrics and tracing setup
 │   ├── config/          # 12-factor env-var configuration
+│   ├── ssrf/            # SSRF protection for outbound HTTP
 │   ├── uid/             # ULID generation
 │   └── testutil/        # Shared test helpers
 ├── ui/                  # Next.js frontend (app router, shadcn/Tailwind)
@@ -65,13 +74,23 @@ monstera/
 - Code in the "adapter" layer (e.g API handlers, workers) should not use the store directly, they should use services instead.
 - Client implementations of system dependencies (Postgres, NATs, email) should always be abstracted behind an interface.
 
+## Local/Remote Entity Safety
+
+Follow these rules to prevent local/remote entity conflation bugs:
+
+1. **Guard service mutations** — Methods that only apply to remote entities must call `requireRemote(st.Local, "MethodName")` at the top. Methods that only apply to local entities should call `requireLocal(st.Local, "MethodName")` when the locality is determined by a caller-supplied input; if the method itself explicitly sets locality (e.g. `Local: true` in a create path), the guard is unnecessary.
+2. **`*Remote` naming convention** — Methods like `CreateRemote`, `DeleteRemote`, `CreateRemoteFollow` handle remote-originated operations. Both local and remote methods should emit domain events; it is up to consumers (e.g. the federation subscriber) to decide what actions to take based on locality.
+3. **Federation subscriber locality checks** — Handlers must check payload locality (`Author.Domain == nil` or `payload.Local`) before federating. Never federate remote-originated events.
+4. **Inbox handlers use `*Remote` variants** — Inbox handlers must never call generic service methods. Use `*Remote` variants to avoid triggering outbound federation.
+5. **Check Domain, not InboxURL** — Use `account.Domain == nil` for local accounts and `status.Local` for local statuses. Never use `InboxURL == ""` or other proxy fields.
+6. **Event payloads include locality** — Include `Local bool` where applicable so subscribers can filter correctly.
+
 ---
 
 # Code style
 
 - Use `require` for preconditions, `assert` for verifications in tests.
 - Use `t.Helper()` in all test helpers.
-- No comments that just narrate what the code does.
 - Structured logging via `slog` — no `fmt.Printf` or `log.Println`.
 
 ---
@@ -214,7 +233,7 @@ When `make test-integration` is run, **all** integration tests must execute. Do 
 
 - **Sentinels in the owning package.** Domain errors (`ErrNotFound`, `ErrConflict`, `ErrForbidden`, etc.) live in `internal/domain/errors.go`. Infra packages (cache, media, email) define their own sentinels.
 - **Wrap with context using `%w`.** Each layer adds context: `fmt.Errorf("GetAccountByID(%s): %w", id, err)`. Never wrap with `%v` (breaks `errors.Is`).
-- **No HTTP below handlers.** Store, service, cache, media, and email never import `net/http` or use status codes. They return domain/infra errors only.
+- **No REST API types below handlers.** Store, service, cache, media, and email must not import `internal/api` or use HTTP status codes. They return domain/infra errors only. Services **may** import `net/http` for outbound HTTP calls (e.g. fetching URLs, card metadata) — the restriction prevents leaking the inbound REST API into business logic, not outbound HTTP in general.
 - **Map to HTTP once.** Handlers use `api.HandleError(w, r, err)`. Match via `errors.Is(err, domain.ErrNotFound)` etc.
 
 ### Handler pattern

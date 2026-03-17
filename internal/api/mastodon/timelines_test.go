@@ -17,18 +17,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type allowAllVisibilityChecker struct{}
-
-func (*allowAllVisibilityChecker) CanViewStatus(context.Context, *domain.Status, *string) (bool, error) {
-	return true, nil
-}
-
 func TestTimelinesHandler_Home(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	timelineSvc := service.NewTimelineService(st, accountSvc, &allowAllVisibilityChecker{})
+	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
+	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc)
 	handler := NewTimelinesHandler(timelineSvc, "example.com")
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
@@ -40,10 +35,10 @@ func TestTimelinesHandler_Home(t *testing.T) {
 
 	t.Run("authenticated with empty timeline returns 200 and empty array", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "alice",
-			Email:        "alice@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "alice",
+			Email:    "alice@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 
@@ -59,10 +54,10 @@ func TestTimelinesHandler_Home(t *testing.T) {
 
 	t.Run("authenticated with statuses returns 200 and status list", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "bob",
-			Email:        "bob@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "bob",
+			Email:    "bob@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 
@@ -93,10 +88,10 @@ func TestTimelinesHandler_Home(t *testing.T) {
 
 	t.Run("with max_id and limit query params", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "charlie",
-			Email:        "charlie@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "charlie",
+			Email:    "charlie@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 
@@ -116,7 +111,8 @@ func TestTimelinesHandler_GETPublic(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	timelineSvc := service.NewTimelineService(st, accountSvc, &allowAllVisibilityChecker{})
+	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
+	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc)
 	handler := NewTimelinesHandler(timelineSvc, "example.com")
 
 	t.Run("returns 200 and array", func(t *testing.T) {
@@ -168,14 +164,15 @@ func TestTimelinesHandler_GETBookmarks(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	timelineSvc := service.NewTimelineService(st, accountSvc, &allowAllVisibilityChecker{})
+	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
+	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc)
 	handler := NewTimelinesHandler(timelineSvc, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -202,7 +199,8 @@ func TestTimelinesHandler_GETTag(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	timelineSvc := service.NewTimelineService(st, accountSvc, &allowAllVisibilityChecker{})
+	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
+	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc)
 	handler := NewTimelinesHandler(timelineSvc, "example.com")
 
 	t.Run("empty hashtag returns 404", func(t *testing.T) {
@@ -230,7 +228,8 @@ func TestTimelinesHandler_GETFavourites(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	timelineSvc := service.NewTimelineService(st, accountSvc, &allowAllVisibilityChecker{})
+	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
+	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc)
 	handler := NewTimelinesHandler(timelineSvc, "example.com")
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
@@ -242,10 +241,10 @@ func TestTimelinesHandler_GETFavourites(t *testing.T) {
 
 	t.Run("authenticated returns 200 and empty array", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "alice",
-			Email:        "alice@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "alice",
+			Email:    "alice@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/favourites", nil)

@@ -2,6 +2,24 @@ package domain
 
 import "time"
 
+// Mute hides a target account's posts and optionally notifications from the muter.
+type Mute struct {
+	ID                string
+	AccountID         string
+	TargetID          string
+	HideNotifications bool
+	CreatedAt         time.Time
+}
+
+// Block prevents interaction between two accounts; both see each other as blocked.
+type Block struct {
+	ID        string
+	AccountID string
+	TargetID  string
+	CreatedAt time.Time
+}
+
+// DomainBlock restricts federation with a remote instance (silence or suspend).
 type DomainBlock struct {
 	ID        string
 	Domain    string
@@ -15,6 +33,7 @@ const (
 	DomainBlockSeveritySuspend = "suspend"
 )
 
+// Report is a moderation report filed by a user against an account or content.
 type Report struct {
 	ID           string
 	AccountID    string
@@ -41,6 +60,7 @@ const (
 	ReportStateResolved = "resolved"
 )
 
+// Invite is a registration invite code with optional use limit and expiry.
 type Invite struct {
 	ID        string
 	Code      string
@@ -51,6 +71,7 @@ type Invite struct {
 	CreatedAt time.Time
 }
 
+// ServerFilter is an instance-wide keyword filter applied to public content.
 type ServerFilter struct {
 	ID        string
 	Phrase    string
@@ -71,6 +92,7 @@ const (
 	ServerFilterActionHide = "hide"
 )
 
+// AdminAction records a moderator action (suspend, silence, etc.) for audit.
 type AdminAction struct {
 	ID              string
 	ModeratorID     string
@@ -79,14 +101,4 @@ type AdminAction struct {
 	Comment         *string
 	Metadata        []byte
 	CreatedAt       time.Time
-}
-
-type KnownInstance struct {
-	ID              string
-	Domain          string
-	Software        *string
-	SoftwareVersion *string
-	FirstSeenAt     time.Time
-	LastSeenAt      time.Time
-	AccountsCount   int64
 }

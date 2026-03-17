@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/chairswithlegs/monstera/internal/store"
@@ -32,10 +31,10 @@ func TestActorHandler_GETActor(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fake.ConfirmUser(ctx, "01USERBOB"))
 
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	h := NewActorHandler(service.NewAccountService(fake, "https://example.com"), cfg)
+	h := NewActorHandler(service.NewAccountService(fake, "https://example.com"), "example.com", "https://example.com")
 
 	r := httptest.NewRequest(http.MethodGet, "/users/bob", nil)
+	r.Header.Set("Accept", "application/activity+json")
 	r = r.WithContext(ctx)
 	r = testutil.AddChiURLParam(r, "username", "bob")
 	w := httptest.NewRecorder()
@@ -62,14 +61,51 @@ func TestActorHandler_GETActor(t *testing.T) {
 	assert.Equal(t, "-----BEGIN PUBLIC KEY-----\nMIIB...", actor.PublicKey.PublicKeyPem)
 }
 
+func TestActorHandler_browser_redirects_to_profile(t *testing.T) {
+	t.Parallel()
+	h := NewActorHandler(&mockAccountService{
+		GetActiveLocalAccountFunc: func(_ context.Context, _ string) (*domain.Account, error) {
+			return &domain.Account{Username: "alice"}, nil
+		},
+	}, "example.com", "https://example.com")
+
+	r := httptest.NewRequest(http.MethodGet, "/users/alice", nil)
+	r.Header.Set("Accept", "text/html")
+	r = testutil.AddChiURLParam(r, "username", "alice")
+	w := httptest.NewRecorder()
+	h.GETActor(w, r)
+
+	assert.Equal(t, http.StatusSeeOther, w.Code)
+	assert.Equal(t, "https://example.com/@alice", w.Header().Get("Location"))
+}
+
+func TestActorHandler_ld_json_accept_returns_actor(t *testing.T) {
+	t.Parallel()
+	h := NewActorHandler(&mockAccountService{
+		GetActiveLocalAccountFunc: func(_ context.Context, _ string) (*domain.Account, error) {
+			return &domain.Account{ID: "01ALICE", Username: "alice", APID: "https://example.com/users/alice"}, nil
+		},
+	}, "example.com", "https://example.com")
+
+	r := httptest.NewRequest(http.MethodGet, "/users/alice", nil)
+	r.Header.Set("Accept", `application/ld+json; profile="https://www.w3.org/ns/activitystreams"`)
+	r = testutil.AddChiURLParam(r, "username", "alice")
+	w := httptest.NewRecorder()
+	h.GETActor(w, r)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/activity+json; charset=utf-8", w.Header().Get("Content-Type"))
+}
+
 func TestActorHandler_notFound(t *testing.T) {
 	t.Parallel()
 	h := NewActorHandler(&mockAccountService{
-		GetActiveLocalAccountFunc: func(ctx context.Context, username string) (*domain.Account, error) {
+		GetActiveLocalAccountFunc: func(_ context.Context, _ string) (*domain.Account, error) {
 			return nil, domain.ErrNotFound
 		},
-	}, &config.Config{InstanceDomain: "example.com"})
+	}, "example.com", "https://example.com")
 	r := httptest.NewRequest(http.MethodGet, "/users/nobody", nil)
+	r.Header.Set("Accept", "application/activity+json")
 	r = testutil.AddChiURLParam(r, "username", "nobody")
 	w := httptest.NewRecorder()
 	h.GETActor(w, r)
@@ -84,3 +120,5 @@ type mockAccountService struct {
 func (m *mockAccountService) GetActiveLocalAccount(ctx context.Context, username string) (*domain.Account, error) {
 	return m.GetActiveLocalAccountFunc(ctx, username)
 }
+
+func (m *mockAccountService) SuspendRemote(context.Context, string) error { panic("unused") }

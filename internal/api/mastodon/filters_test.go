@@ -33,10 +33,10 @@ func TestFiltersHandler_GETFilters(t *testing.T) {
 
 	t.Run("authenticated empty list returns 200 and empty array", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "alice",
-			Email:        "alice@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "alice",
+			Email:    "alice@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 
@@ -52,10 +52,10 @@ func TestFiltersHandler_GETFilters(t *testing.T) {
 
 	t.Run("authenticated with filters returns 200 and filter array", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "bob",
-			Email:        "bob@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "bob",
+			Email:    "bob@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 
@@ -86,10 +86,10 @@ func TestFiltersHandler_GETFilter(t *testing.T) {
 	handler := NewFiltersHandler(filterSvc)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -138,10 +138,10 @@ func TestFiltersHandler_GETFilter(t *testing.T) {
 
 	t.Run("filter exists for another account returns 404", func(t *testing.T) {
 		otherAcc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "other",
-			Email:        "other@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "other",
+			Email:    "other@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		f, err := filterSvc.CreateFilter(ctx, otherAcc.ID, "their-filter", []string{domain.FilterContextHome}, false, nil, false)
@@ -165,10 +165,10 @@ func TestFiltersHandler_POSTFilters(t *testing.T) {
 	handler := NewFiltersHandler(filterSvc)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -228,10 +228,10 @@ func TestFiltersHandler_PUTFilter(t *testing.T) {
 	handler := NewFiltersHandler(filterSvc)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -280,10 +280,10 @@ func TestFiltersHandler_PUTFilter(t *testing.T) {
 
 	t.Run("filter for another account returns 403", func(t *testing.T) {
 		otherAcc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "other",
-			Email:        "other@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "other",
+			Email:    "other@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		f, err := filterSvc.CreateFilter(ctx, otherAcc.ID, "their-filter", []string{domain.FilterContextHome}, false, nil, false)
@@ -330,10 +330,10 @@ func TestFiltersHandler_DELETEFilter(t *testing.T) {
 	handler := NewFiltersHandler(filterSvc)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -365,10 +365,10 @@ func TestFiltersHandler_DELETEFilter(t *testing.T) {
 
 	t.Run("filter for another account returns 403", func(t *testing.T) {
 		otherAcc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "other",
-			Email:        "other@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "other",
+			Email:    "other@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		f, err := filterSvc.CreateFilter(ctx, otherAcc.ID, "their-filter", []string{domain.FilterContextHome}, false, nil, false)

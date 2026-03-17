@@ -3,7 +3,6 @@ package mastodon
 import (
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -36,15 +35,7 @@ func (h *ConversationsHandler) GETConversations(w http.ResponseWriter, r *http.R
 		return
 	}
 	params := PageParamsFromRequest(r)
-	limit := DefaultListLimit
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 {
-			limit = n
-			if limit > MaxListLimit {
-				limit = MaxListLimit
-			}
-		}
-	}
+	limit := parseLimitParam(r, DefaultListLimit, MaxListLimit)
 	results, nextCursor, err := h.conversations.ListConversations(r.Context(), account.ID, optionalString(params.MaxID), limit)
 	if err != nil {
 		api.HandleError(w, r, err)

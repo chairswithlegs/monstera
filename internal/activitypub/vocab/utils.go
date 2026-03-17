@@ -39,3 +39,12 @@ func AccountActorID(a *domain.Account, instanceBase string) string {
 	}
 	return fmt.Sprintf("%s/users/%s", instanceBase, a.Username)
 }
+
+// AccountFollowersURL derives the AP followers collection IRI for an account.
+// Falls back: FollowersURL → actorID + "/followers".
+func AccountFollowersURL(a *domain.Account, instanceBase string) string {
+	if a.FollowersURL != "" {
+		return a.FollowersURL
+	}
+	return AccountActorID(a, instanceBase) + "/followers"
+}

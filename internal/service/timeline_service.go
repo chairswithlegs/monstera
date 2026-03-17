@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -48,15 +47,12 @@ type PollOptionWithCount struct {
 
 // TimelineService handles timeline queries (home, public).
 type TimelineService interface {
-	Home(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error)
 	HomeEnriched(ctx context.Context, accountID string, maxID *string, limit int) ([]EnrichedStatus, error)
-	PublicLocal(ctx context.Context, localOnly bool, maxID *string, limit int) ([]domain.Status, error)
-	PublicLocalEnriched(ctx context.Context, localOnly bool, maxID *string, limit int) ([]EnrichedStatus, error)
+	PublicLocalEnriched(ctx context.Context, localOnly bool, viewerAccountID *string, maxID *string, limit int) ([]EnrichedStatus, error)
 	AccountStatusesEnriched(ctx context.Context, accountID string, viewerAccountID *string, maxID *string, limit int) ([]EnrichedStatus, error)
 	GetAccountPublicStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error)
 	CountAccountPublicStatuses(ctx context.Context, accountID string) (int64, error)
-	HashtagTimeline(ctx context.Context, tagName string, maxID *string, limit int) ([]domain.Status, error)
-	HashtagTimelineEnriched(ctx context.Context, tagName string, maxID *string, limit int) ([]EnrichedStatus, error)
+	HashtagTimelineEnriched(ctx context.Context, tagName string, viewerAccountID *string, maxID *string, limit int) ([]EnrichedStatus, error)
 	FavouritesEnriched(ctx context.Context, accountID string, maxID *string, limit int) ([]EnrichedStatus, *string, error)
 	BookmarksEnriched(ctx context.Context, accountID string, maxID *string, limit int) ([]EnrichedStatus, *string, error)
 	ListTimelineEnriched(ctx context.Context, accountID, listID string, maxID *string, limit int) ([]EnrichedStatus, error)
@@ -65,91 +61,61 @@ type TimelineService interface {
 type timelineService struct {
 	store      store.Store
 	accountSvc AccountService
-	visible    StatusVisibilityChecker
+	statusSvc  StatusService
 }
 
-// NewTimelineService returns a TimelineService that uses the given store and visibility checker.
-func NewTimelineService(s store.Store, accountSvc AccountService, visible StatusVisibilityChecker) TimelineService {
-	return &timelineService{store: s, accountSvc: accountSvc, visible: visible}
+// NewTimelineService returns a TimelineService that uses the given store and status service.
+func NewTimelineService(s store.Store, accountSvc AccountService, statusSvc StatusService) TimelineService {
+	return &timelineService{store: s, accountSvc: accountSvc, statusSvc: statusSvc}
 }
 
-// enrichStatuses loads author, mentions, tags, and media for each status.
-func (svc *timelineService) enrichStatuses(ctx context.Context, statuses []domain.Status) ([]EnrichedStatus, error) {
-	out := make([]EnrichedStatus, 0, len(statuses))
+func (svc *timelineService) enrichStatuses(ctx context.Context, statuses []domain.Status, viewerAccountID *string) ([]EnrichedStatus, error) {
+	ptrs := make([]*domain.Status, len(statuses))
 	for i := range statuses {
-		s := &statuses[i]
-		author, err := svc.accountSvc.GetByID(ctx, s.AccountID)
-		if err != nil {
-			return nil, fmt.Errorf("AccountService.GetByID(%s): %w", s.AccountID, err)
-		}
-		mentions, err := svc.store.GetStatusMentions(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusMentions(%s): %w", s.ID, err)
-		}
-		tags, err := svc.store.GetStatusHashtags(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusHashtags(%s): %w", s.ID, err)
-		}
-		media, err := svc.store.GetStatusAttachments(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusAttachments(%s): %w", s.ID, err)
-		}
-		card, err := svc.store.GetStatusCard(ctx, s.ID)
-		if err != nil && !errors.Is(err, domain.ErrNotFound) {
-			return nil, fmt.Errorf("GetStatusCard(%s): %w", s.ID, err)
-		}
-		out = append(out, EnrichedStatus{
-			Status:   s,
-			Author:   author,
-			Mentions: mentions,
-			Tags:     tags,
-			Media:    media,
-			Card:     card,
-		})
+		ptrs[i] = &statuses[i]
 	}
-	return out, nil
+	enriched, err := svc.statusSvc.EnrichStatuses(ctx, ptrs, EnrichOpts{IncludeCard: true, ViewerID: viewerAccountID})
+	if err != nil {
+		return nil, fmt.Errorf("enrichStatuses: %w", err)
+	}
+	return enriched, nil
 }
 
-// Home returns the home timeline for the given account (self + accepted follows), ordered by id desc.
-// maxID is optional (cursor); limit defaults to defaultTimelineLimit if <= 0, capped at maxTimelineLimit.
-// TODO: confirm that this function is needed
-func (svc *timelineService) Home(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error) {
-	l := limit
-	if l <= 0 {
-		l = defaultTimelineLimit
+// filterBlockedStatuses removes statuses where the viewer and author have a block
+// relationship in either direction, matching Mastodon's behavior on public timelines.
+func (svc *timelineService) filterBlockedStatuses(ctx context.Context, statuses []EnrichedStatus, viewerAccountID string) ([]EnrichedStatus, error) {
+	filtered := make([]EnrichedStatus, 0, len(statuses))
+	for i := range statuses {
+		if statuses[i].Status == nil {
+			continue
+		}
+		blocked, err := svc.store.IsBlockedEitherDirection(ctx, viewerAccountID, statuses[i].Status.AccountID)
+		if err != nil {
+			return nil, fmt.Errorf("IsBlockedEitherDirection: %w", err)
+		}
+		if !blocked {
+			filtered = append(filtered, statuses[i])
+		}
 	}
-	if l > maxTimelineLimit {
-		l = maxTimelineLimit
-	}
-	rows, err := svc.store.GetHomeTimeline(ctx, accountID, maxID, l)
-	if err != nil {
-		return nil, fmt.Errorf("GetHomeTimeline: %w", err)
-	}
-	return rows, nil
+	return filtered, nil
 }
 
 // HomeEnriched returns the home timeline with author, mentions, tags, and media loaded for each status.
 // maxID is optional (cursor); limit is clamped to [1, maxTimelineLimit], default defaultTimelineLimit.
 func (svc *timelineService) HomeEnriched(ctx context.Context, accountID string, maxID *string, limit int) ([]EnrichedStatus, error) {
-	l := limit
-	if l <= 0 {
-		l = defaultTimelineLimit
-	}
-	if l > maxTimelineLimit {
-		l = maxTimelineLimit
-	}
+	l := ClampLimit(limit, defaultTimelineLimit, maxTimelineLimit)
 	statuses, err := svc.store.GetHomeTimeline(ctx, accountID, maxID, l)
 	if err != nil {
 		return nil, fmt.Errorf("GetHomeTimeline: %w", err)
 	}
-	out, err := svc.enrichStatuses(ctx, statuses)
+	viewerID := &accountID
+	out, err := svc.enrichStatuses(ctx, statuses, viewerID)
 	if err != nil {
 		return nil, err
 	}
-	viewerID := &accountID
 	filtered := make([]EnrichedStatus, 0, len(out))
 	for i := range out {
-		ok, err := svc.visible.CanViewStatus(ctx, out[i].Status, viewerID)
+		ok, err := svc.statusSvc.CanViewStatus(ctx, out[i].Status, viewerID)
 		if err != nil {
 			return nil, fmt.Errorf("CanViewStatus: %w", err)
 		}
@@ -170,18 +136,12 @@ func (svc *timelineService) HomeEnriched(ctx context.Context, accountID string, 
 // FavouritesEnriched returns the favourites timeline with author, mentions, tags, and media.
 // nextCursor is the favourite ID to use as max_id for the next page, or nil if there are no more.
 func (svc *timelineService) FavouritesEnriched(ctx context.Context, accountID string, maxID *string, limit int) ([]EnrichedStatus, *string, error) {
-	l := limit
-	if l <= 0 {
-		l = defaultTimelineLimit
-	}
-	if l > maxTimelineLimit {
-		l = maxTimelineLimit
-	}
+	l := ClampLimit(limit, defaultTimelineLimit, maxTimelineLimit)
 	statuses, nextCursor, err := svc.store.GetFavouritesTimeline(ctx, accountID, maxID, l)
 	if err != nil {
 		return nil, nil, fmt.Errorf("GetFavouritesTimeline: %w", err)
 	}
-	out, err := svc.enrichStatuses(ctx, statuses)
+	out, err := svc.enrichStatuses(ctx, statuses, &accountID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -190,18 +150,12 @@ func (svc *timelineService) FavouritesEnriched(ctx context.Context, accountID st
 
 // BookmarksEnriched returns the bookmarks timeline with author, mentions, tags, and media.
 func (svc *timelineService) BookmarksEnriched(ctx context.Context, accountID string, maxID *string, limit int) ([]EnrichedStatus, *string, error) {
-	l := limit
-	if l <= 0 {
-		l = defaultTimelineLimit
-	}
-	if l > maxTimelineLimit {
-		l = maxTimelineLimit
-	}
+	l := ClampLimit(limit, defaultTimelineLimit, maxTimelineLimit)
 	statuses, nextCursor, err := svc.store.GetBookmarks(ctx, accountID, maxID, l)
 	if err != nil {
 		return nil, nil, fmt.Errorf("GetBookmarks: %w", err)
 	}
-	out, err := svc.enrichStatuses(ctx, statuses)
+	out, err := svc.enrichStatuses(ctx, statuses, &accountID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -218,25 +172,19 @@ func (svc *timelineService) ListTimelineEnriched(ctx context.Context, accountID,
 	if list.AccountID != accountID {
 		return nil, fmt.Errorf("ListTimelineEnriched: %w", domain.ErrForbidden)
 	}
-	l := limit
-	if l <= 0 {
-		l = defaultTimelineLimit
-	}
-	if l > maxTimelineLimit {
-		l = maxTimelineLimit
-	}
+	l := ClampLimit(limit, defaultTimelineLimit, maxTimelineLimit)
 	statuses, err := svc.store.GetListTimeline(ctx, listID, maxID, l)
 	if err != nil {
 		return nil, fmt.Errorf("GetListTimeline: %w", err)
 	}
-	out, err := svc.enrichStatuses(ctx, statuses)
+	out, err := svc.enrichStatuses(ctx, statuses, &accountID)
 	if err != nil {
 		return nil, err
 	}
 	viewerID := &accountID
 	filtered := make([]EnrichedStatus, 0, len(out))
 	for i := range out {
-		ok, err := svc.visible.CanViewStatus(ctx, out[i].Status, viewerID)
+		ok, err := svc.statusSvc.CanViewStatus(ctx, out[i].Status, viewerID)
 		if err != nil {
 			return nil, fmt.Errorf("CanViewStatus: %w", err)
 		}
@@ -247,52 +195,30 @@ func (svc *timelineService) ListTimelineEnriched(ctx context.Context, accountID,
 	return filtered, nil
 }
 
-// PublicLocal returns the public timeline. localOnly true restricts to local statuses.
-// maxID is optional; limit defaults to defaultTimelineLimit if <= 0, capped at maxTimelineLimit.
-func (svc *timelineService) PublicLocal(ctx context.Context, localOnly bool, maxID *string, limit int) ([]domain.Status, error) {
-	l := limit
-	if l <= 0 {
-		l = defaultTimelineLimit
-	}
-	if l > maxTimelineLimit {
-		l = maxTimelineLimit
-	}
-	rows, err := svc.store.GetPublicTimeline(ctx, localOnly, maxID, l)
-	if err != nil {
-		return nil, fmt.Errorf("GetPublicTimeline: %w", err)
-	}
-	return rows, nil
-}
-
 // PublicLocalEnriched returns the public timeline with author, mentions, tags, and media loaded for each status.
-func (svc *timelineService) PublicLocalEnriched(ctx context.Context, localOnly bool, maxID *string, limit int) ([]EnrichedStatus, error) {
-	l := limit
-	if l <= 0 {
-		l = defaultTimelineLimit
-	}
-	if l > maxTimelineLimit {
-		l = maxTimelineLimit
-	}
+// When viewerAccountID is non-nil, statuses from blocked/blocking accounts are filtered out.
+func (svc *timelineService) PublicLocalEnriched(ctx context.Context, localOnly bool, viewerAccountID *string, maxID *string, limit int) ([]EnrichedStatus, error) {
+	l := ClampLimit(limit, defaultTimelineLimit, maxTimelineLimit)
 	statuses, err := svc.store.GetPublicTimeline(ctx, localOnly, maxID, l)
 	if err != nil {
 		return nil, fmt.Errorf("GetPublicTimeline: %w", err)
 	}
-	out, err := svc.enrichStatuses(ctx, statuses)
+	out, err := svc.enrichStatuses(ctx, statuses, viewerAccountID)
 	if err != nil {
 		return nil, err
+	}
+	if viewerAccountID != nil {
+		out, err = svc.filterBlockedStatuses(ctx, out, *viewerAccountID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }
 
 // AccountStatusesEnriched returns statuses for an account (for GET /accounts/:id/statuses). When viewerAccountID is nil or != accountID, only public statuses are returned.
 func (svc *timelineService) AccountStatusesEnriched(ctx context.Context, accountID string, viewerAccountID *string, maxID *string, limit int) ([]EnrichedStatus, error) {
-	l := limit
-	if l <= 0 {
-		l = defaultTimelineLimit
-	}
-	if l > maxTimelineLimit {
-		l = maxTimelineLimit
-	}
+	l := ClampLimit(limit, defaultTimelineLimit, maxTimelineLimit)
 	var statuses []domain.Status
 	var err error
 	if viewerAccountID != nil && *viewerAccountID == accountID {
@@ -303,22 +229,22 @@ func (svc *timelineService) AccountStatusesEnriched(ctx context.Context, account
 	if err != nil {
 		return nil, fmt.Errorf("GetAccountStatuses/GetAccountPublicStatuses: %w", err)
 	}
-	out, err := svc.enrichStatuses(ctx, statuses)
+	out, err := svc.enrichStatuses(ctx, statuses, viewerAccountID)
 	if err != nil {
 		return nil, err
+	}
+	if viewerAccountID != nil && *viewerAccountID != accountID {
+		out, err = svc.filterBlockedStatuses(ctx, out, *viewerAccountID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }
 
 // GetAccountPublicStatuses returns public statuses for an account (for outbox). maxID is optional cursor; limit is clamped.
 func (svc *timelineService) GetAccountPublicStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error) {
-	l := limit
-	if l <= 0 {
-		l = defaultTimelineLimit
-	}
-	if l > maxTimelineLimit {
-		l = maxTimelineLimit
-	}
+	l := ClampLimit(limit, defaultTimelineLimit, maxTimelineLimit)
 	rows, err := svc.store.GetAccountPublicStatuses(ctx, accountID, maxID, l)
 	if err != nil {
 		return nil, fmt.Errorf("GetAccountPublicStatuses: %w", err)
@@ -337,13 +263,7 @@ func (svc *timelineService) CountAccountPublicStatuses(ctx context.Context, acco
 
 // HashtagTimeline returns statuses for the given hashtag (public/unlisted only). Tag name is normalized to lowercase.
 func (svc *timelineService) HashtagTimeline(ctx context.Context, tagName string, maxID *string, limit int) ([]domain.Status, error) {
-	l := limit
-	if l <= 0 {
-		l = defaultTimelineLimit
-	}
-	if l > maxTimelineLimit {
-		l = maxTimelineLimit
-	}
+	l := ClampLimit(limit, defaultTimelineLimit, maxTimelineLimit)
 	statuses, err := svc.store.GetHashtagTimeline(ctx, strings.ToLower(tagName), maxID, l)
 	if err != nil {
 		return nil, fmt.Errorf("GetHashtagTimeline: %w", err)
@@ -352,10 +272,21 @@ func (svc *timelineService) HashtagTimeline(ctx context.Context, tagName string,
 }
 
 // HashtagTimelineEnriched returns the hashtag timeline with author, mentions, tags, and media for each status.
-func (svc *timelineService) HashtagTimelineEnriched(ctx context.Context, tagName string, maxID *string, limit int) ([]EnrichedStatus, error) {
+// When viewerAccountID is non-nil, statuses from blocked/blocking accounts are filtered out.
+func (svc *timelineService) HashtagTimelineEnriched(ctx context.Context, tagName string, viewerAccountID *string, maxID *string, limit int) ([]EnrichedStatus, error) {
 	statuses, err := svc.HashtagTimeline(ctx, tagName, maxID, limit)
 	if err != nil {
 		return nil, err
 	}
-	return svc.enrichStatuses(ctx, statuses)
+	out, err := svc.enrichStatuses(ctx, statuses, viewerAccountID)
+	if err != nil {
+		return nil, err
+	}
+	if viewerAccountID != nil {
+		out, err = svc.filterBlockedStatuses(ctx, out, *viewerAccountID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }

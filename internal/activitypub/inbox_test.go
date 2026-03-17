@@ -9,10 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera/internal/activitypub/blocklist"
 	"github.com/chairswithlegs/monstera/internal/activitypub/vocab"
-	"github.com/chairswithlegs/monstera/internal/cache"
-	"github.com/chairswithlegs/monstera/internal/config"
+	"github.com/chairswithlegs/monstera/internal/blocklist"
+
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/media"
 	"github.com/chairswithlegs/monstera/internal/service"
@@ -30,7 +29,7 @@ func TestInboxProcessor_Process_unsupportedType(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	proc := newInboxProcessorForTest(t, fake, &config.Config{InstanceDomain: "example.com"})
+	proc := newInboxProcessorForTest(t, fake)
 	activity := &vocab.Activity{Type: "Unknown", ID: "https://remote.example/activities/1", Actor: "https://remote.example/users/alice"}
 	err := proc.Process(ctx, activity)
 	assert.NoError(t, err)
@@ -40,9 +39,22 @@ func TestInboxProcessor_Process_emptyActorDomain(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	proc := newInboxProcessorForTest(t, fake, &config.Config{InstanceDomain: "example.com"})
+	proc := newInboxProcessorForTest(t, fake)
 	activity := &vocab.Activity{Type: "Follow", Actor: "not-a-url"}
 	err := proc.Process(ctx, activity)
+	assert.ErrorIs(t, err, ErrInboxFatal)
+}
+
+func TestInboxProcessor_Process_ownDomain_returnsErrInboxFatal(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	proc := newInboxProcessorForTest(t, fake)
+	objectRaw, err := json.Marshal("https://remote.example/users/bob")
+	require.NoError(t, err)
+	activity := &vocab.Activity{Type: "Follow", ID: "https://example.com/activities/1", Actor: "https://example.com/users/alice", ObjectRaw: objectRaw}
+	err = proc.Process(ctx, activity)
+	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrInboxFatal)
 }
 
@@ -50,8 +62,7 @@ func TestInbox_Process_AcceptFollow_forgedActorRejected(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	proc := newInboxProcessorForTest(t, fake, cfg)
+	proc := newInboxProcessorForTest(t, fake)
 
 	aliceID := uid.New()
 	bobID := uid.New()
@@ -92,8 +103,7 @@ func TestInbox_Process_RejectFollow_forgedActorRejected(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	proc := newInboxProcessorForTest(t, fake, cfg)
+	proc := newInboxProcessorForTest(t, fake)
 
 	aliceID := uid.New()
 	bobID := uid.New()
@@ -134,8 +144,7 @@ func TestInbox_Process_UpdatePerson_forgedActorRejected(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	proc := newInboxProcessorForTest(t, fake, cfg)
+	proc := newInboxProcessorForTest(t, fake)
 
 	_, err := fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID: uid.New(), Username: "bob", Domain: testutil.StrPtr("bob.com"),
@@ -163,8 +172,7 @@ func TestInbox_Process_Delete_statusWrongActorRejected(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	proc := newInboxProcessorForTest(t, fake, cfg)
+	proc := newInboxProcessorForTest(t, fake)
 
 	aliceID := uid.New()
 	bobID := uid.New()
@@ -202,12 +210,33 @@ func TestInbox_Process_Delete_statusWrongActorRejected(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInboxFatal)
 }
 
+func TestInbox_Process_Delete_Person_suspendsRemoteAccount(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	proc := newInboxProcessorForTest(t, fake)
+	_, bobID := seedInboxAccounts(t, ctx, fake, false)
+
+	objectRaw, err := json.Marshal(map[string]string{"id": testBobAPID, "type": "Person"})
+	require.NoError(t, err)
+	activity := &vocab.Activity{
+		Type:      "Delete",
+		Actor:     testBobAPID,
+		ObjectRaw: objectRaw,
+	}
+	err = proc.Process(ctx, activity)
+	require.NoError(t, err)
+
+	acc, err := fake.GetAccountByID(ctx, bobID)
+	require.NoError(t, err)
+	assert.True(t, acc.Suspended, "remote account should be suspended after Delete{Person}")
+}
+
 func TestInbox_Process_Delete_authorLookupFailsReturnsError(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	proc := newInboxProcessorForTest(t, fake, cfg)
+	proc := newInboxProcessorForTest(t, fake)
 
 	statusAPID := "https://example.com/statuses/orphan"
 	orphanAccountID := "01orphan"
@@ -255,8 +284,7 @@ func TestInbox_Process_Follow_happyPath_createsFollow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	proc := newInboxProcessorForTest(t, fake, cfg)
+	proc := newInboxProcessorForTest(t, fake)
 	aliceID, bobID := seedInboxAccounts(t, ctx, fake, true) // locked so no outbox call
 
 	activity := &vocab.Activity{
@@ -277,27 +305,26 @@ func TestInbox_Process_AcceptFollow_happyPath_updatesFollow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	proc := newInboxProcessorForTest(t, fake, cfg)
+	proc := newInboxProcessorForTest(t, fake)
 	aliceID, bobID := seedInboxAccounts(t, ctx, fake, false)
 	followID := uid.New()
 	_, err := fake.CreateFollow(ctx, store.CreateFollowInput{
-		ID: followID, AccountID: bobID, TargetID: aliceID, State: domain.FollowStatePending, APID: nil,
+		ID: followID, AccountID: aliceID, TargetID: bobID, State: domain.FollowStatePending, APID: nil,
 	})
 	require.NoError(t, err)
 
-	innerFollow := map[string]string{"type": "Follow", "actor": testBobAPID, "object": testAliceAPID}
+	innerFollow := map[string]string{"type": "Follow", "actor": testAliceAPID, "object": testBobAPID}
 	objectRaw, err := json.Marshal(innerFollow)
 	require.NoError(t, err)
 	activity := &vocab.Activity{
 		Type:      "Accept",
-		ID:        "https://example.com/accept/1",
-		Actor:     testAliceAPID,
+		ID:        "https://bob.com/accept/1",
+		Actor:     testBobAPID,
 		ObjectRaw: objectRaw,
 	}
 	err = proc.Process(ctx, activity)
 	require.NoError(t, err)
-	follow, err := fake.GetFollow(ctx, bobID, aliceID)
+	follow, err := fake.GetFollow(ctx, aliceID, bobID)
 	require.NoError(t, err)
 	require.NotNil(t, follow)
 	require.Equal(t, domain.FollowStateAccepted, follow.State)
@@ -307,26 +334,25 @@ func TestInbox_Process_RejectFollow_happyPath_removesFollow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	proc := newInboxProcessorForTest(t, fake, cfg)
+	proc := newInboxProcessorForTest(t, fake)
 	aliceID, bobID := seedInboxAccounts(t, ctx, fake, false)
 	_, err := fake.CreateFollow(ctx, store.CreateFollowInput{
-		ID: uid.New(), AccountID: bobID, TargetID: aliceID, State: domain.FollowStatePending, APID: nil,
+		ID: uid.New(), AccountID: aliceID, TargetID: bobID, State: domain.FollowStatePending, APID: nil,
 	})
 	require.NoError(t, err)
 
-	innerFollow := map[string]string{"type": "Follow", "actor": testBobAPID, "object": testAliceAPID}
+	innerFollow := map[string]string{"type": "Follow", "actor": testAliceAPID, "object": testBobAPID}
 	objectRaw, err := json.Marshal(innerFollow)
 	require.NoError(t, err)
 	activity := &vocab.Activity{
 		Type:      "Reject",
-		ID:        "https://example.com/reject/1",
-		Actor:     testAliceAPID,
+		ID:        "https://bob.com/reject/1",
+		Actor:     testBobAPID,
 		ObjectRaw: objectRaw,
 	}
 	err = proc.Process(ctx, activity)
 	require.NoError(t, err)
-	_, err = fake.GetFollow(ctx, bobID, aliceID)
+	_, err = fake.GetFollow(ctx, aliceID, bobID)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
@@ -339,8 +365,7 @@ func TestInbox_Process_suspendedDomain_dropsActivity(t *testing.T) {
 		ID: uid.New(), Domain: "bob.com", Severity: domain.DomainBlockSeveritySuspend, Reason: nil,
 	})
 	require.NoError(t, err)
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	proc := newInboxProcessorForTest(t, fake, cfg)
+	proc := newInboxProcessorForTest(t, fake)
 	aliceID, bobID := seedInboxAccounts(t, ctx, fake, true)
 
 	activity := &vocab.Activity{
@@ -360,8 +385,7 @@ func TestInbox_Process_Create_happyPath_createsStatus(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	proc := newInboxProcessorForTest(t, fake, cfg)
+	proc := newInboxProcessorForTest(t, fake)
 	_, bobID := seedInboxAccounts(t, ctx, fake, false)
 
 	note := map[string]any{
@@ -393,8 +417,7 @@ func TestInbox_Process_Announce_happyPath_createsBoost(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	proc := newInboxProcessorForTest(t, fake, cfg)
+	proc := newInboxProcessorForTest(t, fake)
 	aliceID, _ := seedInboxAccounts(t, ctx, fake, false)
 	statusAPID := "https://example.com/statuses/boost-target"
 	_, err := fake.CreateStatus(ctx, store.CreateStatusInput{
@@ -417,8 +440,7 @@ func TestInbox_Process_Like_happyPath_createsFavourite(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	proc := newInboxProcessorForTest(t, fake, cfg)
+	proc := newInboxProcessorForTest(t, fake)
 	aliceID, bobID := seedInboxAccounts(t, ctx, fake, false)
 	statusAPID := "https://example.com/statuses/1"
 	st, err := fake.CreateStatus(ctx, store.CreateStatusInput{
@@ -446,11 +468,10 @@ func TestInbox_Process_Delete_owner_deletesStatus(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	proc := newInboxProcessorForTest(t, fake, cfg)
+	proc := newInboxProcessorForTest(t, fake)
 	aliceID, _ := seedInboxAccounts(t, ctx, fake, false)
 	statusAPID := "https://example.com/statuses/to-delete"
-	st, err := fake.CreateStatus(ctx, store.CreateStatusInput{
+	_, err := fake.CreateStatus(ctx, store.CreateStatusInput{
 		ID: uid.New(), URI: statusAPID, AccountID: aliceID, APID: statusAPID,
 		Visibility: domain.VisibilityPublic, Local: true,
 	})
@@ -464,19 +485,15 @@ func TestInbox_Process_Delete_owner_deletesStatus(t *testing.T) {
 		ObjectRaw: objectRaw,
 	}
 	err = proc.Process(ctx, activity)
-	require.NoError(t, err)
-	// Status should be soft-deleted (GetStatusByAPID may still return or not depending on store)
-	_, err = fake.GetStatusByID(ctx, st.ID)
-	// FakeStore may or may not hide soft-deleted; we at least didn't error on Process
-	_ = err
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInboxFatal)
 }
 
 func TestInbox_Process_Create_sanitizesContent(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	proc := newInboxProcessorForTest(t, fake, cfg)
+	proc := newInboxProcessorForTest(t, fake)
 	_, _ = seedInboxAccounts(t, ctx, fake, false)
 
 	note := map[string]any{
@@ -512,8 +529,7 @@ func TestInbox_Process_Create_preservesSafeHTML(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	proc := newInboxProcessorForTest(t, fake, cfg)
+	proc := newInboxProcessorForTest(t, fake)
 	_, _ = seedInboxAccounts(t, ctx, fake, false)
 
 	note := map[string]any{
@@ -546,8 +562,7 @@ func TestInbox_Process_UpdateNote_sanitizesContent(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	proc := newInboxProcessorForTest(t, fake, cfg)
+	proc := newInboxProcessorForTest(t, fake)
 	_, bobID := seedInboxAccounts(t, ctx, fake, false)
 
 	statusAPID := "https://bob.com/notes/update-target"
@@ -589,8 +604,7 @@ func TestInbox_Process_Block_happyPath_createsBlock(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	proc := newInboxProcessorForTest(t, fake, cfg)
+	proc := newInboxProcessorForTest(t, fake)
 	aliceID, bobID := seedInboxAccounts(t, ctx, fake, false)
 
 	activity := &vocab.Activity{
@@ -619,23 +633,19 @@ func (testMediaStore) URL(ctx context.Context, key string) (string, error) {
 	return "https://example.com/" + key, nil
 }
 
-func newInboxProcessorForTest(t *testing.T, fake *testutil.FakeStore, cfg *config.Config) Inbox {
+func newInboxProcessorForTest(t *testing.T, fake *testutil.FakeStore) Inbox {
 	t.Helper()
-	cacheStore, err := cache.New(cache.Config{Driver: "memory"})
-	require.NoError(t, err)
+	const instanceDomain = "example.com"
 	bl := blocklist.NewBlocklistCache(fake)
 	_ = bl.Refresh(context.Background())
-	instanceBaseURL := "https://example.com"
-	if cfg != nil && cfg.InstanceDomain != "" {
-		instanceBaseURL = cfg.InstanceBaseURL()
-	}
+	instanceBaseURL := "https://" + instanceDomain
 	accountSvc := service.NewAccountService(fake, instanceBaseURL)
-	followSvc := service.NewFollowService(fake, service.NewAccountService(fake, "https://example.com"))
-	notificationSvc := service.NewNotificationService(fake)
-	statusSvc := service.NewStatusService(fake, instanceBaseURL, "example.com", 5000)
+	remoteFollowSvc := service.NewRemoteFollowService(fake)
+	followSvc := service.NewFollowService(fake, service.NewAccountService(fake, "https://example.com"), remoteFollowSvc)
+	statusSvc := service.NewStatusService(fake, instanceBaseURL, instanceDomain, 5000)
 	conversationSvc := service.NewConversationService(fake, statusSvc)
-	statusWriteSvc := service.NewStatusWriteService(fake, statusSvc, conversationSvc, instanceBaseURL, "example.com", 5000)
+	remoteStatusWriteSvc := service.NewRemoteStatusWriteService(fake, conversationSvc, instanceBaseURL)
 	mediaSvc := service.NewMediaService(fake, &testMediaStore{}, 1<<20)
-	remoteResolver := NewRemoteAccountResolver(accountSvc, cfg)
-	return NewInbox(accountSvc, followSvc, notificationSvc, statusSvc, statusWriteSvc, mediaSvc, remoteResolver, cacheStore, bl, cfg)
+	remoteResolver := NewRemoteAccountResolver(accountSvc, "", false, instanceDomain)
+	return NewInbox(accountSvc, followSvc, remoteFollowSvc, statusSvc, remoteStatusWriteSvc, mediaSvc, remoteResolver, bl, instanceDomain)
 }
