@@ -215,14 +215,14 @@ func setupInfra(ctx context.Context, cfg *config.Config) (*infra, func(), error)
 }
 
 func createServices(cfg *config.Config, i *infra) *svcs {
-	instanceBaseURL := "https://" + cfg.InstanceDomain
+	instanceBaseURL := cfg.InstanceBaseURL()
 	monsteraUIHost := ""
 	if cfg.MonsteraUIURL != nil {
 		monsteraUIHost = cfg.MonsteraUIURL.Host
 	}
 
 	accountSvc := service.NewAccountService(i.store, instanceBaseURL)
-	statusSvc := service.NewStatusService(i.store, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars)
+	statusSvc := service.NewStatusService(i.store, instanceBaseURL, cfg.MonsteraInstanceDomain, cfg.MaxStatusChars)
 	conversationSvc := service.NewConversationService(i.store, statusSvc)
 	remoteFollowSvc := service.NewRemoteFollowService(i.store)
 	followSvc := service.NewFollowService(i.store, accountSvc, remoteFollowSvc)
@@ -230,10 +230,10 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 	mediaSvc := service.NewMediaService(i.store, i.mediaStore, cfg.MediaMaxBytes)
 
 	mailer := service.NewRegistrationEmailSender(i.emailSender, i.emailTemplates, cfg.EmailFrom, cfg.EmailFromName)
-	remoteResolver := ap.NewRemoteAccountResolver(accountSvc, cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.InstanceDomain)
+	remoteResolver := ap.NewRemoteAccountResolver(accountSvc, cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.MonsteraInstanceDomain)
 	signatureService := ap.NewHTTPSignatureService(cfg.FederationInsecureSkipTLS, instanceBaseURL, i.sharedCache, i.cache, accountSvc)
 
-	statusWriteSvc := service.NewStatusWriteService(i.store, statusSvc, conversationSvc, instanceBaseURL, cfg.InstanceDomain, cfg.MaxStatusChars)
+	statusWriteSvc := service.NewStatusWriteService(i.store, statusSvc, conversationSvc, instanceBaseURL, cfg.MonsteraInstanceDomain, cfg.MaxStatusChars)
 	interactionSvc := service.NewStatusInteractionService(i.store, statusSvc, instanceBaseURL)
 	remoteStatusWriteSvc := service.NewRemoteStatusWriteService(i.store, conversationSvc, instanceBaseURL)
 	scheduledSvc := service.NewScheduledStatusService(i.store, statusWriteSvc)
@@ -271,7 +271,7 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 		oauthServer:      oauth.NewServer(i.store, i.sharedCache, cfg.VAPIDPublicKey),
 		remoteResolver:   remoteResolver,
 		signatureService: signatureService,
-		inboxProcessor:   ap.NewInbox(accountSvc, followSvc, remoteFollowSvc, statusSvc, remoteStatusWriteSvc, mediaSvc, remoteResolver, i.blocklist, cfg.InstanceDomain),
+		inboxProcessor:   ap.NewInbox(accountSvc, followSvc, remoteFollowSvc, statusSvc, remoteStatusWriteSvc, mediaSvc, remoteResolver, i.blocklist, cfg.MonsteraInstanceDomain),
 	}
 }
 
@@ -312,12 +312,12 @@ type backgroundWorkers struct {
 }
 
 func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.Metrics, sched scheduler.Scheduler) backgroundWorkers {
-	instanceBaseURL := "https://" + cfg.InstanceDomain
+	instanceBaseURL := cfg.InstanceBaseURL()
 
 	hub := sse.NewHub(natsutil.NewConnSubscriber(i.nats.Conn), metrics)
-	sseSub := sse.NewSubscriber(i.nats.JS, i.nats.Conn, i.store, cfg.InstanceDomain)
+	sseSub := sse.NewSubscriber(i.nats.JS, i.nats.Conn, i.store, cfg.MonsteraInstanceDomain)
 	fedSub := ap.NewFederationSubscriber(i.nats.JS, s.remoteFollow, i.blocklist, s.signatureService,
-		instanceBaseURL, cfg.InstanceDomain, cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.FederationWorkerConcurrency)
+		instanceBaseURL, cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.FederationWorkerConcurrency)
 	notifSub := events.NewNotificationSubscriber(i.nats.JS, events.NotificationDeps{
 		Notifications: s.notification,
 		Accounts:      s.account,
@@ -334,7 +334,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 	}
 
 	if cfg.VAPIDPrivateKey != "" && cfg.VAPIDPublicKey != "" {
-		pushSender := webpush.NewSender(cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, "mailto:admin@"+cfg.InstanceDomain)
+		pushSender := webpush.NewSender(cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, "mailto:admin@"+cfg.MonsteraInstanceDomain)
 		pushSub := events.NewPushDeliverySubscriber(i.nats.JS, events.PushDeliveryDeps{
 			PushSubs: s.pushSubscription,
 			Deleter:  s.pushSubscription,
@@ -360,7 +360,7 @@ func startWorkers(ctx context.Context, workers []namedWorker) {
 }
 
 func createRouter(cfg *config.Config, s *svcs, i *infra, sseHub *sse.Hub) http.Handler {
-	instanceBaseURL := "https://" + cfg.InstanceDomain
+	instanceBaseURL := cfg.InstanceBaseURL()
 
 	var rlCfg *router.RateLimitConfig
 	if cfg.RateLimitAuthPerWindow > 0 || cfg.RateLimitPublicPerWindow > 0 {
@@ -382,35 +382,35 @@ func createRouter(cfg *config.Config, s *svcs, i *infra, sseHub *sse.Hub) http.H
 		MediaFileServer:        i.mediaFileServer,
 		OAuthHandler:           oauthhandlers.NewHandler(s.oauthServer, s.auth, cfg.MonsteraUIURL),
 		OAuthServer:            s.oauthServer,
-		Accounts:               mastodon.NewAccountsHandler(s.account, s.follow, s.tagFollow, s.timeline, s.monsteraSettings, s.media, cfg.MediaMaxBytes, cfg.InstanceDomain),
-		Statuses:               mastodon.NewStatusesHandler(s.account, s.statusRead, s.statusWrite, s.statusInteraction, s.scheduled, s.conversation, cfg.InstanceDomain, i.sharedCache, nil),
+		Accounts:               mastodon.NewAccountsHandler(s.account, s.follow, s.tagFollow, s.timeline, s.monsteraSettings, s.media, cfg.MediaMaxBytes, cfg.MonsteraInstanceDomain),
+		Statuses:               mastodon.NewStatusesHandler(s.account, s.statusRead, s.statusWrite, s.statusInteraction, s.scheduled, s.conversation, cfg.MonsteraInstanceDomain, i.sharedCache, nil),
 		ScheduledStatuses:      mastodon.NewScheduledStatusesHandler(s.statusRead, s.scheduled),
 		Polls:                  mastodon.NewPollsHandler(s.statusRead, s.statusInteraction),
-		Timelines:              mastodon.NewTimelinesHandler(s.timeline, cfg.InstanceDomain),
-		Instance:               mastodon.NewInstanceHandler(cfg.InstanceDomain, cfg.InstanceName, cfg.MaxStatusChars, cfg.MediaMaxBytes, nil, s.instance),
-		Trends:                 mastodon.NewTrendsHandler(s.trends, cfg.InstanceDomain),
-		Conversations:          mastodon.NewConversationsHandler(s.conversation, cfg.InstanceDomain),
+		Timelines:              mastodon.NewTimelinesHandler(s.timeline, cfg.MonsteraInstanceDomain),
+		Instance:               mastodon.NewInstanceHandler(cfg.MonsteraInstanceDomain, cfg.InstanceName, cfg.MaxStatusChars, cfg.MediaMaxBytes, nil, s.instance),
+		Trends:                 mastodon.NewTrendsHandler(s.trends, cfg.MonsteraInstanceDomain),
+		Conversations:          mastodon.NewConversationsHandler(s.conversation, cfg.MonsteraInstanceDomain),
 		Suggestions:            mastodon.NewSuggestionsHandler(),
-		Notifications:          mastodon.NewNotificationsHandler(s.notification, s.account, s.statusRead, cfg.InstanceDomain),
+		Notifications:          mastodon.NewNotificationsHandler(s.notification, s.account, s.statusRead, cfg.MonsteraInstanceDomain),
 		Media:                  mastodon.NewMediaHandler(s.media),
-		Search:                 mastodon.NewSearchHandler(s.search, cfg.InstanceDomain),
+		Search:                 mastodon.NewSearchHandler(s.search, cfg.MonsteraInstanceDomain),
 		Streaming:              mastodon.NewStreamingHandler(sseHub, s.list),
-		Reports:                mastodon.NewReportsHandler(s.moderation, s.account, cfg.InstanceDomain),
-		FollowRequests:         mastodon.NewFollowRequestsHandler(s.follow, s.account, cfg.InstanceDomain),
-		Lists:                  mastodon.NewListsHandler(s.list, s.account, cfg.InstanceDomain),
+		Reports:                mastodon.NewReportsHandler(s.moderation, s.account, cfg.MonsteraInstanceDomain),
+		FollowRequests:         mastodon.NewFollowRequestsHandler(s.follow, s.account, cfg.MonsteraInstanceDomain),
+		Lists:                  mastodon.NewListsHandler(s.list, s.account, cfg.MonsteraInstanceDomain),
 		Filters:                mastodon.NewFiltersHandler(s.userFilter),
 		Preferences:            mastodon.NewPreferencesHandler(s.account),
 		Markers:                mastodon.NewMarkersHandler(s.marker),
-		FeaturedTags:           mastodon.NewFeaturedTagsHandler(s.featuredTag, s.account, cfg.InstanceDomain),
+		FeaturedTags:           mastodon.NewFeaturedTagsHandler(s.featuredTag, s.account, cfg.MonsteraInstanceDomain),
 		Announcements:          mastodon.NewAnnouncementsHandler(s.announcement),
 		Push:                   mastodon.NewPushHandler(s.pushSubscription, cfg.VAPIDPublicKey),
-		WebFinger:              activitypub.NewWebFingerHandler(s.account, cfg.InstanceDomain, instanceBaseURL),
+		WebFinger:              activitypub.NewWebFingerHandler(s.account, cfg.MonsteraInstanceDomain, instanceBaseURL),
 		NodeInfoPtr:            activitypub.NewNodeInfoPointerHandler(instanceBaseURL),
 		NodeInfo:               activitypub.NewNodeInfoHandler(s.instance, cfg.Version),
-		Actor:                  activitypub.NewActorHandler(s.account, cfg.InstanceDomain, instanceBaseURL),
+		Actor:                  activitypub.NewActorHandler(s.account, instanceBaseURL),
 		Collections:            activitypub.NewCollectionsHandler(s.account, s.statusRead, instanceBaseURL),
 		Outbox:                 activitypub.NewOutbox(s.account, s.timeline, instanceBaseURL),
-		Inbox:                  activitypub.NewInboxHandler(s.inboxProcessor, s.signatureService, cfg.InstanceDomain),
+		Inbox:                  activitypub.NewInboxHandler(s.inboxProcessor, s.signatureService, cfg.MonsteraInstanceDomain),
 		User:                   monstera.NewUserHandler(s.account),
 		ModeratorDashboard:     monstera.NewModeratorDashboardHandler(s.instance, s.moderation),
 		AdminUsers:             monstera.NewAdminUsersHandler(s.account, s.moderation),

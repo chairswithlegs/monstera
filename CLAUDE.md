@@ -66,7 +66,7 @@ monstera/
 
 - `internal/service` never imports `internal/api`. Dependencies point inward toward `domain`.
 - IDs are ULIDs via `internal/uid`.
-- Config is 12-factor (env vars) via `internal/config`.
+- Config is 12-factor (env vars) via `internal/config`. When adding, removing, or changing any env var, update the Configuration section of `README.md` to match.
 - Code in the "adapter" layer (e.g API handlers, workers) should not use the store directly, they should use services instead.
 - Client implementations of system dependencies (Postgres, NATs, email) should always be abstracted behind an interface.
 
