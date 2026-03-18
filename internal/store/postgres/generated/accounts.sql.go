@@ -36,31 +36,40 @@ INSERT INTO accounts (
     id, username, domain, display_name, note,
     public_key, private_key,
     inbox_url, outbox_url, followers_url, following_url,
-    ap_id, bot, locked, url
+    ap_id, bot, locked, url,
+    avatar_url, header_url,
+    followers_count, following_count, statuses_count
 ) VALUES (
     $1, $2, $3, $4, $5,
     $6, $7,
     $8, $9, $10, $11,
-    $12, $13, $14, $15
-) RETURNING id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url
+    $12, $13, $14, $15,
+    $16, $17,
+    $18, $19, $20
+) RETURNING id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url
 `
 
 type CreateAccountParams struct {
-	ID           string  `json:"id"`
-	Username     string  `json:"username"`
-	Domain       *string `json:"domain"`
-	DisplayName  *string `json:"display_name"`
-	Note         *string `json:"note"`
-	PublicKey    string  `json:"public_key"`
-	PrivateKey   *string `json:"private_key"`
-	InboxUrl     string  `json:"inbox_url"`
-	OutboxUrl    string  `json:"outbox_url"`
-	FollowersUrl string  `json:"followers_url"`
-	FollowingUrl string  `json:"following_url"`
-	ApID         string  `json:"ap_id"`
-	Bot          bool    `json:"bot"`
-	Locked       bool    `json:"locked"`
-	Url          *string `json:"url"`
+	ID             string  `json:"id"`
+	Username       string  `json:"username"`
+	Domain         *string `json:"domain"`
+	DisplayName    *string `json:"display_name"`
+	Note           *string `json:"note"`
+	PublicKey      string  `json:"public_key"`
+	PrivateKey     *string `json:"private_key"`
+	InboxUrl       string  `json:"inbox_url"`
+	OutboxUrl      string  `json:"outbox_url"`
+	FollowersUrl   string  `json:"followers_url"`
+	FollowingUrl   string  `json:"following_url"`
+	ApID           string  `json:"ap_id"`
+	Bot            bool    `json:"bot"`
+	Locked         bool    `json:"locked"`
+	Url            *string `json:"url"`
+	AvatarUrl      string  `json:"avatar_url"`
+	HeaderUrl      string  `json:"header_url"`
+	FollowersCount int32   `json:"followers_count"`
+	FollowingCount int32   `json:"following_count"`
+	StatusesCount  int32   `json:"statuses_count"`
 }
 
 func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error) {
@@ -80,6 +89,11 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		arg.Bot,
 		arg.Locked,
 		arg.Url,
+		arg.AvatarUrl,
+		arg.HeaderUrl,
+		arg.FollowersCount,
+		arg.FollowingCount,
+		arg.StatusesCount,
 	)
 	var i Account
 	err := row.Scan(
@@ -109,6 +123,8 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.Fields,
 		&i.LastStatusAt,
 		&i.Url,
+		&i.AvatarUrl,
+		&i.HeaderUrl,
 	)
 	return i, err
 }
@@ -150,49 +166,39 @@ func (q *Queries) DeleteAccount(ctx context.Context, id string) error {
 }
 
 const getAccountByAPID = `-- name: GetAccountByAPID :one
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, am.url AS avatar_url, hm.url AS header_url
-FROM accounts a
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
-WHERE a.ap_id = $1
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url FROM accounts WHERE ap_id = $1
 `
 
-type GetAccountByAPIDRow struct {
-	Account   Account `json:"account"`
-	AvatarUrl *string `json:"avatar_url"`
-	HeaderUrl *string `json:"header_url"`
-}
-
-func (q *Queries) GetAccountByAPID(ctx context.Context, apID string) (GetAccountByAPIDRow, error) {
+func (q *Queries) GetAccountByAPID(ctx context.Context, apID string) (Account, error) {
 	row := q.db.QueryRow(ctx, getAccountByAPID, apID)
-	var i GetAccountByAPIDRow
+	var i Account
 	err := row.Scan(
-		&i.Account.ID,
-		&i.Account.Username,
-		&i.Account.Domain,
-		&i.Account.DisplayName,
-		&i.Account.Note,
-		&i.Account.PublicKey,
-		&i.Account.PrivateKey,
-		&i.Account.InboxUrl,
-		&i.Account.OutboxUrl,
-		&i.Account.FollowersUrl,
-		&i.Account.FollowingUrl,
-		&i.Account.ApID,
-		&i.Account.Bot,
-		&i.Account.Locked,
-		&i.Account.Suspended,
-		&i.Account.Silenced,
-		&i.Account.CreatedAt,
-		&i.Account.UpdatedAt,
-		&i.Account.AvatarMediaID,
-		&i.Account.HeaderMediaID,
-		&i.Account.FollowersCount,
-		&i.Account.FollowingCount,
-		&i.Account.StatusesCount,
-		&i.Account.Fields,
-		&i.Account.LastStatusAt,
-		&i.Account.Url,
+		&i.ID,
+		&i.Username,
+		&i.Domain,
+		&i.DisplayName,
+		&i.Note,
+		&i.PublicKey,
+		&i.PrivateKey,
+		&i.InboxUrl,
+		&i.OutboxUrl,
+		&i.FollowersUrl,
+		&i.FollowingUrl,
+		&i.ApID,
+		&i.Bot,
+		&i.Locked,
+		&i.Suspended,
+		&i.Silenced,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AvatarMediaID,
+		&i.HeaderMediaID,
+		&i.FollowersCount,
+		&i.FollowingCount,
+		&i.StatusesCount,
+		&i.Fields,
+		&i.LastStatusAt,
+		&i.Url,
 		&i.AvatarUrl,
 		&i.HeaderUrl,
 	)
@@ -200,49 +206,39 @@ func (q *Queries) GetAccountByAPID(ctx context.Context, apID string) (GetAccount
 }
 
 const getAccountByID = `-- name: GetAccountByID :one
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, am.url AS avatar_url, hm.url AS header_url
-FROM accounts a
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
-WHERE a.id = $1
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url FROM accounts WHERE id = $1
 `
 
-type GetAccountByIDRow struct {
-	Account   Account `json:"account"`
-	AvatarUrl *string `json:"avatar_url"`
-	HeaderUrl *string `json:"header_url"`
-}
-
-func (q *Queries) GetAccountByID(ctx context.Context, id string) (GetAccountByIDRow, error) {
+func (q *Queries) GetAccountByID(ctx context.Context, id string) (Account, error) {
 	row := q.db.QueryRow(ctx, getAccountByID, id)
-	var i GetAccountByIDRow
+	var i Account
 	err := row.Scan(
-		&i.Account.ID,
-		&i.Account.Username,
-		&i.Account.Domain,
-		&i.Account.DisplayName,
-		&i.Account.Note,
-		&i.Account.PublicKey,
-		&i.Account.PrivateKey,
-		&i.Account.InboxUrl,
-		&i.Account.OutboxUrl,
-		&i.Account.FollowersUrl,
-		&i.Account.FollowingUrl,
-		&i.Account.ApID,
-		&i.Account.Bot,
-		&i.Account.Locked,
-		&i.Account.Suspended,
-		&i.Account.Silenced,
-		&i.Account.CreatedAt,
-		&i.Account.UpdatedAt,
-		&i.Account.AvatarMediaID,
-		&i.Account.HeaderMediaID,
-		&i.Account.FollowersCount,
-		&i.Account.FollowingCount,
-		&i.Account.StatusesCount,
-		&i.Account.Fields,
-		&i.Account.LastStatusAt,
-		&i.Account.Url,
+		&i.ID,
+		&i.Username,
+		&i.Domain,
+		&i.DisplayName,
+		&i.Note,
+		&i.PublicKey,
+		&i.PrivateKey,
+		&i.InboxUrl,
+		&i.OutboxUrl,
+		&i.FollowersUrl,
+		&i.FollowingUrl,
+		&i.ApID,
+		&i.Bot,
+		&i.Locked,
+		&i.Suspended,
+		&i.Silenced,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AvatarMediaID,
+		&i.HeaderMediaID,
+		&i.FollowersCount,
+		&i.FollowingCount,
+		&i.StatusesCount,
+		&i.Fields,
+		&i.LastStatusAt,
+		&i.Url,
 		&i.AvatarUrl,
 		&i.HeaderUrl,
 	)
@@ -250,55 +246,45 @@ func (q *Queries) GetAccountByID(ctx context.Context, id string) (GetAccountByID
 }
 
 const getAccountsByIDs = `-- name: GetAccountsByIDs :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, am.url AS avatar_url, hm.url AS header_url
-FROM accounts a
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
-WHERE a.id = ANY($1::text[])
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url FROM accounts WHERE id = ANY($1::text[])
 `
 
-type GetAccountsByIDsRow struct {
-	Account   Account `json:"account"`
-	AvatarUrl *string `json:"avatar_url"`
-	HeaderUrl *string `json:"header_url"`
-}
-
-func (q *Queries) GetAccountsByIDs(ctx context.Context, dollar_1 []string) ([]GetAccountsByIDsRow, error) {
+func (q *Queries) GetAccountsByIDs(ctx context.Context, dollar_1 []string) ([]Account, error) {
 	rows, err := q.db.Query(ctx, getAccountsByIDs, dollar_1)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []GetAccountsByIDsRow{}
+	items := []Account{}
 	for rows.Next() {
-		var i GetAccountsByIDsRow
+		var i Account
 		if err := rows.Scan(
-			&i.Account.ID,
-			&i.Account.Username,
-			&i.Account.Domain,
-			&i.Account.DisplayName,
-			&i.Account.Note,
-			&i.Account.PublicKey,
-			&i.Account.PrivateKey,
-			&i.Account.InboxUrl,
-			&i.Account.OutboxUrl,
-			&i.Account.FollowersUrl,
-			&i.Account.FollowingUrl,
-			&i.Account.ApID,
-			&i.Account.Bot,
-			&i.Account.Locked,
-			&i.Account.Suspended,
-			&i.Account.Silenced,
-			&i.Account.CreatedAt,
-			&i.Account.UpdatedAt,
-			&i.Account.AvatarMediaID,
-			&i.Account.HeaderMediaID,
-			&i.Account.FollowersCount,
-			&i.Account.FollowingCount,
-			&i.Account.StatusesCount,
-			&i.Account.Fields,
-			&i.Account.LastStatusAt,
-			&i.Account.Url,
+			&i.ID,
+			&i.Username,
+			&i.Domain,
+			&i.DisplayName,
+			&i.Note,
+			&i.PublicKey,
+			&i.PrivateKey,
+			&i.InboxUrl,
+			&i.OutboxUrl,
+			&i.FollowersUrl,
+			&i.FollowingUrl,
+			&i.ApID,
+			&i.Bot,
+			&i.Locked,
+			&i.Suspended,
+			&i.Silenced,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AvatarMediaID,
+			&i.HeaderMediaID,
+			&i.FollowersCount,
+			&i.FollowingCount,
+			&i.StatusesCount,
+			&i.Fields,
+			&i.LastStatusAt,
+			&i.Url,
 			&i.AvatarUrl,
 			&i.HeaderUrl,
 		); err != nil {
@@ -313,49 +299,39 @@ func (q *Queries) GetAccountsByIDs(ctx context.Context, dollar_1 []string) ([]Ge
 }
 
 const getLocalAccountByUsername = `-- name: GetLocalAccountByUsername :one
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, am.url AS avatar_url, hm.url AS header_url
-FROM accounts a
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
-WHERE a.username = $1 AND a.domain IS NULL
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url FROM accounts WHERE username = $1 AND domain IS NULL
 `
 
-type GetLocalAccountByUsernameRow struct {
-	Account   Account `json:"account"`
-	AvatarUrl *string `json:"avatar_url"`
-	HeaderUrl *string `json:"header_url"`
-}
-
-func (q *Queries) GetLocalAccountByUsername(ctx context.Context, username string) (GetLocalAccountByUsernameRow, error) {
+func (q *Queries) GetLocalAccountByUsername(ctx context.Context, username string) (Account, error) {
 	row := q.db.QueryRow(ctx, getLocalAccountByUsername, username)
-	var i GetLocalAccountByUsernameRow
+	var i Account
 	err := row.Scan(
-		&i.Account.ID,
-		&i.Account.Username,
-		&i.Account.Domain,
-		&i.Account.DisplayName,
-		&i.Account.Note,
-		&i.Account.PublicKey,
-		&i.Account.PrivateKey,
-		&i.Account.InboxUrl,
-		&i.Account.OutboxUrl,
-		&i.Account.FollowersUrl,
-		&i.Account.FollowingUrl,
-		&i.Account.ApID,
-		&i.Account.Bot,
-		&i.Account.Locked,
-		&i.Account.Suspended,
-		&i.Account.Silenced,
-		&i.Account.CreatedAt,
-		&i.Account.UpdatedAt,
-		&i.Account.AvatarMediaID,
-		&i.Account.HeaderMediaID,
-		&i.Account.FollowersCount,
-		&i.Account.FollowingCount,
-		&i.Account.StatusesCount,
-		&i.Account.Fields,
-		&i.Account.LastStatusAt,
-		&i.Account.Url,
+		&i.ID,
+		&i.Username,
+		&i.Domain,
+		&i.DisplayName,
+		&i.Note,
+		&i.PublicKey,
+		&i.PrivateKey,
+		&i.InboxUrl,
+		&i.OutboxUrl,
+		&i.FollowersUrl,
+		&i.FollowingUrl,
+		&i.ApID,
+		&i.Bot,
+		&i.Locked,
+		&i.Suspended,
+		&i.Silenced,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AvatarMediaID,
+		&i.HeaderMediaID,
+		&i.FollowersCount,
+		&i.FollowingCount,
+		&i.StatusesCount,
+		&i.Fields,
+		&i.LastStatusAt,
+		&i.Url,
 		&i.AvatarUrl,
 		&i.HeaderUrl,
 	)
@@ -363,11 +339,7 @@ func (q *Queries) GetLocalAccountByUsername(ctx context.Context, username string
 }
 
 const getRemoteAccountByUsername = `-- name: GetRemoteAccountByUsername :one
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, am.url AS avatar_url, hm.url AS header_url
-FROM accounts a
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
-WHERE a.username = $1 AND a.domain = $2
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url FROM accounts WHERE username = $1 AND domain = $2
 `
 
 type GetRemoteAccountByUsernameParams struct {
@@ -375,42 +347,36 @@ type GetRemoteAccountByUsernameParams struct {
 	Domain   *string `json:"domain"`
 }
 
-type GetRemoteAccountByUsernameRow struct {
-	Account   Account `json:"account"`
-	AvatarUrl *string `json:"avatar_url"`
-	HeaderUrl *string `json:"header_url"`
-}
-
-func (q *Queries) GetRemoteAccountByUsername(ctx context.Context, arg GetRemoteAccountByUsernameParams) (GetRemoteAccountByUsernameRow, error) {
+func (q *Queries) GetRemoteAccountByUsername(ctx context.Context, arg GetRemoteAccountByUsernameParams) (Account, error) {
 	row := q.db.QueryRow(ctx, getRemoteAccountByUsername, arg.Username, arg.Domain)
-	var i GetRemoteAccountByUsernameRow
+	var i Account
 	err := row.Scan(
-		&i.Account.ID,
-		&i.Account.Username,
-		&i.Account.Domain,
-		&i.Account.DisplayName,
-		&i.Account.Note,
-		&i.Account.PublicKey,
-		&i.Account.PrivateKey,
-		&i.Account.InboxUrl,
-		&i.Account.OutboxUrl,
-		&i.Account.FollowersUrl,
-		&i.Account.FollowingUrl,
-		&i.Account.ApID,
-		&i.Account.Bot,
-		&i.Account.Locked,
-		&i.Account.Suspended,
-		&i.Account.Silenced,
-		&i.Account.CreatedAt,
-		&i.Account.UpdatedAt,
-		&i.Account.AvatarMediaID,
-		&i.Account.HeaderMediaID,
-		&i.Account.FollowersCount,
-		&i.Account.FollowingCount,
-		&i.Account.StatusesCount,
-		&i.Account.Fields,
-		&i.Account.LastStatusAt,
-		&i.Account.Url,
+		&i.ID,
+		&i.Username,
+		&i.Domain,
+		&i.DisplayName,
+		&i.Note,
+		&i.PublicKey,
+		&i.PrivateKey,
+		&i.InboxUrl,
+		&i.OutboxUrl,
+		&i.FollowersUrl,
+		&i.FollowingUrl,
+		&i.ApID,
+		&i.Bot,
+		&i.Locked,
+		&i.Suspended,
+		&i.Silenced,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AvatarMediaID,
+		&i.HeaderMediaID,
+		&i.FollowersCount,
+		&i.FollowingCount,
+		&i.StatusesCount,
+		&i.Fields,
+		&i.LastStatusAt,
+		&i.Url,
 		&i.AvatarUrl,
 		&i.HeaderUrl,
 	)
@@ -445,15 +411,12 @@ func (q *Queries) IncrementStatusesCount(ctx context.Context, id string) error {
 }
 
 const listDirectoryAccounts = `-- name: ListDirectoryAccounts :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, am.url AS avatar_url, hm.url AS header_url
-FROM accounts a
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
-WHERE (NOT $1 OR a.domain IS NULL)
-  AND a.suspended = FALSE
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url FROM accounts
+WHERE (NOT $1 OR domain IS NULL)
+  AND suspended = FALSE
 ORDER BY
-  CASE WHEN $2::text = 'active' THEN a.last_status_at END DESC NULLS LAST,
-  a.created_at DESC
+  CASE WHEN $2::text = 'active' THEN last_status_at END DESC NULLS LAST,
+  created_at DESC
 LIMIT $3 OFFSET $4
 `
 
@@ -464,13 +427,7 @@ type ListDirectoryAccountsParams struct {
 	Offset  int32       `json:"offset"`
 }
 
-type ListDirectoryAccountsRow struct {
-	Account   Account `json:"account"`
-	AvatarUrl *string `json:"avatar_url"`
-	HeaderUrl *string `json:"header_url"`
-}
-
-func (q *Queries) ListDirectoryAccounts(ctx context.Context, arg ListDirectoryAccountsParams) ([]ListDirectoryAccountsRow, error) {
+func (q *Queries) ListDirectoryAccounts(ctx context.Context, arg ListDirectoryAccountsParams) ([]Account, error) {
 	rows, err := q.db.Query(ctx, listDirectoryAccounts,
 		arg.Column1,
 		arg.Column2,
@@ -481,36 +438,36 @@ func (q *Queries) ListDirectoryAccounts(ctx context.Context, arg ListDirectoryAc
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListDirectoryAccountsRow{}
+	items := []Account{}
 	for rows.Next() {
-		var i ListDirectoryAccountsRow
+		var i Account
 		if err := rows.Scan(
-			&i.Account.ID,
-			&i.Account.Username,
-			&i.Account.Domain,
-			&i.Account.DisplayName,
-			&i.Account.Note,
-			&i.Account.PublicKey,
-			&i.Account.PrivateKey,
-			&i.Account.InboxUrl,
-			&i.Account.OutboxUrl,
-			&i.Account.FollowersUrl,
-			&i.Account.FollowingUrl,
-			&i.Account.ApID,
-			&i.Account.Bot,
-			&i.Account.Locked,
-			&i.Account.Suspended,
-			&i.Account.Silenced,
-			&i.Account.CreatedAt,
-			&i.Account.UpdatedAt,
-			&i.Account.AvatarMediaID,
-			&i.Account.HeaderMediaID,
-			&i.Account.FollowersCount,
-			&i.Account.FollowingCount,
-			&i.Account.StatusesCount,
-			&i.Account.Fields,
-			&i.Account.LastStatusAt,
-			&i.Account.Url,
+			&i.ID,
+			&i.Username,
+			&i.Domain,
+			&i.DisplayName,
+			&i.Note,
+			&i.PublicKey,
+			&i.PrivateKey,
+			&i.InboxUrl,
+			&i.OutboxUrl,
+			&i.FollowersUrl,
+			&i.FollowingUrl,
+			&i.ApID,
+			&i.Bot,
+			&i.Locked,
+			&i.Suspended,
+			&i.Silenced,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AvatarMediaID,
+			&i.HeaderMediaID,
+			&i.FollowersCount,
+			&i.FollowingCount,
+			&i.StatusesCount,
+			&i.Fields,
+			&i.LastStatusAt,
+			&i.Url,
 			&i.AvatarUrl,
 			&i.HeaderUrl,
 		); err != nil {
@@ -525,11 +482,7 @@ func (q *Queries) ListDirectoryAccounts(ctx context.Context, arg ListDirectoryAc
 }
 
 const listLocalAccounts = `-- name: ListLocalAccounts :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, am.url AS avatar_url, hm.url AS header_url
-FROM accounts a
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
-WHERE a.domain IS NULL ORDER BY a.id DESC LIMIT $1 OFFSET $2
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url FROM accounts WHERE domain IS NULL ORDER BY id DESC LIMIT $1 OFFSET $2
 `
 
 type ListLocalAccountsParams struct {
@@ -537,48 +490,42 @@ type ListLocalAccountsParams struct {
 	Offset int32 `json:"offset"`
 }
 
-type ListLocalAccountsRow struct {
-	Account   Account `json:"account"`
-	AvatarUrl *string `json:"avatar_url"`
-	HeaderUrl *string `json:"header_url"`
-}
-
-func (q *Queries) ListLocalAccounts(ctx context.Context, arg ListLocalAccountsParams) ([]ListLocalAccountsRow, error) {
+func (q *Queries) ListLocalAccounts(ctx context.Context, arg ListLocalAccountsParams) ([]Account, error) {
 	rows, err := q.db.Query(ctx, listLocalAccounts, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListLocalAccountsRow{}
+	items := []Account{}
 	for rows.Next() {
-		var i ListLocalAccountsRow
+		var i Account
 		if err := rows.Scan(
-			&i.Account.ID,
-			&i.Account.Username,
-			&i.Account.Domain,
-			&i.Account.DisplayName,
-			&i.Account.Note,
-			&i.Account.PublicKey,
-			&i.Account.PrivateKey,
-			&i.Account.InboxUrl,
-			&i.Account.OutboxUrl,
-			&i.Account.FollowersUrl,
-			&i.Account.FollowingUrl,
-			&i.Account.ApID,
-			&i.Account.Bot,
-			&i.Account.Locked,
-			&i.Account.Suspended,
-			&i.Account.Silenced,
-			&i.Account.CreatedAt,
-			&i.Account.UpdatedAt,
-			&i.Account.AvatarMediaID,
-			&i.Account.HeaderMediaID,
-			&i.Account.FollowersCount,
-			&i.Account.FollowingCount,
-			&i.Account.StatusesCount,
-			&i.Account.Fields,
-			&i.Account.LastStatusAt,
-			&i.Account.Url,
+			&i.ID,
+			&i.Username,
+			&i.Domain,
+			&i.DisplayName,
+			&i.Note,
+			&i.PublicKey,
+			&i.PrivateKey,
+			&i.InboxUrl,
+			&i.OutboxUrl,
+			&i.FollowersUrl,
+			&i.FollowingUrl,
+			&i.ApID,
+			&i.Bot,
+			&i.Locked,
+			&i.Suspended,
+			&i.Silenced,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AvatarMediaID,
+			&i.HeaderMediaID,
+			&i.FollowersCount,
+			&i.FollowingCount,
+			&i.StatusesCount,
+			&i.Fields,
+			&i.LastStatusAt,
+			&i.Url,
 			&i.AvatarUrl,
 			&i.HeaderUrl,
 		); err != nil {
@@ -593,16 +540,13 @@ func (q *Queries) ListLocalAccounts(ctx context.Context, arg ListLocalAccountsPa
 }
 
 const searchAccounts = `-- name: SearchAccounts :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, am.url AS avatar_url, hm.url AS header_url
-FROM accounts a
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
-WHERE a.suspended = FALSE
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url FROM accounts
+WHERE suspended = FALSE
   AND (
-    LOWER(a.username) LIKE LOWER($1) || '%'
-    OR (a.domain IS NOT NULL AND LOWER(a.username) || '@' || LOWER(COALESCE(a.domain, '')) LIKE LOWER($1) || '%')
+    LOWER(username) LIKE LOWER($1) || '%'
+    OR (domain IS NOT NULL AND LOWER(username) || '@' || LOWER(COALESCE(domain, '')) LIKE LOWER($1) || '%')
   )
-ORDER BY (a.domain IS NOT NULL), a.username
+ORDER BY (domain IS NOT NULL), username
 LIMIT $2
 `
 
@@ -611,48 +555,42 @@ type SearchAccountsParams struct {
 	Limit int32  `json:"limit"`
 }
 
-type SearchAccountsRow struct {
-	Account   Account `json:"account"`
-	AvatarUrl *string `json:"avatar_url"`
-	HeaderUrl *string `json:"header_url"`
-}
-
-func (q *Queries) SearchAccounts(ctx context.Context, arg SearchAccountsParams) ([]SearchAccountsRow, error) {
+func (q *Queries) SearchAccounts(ctx context.Context, arg SearchAccountsParams) ([]Account, error) {
 	rows, err := q.db.Query(ctx, searchAccounts, arg.Lower, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []SearchAccountsRow{}
+	items := []Account{}
 	for rows.Next() {
-		var i SearchAccountsRow
+		var i Account
 		if err := rows.Scan(
-			&i.Account.ID,
-			&i.Account.Username,
-			&i.Account.Domain,
-			&i.Account.DisplayName,
-			&i.Account.Note,
-			&i.Account.PublicKey,
-			&i.Account.PrivateKey,
-			&i.Account.InboxUrl,
-			&i.Account.OutboxUrl,
-			&i.Account.FollowersUrl,
-			&i.Account.FollowingUrl,
-			&i.Account.ApID,
-			&i.Account.Bot,
-			&i.Account.Locked,
-			&i.Account.Suspended,
-			&i.Account.Silenced,
-			&i.Account.CreatedAt,
-			&i.Account.UpdatedAt,
-			&i.Account.AvatarMediaID,
-			&i.Account.HeaderMediaID,
-			&i.Account.FollowersCount,
-			&i.Account.FollowingCount,
-			&i.Account.StatusesCount,
-			&i.Account.Fields,
-			&i.Account.LastStatusAt,
-			&i.Account.Url,
+			&i.ID,
+			&i.Username,
+			&i.Domain,
+			&i.DisplayName,
+			&i.Note,
+			&i.PublicKey,
+			&i.PrivateKey,
+			&i.InboxUrl,
+			&i.OutboxUrl,
+			&i.FollowersUrl,
+			&i.FollowingUrl,
+			&i.ApID,
+			&i.Bot,
+			&i.Locked,
+			&i.Suspended,
+			&i.Silenced,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AvatarMediaID,
+			&i.HeaderMediaID,
+			&i.FollowersCount,
+			&i.FollowingCount,
+			&i.StatusesCount,
+			&i.Fields,
+			&i.LastStatusAt,
+			&i.Url,
 			&i.AvatarUrl,
 			&i.HeaderUrl,
 		); err != nil {
@@ -712,9 +650,11 @@ UPDATE accounts SET
     locked          = COALESCE($7, locked),
     fields          = COALESCE($8, fields),
     url             = COALESCE($9, url),
+    avatar_url      = COALESCE($10, avatar_url),
+    header_url      = COALESCE($11, header_url),
     updated_at      = NOW()
 WHERE id = $1
-RETURNING id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url
+RETURNING id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url
 `
 
 type UpdateAccountParams struct {
@@ -727,6 +667,8 @@ type UpdateAccountParams struct {
 	Locked        bool    `json:"locked"`
 	Fields        []byte  `json:"fields"`
 	Url           *string `json:"url"`
+	AvatarUrl     *string `json:"avatar_url"`
+	HeaderUrl     *string `json:"header_url"`
 }
 
 func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error) {
@@ -740,6 +682,8 @@ func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (A
 		arg.Locked,
 		arg.Fields,
 		arg.Url,
+		arg.AvatarUrl,
+		arg.HeaderUrl,
 	)
 	var i Account
 	err := row.Scan(
@@ -769,6 +713,8 @@ func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (A
 		&i.Fields,
 		&i.LastStatusAt,
 		&i.Url,
+		&i.AvatarUrl,
+		&i.HeaderUrl,
 	)
 	return i, err
 }
@@ -787,28 +733,66 @@ func (q *Queries) UpdateAccountKeys(ctx context.Context, arg UpdateAccountKeysPa
 	return err
 }
 
-const updateAccountURLs = `-- name: UpdateAccountURLs :exec
-UPDATE accounts SET inbox_url = $2, outbox_url = $3, followers_url = $4, following_url = $5, updated_at = NOW() WHERE id = $1
-`
-
-type UpdateAccountURLsParams struct {
-	ID           string `json:"id"`
-	InboxURL     string `json:"inbox_url"`
-	OutboxURL    string `json:"outbox_url"`
-	FollowersURL string `json:"followers_url"`
-	FollowingURL string `json:"following_url"`
-}
-
-func (q *Queries) UpdateAccountURLs(ctx context.Context, arg UpdateAccountURLsParams) error {
-	_, err := q.db.Exec(ctx, updateAccountURLs, arg.ID, arg.InboxURL, arg.OutboxURL, arg.FollowersURL, arg.FollowingURL)
-	return err
-}
-
 const updateAccountLastStatusAt = `-- name: UpdateAccountLastStatusAt :exec
 UPDATE accounts SET last_status_at = NOW() WHERE id = $1
 `
 
 func (q *Queries) UpdateAccountLastStatusAt(ctx context.Context, id string) error {
 	_, err := q.db.Exec(ctx, updateAccountLastStatusAt, id)
+	return err
+}
+
+const updateAccountURLs = `-- name: UpdateAccountURLs :exec
+UPDATE accounts SET inbox_url = $2, outbox_url = $3, followers_url = $4, following_url = $5, updated_at = NOW() WHERE id = $1
+`
+
+type UpdateAccountURLsParams struct {
+	ID           string `json:"id"`
+	InboxUrl     string `json:"inbox_url"`
+	OutboxUrl    string `json:"outbox_url"`
+	FollowersUrl string `json:"followers_url"`
+	FollowingUrl string `json:"following_url"`
+}
+
+func (q *Queries) UpdateAccountURLs(ctx context.Context, arg UpdateAccountURLsParams) error {
+	_, err := q.db.Exec(ctx, updateAccountURLs,
+		arg.ID,
+		arg.InboxUrl,
+		arg.OutboxUrl,
+		arg.FollowersUrl,
+		arg.FollowingUrl,
+	)
+	return err
+}
+
+const updateRemoteAccountMeta = `-- name: UpdateRemoteAccountMeta :exec
+UPDATE accounts SET
+    avatar_url      = $2,
+    header_url      = $3,
+    followers_count = $4,
+    following_count = $5,
+    statuses_count  = $6,
+    updated_at      = NOW()
+WHERE id = $1
+`
+
+type UpdateRemoteAccountMetaParams struct {
+	ID             string `json:"id"`
+	AvatarUrl      string `json:"avatar_url"`
+	HeaderUrl      string `json:"header_url"`
+	FollowersCount int32  `json:"followers_count"`
+	FollowingCount int32  `json:"following_count"`
+	StatusesCount  int32  `json:"statuses_count"`
+}
+
+func (q *Queries) UpdateRemoteAccountMeta(ctx context.Context, arg UpdateRemoteAccountMetaParams) error {
+	_, err := q.db.Exec(ctx, updateRemoteAccountMeta,
+		arg.ID,
+		arg.AvatarUrl,
+		arg.HeaderUrl,
+		arg.FollowersCount,
+		arg.FollowingCount,
+		arg.StatusesCount,
+	)
 	return err
 }

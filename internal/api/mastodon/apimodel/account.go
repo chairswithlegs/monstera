@@ -74,7 +74,7 @@ func ToAccountWithSource(a *domain.Account, u *domain.User, instanceDomain strin
 
 func parseFields(raw json.RawMessage) []Field {
 	if len(raw) == 0 {
-		return nil
+		return []Field{}
 	}
 	var decoded []struct {
 		Name       string  `json:"name"`
@@ -82,7 +82,7 @@ func parseFields(raw json.RawMessage) []Field {
 		VerifiedAt *string `json:"verified_at"`
 	}
 	if err := json.Unmarshal(raw, &decoded); err != nil {
-		return nil
+		return []Field{}
 	}
 	out := make([]Field, 0, len(decoded))
 	for _, f := range decoded {

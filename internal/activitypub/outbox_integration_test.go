@@ -53,7 +53,7 @@ func TestDeliveryWorker_PullDeliverAndNoDuplicate(t *testing.T) {
 	defer cancel()
 
 	natsCfg := &config.Config{
-		NATSUrl:        url,
+		NATSUrl:                url,
 		MonsteraInstanceDomain: "test.example",
 	}
 	client, err := natsutil.New(natsCfg)
@@ -161,7 +161,7 @@ func TestOutboxFanoutWorker_Integration(t *testing.T) {
 	defer cancel()
 
 	natsCfg := &config.Config{
-		NATSUrl:        url,
+		NATSUrl:                url,
 		MonsteraInstanceDomain: "test.example",
 	}
 	client, err := natsutil.New(natsCfg)

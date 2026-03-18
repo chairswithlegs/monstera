@@ -37,6 +37,8 @@ type Account struct {
 	Fields         []byte             `json:"fields"`
 	LastStatusAt   pgtype.Timestamptz `json:"last_status_at"`
 	Url            *string            `json:"url"`
+	AvatarUrl      string             `json:"avatar_url"`
+	HeaderUrl      string             `json:"header_url"`
 }
 
 type AccountConversation struct {
@@ -182,19 +184,6 @@ type Hashtag struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
-type PushSubscription struct {
-	ID            string             `json:"id"`
-	AccessTokenID string             `json:"access_token_id"`
-	AccountID     string             `json:"account_id"`
-	Endpoint      string             `json:"endpoint"`
-	KeyP256dh     string             `json:"key_p256dh"`
-	KeyAuth       string             `json:"key_auth"`
-	Alerts        []byte             `json:"alerts"`
-	Policy        string             `json:"policy"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
-}
-
 type Invite struct {
 	ID        string             `json:"id"`
 	Code      string             `json:"code"`
@@ -241,7 +230,6 @@ type MediaAttachment struct {
 	AccountID   string             `json:"account_id"`
 	StatusID    *string            `json:"status_id"`
 	Type        string             `json:"type"`
-	ContentType *string            `json:"content_type"`
 	StorageKey  string             `json:"storage_key"`
 	Url         string             `json:"url"`
 	PreviewUrl  *string            `json:"preview_url"`
@@ -251,6 +239,7 @@ type MediaAttachment struct {
 	Meta        []byte             `json:"meta"`
 	SizeBytes   int64              `json:"size_bytes"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	ContentType *string            `json:"content_type"`
 }
 
 type MonsteraSetting struct {
@@ -348,6 +337,19 @@ type PollVote struct {
 	AccountID string             `json:"account_id"`
 	OptionID  string             `json:"option_id"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type PushSubscription struct {
+	ID            string             `json:"id"`
+	AccessTokenID string             `json:"access_token_id"`
+	AccountID     string             `json:"account_id"`
+	Endpoint      string             `json:"endpoint"`
+	KeyP256dh     string             `json:"key_p256dh"`
+	KeyAuth       string             `json:"key_auth"`
+	Alerts        json.RawMessage    `json:"alerts"`
+	Policy        string             `json:"policy"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
 
 type QuoteApproval struct {

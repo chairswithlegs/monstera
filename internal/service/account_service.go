@@ -307,11 +307,13 @@ func (svc *accountService) CreateOrUpdateRemoteAccount(ctx context.Context, in C
 				return nil, fmt.Errorf("CreateOrUpdateRemoteAccount UpdateAccountKeys: %w", err)
 			}
 		}
+		if err := svc.store.UpdateRemoteAccountMeta(ctx, existing.ID, in.AvatarURL, in.HeaderURL, in.FollowersCount, in.FollowingCount, in.StatusesCount); err != nil {
+			return nil, fmt.Errorf("CreateOrUpdateRemoteAccount UpdateRemoteAccountMeta: %w", err)
+		}
 		acc, getErr := svc.store.GetAccountByAPID(ctx, in.APID)
 		if getErr != nil {
 			return nil, fmt.Errorf("CreateOrUpdateRemoteAccount GetAccountByAPID after update: %w", getErr)
 		}
-		enrichRemoteAccountURLs(acc, in)
 		return acc, nil
 	}
 
@@ -329,39 +331,31 @@ func (svc *accountService) CreateOrUpdateRemoteAccount(ctx context.Context, in C
 		urlPtr = &in.URL
 	}
 	storeIn := store.CreateAccountInput{
-		ID:           uid.New(),
-		Username:     in.Username,
-		Domain:       &dom,
-		DisplayName:  in.DisplayName,
-		Note:         in.Note,
-		PublicKey:    in.PublicKey,
-		InboxURL:     in.InboxURL,
-		OutboxURL:    in.OutboxURL,
-		FollowersURL: in.FollowersURL,
-		FollowingURL: in.FollowingURL,
-		APID:         in.APID,
-		Bot:          in.Bot,
-		Locked:       in.Locked,
-		URL:          urlPtr,
+		ID:             uid.New(),
+		Username:       in.Username,
+		Domain:         &dom,
+		DisplayName:    in.DisplayName,
+		Note:           in.Note,
+		PublicKey:      in.PublicKey,
+		InboxURL:       in.InboxURL,
+		OutboxURL:      in.OutboxURL,
+		FollowersURL:   in.FollowersURL,
+		FollowingURL:   in.FollowingURL,
+		APID:           in.APID,
+		Bot:            in.Bot,
+		Locked:         in.Locked,
+		URL:            urlPtr,
+		AvatarURL:      in.AvatarURL,
+		HeaderURL:      in.HeaderURL,
+		FollowersCount: in.FollowersCount,
+		FollowingCount: in.FollowingCount,
+		StatusesCount:  in.StatusesCount,
 	}
 	acc, createErr := svc.store.CreateAccount(ctx, storeIn)
 	if createErr != nil {
 		return nil, fmt.Errorf("CreateOrUpdateRemoteAccount CreateAccount: %w", createErr)
 	}
-	enrichRemoteAccountURLs(acc, in)
 	return acc, nil
-}
-
-// enrichRemoteAccountURLs overlays avatar/header URLs from the federation input
-// onto the account. The DB query only populates these via a media_attachments
-// JOIN (for local uploads), so remote avatar/header URLs need to be applied here.
-func enrichRemoteAccountURLs(acc *domain.Account, in CreateOrUpdateRemoteInput) {
-	if acc.AvatarURL == "" && in.AvatarURL != "" {
-		acc.AvatarURL = in.AvatarURL
-	}
-	if acc.HeaderURL == "" && in.HeaderURL != "" {
-		acc.HeaderURL = in.HeaderURL
-	}
 }
 
 // SuspendRemote suspends a remote account by ID (e.g. from federation Delete{Person}).
@@ -505,6 +499,8 @@ type UpdateCredentialsInput struct {
 	Note               *string
 	AvatarMediaID      *string
 	HeaderMediaID      *string
+	AvatarURL          *string
+	HeaderURL          *string
 	Locked             bool
 	Bot                bool
 	DefaultQuotePolicy *string         // public | followers | nobody
@@ -528,6 +524,8 @@ func (svc *accountService) UpdateCredentials(ctx context.Context, in UpdateCrede
 		Note:          in.Note,
 		AvatarMediaID: in.AvatarMediaID,
 		HeaderMediaID: in.HeaderMediaID,
+		AvatarURL:     in.AvatarURL,
+		HeaderURL:     in.HeaderURL,
 		Bot:           in.Bot,
 		Locked:        in.Locked,
 		Fields:        fields,

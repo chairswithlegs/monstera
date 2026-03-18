@@ -9,21 +9,26 @@ import (
 
 // CreateAccountInput is the input for creating an account.
 type CreateAccountInput struct {
-	ID           string
-	Username     string
-	Domain       *string
-	DisplayName  *string
-	Note         *string
-	PublicKey    string
-	PrivateKey   *string
-	InboxURL     string
-	OutboxURL    string
-	FollowersURL string
-	FollowingURL string
-	APID         string
-	Bot          bool
-	Locked       bool
-	URL          *string
+	ID             string
+	Username       string
+	Domain         *string
+	DisplayName    *string
+	Note           *string
+	PublicKey      string
+	PrivateKey     *string
+	InboxURL       string
+	OutboxURL      string
+	FollowersURL   string
+	FollowingURL   string
+	APID           string
+	Bot            bool
+	Locked         bool
+	URL            *string
+	AvatarURL      string
+	HeaderURL      string
+	FollowersCount int
+	FollowingCount int
+	StatusesCount  int
 }
 
 // CreateUserInput is the input for creating a user.
@@ -205,6 +210,8 @@ type UpdateAccountInput struct {
 	Locked        bool
 	Fields        json.RawMessage // when not updating fields, pass current account.Fields
 	URL           *string
+	AvatarURL     *string
+	HeaderURL     *string
 }
 
 // CreateMediaAttachmentInput is the input for creating a media attachment.

@@ -48,6 +48,7 @@ type AccountStore interface {
 	UpdateAccount(ctx context.Context, in UpdateAccountInput) error
 	UpdateAccountKeys(ctx context.Context, id, publicKey string) error
 	UpdateAccountURLs(ctx context.Context, id, inboxURL, outboxURL, followersURL, followingURL string) error
+	UpdateRemoteAccountMeta(ctx context.Context, id, avatarURL, headerURL string, followersCount, followingCount, statusesCount int) error
 	SuspendAccount(ctx context.Context, id string) error
 	UnsuspendAccount(ctx context.Context, id string) error
 	SilenceAccount(ctx context.Context, id string) error

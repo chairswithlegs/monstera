@@ -228,11 +228,9 @@ func (q *Queries) GetFollowerInboxURLs(ctx context.Context, targetID string) ([]
 }
 
 const getFollowers = `-- name: GetFollowers :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, am.url AS avatar_url, hm.url AS header_url
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url
 FROM accounts a
 INNER JOIN follows f ON f.account_id = a.id
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
 WHERE f.target_id = $1
   AND f.state = 'accepted'
   AND ($2::text IS NULL OR f.id < $2)
@@ -247,9 +245,7 @@ type GetFollowersParams struct {
 }
 
 type GetFollowersRow struct {
-	Account   Account `json:"account"`
-	AvatarUrl *string `json:"avatar_url"`
-	HeaderUrl *string `json:"header_url"`
+	Account Account `json:"account"`
 }
 
 func (q *Queries) GetFollowers(ctx context.Context, arg GetFollowersParams) ([]GetFollowersRow, error) {
@@ -288,8 +284,8 @@ func (q *Queries) GetFollowers(ctx context.Context, arg GetFollowersParams) ([]G
 			&i.Account.Fields,
 			&i.Account.LastStatusAt,
 			&i.Account.Url,
-			&i.AvatarUrl,
-			&i.HeaderUrl,
+			&i.Account.AvatarUrl,
+			&i.Account.HeaderUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -302,11 +298,9 @@ func (q *Queries) GetFollowers(ctx context.Context, arg GetFollowersParams) ([]G
 }
 
 const getFollowing = `-- name: GetFollowing :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, am.url AS avatar_url, hm.url AS header_url
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url
 FROM accounts a
 INNER JOIN follows f ON f.target_id = a.id
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
 WHERE f.account_id = $1
   AND f.state = 'accepted'
   AND ($2::text IS NULL OR f.id < $2)
@@ -321,9 +315,7 @@ type GetFollowingParams struct {
 }
 
 type GetFollowingRow struct {
-	Account   Account `json:"account"`
-	AvatarUrl *string `json:"avatar_url"`
-	HeaderUrl *string `json:"header_url"`
+	Account Account `json:"account"`
 }
 
 func (q *Queries) GetFollowing(ctx context.Context, arg GetFollowingParams) ([]GetFollowingRow, error) {
@@ -362,8 +354,8 @@ func (q *Queries) GetFollowing(ctx context.Context, arg GetFollowingParams) ([]G
 			&i.Account.Fields,
 			&i.Account.LastStatusAt,
 			&i.Account.Url,
-			&i.AvatarUrl,
-			&i.HeaderUrl,
+			&i.Account.AvatarUrl,
+			&i.Account.HeaderUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -454,11 +446,9 @@ func (q *Queries) GetPendingFollowRequests(ctx context.Context, targetID string)
 }
 
 const getPendingFollowRequestsPaginated = `-- name: GetPendingFollowRequestsPaginated :many
-SELECT f.id AS cursor, a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, am.url AS avatar_url, hm.url AS header_url
+SELECT f.id AS cursor, a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url
 FROM follows f
 INNER JOIN accounts a ON a.id = f.account_id
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
 WHERE f.target_id = $1 AND f.state = 'pending'
   AND ($2::text IS NULL OR f.id < $2)
 ORDER BY f.id DESC
@@ -472,10 +462,8 @@ type GetPendingFollowRequestsPaginatedParams struct {
 }
 
 type GetPendingFollowRequestsPaginatedRow struct {
-	Cursor    string  `json:"cursor"`
-	Account   Account `json:"account"`
-	AvatarUrl *string `json:"avatar_url"`
-	HeaderUrl *string `json:"header_url"`
+	Cursor  string  `json:"cursor"`
+	Account Account `json:"account"`
 }
 
 func (q *Queries) GetPendingFollowRequestsPaginated(ctx context.Context, arg GetPendingFollowRequestsPaginatedParams) ([]GetPendingFollowRequestsPaginatedRow, error) {
@@ -515,8 +503,8 @@ func (q *Queries) GetPendingFollowRequestsPaginated(ctx context.Context, arg Get
 			&i.Account.Fields,
 			&i.Account.LastStatusAt,
 			&i.Account.Url,
-			&i.AvatarUrl,
-			&i.HeaderUrl,
+			&i.Account.AvatarUrl,
+			&i.Account.HeaderUrl,
 		); err != nil {
 			return nil, err
 		}

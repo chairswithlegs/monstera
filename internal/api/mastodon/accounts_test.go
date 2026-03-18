@@ -993,7 +993,12 @@ func TestAccountsHandler_PATCHUpdateCredentials(t *testing.T) {
 		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
 		rec := httptest.NewRecorder()
 		localHandler.PATCHUpdateCredentials(rec, req)
-		assert.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, http.StatusOK, rec.Code)
+
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Equal(t, "https://example.com/media/avatar.jpg", body["avatar"])
+		assert.Equal(t, "https://example.com/media/avatar.jpg", body["avatar_static"])
 	})
 }
 

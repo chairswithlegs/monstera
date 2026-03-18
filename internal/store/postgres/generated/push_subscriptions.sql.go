@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 )
 
 const createPushSubscription = `-- name: CreatePushSubscription :one
@@ -23,25 +24,50 @@ RETURNING id, access_token_id, account_id, endpoint, key_p256dh, key_auth, alert
 `
 
 type CreatePushSubscriptionParams struct {
-	ID            string `json:"id"`
-	AccessTokenID string `json:"access_token_id"`
-	AccountID     string `json:"account_id"`
-	Endpoint      string `json:"endpoint"`
-	KeyP256dh     string `json:"key_p256dh"`
-	KeyAuth       string `json:"key_auth"`
-	Alerts        []byte `json:"alerts"`
-	Policy        string `json:"policy"`
+	ID            string          `json:"id"`
+	AccessTokenID string          `json:"access_token_id"`
+	AccountID     string          `json:"account_id"`
+	Endpoint      string          `json:"endpoint"`
+	KeyP256dh     string          `json:"key_p256dh"`
+	KeyAuth       string          `json:"key_auth"`
+	Alerts        json.RawMessage `json:"alerts"`
+	Policy        string          `json:"policy"`
 }
 
 func (q *Queries) CreatePushSubscription(ctx context.Context, arg CreatePushSubscriptionParams) (PushSubscription, error) {
 	row := q.db.QueryRow(ctx, createPushSubscription,
-		arg.ID, arg.AccessTokenID, arg.AccountID, arg.Endpoint, arg.KeyP256dh, arg.KeyAuth, arg.Alerts, arg.Policy,
+		arg.ID,
+		arg.AccessTokenID,
+		arg.AccountID,
+		arg.Endpoint,
+		arg.KeyP256dh,
+		arg.KeyAuth,
+		arg.Alerts,
+		arg.Policy,
 	)
 	var i PushSubscription
 	err := row.Scan(
-		&i.ID, &i.AccessTokenID, &i.AccountID, &i.Endpoint, &i.KeyP256dh, &i.KeyAuth, &i.Alerts, &i.Policy, &i.CreatedAt, &i.UpdatedAt,
+		&i.ID,
+		&i.AccessTokenID,
+		&i.AccountID,
+		&i.Endpoint,
+		&i.KeyP256dh,
+		&i.KeyAuth,
+		&i.Alerts,
+		&i.Policy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const deletePushSubscription = `-- name: DeletePushSubscription :exec
+DELETE FROM push_subscriptions WHERE access_token_id = $1
+`
+
+func (q *Queries) DeletePushSubscription(ctx context.Context, accessTokenID string) error {
+	_, err := q.db.Exec(ctx, deletePushSubscription, accessTokenID)
+	return err
 }
 
 const getPushSubscriptionByAccessToken = `-- name: GetPushSubscriptionByAccessToken :one
@@ -54,40 +80,18 @@ func (q *Queries) GetPushSubscriptionByAccessToken(ctx context.Context, accessTo
 	row := q.db.QueryRow(ctx, getPushSubscriptionByAccessToken, accessTokenID)
 	var i PushSubscription
 	err := row.Scan(
-		&i.ID, &i.AccessTokenID, &i.AccountID, &i.Endpoint, &i.KeyP256dh, &i.KeyAuth, &i.Alerts, &i.Policy, &i.CreatedAt, &i.UpdatedAt,
+		&i.ID,
+		&i.AccessTokenID,
+		&i.AccountID,
+		&i.Endpoint,
+		&i.KeyP256dh,
+		&i.KeyAuth,
+		&i.Alerts,
+		&i.Policy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
-}
-
-const updatePushSubscriptionAlerts = `-- name: UpdatePushSubscriptionAlerts :one
-UPDATE push_subscriptions
-SET alerts = $2, policy = $3, updated_at = now()
-WHERE access_token_id = $1
-RETURNING id, access_token_id, account_id, endpoint, key_p256dh, key_auth, alerts, policy, created_at, updated_at
-`
-
-type UpdatePushSubscriptionAlertsParams struct {
-	AccessTokenID string `json:"access_token_id"`
-	Alerts        []byte `json:"alerts"`
-	Policy        string `json:"policy"`
-}
-
-func (q *Queries) UpdatePushSubscriptionAlerts(ctx context.Context, arg UpdatePushSubscriptionAlertsParams) (PushSubscription, error) {
-	row := q.db.QueryRow(ctx, updatePushSubscriptionAlerts, arg.AccessTokenID, arg.Alerts, arg.Policy)
-	var i PushSubscription
-	err := row.Scan(
-		&i.ID, &i.AccessTokenID, &i.AccountID, &i.Endpoint, &i.KeyP256dh, &i.KeyAuth, &i.Alerts, &i.Policy, &i.CreatedAt, &i.UpdatedAt,
-	)
-	return i, err
-}
-
-const deletePushSubscription = `-- name: DeletePushSubscription :exec
-DELETE FROM push_subscriptions WHERE access_token_id = $1
-`
-
-func (q *Queries) DeletePushSubscription(ctx context.Context, accessTokenID string) error {
-	_, err := q.db.Exec(ctx, deletePushSubscription, accessTokenID)
-	return err
 }
 
 const listPushSubscriptionsByAccountID = `-- name: ListPushSubscriptionsByAccountID :many
@@ -106,7 +110,16 @@ func (q *Queries) ListPushSubscriptionsByAccountID(ctx context.Context, accountI
 	for rows.Next() {
 		var i PushSubscription
 		if err := rows.Scan(
-			&i.ID, &i.AccessTokenID, &i.AccountID, &i.Endpoint, &i.KeyP256dh, &i.KeyAuth, &i.Alerts, &i.Policy, &i.CreatedAt, &i.UpdatedAt,
+			&i.ID,
+			&i.AccessTokenID,
+			&i.AccountID,
+			&i.Endpoint,
+			&i.KeyP256dh,
+			&i.KeyAuth,
+			&i.Alerts,
+			&i.Policy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -116,4 +129,35 @@ func (q *Queries) ListPushSubscriptionsByAccountID(ctx context.Context, accountI
 		return nil, err
 	}
 	return items, nil
+}
+
+const updatePushSubscriptionAlerts = `-- name: UpdatePushSubscriptionAlerts :one
+UPDATE push_subscriptions
+SET alerts = $2, policy = $3, updated_at = now()
+WHERE access_token_id = $1
+RETURNING id, access_token_id, account_id, endpoint, key_p256dh, key_auth, alerts, policy, created_at, updated_at
+`
+
+type UpdatePushSubscriptionAlertsParams struct {
+	AccessTokenID string          `json:"access_token_id"`
+	Alerts        json.RawMessage `json:"alerts"`
+	Policy        string          `json:"policy"`
+}
+
+func (q *Queries) UpdatePushSubscriptionAlerts(ctx context.Context, arg UpdatePushSubscriptionAlertsParams) (PushSubscription, error) {
+	row := q.db.QueryRow(ctx, updatePushSubscriptionAlerts, arg.AccessTokenID, arg.Alerts, arg.Policy)
+	var i PushSubscription
+	err := row.Scan(
+		&i.ID,
+		&i.AccessTokenID,
+		&i.AccountID,
+		&i.Endpoint,
+		&i.KeyP256dh,
+		&i.KeyAuth,
+		&i.Alerts,
+		&i.Policy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

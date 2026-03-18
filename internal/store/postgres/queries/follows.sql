@@ -19,11 +19,9 @@ UPDATE follows SET state = 'accepted' WHERE id = $1;
 DELETE FROM follows WHERE account_id = $1 AND target_id = $2;
 
 -- name: GetFollowers :many
-SELECT sqlc.embed(a), am.url AS avatar_url, hm.url AS header_url
+SELECT sqlc.embed(a)
 FROM accounts a
 INNER JOIN follows f ON f.account_id = a.id
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
 WHERE f.target_id = $1
   AND f.state = 'accepted'
   AND ($2::text IS NULL OR f.id < $2)
@@ -31,11 +29,9 @@ ORDER BY f.id DESC
 LIMIT $3;
 
 -- name: GetFollowing :many
-SELECT sqlc.embed(a), am.url AS avatar_url, hm.url AS header_url
+SELECT sqlc.embed(a)
 FROM accounts a
 INNER JOIN follows f ON f.target_id = a.id
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
 WHERE f.account_id = $1
   AND f.state = 'accepted'
   AND ($2::text IS NULL OR f.id < $2)
@@ -68,11 +64,9 @@ WHERE f.target_id = $1 AND f.state = 'pending'
 ORDER BY f.created_at ASC;
 
 -- name: GetPendingFollowRequestsPaginated :many
-SELECT f.id AS cursor, sqlc.embed(a), am.url AS avatar_url, hm.url AS header_url
+SELECT f.id AS cursor, sqlc.embed(a)
 FROM follows f
 INNER JOIN accounts a ON a.id = f.account_id
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
 WHERE f.target_id = $1 AND f.state = 'pending'
   AND ($2::text IS NULL OR f.id < $2)
 ORDER BY f.id DESC

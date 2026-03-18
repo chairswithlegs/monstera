@@ -14,7 +14,7 @@ type Account struct {
 	Note          *string
 	AvatarMediaID *string
 	HeaderMediaID *string
-	// AvatarURL and HeaderURL are populated by the store via LEFT JOIN on media_attachments.
+	// AvatarURL and HeaderURL are stored directly on the accounts table.
 	AvatarURL           string
 	HeaderURL           string
 	PublicKey           string
