@@ -118,7 +118,7 @@ func TestDeliveryWorker_PullDeliverAndNoDuplicate(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = cacheStore.Close() }()
 	accountSvc := service.NewAccountService(fake, instanceBaseURL)
-	signer := NewHTTPSignatureService(true, instanceBaseURL, cacheStore, accountSvc)
+	signer := NewHTTPSignatureService(true, instanceBaseURL, cacheStore, cacheStore, accountSvc)
 	worker := internal.NewOutboxDeliveryWorker(client.JS, nil, signer, "development", true, 1)
 	require.NoError(t, worker.Publish(ctx, "create", delivery))
 	workerCtx, workerCancel := context.WithCancel(context.Background())
@@ -230,7 +230,7 @@ func TestOutboxFanoutWorker_Integration(t *testing.T) {
 	defer func() { _ = cacheStore.Close() }()
 	accountSvc := service.NewAccountService(fake, instanceBaseURL)
 	remoteFollowSvc := service.NewRemoteFollowService(fake)
-	signer := NewHTTPSignatureService(true, instanceBaseURL, cacheStore, accountSvc)
+	signer := NewHTTPSignatureService(true, instanceBaseURL, cacheStore, cacheStore, accountSvc)
 	outboxDeliveryWorker := internal.NewOutboxDeliveryWorker(client.JS, nil, signer, "development", true, 1)
 	fanoutWorker := internal.NewOutboxFanoutWorker(client.JS, remoteFollowSvc, outboxDeliveryWorker, 1)
 
