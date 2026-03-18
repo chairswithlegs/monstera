@@ -1,10 +1,6 @@
-## Issue Tracking
-Use Beads (`bd`) for all work tracking. Run `bd quickstart` to get started.
-*   File issues for any work taking longer than 2 minutes
-*   Check `bd ready --json` to find unblocked work
-*   Update issue status as you work
-*   File discovered bugs/issues immediately rather than ignoring them
-*   Mark Beads issues as In-Progress while you work on it. Mark as closed when finished.
+# Task tracking
+
+At the start of each session, check TaskList for pending work items. If such a task exists, ask the user if you should begin working on it.
 
 # Monstera Project
 
@@ -87,60 +83,13 @@ Follow these rules to prevent local/remote entity conflation bugs:
 
 ---
 
-# Code style
-
-- Use `require` for preconditions, `assert` for verifications in tests.
-- Use `t.Helper()` in all test helpers.
-- Structured logging via `slog` — no `fmt.Printf` or `log.Println`.
-
----
-
 ## Logging
 
-Use the standard library `log/slog` and its **exported package-level functions**. Do not create or pass around `*slog.Logger` instances; the default logger is configured once at application startup. Do not store logger on structs.
+Use the standard library `log/slog` **exported package-level functions** only. Do not create, inject, or store `*slog.Logger` instances.
 
-### Use Context methods when context is available
-
-Prefer `*Context()` variants so log output can be tied to request/trace context:
-
-- `slog.DebugContext(ctx, msg, ...)`
-- `slog.InfoContext(ctx, msg, ...)`
-- `slog.WarnContext(ctx, msg, ...)`
-- `slog.ErrorContext(ctx, msg, ...)`
-
-When no `context.Context` is in scope, use `slog.Debug`, `slog.Info`, `slog.Warn`, `slog.Error`.
-
-### Do not
-
-- Construct or inject `*slog.Logger` (or interfaces wrapping it) into handlers, services, or stores.
-- Store logger on structs.
-- Use `fmt.Printf`, `log.Println`, or other ad-hoc logging.
-
-### Examples
-
-```go
-// ❌ BAD — passing a logger
-func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    h.logger.InfoContext(r.Context(), "request received")
-}
-
-// ✅ GOOD — package-level slog with context
-func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    slog.InfoContext(r.Context(), "request received")
-}
-```
-
-```go
-// ❌ BAD — no context when context is available
-func process(ctx context.Context, id string) {
-    slog.Info("processing", slog.String("id", id))
-}
-
-// ✅ GOOD
-func process(ctx context.Context, id string) {
-    slog.InfoContext(ctx, "processing", slog.String("id", id))
-}
-```
+- When `context.Context` is available: `slog.DebugContext`, `slog.InfoContext`, `slog.WarnContext`, `slog.ErrorContext`.
+- Without context: `slog.Debug`, `slog.Info`, `slog.Warn`, `slog.Error`.
+- Do not use `fmt.Printf`, `log.Println`, or inject loggers into structs.
 
 ---
 
@@ -174,56 +123,21 @@ If the changes touch any integration points, run the integration tests as well.
    go fmt ./...
    ```
 
-### When to run
-
-- After implementing a feature or fix.
-- After refactoring or touching multiple files.
-- Before committing or marking a task complete.
-
-### If something fails
-
-- **Linter**: Address each finding; do not leave suppressions or TODOs without a clear reason.
-- **Tests**: Fix failing tests or update expectations; do not skip or disable tests to make the build green.
+Fix all linter findings and failing tests before considering the change done. Do not suppress findings or skip tests to make the build green.
 
 ---
 
 ## Testing Conventions
 
-### Tools
-
-- **go test** (stdlib) — test runner.
-- **testify** (v1.10.0) — `assert`, `require`, HTTP helpers, mocking.
-- **golangci-lint** — linter; see lint section above for usage.
-
-### Organisation
-
-- Tests live alongside code (`*_test.go` in same package).
-- Integration tests (PostgreSQL, NATS) use `//go:build integration` and live in the same package for white-box access. Run with: `go test -tags=integration ./path/...`.
-
-### Conventions
-
-- **require** for preconditions (stop on failure); **assert** for verifications (continue so you see all failures).
-- **Table-driven tests** for varying inputs; name each case in the struct (e.g. `name: "plain text"`) — it appears in failure output.
-- Call **t.Helper()** in any helper that calls `t.Fatal`/`t.Error`/`require`/`assert` so failures point to the caller.
-- Mark tests with no shared mutable state as **t.Parallel()**.
-- **HTTP handler tests** use `net/http/httptest` and testify assertions.
-- Never log errors in test helpers — use `require`/`assert` so failures report via `t`.
-
-### Mocking
-
-- Prefer **hand-written fakes** for simple interfaces (`store.Store`, `cache.Store`, etc.).
-- Use testify **mock** when you need to assert call order or arguments (e.g. "Send called once with this subject").
-
-### No Conditional Skips
-
-When `make test` is run, **all** unit tests must execute. Do not add conditional skips.
-
-When `make test-integration` is run, **all** integration tests must execute. Do not add conditional skips.
-
-### Do not
-
-- Use `t.Skip()` or `t.Skipf()` when a dependency (e.g. DB, NATS, MinIO) is unavailable or env vars are unset.
-- Use `t.Skip()` based on environment detection so that CI or local `make test-integration` skips tests.
+- Tests live alongside code (`*_test.go` in same package). Use **testify** `assert`/`require`.
+- Integration tests (PostgreSQL, NATS) use `//go:build integration`; run with `go test -tags=integration ./path/...`.
+- **require** for preconditions (stop on failure); **assert** for verifications (continue to see all failures).
+- Table-driven tests for varying inputs; name each case in the struct.
+- Call `t.Helper()` in any helper that calls `t.Fatal`/`t.Error`/`require`/`assert`.
+- Mark tests with no shared mutable state as `t.Parallel()`.
+- HTTP handler tests use `net/http/httptest`.
+- Prefer hand-written fakes for simple interfaces; use testify mock when asserting call order or arguments.
+- Do not use `t.Skip()` — all unit tests must run under `make test`; all integration tests must run under `make test-integration`.
 
 ---
 
@@ -289,26 +203,11 @@ Available custom commands (invoke with `/command-name`):
 | `/repository-documentation` | Create or update documentation |
 | `/vercel-react-best-practices` | React/Next.js performance optimization |
 
-### How to apply
-
-1. **Review available commands first.** Before outlining steps or writing code, check the table above for any that match the task.
-2. **Use matching commands.** If a command's description matches the work (e.g. "Use when implementing…"), read and follow its instructions as part of the plan.
-3. **Invoke commands early.** Apply relevant commands at the start of the task, not only when stuck.
-
-### Examples
-
-- **Federation / inbox / signatures** → `/activitypub-expert`
-- **Mastodon client compatibility / OAuth / timelines** → `/mastodon-api-expert`
-- **Docs or README** → `/repository-documentation`
-- **Coupling, layers, structure** → `/system-architect`
-
-Do not mention a command without using it: if it is relevant, apply it.
+Check the table above before outlining steps or writing code. If a command matches, invoke it early. Do not mention a command without using it.
 
 ---
 
 ## Subdirectory Rules
-
-Additional conventions are loaded automatically when working in these directories:
 
 - `internal/CLAUDE.md` — interface/implementation pattern
 - `internal/store/CLAUDE.md` — database store layer

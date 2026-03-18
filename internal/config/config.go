@@ -134,10 +134,6 @@ func Load() (*Config, error) {
 		Version:                  envString("VERSION", "0.0.0-dev"),
 	}
 
-	if len(errs) > 0 {
-		return nil, errors.New(strings.Join(errs, "; "))
-	}
-
 	if cfg.MonsteraServerURL == nil && cfg.MonsteraInstanceDomain != "" {
 		cfg.MonsteraServerURL, _ = url.Parse("https://" + cfg.MonsteraInstanceDomain)
 	}
