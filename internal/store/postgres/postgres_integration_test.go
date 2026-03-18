@@ -84,7 +84,7 @@ func TestIntegration_PostgresStore(t *testing.T) {
 		require.Equal(t, domain.MonsteraRegistrationModeClosed, settings.RegistrationMode)
 	})
 
-	t.Run("GetAccountByID_populates_AvatarURL_from_JOIN", func(t *testing.T) {
+	t.Run("GetAccountByID_populates_AvatarURL", func(t *testing.T) {
 		accID := uid.New()
 		apID := "https://join.example/users/bob_" + accID
 		acc, err := s.CreateAccount(ctx, store.CreateAccountInput{
@@ -113,6 +113,7 @@ func TestIntegration_PostgresStore(t *testing.T) {
 		err = s.UpdateAccount(ctx, store.UpdateAccountInput{
 			ID:            acc.ID,
 			AvatarMediaID: &mediaID,
+			AvatarURL:     &avatarURL,
 		})
 		require.NoError(t, err)
 
@@ -122,7 +123,7 @@ func TestIntegration_PostgresStore(t *testing.T) {
 		require.Empty(t, got.HeaderURL)
 	})
 
-	t.Run("GetAccountByID_populates_HeaderURL_from_JOIN", func(t *testing.T) {
+	t.Run("GetAccountByID_populates_HeaderURL", func(t *testing.T) {
 		accID := uid.New()
 		apID := "https://join.example/users/carol_" + accID
 		acc, err := s.CreateAccount(ctx, store.CreateAccountInput{
@@ -151,6 +152,7 @@ func TestIntegration_PostgresStore(t *testing.T) {
 		err = s.UpdateAccount(ctx, store.UpdateAccountInput{
 			ID:            acc.ID,
 			HeaderMediaID: &mediaID,
+			HeaderURL:     &headerURL,
 		})
 		require.NoError(t, err)
 
