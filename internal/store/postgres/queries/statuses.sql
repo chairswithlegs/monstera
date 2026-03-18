@@ -141,11 +141,9 @@ SELECT * FROM statuses
 WHERE account_id = $1 AND reblog_of_id = $2 AND deleted_at IS NULL;
 
 -- name: GetRebloggedBy :many
-SELECT sqlc.embed(a), am.url AS avatar_url, hm.url AS header_url
+SELECT sqlc.embed(a)
 FROM accounts a
 INNER JOIN statuses s ON s.account_id = a.id
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
 WHERE s.reblog_of_id = $1 AND s.deleted_at IS NULL
   AND ($2::text IS NULL OR s.id < $2)
 ORDER BY s.id DESC

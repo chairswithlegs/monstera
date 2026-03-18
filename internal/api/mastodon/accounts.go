@@ -201,13 +201,14 @@ func (h *AccountsHandler) parseUpdateCredentialsRequest(w http.ResponseWriter, r
 	bot := api.FormValueIsTruthy(form, "bot")
 
 	var avatarMediaID, headerMediaID *string
+	var avatarURL, headerURL *string
 	if h.media != nil {
 		var err error
-		avatarMediaID, err = h.uploadFormFile(r, "avatar", account.ID, h.media.UploadAvatar)
+		avatarMediaID, avatarURL, err = h.uploadFormFile(r, "avatar", account.ID, h.media.UploadAvatar)
 		if err != nil {
 			return nil, err
 		}
-		headerMediaID, err = h.uploadFormFile(r, "header", account.ID, h.media.UploadHeader)
+		headerMediaID, headerURL, err = h.uploadFormFile(r, "header", account.ID, h.media.UploadHeader)
 		if err != nil {
 			return nil, err
 		}
@@ -235,6 +236,8 @@ func (h *AccountsHandler) parseUpdateCredentialsRequest(w http.ResponseWriter, r
 		Note:               notePtr,
 		AvatarMediaID:      avatarMediaID,
 		HeaderMediaID:      headerMediaID,
+		AvatarURL:          avatarURL,
+		HeaderURL:          headerURL,
 		Locked:             locked,
 		Bot:                bot,
 		DefaultQuotePolicy: defaultQuotePolicy,
@@ -245,18 +248,18 @@ func (h *AccountsHandler) parseUpdateCredentialsRequest(w http.ResponseWriter, r
 type uploadFunc func(ctx context.Context, accountID string, file io.Reader, contentType string) (*service.UploadResult, error)
 
 // uploadFormFile extracts a named file from the multipart form, uploads it
-// via the provided upload function, and returns the resulting media attachment ID.
-func (h *AccountsHandler) uploadFormFile(r *http.Request, field string, accountID string, upload uploadFunc) (*string, error) {
+// via the provided upload function, and returns the resulting media attachment ID and URL.
+func (h *AccountsHandler) uploadFormFile(r *http.Request, field string, accountID string, upload uploadFunc) (*string, *string, error) {
 	if r.MultipartForm == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	file, fh, err := r.FormFile(field)
 	if errors.Is(err, http.ErrMissingFile) {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if err != nil {
 		slog.ErrorContext(r.Context(), "failed to get "+field+" file from request", slog.Any("error", err))
-		return nil, nil
+		return nil, nil, nil
 	}
 	defer func() { _ = file.Close() }()
 	ct := fh.Header.Get("Content-Type")
@@ -265,9 +268,9 @@ func (h *AccountsHandler) uploadFormFile(r *http.Request, field string, accountI
 	}
 	result, err := upload(r.Context(), accountID, file, ct)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &result.Attachment.ID, nil
+	return &result.Attachment.ID, &result.Attachment.URL, nil
 }
 
 func parseFieldsAttributes(form map[string][]string) json.RawMessage {

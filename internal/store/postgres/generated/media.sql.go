@@ -28,7 +28,7 @@ func (q *Queries) AttachMediaToStatus(ctx context.Context, arg AttachMediaToStat
 const createMediaAttachment = `-- name: CreateMediaAttachment :one
 INSERT INTO media_attachments (id, account_id, type, content_type, storage_key, url, preview_url, remote_url, description, blurhash, meta)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING id, account_id, status_id, type, content_type, storage_key, url, preview_url, remote_url, description, blurhash, meta, size_bytes, created_at
+RETURNING id, account_id, status_id, type, storage_key, url, preview_url, remote_url, description, blurhash, meta, size_bytes, created_at, content_type
 `
 
 type CreateMediaAttachmentParams struct {
@@ -65,7 +65,6 @@ func (q *Queries) CreateMediaAttachment(ctx context.Context, arg CreateMediaAtta
 		&i.AccountID,
 		&i.StatusID,
 		&i.Type,
-		&i.ContentType,
 		&i.StorageKey,
 		&i.Url,
 		&i.PreviewUrl,
@@ -75,12 +74,13 @@ func (q *Queries) CreateMediaAttachment(ctx context.Context, arg CreateMediaAtta
 		&i.Meta,
 		&i.SizeBytes,
 		&i.CreatedAt,
+		&i.ContentType,
 	)
 	return i, err
 }
 
 const getMediaAttachment = `-- name: GetMediaAttachment :one
-SELECT id, account_id, status_id, type, content_type, storage_key, url, preview_url, remote_url, description, blurhash, meta, size_bytes, created_at FROM media_attachments WHERE id = $1
+SELECT id, account_id, status_id, type, storage_key, url, preview_url, remote_url, description, blurhash, meta, size_bytes, created_at, content_type FROM media_attachments WHERE id = $1
 `
 
 func (q *Queries) GetMediaAttachment(ctx context.Context, id string) (MediaAttachment, error) {
@@ -91,7 +91,6 @@ func (q *Queries) GetMediaAttachment(ctx context.Context, id string) (MediaAttac
 		&i.AccountID,
 		&i.StatusID,
 		&i.Type,
-		&i.ContentType,
 		&i.StorageKey,
 		&i.Url,
 		&i.PreviewUrl,
@@ -101,12 +100,13 @@ func (q *Queries) GetMediaAttachment(ctx context.Context, id string) (MediaAttac
 		&i.Meta,
 		&i.SizeBytes,
 		&i.CreatedAt,
+		&i.ContentType,
 	)
 	return i, err
 }
 
 const listStatusAttachments = `-- name: ListStatusAttachments :many
-SELECT id, account_id, status_id, type, content_type, storage_key, url, preview_url, remote_url, description, blurhash, meta, size_bytes, created_at FROM media_attachments WHERE status_id = $1 ORDER BY id ASC
+SELECT id, account_id, status_id, type, storage_key, url, preview_url, remote_url, description, blurhash, meta, size_bytes, created_at, content_type FROM media_attachments WHERE status_id = $1 ORDER BY id ASC
 `
 
 func (q *Queries) ListStatusAttachments(ctx context.Context, statusID *string) ([]MediaAttachment, error) {
@@ -123,7 +123,6 @@ func (q *Queries) ListStatusAttachments(ctx context.Context, statusID *string) (
 			&i.AccountID,
 			&i.StatusID,
 			&i.Type,
-			&i.ContentType,
 			&i.StorageKey,
 			&i.Url,
 			&i.PreviewUrl,
@@ -133,6 +132,7 @@ func (q *Queries) ListStatusAttachments(ctx context.Context, statusID *string) (
 			&i.Meta,
 			&i.SizeBytes,
 			&i.CreatedAt,
+			&i.ContentType,
 		); err != nil {
 			return nil, err
 		}
@@ -145,7 +145,7 @@ func (q *Queries) ListStatusAttachments(ctx context.Context, statusID *string) (
 }
 
 const listUnattachedMedia = `-- name: ListUnattachedMedia :many
-SELECT id, account_id, status_id, type, content_type, storage_key, url, preview_url, remote_url, description, blurhash, meta, size_bytes, created_at FROM media_attachments
+SELECT id, account_id, status_id, type, storage_key, url, preview_url, remote_url, description, blurhash, meta, size_bytes, created_at, content_type FROM media_attachments
 WHERE account_id = $1 AND status_id IS NULL
 ORDER BY created_at DESC
 `
@@ -164,7 +164,6 @@ func (q *Queries) ListUnattachedMedia(ctx context.Context, accountID string) ([]
 			&i.AccountID,
 			&i.StatusID,
 			&i.Type,
-			&i.ContentType,
 			&i.StorageKey,
 			&i.Url,
 			&i.PreviewUrl,
@@ -174,6 +173,7 @@ func (q *Queries) ListUnattachedMedia(ctx context.Context, accountID string) ([]
 			&i.Meta,
 			&i.SizeBytes,
 			&i.CreatedAt,
+			&i.ContentType,
 		); err != nil {
 			return nil, err
 		}
@@ -190,7 +190,7 @@ UPDATE media_attachments SET
     description = $2,
     meta        = $3
 WHERE id = $1 AND account_id = $4
-RETURNING id, account_id, status_id, type, content_type, storage_key, url, preview_url, remote_url, description, blurhash, meta, size_bytes, created_at
+RETURNING id, account_id, status_id, type, storage_key, url, preview_url, remote_url, description, blurhash, meta, size_bytes, created_at, content_type
 `
 
 type UpdateMediaAttachmentParams struct {
@@ -213,7 +213,6 @@ func (q *Queries) UpdateMediaAttachment(ctx context.Context, arg UpdateMediaAtta
 		&i.AccountID,
 		&i.StatusID,
 		&i.Type,
-		&i.ContentType,
 		&i.StorageKey,
 		&i.Url,
 		&i.PreviewUrl,
@@ -223,6 +222,7 @@ func (q *Queries) UpdateMediaAttachment(ctx context.Context, arg UpdateMediaAtta
 		&i.Meta,
 		&i.SizeBytes,
 		&i.CreatedAt,
+		&i.ContentType,
 	)
 	return i, err
 }

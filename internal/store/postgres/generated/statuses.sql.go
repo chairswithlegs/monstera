@@ -551,11 +551,9 @@ func (q *Queries) GetReblogByAccountAndTarget(ctx context.Context, arg GetReblog
 }
 
 const getRebloggedBy = `-- name: GetRebloggedBy :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, am.url AS avatar_url, hm.url AS header_url
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url
 FROM accounts a
 INNER JOIN statuses s ON s.account_id = a.id
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
 WHERE s.reblog_of_id = $1 AND s.deleted_at IS NULL
   AND ($2::text IS NULL OR s.id < $2)
 ORDER BY s.id DESC
@@ -569,9 +567,7 @@ type GetRebloggedByParams struct {
 }
 
 type GetRebloggedByRow struct {
-	Account   Account `json:"account"`
-	AvatarUrl *string `json:"avatar_url"`
-	HeaderUrl *string `json:"header_url"`
+	Account Account `json:"account"`
 }
 
 func (q *Queries) GetRebloggedBy(ctx context.Context, arg GetRebloggedByParams) ([]GetRebloggedByRow, error) {
@@ -610,8 +606,8 @@ func (q *Queries) GetRebloggedBy(ctx context.Context, arg GetRebloggedByParams) 
 			&i.Account.Fields,
 			&i.Account.LastStatusAt,
 			&i.Account.Url,
-			&i.AvatarUrl,
-			&i.HeaderUrl,
+			&i.Account.AvatarUrl,
+			&i.Account.HeaderUrl,
 		); err != nil {
 			return nil, err
 		}

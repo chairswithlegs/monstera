@@ -11,6 +11,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const followTag = `-- name: FollowTag :exec
+INSERT INTO account_followed_tags (id, account_id, tag_id)
+VALUES ($1, $2, $3)
+ON CONFLICT (account_id, tag_id) DO NOTHING
+`
+
+type FollowTagParams struct {
+	ID        string `json:"id"`
+	AccountID string `json:"account_id"`
+	TagID     string `json:"tag_id"`
+}
+
+func (q *Queries) FollowTag(ctx context.Context, arg FollowTagParams) error {
+	_, err := q.db.Exec(ctx, followTag, arg.ID, arg.AccountID, arg.TagID)
+	return err
+}
+
 const isFollowingTag = `-- name: IsFollowingTag :one
 SELECT EXISTS(
     SELECT 1 FROM account_followed_tags WHERE account_id = $1 AND tag_id = $2
@@ -27,23 +44,6 @@ func (q *Queries) IsFollowingTag(ctx context.Context, arg IsFollowingTagParams) 
 	var following bool
 	err := row.Scan(&following)
 	return following, err
-}
-
-const followTag = `-- name: FollowTag :exec
-INSERT INTO account_followed_tags (id, account_id, tag_id)
-VALUES ($1, $2, $3)
-ON CONFLICT (account_id, tag_id) DO NOTHING
-`
-
-type FollowTagParams struct {
-	ID        string `json:"id"`
-	AccountID string `json:"account_id"`
-	TagID     string `json:"tag_id"`
-}
-
-func (q *Queries) FollowTag(ctx context.Context, arg FollowTagParams) error {
-	_, err := q.db.Exec(ctx, followTag, arg.ID, arg.AccountID, arg.TagID)
-	return err
 }
 
 const listFollowedTagsPaginated = `-- name: ListFollowedTagsPaginated :many

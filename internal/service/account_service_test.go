@@ -264,6 +264,7 @@ func TestAccountService_GetByID_returns_avatar_url_from_store(t *testing.T) {
 	err = fake.UpdateAccount(ctx, store.UpdateAccountInput{
 		ID:            acc.ID,
 		AvatarMediaID: &media.ID,
+		AvatarURL:     &media.URL,
 	})
 	require.NoError(t, err)
 
@@ -312,6 +313,8 @@ func TestAccountService_GetActiveLocalAccount_returns_avatar_and_header_urls(t *
 		ID:            acc.ID,
 		AvatarMediaID: &avatarMedia.ID,
 		HeaderMediaID: &headerMedia.ID,
+		AvatarURL:     &avatarMedia.URL,
+		HeaderURL:     &headerMedia.URL,
 	})
 	require.NoError(t, err)
 
@@ -407,4 +410,99 @@ func TestAccountService_CreateOrUpdateRemoteAccount_empty_domain_returns_validat
 	})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrValidation)
+}
+
+func TestAccountService_CreateOrUpdateRemoteAccount_create_persists_avatar_header_and_counts(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+
+	displayName := "Kevin"
+	note := "<p>columnist</p>"
+	acc, err := svc.CreateOrUpdateRemoteAccount(ctx, CreateOrUpdateRemoteInput{
+		APID:           "https://" + testRemoteDomain + "/users/kevin",
+		Username:       "kevin",
+		Domain:         testRemoteDomain,
+		DisplayName:    &displayName,
+		Note:           &note,
+		PublicKey:      "fake-key",
+		InboxURL:       "https://" + testRemoteDomain + "/users/kevin/inbox",
+		OutboxURL:      "https://" + testRemoteDomain + "/users/kevin/outbox",
+		FollowersURL:   "https://" + testRemoteDomain + "/users/kevin/followers",
+		FollowingURL:   "https://" + testRemoteDomain + "/users/kevin/following",
+		AvatarURL:      "https://" + testRemoteDomain + "/avatars/kevin.jpg",
+		HeaderURL:      "https://" + testRemoteDomain + "/headers/kevin.jpg",
+		FollowersCount: 1234,
+		FollowingCount: 56,
+		StatusesCount:  789,
+	})
+	require.NoError(t, err)
+
+	// Verify the returned account has the correct values.
+	assert.Equal(t, "https://"+testRemoteDomain+"/avatars/kevin.jpg", acc.AvatarURL)
+	assert.Equal(t, "https://"+testRemoteDomain+"/headers/kevin.jpg", acc.HeaderURL)
+	assert.Equal(t, 1234, acc.FollowersCount)
+	assert.Equal(t, 56, acc.FollowingCount)
+	assert.Equal(t, 789, acc.StatusesCount)
+
+	// Verify a subsequent fetch returns the same values (persisted, not in-memory only).
+	fetched, err := svc.GetByID(ctx, acc.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "https://"+testRemoteDomain+"/avatars/kevin.jpg", fetched.AvatarURL)
+	assert.Equal(t, "https://"+testRemoteDomain+"/headers/kevin.jpg", fetched.HeaderURL)
+	assert.Equal(t, 1234, fetched.FollowersCount)
+	assert.Equal(t, 56, fetched.FollowingCount)
+	assert.Equal(t, 789, fetched.StatusesCount)
+}
+
+func TestAccountService_CreateOrUpdateRemoteAccount_update_refreshes_avatar_header_and_counts(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+
+	displayName := "Kevin"
+	base := CreateOrUpdateRemoteInput{
+		APID:           "https://" + testRemoteDomain + "/users/kevin",
+		Username:       "kevin",
+		Domain:         testRemoteDomain,
+		DisplayName:    &displayName,
+		PublicKey:      "fake-key",
+		InboxURL:       "https://" + testRemoteDomain + "/users/kevin/inbox",
+		OutboxURL:      "https://" + testRemoteDomain + "/users/kevin/outbox",
+		FollowersURL:   "https://" + testRemoteDomain + "/users/kevin/followers",
+		FollowingURL:   "https://" + testRemoteDomain + "/users/kevin/following",
+		AvatarURL:      "https://" + testRemoteDomain + "/avatars/old.jpg",
+		HeaderURL:      "https://" + testRemoteDomain + "/headers/old.jpg",
+		FollowersCount: 100,
+		FollowingCount: 10,
+		StatusesCount:  50,
+	}
+	_, err := svc.CreateOrUpdateRemoteAccount(ctx, base)
+	require.NoError(t, err)
+
+	// Update with new avatar, header, and counts.
+	base.AvatarURL = "https://" + testRemoteDomain + "/avatars/new.jpg"
+	base.HeaderURL = "https://" + testRemoteDomain + "/headers/new.jpg"
+	base.FollowersCount = 200
+	base.FollowingCount = 20
+	base.StatusesCount = 100
+	updated, err := svc.CreateOrUpdateRemoteAccount(ctx, base)
+	require.NoError(t, err)
+
+	assert.Equal(t, "https://"+testRemoteDomain+"/avatars/new.jpg", updated.AvatarURL)
+	assert.Equal(t, "https://"+testRemoteDomain+"/headers/new.jpg", updated.HeaderURL)
+	assert.Equal(t, 200, updated.FollowersCount)
+	assert.Equal(t, 20, updated.FollowingCount)
+	assert.Equal(t, 100, updated.StatusesCount)
+
+	// Verify persisted via a fresh fetch.
+	fetched, err := svc.GetByID(ctx, updated.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "https://"+testRemoteDomain+"/avatars/new.jpg", fetched.AvatarURL)
+	assert.Equal(t, "https://"+testRemoteDomain+"/headers/new.jpg", fetched.HeaderURL)
+	assert.Equal(t, 200, fetched.FollowersCount)
+	assert.Equal(t, 20, fetched.FollowingCount)
+	assert.Equal(t, 100, fetched.StatusesCount)
 }
