@@ -12,5 +12,4 @@ Design doc: `docs/architecture/05-database.md`
 - Use `pgxpool` for connection management. Never hold a connection outside a request scope.
 - Migrations live in `internal/store/migrations/` as sequential numbered SQL files (000001–000058).
 - Row-to-domain conversion for statuses uses `statusRowParams` struct instead of positional arguments — see `internal/store/postgres/convert.go`.
-- The `ap_raw` columns were removed from `accounts` and `statuses` (migration 000057). Do not re-add them.
-- Accounts have a nullable `url` column (migration 000058) for storing the human-readable profile URL of remote accounts.
+- Accounts have a nullable `url` column for storing the human-readable profile URL of remote accounts.
