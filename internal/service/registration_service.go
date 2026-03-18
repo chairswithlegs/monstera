@@ -27,7 +27,6 @@ type RegistrationService interface {
 	CreateInvite(ctx context.Context, createdByUserID string, maxUses *int, expiresAt *time.Time) (*domain.Invite, error)
 	ListInvites(ctx context.Context, createdByUserID string) ([]domain.Invite, error)
 	RevokeInvite(ctx context.Context, inviteID string) error
-	ValidateInviteCode(ctx context.Context, code string) (*domain.Invite, error)
 }
 
 // AccountApprovedMailer sends the account-approved email (optional; can be nil for tests).
@@ -200,19 +199,4 @@ func (svc *registrationService) RevokeInvite(ctx context.Context, inviteID strin
 		return fmt.Errorf("DeleteInvite: %w", err)
 	}
 	return nil
-}
-
-// ValidateInviteCode validates an invite code.
-func (svc *registrationService) ValidateInviteCode(ctx context.Context, code string) (*domain.Invite, error) {
-	inv, err := svc.store.GetInviteByCode(ctx, code)
-	if err != nil {
-		return nil, fmt.Errorf("GetInviteByCode: %w", err)
-	}
-	if inv.ExpiresAt != nil && inv.ExpiresAt.Before(time.Now()) {
-		return nil, domain.ErrNotFound
-	}
-	if inv.MaxUses != nil && inv.Uses >= *inv.MaxUses {
-		return nil, domain.ErrNotFound
-	}
-	return inv, nil
 }

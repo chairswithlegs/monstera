@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,7 +14,7 @@ import (
 func TestHealthChecker_GETLiveness(t *testing.T) {
 	t.Parallel()
 	h := NewHealthChecker(nil, nil)
-	req := httptest.NewRequest(http.MethodGet, "/healthz/live", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/healthz/live", nil)
 	rec := httptest.NewRecorder()
 	h.GETLiveness(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -25,7 +26,7 @@ func TestHealthChecker_GETLiveness(t *testing.T) {
 func TestHealthChecker_GETReadiness(t *testing.T) {
 	t.Parallel()
 	h := NewHealthChecker(nil, nil)
-	req := httptest.NewRequest(http.MethodGet, "/healthz/ready", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/healthz/ready", nil)
 	rec := httptest.NewRecorder()
 	h.GETReadiness(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)

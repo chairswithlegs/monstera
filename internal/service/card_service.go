@@ -185,7 +185,7 @@ func parseOGMetadata(body []byte) *ogMetadata {
 	}
 	walk(doc)
 
-	// Sanitize the shit out of the metadata
+	// Sanitize extracted metadata to prevent XSS via injected OpenGraph tags
 	og.title = bluemonday.StrictPolicy().Sanitize(og.title)
 	og.description = bluemonday.StrictPolicy().Sanitize(og.description)
 

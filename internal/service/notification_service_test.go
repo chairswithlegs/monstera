@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,7 +31,6 @@ func TestNotificationService_List_returns_notifications(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	followSvc := NewFollowService(fake, accountSvc)
 	notifSvc := NewNotificationService(fake)
 
 	actor, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
@@ -38,7 +38,12 @@ func TestNotificationService_List_returns_notifications(t *testing.T) {
 	target, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
 	require.NoError(t, err)
 
-	_, err = followSvc.Follow(ctx, actor.ID, target.ID)
+	_, err = fake.CreateNotification(ctx, store.CreateNotificationInput{
+		ID:        "01notif1",
+		AccountID: target.ID,
+		FromID:    actor.ID,
+		Type:      domain.NotificationTypeFollow,
+	})
 	require.NoError(t, err)
 
 	list, err := notifSvc.List(ctx, target.ID, nil, 20)
@@ -54,15 +59,24 @@ func TestNotificationService_List_respects_limit(t *testing.T) {
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
-	followSvc := NewFollowService(fake, accountSvc)
 	notifSvc := NewNotificationService(fake)
 
 	actor1, _ := accountSvc.Create(ctx, CreateAccountInput{Username: "a1"})
 	actor2, _ := accountSvc.Create(ctx, CreateAccountInput{Username: "a2"})
 	target, _ := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
 
-	_, _ = followSvc.Follow(ctx, actor1.ID, target.ID)
-	_, _ = followSvc.Follow(ctx, actor2.ID, target.ID)
+	_, _ = fake.CreateNotification(ctx, store.CreateNotificationInput{
+		ID:        "01notif1",
+		AccountID: target.ID,
+		FromID:    actor1.ID,
+		Type:      domain.NotificationTypeFollow,
+	})
+	_, _ = fake.CreateNotification(ctx, store.CreateNotificationInput{
+		ID:        "01notif2",
+		AccountID: target.ID,
+		FromID:    actor2.ID,
+		Type:      domain.NotificationTypeFollow,
+	})
 
 	list, err := notifSvc.List(ctx, target.ID, nil, 1)
 	require.NoError(t, err)

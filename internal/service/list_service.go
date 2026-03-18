@@ -16,7 +16,6 @@ type ListService interface {
 	ListLists(ctx context.Context, accountID string) ([]domain.List, error)
 	UpdateList(ctx context.Context, accountID, listID string, title, repliesPolicy string, exclusive bool) (*domain.List, error)
 	DeleteList(ctx context.Context, accountID, listID string) error
-	ListListAccountIDs(ctx context.Context, listID string) ([]string, error)
 	GetListAccounts(ctx context.Context, ownerAccountID, listID string) ([]domain.Account, error)
 	AddAccountsToList(ctx context.Context, accountID, listID string, accountIDs []string) error
 	RemoveAccountsFromList(ctx context.Context, accountID, listID string, accountIDs []string) error
@@ -121,14 +120,6 @@ func (svc *listService) DeleteList(ctx context.Context, accountID, listID string
 		return fmt.Errorf("DeleteList: %w", err)
 	}
 	return nil
-}
-
-func (svc *listService) ListListAccountIDs(ctx context.Context, listID string) ([]string, error) {
-	ids, err := svc.store.ListListAccountIDs(ctx, listID)
-	if err != nil {
-		return nil, fmt.Errorf("ListListAccountIDs: %w", err)
-	}
-	return ids, nil
 }
 
 // GetListAccounts returns accounts in the list for the owner. Returns ErrForbidden if the caller is not the list owner.

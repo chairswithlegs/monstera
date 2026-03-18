@@ -10,18 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/testutil"
 )
-
-type allowAllVisibilityChecker struct{}
-
-func (*allowAllVisibilityChecker) CanViewStatus(context.Context, *domain.Status, *string) (bool, error) {
-	return true, nil
-}
 
 func TestOutboxHandler_GETOutbox_collection(t *testing.T) {
 	t.Parallel()
@@ -36,10 +29,10 @@ func TestOutboxHandler_GETOutbox_collection(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, fake.ConfirmUser(ctx, "01USERALICE"))
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	accountSvc := service.NewAccountService(fake, cfg.InstanceBaseURL())
-	timelineSvc := service.NewTimelineService(fake, accountSvc, &allowAllVisibilityChecker{})
-	h := NewOutbox(accountSvc, timelineSvc, cfg)
+	accountSvc := service.NewAccountService(fake, "https://example.com")
+	statusSvc := service.NewStatusService(fake, "https://example.com", "example.com", 500)
+	timelineSvc := service.NewTimelineService(fake, accountSvc, statusSvc)
+	h := NewOutbox(accountSvc, timelineSvc, "https://example.com")
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/outbox", nil)
 	r = r.WithContext(ctx)
 	r = testutil.AddChiURLParam(r, "username", "alice")
@@ -76,10 +69,10 @@ func TestOutboxHandler_GETOutbox_page(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	accountSvc := service.NewAccountService(fake, cfg.InstanceBaseURL())
-	timelineSvc := service.NewTimelineService(fake, accountSvc, &allowAllVisibilityChecker{})
-	h := NewOutbox(accountSvc, timelineSvc, cfg)
+	accountSvc := service.NewAccountService(fake, "https://example.com")
+	statusSvc := service.NewStatusService(fake, "https://example.com", "example.com", 500)
+	timelineSvc := service.NewTimelineService(fake, accountSvc, statusSvc)
+	h := NewOutbox(accountSvc, timelineSvc, "https://example.com")
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/outbox?page=true", nil)
 	r = r.WithContext(ctx)
 	r = testutil.AddChiURLParam(r, "username", "alice")

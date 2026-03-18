@@ -33,7 +33,7 @@ func (h *MediaHandler) POSTMedia(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
-	if err := r.ParseMultipartForm(0); err != nil {
+	if err := r.ParseMultipartForm(0); err != nil { //nolint:gosec // G120: body size limited by upstream MaxBodySize middleware
 		api.HandleError(w, r, api.NewBadRequestError("invalid multipart form"))
 		return
 	}
@@ -48,7 +48,7 @@ func (h *MediaHandler) POSTMedia(w http.ResponseWriter, r *http.Request) {
 		contentType = contentTypeOctetStream
 	}
 	var desc *string
-	if d := r.FormValue("description"); d != "" {
+	if d := r.Form.Get("description"); d != "" {
 		desc = &d
 	}
 	result, err := h.media.Upload(r.Context(), account.ID, file, contentType, desc)
@@ -76,11 +76,11 @@ func (h *MediaHandler) PUTMedia(w http.ResponseWriter, r *http.Request) {
 	// If multipart parsing fails (e.g. not multipart), try ParseForm so urlencoded
 	// bodies are still read. ParseForm errors are ignored so we proceed with nil
 	// description/focus when the body is neither form type.
-	if err := r.ParseMultipartForm(0); err != nil {
-		_ = r.ParseForm()
+	if err := r.ParseMultipartForm(0); err != nil { //nolint:gosec // G120: body size limited by upstream MaxBodySize middleware
+		_ = r.ParseForm() //nolint:gosec // G120: same as above
 	}
 	description := optionalFormString(r, "description")
-	focusX, focusY, err := parseFocusParam(r.FormValue("focus"))
+	focusX, focusY, err := parseFocusParam(r.Form.Get("focus"))
 	if err != nil {
 		api.HandleError(w, r, err)
 		return

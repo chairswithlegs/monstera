@@ -38,7 +38,7 @@ INSERT INTO accounts (
     id, username, domain, display_name, note,
     public_key, private_key,
     inbox_url, outbox_url, followers_url, following_url,
-    ap_id, ap_raw, bot, locked
+    ap_id, bot, locked, url
 ) VALUES (
     $1, $2, $3, $4, $5,
     $6, $7,
@@ -52,16 +52,19 @@ UPDATE accounts SET
     note            = COALESCE($3, note),
     avatar_media_id = COALESCE($4, avatar_media_id),
     header_media_id = COALESCE($5, header_media_id),
-    ap_raw          = COALESCE($6, ap_raw),
-    bot             = COALESCE($7, bot),
-    locked          = COALESCE($8, locked),
-    fields          = COALESCE($9, fields),
+    bot             = COALESCE($6, bot),
+    locked          = COALESCE($7, locked),
+    fields          = COALESCE($8, fields),
+    url             = COALESCE($9, url),
     updated_at      = NOW()
 WHERE id = $1
 RETURNING *;
 
 -- name: UpdateAccountKeys :exec
-UPDATE accounts SET public_key = $2, ap_raw = $3, updated_at = NOW() WHERE id = $1;
+UPDATE accounts SET public_key = $2, updated_at = NOW() WHERE id = $1;
+
+-- name: UpdateAccountURLs :exec
+UPDATE accounts SET inbox_url = $2, outbox_url = $3, followers_url = $4, following_url = $5, updated_at = NOW() WHERE id = $1;
 
 -- name: SuspendAccount :exec
 UPDATE accounts SET suspended = TRUE, updated_at = NOW() WHERE id = $1;

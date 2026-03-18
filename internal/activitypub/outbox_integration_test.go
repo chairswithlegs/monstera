@@ -25,7 +25,7 @@ import (
 	"github.com/chairswithlegs/monstera/internal/activitypub/internal"
 	"github.com/chairswithlegs/monstera/internal/cache"
 	"github.com/chairswithlegs/monstera/internal/config"
-	natsutil "github.com/chairswithlegs/monstera/internal/nats"
+	"github.com/chairswithlegs/monstera/internal/natsutil"
 	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/testutil"
@@ -51,18 +51,15 @@ func TestDeliveryWorker_PullDeliverAndNoDuplicate(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	cfg := &config.Config{
-		NATSUrl:                     url,
-		InstanceDomain:              "test.example",
-		FederationWorkerConcurrency: 1,
-		AppEnv:                      "development",
-		FederationInsecureSkipTLS:   true,
+	natsCfg := &config.Config{
+		NATSUrl:        url,
+		InstanceDomain: "test.example",
 	}
-	client, err := natsutil.New(cfg)
+	client, err := natsutil.New(natsCfg)
 	require.NoError(t, err)
 	defer client.Close()
 
-	require.NoError(t, CreateOrUpdateStreams(ctx, client.JS))
+	require.NoError(t, natsutil.EnsureStreams(ctx, client.JS, internal.StreamConfigs...))
 	stream, err := client.JS.Stream(ctx, internal.StreamOutboxDelivery)
 	require.NoError(t, err)
 	require.NoError(t, stream.Purge(ctx), "purge stream so test starts with no messages")
@@ -86,7 +83,8 @@ func TestDeliveryWorker_PullDeliverAndNoDuplicate(t *testing.T) {
 	privPEM, err := generateTestKeyPair()
 	require.NoError(t, err)
 	senderID := uid.New()
-	apID := fmt.Sprintf("%s/users/alice", cfg.InstanceBaseURL())
+	instanceBaseURL := "https://test.example"
+	apID := fmt.Sprintf("%s/users/alice", instanceBaseURL)
 	inboxURL := srv.URL + "/inbox"
 
 	fake := testutil.NewFakeStore()
@@ -103,7 +101,6 @@ func TestDeliveryWorker_PullDeliverAndNoDuplicate(t *testing.T) {
 		FollowersURL: "",
 		FollowingURL: "",
 		APID:         apID,
-		ApRaw:        nil,
 		Bot:          false,
 		Locked:       false,
 	})
@@ -120,9 +117,9 @@ func TestDeliveryWorker_PullDeliverAndNoDuplicate(t *testing.T) {
 	cacheStore, err := cache.New(cache.Config{Driver: "memory"})
 	require.NoError(t, err)
 	defer func() { _ = cacheStore.Close() }()
-	accountSvc := service.NewAccountService(fake, cfg.InstanceBaseURL())
-	signer := NewHTTPSignatureService(cfg, cacheStore, accountSvc)
-	worker := internal.NewOutboxDeliveryWorker(client.JS, nil, signer, cfg)
+	accountSvc := service.NewAccountService(fake, instanceBaseURL)
+	signer := NewHTTPSignatureService(true, instanceBaseURL, cacheStore, cacheStore, accountSvc)
+	worker := internal.NewOutboxDeliveryWorker(client.JS, nil, signer, "development", true, 1)
 	require.NoError(t, worker.Publish(ctx, "create", delivery))
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	go func() {
@@ -159,18 +156,15 @@ func TestOutboxFanoutWorker_Integration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	cfg := &config.Config{
-		NATSUrl:                     url,
-		InstanceDomain:              "test.example",
-		FederationWorkerConcurrency: 1,
-		AppEnv:                      "development",
-		FederationInsecureSkipTLS:   true,
+	natsCfg := &config.Config{
+		NATSUrl:        url,
+		InstanceDomain: "test.example",
 	}
-	client, err := natsutil.New(cfg)
+	client, err := natsutil.New(natsCfg)
 	require.NoError(t, err)
 	defer client.Close()
 
-	require.NoError(t, CreateOrUpdateStreams(ctx, client.JS))
+	require.NoError(t, natsutil.EnsureStreams(ctx, client.JS, internal.StreamConfigs...))
 	for _, streamName := range []string{internal.StreamOutboxDelivery, internal.StreamOutboxFanout} {
 		stream, err := client.JS.Stream(ctx, streamName)
 		require.NoError(t, err)
@@ -196,7 +190,8 @@ func TestOutboxFanoutWorker_Integration(t *testing.T) {
 	privPEM, err := generateTestKeyPair()
 	require.NoError(t, err)
 	senderID := uid.New()
-	apID := fmt.Sprintf("%s/users/alice", cfg.InstanceBaseURL())
+	instanceBaseURL := "https://test.example"
+	apID := fmt.Sprintf("%s/users/alice", instanceBaseURL)
 	inboxURL := srv.URL + "/inbox"
 
 	fake := testutil.NewFakeStore()
@@ -233,11 +228,11 @@ func TestOutboxFanoutWorker_Integration(t *testing.T) {
 	cacheStore, err := cache.New(cache.Config{Driver: "memory"})
 	require.NoError(t, err)
 	defer func() { _ = cacheStore.Close() }()
-	accountSvc := service.NewAccountService(fake, cfg.InstanceBaseURL())
-	followSvc := service.NewFollowService(fake, accountSvc)
-	signer := NewHTTPSignatureService(cfg, cacheStore, accountSvc)
-	outboxDeliveryWorker := internal.NewOutboxDeliveryWorker(client.JS, nil, signer, cfg)
-	fanoutWorker := internal.NewOutboxFanoutWorker(client.JS, followSvc, outboxDeliveryWorker, cfg)
+	accountSvc := service.NewAccountService(fake, instanceBaseURL)
+	remoteFollowSvc := service.NewRemoteFollowService(fake)
+	signer := NewHTTPSignatureService(true, instanceBaseURL, cacheStore, cacheStore, accountSvc)
+	outboxDeliveryWorker := internal.NewOutboxDeliveryWorker(client.JS, nil, signer, "development", true, 1)
+	fanoutWorker := internal.NewOutboxFanoutWorker(client.JS, remoteFollowSvc, outboxDeliveryWorker, 1)
 
 	fanoutMsg := internal.OutboxFanoutMessage{
 		ActivityID: "https://test.example/activities/01act",

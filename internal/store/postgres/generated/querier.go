@@ -96,7 +96,13 @@ type Querier interface {
 	DeleteUserFilter(ctx context.Context, id string) error
 	DismissAnnouncement(ctx context.Context, arg DismissAnnouncementParams) error
 	DismissNotification(ctx context.Context, arg DismissNotificationParams) error
+	CreatePushSubscription(ctx context.Context, arg CreatePushSubscriptionParams) (PushSubscription, error)
+	GetPushSubscriptionByAccessToken(ctx context.Context, accessTokenID string) (PushSubscription, error)
+	UpdatePushSubscriptionAlerts(ctx context.Context, arg UpdatePushSubscriptionAlertsParams) (PushSubscription, error)
+	DeletePushSubscription(ctx context.Context, accessTokenID string) error
+	ListPushSubscriptionsByAccountID(ctx context.Context, accountID string) ([]PushSubscription, error)
 	FollowTag(ctx context.Context, arg FollowTagParams) error
+	IsFollowingTag(ctx context.Context, arg IsFollowingTagParams) (bool, error)
 	GetAccessToken(ctx context.Context, token string) (OauthAccessToken, error)
 	GetAccountByAPID(ctx context.Context, apID string) (GetAccountByAPIDRow, error)
 	GetAccountByID(ctx context.Context, id string) (GetAccountByIDRow, error)
@@ -132,6 +138,7 @@ type Querier interface {
 	GetHomeTimeline(ctx context.Context, arg GetHomeTimelineParams) ([]Status, error)
 	GetInviteByCode(ctx context.Context, code string) (Invite, error)
 	GetListByID(ctx context.Context, id string) (List, error)
+	GetListIDsByMemberAccountID(ctx context.Context, accountID string) ([]string, error)
 	GetListTimeline(ctx context.Context, arg GetListTimelineParams) ([]Status, error)
 	GetLocalAccountByUsername(ctx context.Context, username string) (GetLocalAccountByUsernameRow, error)
 	GetLocalFollowerAccountIDs(ctx context.Context, targetID string) ([]string, error)
@@ -163,7 +170,7 @@ type Querier interface {
 	GetStatusFavouritedBy(ctx context.Context, arg GetStatusFavouritedByParams) ([]GetStatusFavouritedByRow, error)
 	GetStatusHashtags(ctx context.Context, statusID string) ([]Hashtag, error)
 	GetStatusMentionAccountIDs(ctx context.Context, statusID string) ([]string, error)
-	GetStatusMentions(ctx context.Context, statusID string) ([]Account, error)
+	GetStatusMentions(ctx context.Context, statusID string) ([]GetStatusMentionsRow, error)
 	GetTopScoredPublicStatuses(ctx context.Context, arg GetTopScoredPublicStatusesParams) ([]GetTopScoredPublicStatusesRow, error)
 	GetTrendingStatuses(ctx context.Context, limit int32) ([]TrendingStatus, error)
 	GetTrendingTagHistory(ctx context.Context, dollar_1 int32) ([]GetTrendingTagHistoryRow, error)
@@ -247,6 +254,7 @@ type Querier interface {
 	UnsuspendAccount(ctx context.Context, id string) error
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
 	UpdateAccountKeys(ctx context.Context, arg UpdateAccountKeysParams) error
+	UpdateAccountURLs(ctx context.Context, arg UpdateAccountURLsParams) error
 	UpdateAccountLastStatusAt(ctx context.Context, id string) error
 	UpdateAnnouncement(ctx context.Context, arg UpdateAnnouncementParams) error
 	UpdateDomainBlock(ctx context.Context, arg UpdateDomainBlockParams) (DomainBlock, error)

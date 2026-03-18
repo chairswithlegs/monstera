@@ -4,8 +4,11 @@ VALUES ($1, $2)
 ON CONFLICT DO NOTHING;
 
 -- name: GetStatusMentions :many
-SELECT a.* FROM accounts a
+SELECT sqlc.embed(a), am.url AS avatar_url, hm.url AS header_url
+FROM accounts a
 INNER JOIN status_mentions sm ON sm.account_id = a.id
+LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
+LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
 WHERE sm.status_id = $1;
 
 -- name: GetStatusMentionAccountIDs :many

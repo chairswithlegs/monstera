@@ -58,7 +58,8 @@ func TestTrendsService_TrendingStatuses(t *testing.T) {
 		{StatusID: "st1", Score: 5.0, RankedAt: time.Now()},
 	}
 
-	svc := NewTrendsService(fs)
+	statusSvc := NewStatusService(fs, "https://example.com", "example.com", 500)
+	svc := NewTrendsService(fs, statusSvc)
 	statuses, err := svc.TrendingStatuses(context.Background(), 10)
 	require.NoError(t, err)
 	require.Len(t, statuses, 1)
@@ -77,7 +78,8 @@ func TestTrendsService_TrendingStatuses_limit(t *testing.T) {
 		{StatusID: "missing3"},
 	}
 
-	svc := NewTrendsService(fs)
+	statusSvc := NewStatusService(fs, "https://example.com", "example.com", 500)
+	svc := NewTrendsService(fs, statusSvc)
 	statuses, err := svc.TrendingStatuses(context.Background(), 2)
 	require.NoError(t, err)
 	// All IDs are missing from the store, so statuses will be empty (warnings logged).
@@ -93,12 +95,13 @@ func TestTrendsService_TrendingTags(t *testing.T) {
 	ht, err := fs.GetOrCreateHashtag(context.Background(), "golang")
 	require.NoError(t, err)
 
-	fs.TrendingTagHistory = []store.TrendingTagHistoryEntry{
+	fs.TrendingTagHistory = []domain.TrendingTagHistory{
 		{HashtagID: ht.ID, Day: day, Uses: 100, Accounts: 20},
 		{HashtagID: ht.ID, Day: day.AddDate(0, 0, -1), Uses: 50, Accounts: 10},
 	}
 
-	svc := NewTrendsService(fs)
+	statusSvc := NewStatusService(fs, "https://example.com", "example.com", 500)
+	svc := NewTrendsService(fs, statusSvc)
 	tags, err := svc.TrendingTags(context.Background(), 10)
 	require.NoError(t, err)
 	require.Len(t, tags, 1)
@@ -110,7 +113,8 @@ func TestTrendsService_TrendingTags_empty(t *testing.T) {
 	t.Parallel()
 
 	fs := testutil.NewFakeStore()
-	svc := NewTrendsService(fs)
+	statusSvc := NewStatusService(fs, "https://example.com", "example.com", 500)
+	svc := NewTrendsService(fs, statusSvc)
 	tags, err := svc.TrendingTags(context.Background(), 10)
 	require.NoError(t, err)
 	assert.Empty(t, tags)
@@ -121,11 +125,12 @@ func TestTrendsService_RefreshIndexes(t *testing.T) {
 
 	fs := testutil.NewFakeStore()
 	day := time.Now().UTC().Truncate(24 * time.Hour)
-	fs.HashtagDailyStats = []store.HashtagDailyStats{
+	fs.HashtagDailyStats = []domain.HashtagDailyStats{
 		{HashtagID: "tag1", HashtagName: "golang", Day: day, Uses: 42, Accounts: 10},
 	}
 
-	svc := NewTrendsService(fs)
+	statusSvc := NewStatusService(fs, "https://example.com", "example.com", 500)
+	svc := NewTrendsService(fs, statusSvc)
 	err := svc.RefreshIndexes(context.Background())
 	require.NoError(t, err)
 	assert.Empty(t, fs.TrendingStatuses) // no scored statuses seeded
@@ -143,7 +148,8 @@ func TestTrendsService_RefreshIndexes_withStatuses(t *testing.T) {
 		{StatusID: "st2", Score: 5.0},
 	}
 
-	svc := NewTrendsService(fs)
+	statusSvc := NewStatusService(fs, "https://example.com", "example.com", 500)
+	svc := NewTrendsService(fs, statusSvc)
 	err := svc.RefreshIndexes(context.Background())
 	require.NoError(t, err)
 	assert.Len(t, fs.TrendingStatuses, 2)
@@ -153,7 +159,8 @@ func TestTrendsService_cacheHit(t *testing.T) {
 	t.Parallel()
 
 	fs := testutil.NewFakeStore()
-	svc := NewTrendsService(fs).(*trendsService)
+	statusSvc := NewStatusService(fs, "https://example.com", "example.com", 500)
+	svc := NewTrendsService(fs, statusSvc).(*trendsService)
 	svc.cacheTTL = time.Hour // long TTL to ensure cache is used
 
 	// First call fills the cache.
@@ -162,7 +169,7 @@ func TestTrendsService_cacheHit(t *testing.T) {
 
 	// Mutate the fake store — second call should NOT see the change (cache hit).
 	day := time.Now()
-	fs.TrendingTagHistory = []store.TrendingTagHistoryEntry{
+	fs.TrendingTagHistory = []domain.TrendingTagHistory{
 		{HashtagID: "tag1", Day: day, Uses: 99},
 	}
 

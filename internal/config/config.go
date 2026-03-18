@@ -1,7 +1,6 @@
 package config
 
 import (
-	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -9,8 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-
-	"golang.org/x/crypto/hkdf"
+	"time"
 )
 
 const minSecretKeyBytes = 32
@@ -22,7 +20,7 @@ type Config struct {
 	AppEnv         string
 	AppPort        int
 	InstanceDomain string
-	MonsteraUiUrl  *url.URL
+	MonsteraUIURL  *url.URL
 	InstanceName   string
 	LogLevel       string
 
@@ -58,11 +56,20 @@ type Config struct {
 	SecretKeyBase string
 	MetricsToken  string
 
+	VAPIDPrivateKey string
+	VAPIDPublicKey  string
+
 	FederationWorkerConcurrency int
 	FederationInsecureSkipTLS   bool
 	MaxStatusChars              int
+	MaxRequestBodyBytes         int64
 	MediaMaxBytes               int64
 	Version                     string
+
+	RateLimitAuthPerWindow   int
+	RateLimitAuthWindow      time.Duration
+	RateLimitPublicPerWindow int
+	RateLimitPublicWindow    time.Duration
 }
 
 func Load() (*Config, error) {
@@ -72,7 +79,7 @@ func Load() (*Config, error) {
 		AppEnv:         envString("APP_ENV", appEnvDevelopment),
 		AppPort:        envInt("APP_PORT", 8080),
 		InstanceDomain: envStringRequired("INSTANCE_DOMAIN", &errs),
-		MonsteraUiUrl:  envRequiredURL("MONSTERA_UI_URL", &errs),
+		MonsteraUIURL:  envRequiredURL("MONSTERA_UI_URL", &errs),
 		InstanceName:   envString("INSTANCE_NAME", "Monstera"),
 		LogLevel:       envString("LOG_LEVEL", "info"),
 
@@ -108,12 +115,21 @@ func Load() (*Config, error) {
 		SecretKeyBase: envStringRequired("SECRET_KEY_BASE", &errs),
 		MetricsToken:  envString("METRICS_TOKEN", ""),
 
+		VAPIDPrivateKey: envString("VAPID_PRIVATE_KEY", ""),
+		VAPIDPublicKey:  envString("VAPID_PUBLIC_KEY", ""),
+
 		FederationWorkerConcurrency: envInt("FEDERATION_WORKER_CONCURRENCY", 5),
 		// FederationInsecureSkipTLS defaults to true for development, false for production
 		FederationInsecureSkipTLS: envBool("FEDERATION_INSECURE_SKIP_TLS_VERIFY", envString("APP_ENV", appEnvDevelopment) == appEnvDevelopment),
 		MaxStatusChars:            envInt("MAX_STATUS_CHARS", 500),
+		MaxRequestBodyBytes:       envInt64("MAX_REQUEST_BODY_BYTES", 1048576), // 1 MB
 		MediaMaxBytes:             envInt64("MEDIA_MAX_BYTES", 10485760),
-		Version:                   envString("VERSION", "0.0.0-dev"),
+
+		RateLimitAuthPerWindow:   envInt("RATE_LIMIT_AUTH_PER_WINDOW", 300),
+		RateLimitAuthWindow:      time.Duration(envInt("RATE_LIMIT_AUTH_WINDOW_SECONDS", 300)) * time.Second,
+		RateLimitPublicPerWindow: envInt("RATE_LIMIT_PUBLIC_PER_WINDOW", 300),
+		RateLimitPublicWindow:    time.Duration(envInt("RATE_LIMIT_PUBLIC_WINDOW_SECONDS", 300)) * time.Second,
+		Version:                  envString("VERSION", "0.0.0-dev"),
 	}
 
 	if len(errs) > 0 {
@@ -200,18 +216,6 @@ func (c *Config) InstanceBaseURL() string {
 // Callers must ensure Config has been validated (Load() or Validate() succeeded).
 func (c *Config) SecretKeyBytes() ([]byte, error) {
 	return decodeSecretKeyBase(c.SecretKeyBase)
-}
-
-func (c *Config) DeriveKey(purpose string, length int) []byte {
-	keyBytes, _ := decodeSecretKeyBase(c.SecretKeyBase)
-	if len(keyBytes) < minSecretKeyBytes {
-		keyBytes = []byte(c.SecretKeyBase)
-	}
-	extractor := hkdf.Extract(sha256.New, keyBytes, nil)
-	expander := hkdf.Expand(sha256.New, extractor, []byte(purpose))
-	out := make([]byte, length)
-	_, _ = expander.Read(out)
-	return out
 }
 
 func envString(key, defaultVal string) string {

@@ -8,7 +8,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
-	"github.com/chairswithlegs/monstera/internal/store"
 )
 
 // GetTopScoredPublicStatuses returns up to limit public statuses created since `since`,
@@ -27,7 +26,7 @@ func (s *PostgresStore) GetTopScoredPublicStatuses(ctx context.Context, since ti
 
 	rows, err := s.pool.Query(ctx, q, pgtype.Timestamptz{Time: since, Valid: true}, int64(limit))
 	if err != nil {
-		return nil, fmt.Errorf("GetTopScoredPublicStatuses: %w", err)
+		return nil, fmt.Errorf("GetTopScoredPublicStatuses: %w", mapErr(err))
 	}
 	defer rows.Close()
 
@@ -35,18 +34,18 @@ func (s *PostgresStore) GetTopScoredPublicStatuses(ctx context.Context, since ti
 	for rows.Next() {
 		var ts domain.TrendingStatus
 		if err := rows.Scan(&ts.StatusID, &ts.Score); err != nil {
-			return nil, fmt.Errorf("GetTopScoredPublicStatuses scan: %w", err)
+			return nil, fmt.Errorf("GetTopScoredPublicStatuses scan: %w", mapErr(err))
 		}
 		out = append(out, ts)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("GetTopScoredPublicStatuses rows: %w", err)
+		return nil, fmt.Errorf("GetTopScoredPublicStatuses rows: %w", mapErr(err))
 	}
 	return out, nil
 }
 
 // GetHashtagDailyStats returns per-hashtag per-day usage aggregates since `since`.
-func (s *PostgresStore) GetHashtagDailyStats(ctx context.Context, since time.Time) ([]store.HashtagDailyStats, error) {
+func (s *PostgresStore) GetHashtagDailyStats(ctx context.Context, since time.Time) ([]domain.HashtagDailyStats, error) {
 	const q = `
 		SELECT h.id AS hashtag_id, h.name AS hashtag_name,
 		       date_trunc('day', s.created_at AT TIME ZONE 'UTC')::date AS day,
@@ -63,16 +62,16 @@ func (s *PostgresStore) GetHashtagDailyStats(ctx context.Context, since time.Tim
 
 	rows, err := s.pool.Query(ctx, q, pgtype.Timestamptz{Time: since, Valid: true})
 	if err != nil {
-		return nil, fmt.Errorf("GetHashtagDailyStats: %w", err)
+		return nil, fmt.Errorf("GetHashtagDailyStats: %w", mapErr(err))
 	}
 	defer rows.Close()
 
-	var out []store.HashtagDailyStats
+	var out []domain.HashtagDailyStats
 	for rows.Next() {
-		var hs store.HashtagDailyStats
+		var hs domain.HashtagDailyStats
 		var day pgtype.Date
 		if err := rows.Scan(&hs.HashtagID, &hs.HashtagName, &day, &hs.Uses, &hs.Accounts); err != nil {
-			return nil, fmt.Errorf("GetHashtagDailyStats scan: %w", err)
+			return nil, fmt.Errorf("GetHashtagDailyStats scan: %w", mapErr(err))
 		}
 		if day.Valid {
 			hs.Day = day.Time
@@ -80,16 +79,16 @@ func (s *PostgresStore) GetHashtagDailyStats(ctx context.Context, since time.Tim
 		out = append(out, hs)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("GetHashtagDailyStats rows: %w", err)
+		return nil, fmt.Errorf("GetHashtagDailyStats rows: %w", mapErr(err))
 	}
 	return out, nil
 }
 
 // ReplaceTrendingStatuses replaces the entire trending_statuses index atomically.
-func (s *PostgresStore) ReplaceTrendingStatuses(ctx context.Context, entries []store.TrendingStatusEntry) error {
+func (s *PostgresStore) ReplaceTrendingStatuses(ctx context.Context, entries []domain.TrendingStatus) error {
 	if len(entries) == 0 {
 		if _, err := s.pool.Exec(ctx, `DELETE FROM trending_statuses`); err != nil {
-			return fmt.Errorf("ReplaceTrendingStatuses truncate: %w", err)
+			return fmt.Errorf("ReplaceTrendingStatuses truncate: %w", mapErr(err))
 		}
 		return nil
 	}
@@ -112,10 +111,10 @@ func (s *PostgresStore) ReplaceTrendingStatuses(ctx context.Context, entries []s
 		    SET score = EXCLUDED.score, ranked_at = EXCLUDED.ranked_at`
 
 	if _, err := s.pool.Exec(ctx, `DELETE FROM trending_statuses`); err != nil {
-		return fmt.Errorf("ReplaceTrendingStatuses truncate: %w", err)
+		return fmt.Errorf("ReplaceTrendingStatuses truncate: %w", mapErr(err))
 	}
 	if _, err := s.pool.Exec(ctx, q, ids, scores); err != nil {
-		return fmt.Errorf("ReplaceTrendingStatuses upsert: %w", err)
+		return fmt.Errorf("ReplaceTrendingStatuses upsert: %w", mapErr(err))
 	}
 	return nil
 }
@@ -128,7 +127,7 @@ func (s *PostgresStore) GetTrendingStatusIDs(ctx context.Context, limit int) ([]
 
 	rows, err := s.pool.Query(ctx, q, int64(limit))
 	if err != nil {
-		return nil, fmt.Errorf("GetTrendingStatusIDs: %w", err)
+		return nil, fmt.Errorf("GetTrendingStatusIDs: %w", mapErr(err))
 	}
 	defer rows.Close()
 
@@ -137,19 +136,19 @@ func (s *PostgresStore) GetTrendingStatusIDs(ctx context.Context, limit int) ([]
 		var ts domain.TrendingStatus
 		var rankedAt pgtype.Timestamptz
 		if err := rows.Scan(&ts.StatusID, &ts.Score, &rankedAt); err != nil {
-			return nil, fmt.Errorf("GetTrendingStatusIDs scan: %w", err)
+			return nil, fmt.Errorf("GetTrendingStatusIDs scan: %w", mapErr(err))
 		}
 		ts.RankedAt = pgTime(rankedAt)
 		out = append(out, ts)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("GetTrendingStatusIDs rows: %w", err)
+		return nil, fmt.Errorf("GetTrendingStatusIDs rows: %w", mapErr(err))
 	}
 	return out, nil
 }
 
 // UpsertTrendingTagHistory inserts or updates daily usage entries in trending_tag_history.
-func (s *PostgresStore) UpsertTrendingTagHistory(ctx context.Context, entries []store.TrendingTagHistoryEntry) error {
+func (s *PostgresStore) UpsertTrendingTagHistory(ctx context.Context, entries []domain.TrendingTagHistory) error {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -172,7 +171,7 @@ func (s *PostgresStore) UpsertTrendingTagHistory(ctx context.Context, entries []
 		    SET uses = EXCLUDED.uses, accounts = EXCLUDED.accounts`
 
 	if _, err := s.pool.Exec(ctx, q, ids, days, uses, accounts); err != nil {
-		return fmt.Errorf("UpsertTrendingTagHistory: %w", err)
+		return fmt.Errorf("UpsertTrendingTagHistory: %w", mapErr(err))
 	}
 	return nil
 }
@@ -190,7 +189,7 @@ func (s *PostgresStore) GetTrendingTags(ctx context.Context, days int, limit int
 
 	rows, err := s.pool.Query(ctx, q, int64(days))
 	if err != nil {
-		return nil, fmt.Errorf("GetTrendingTags: %w", err)
+		return nil, fmt.Errorf("GetTrendingTags: %w", mapErr(err))
 	}
 	defer rows.Close()
 
@@ -212,7 +211,7 @@ func (s *PostgresStore) GetTrendingTags(ctx context.Context, days int, limit int
 			uses, accounts int64
 		)
 		if err := rows.Scan(&hID, &hName, &hCreatedAt, &hUpdatedAt, &day, &uses, &accounts); err != nil {
-			return nil, fmt.Errorf("GetTrendingTags scan: %w", err)
+			return nil, fmt.Errorf("GetTrendingTags scan: %w", mapErr(err))
 		}
 		e, ok := byID[hID]
 		if !ok {
@@ -239,7 +238,7 @@ func (s *PostgresStore) GetTrendingTags(ctx context.Context, days int, limit int
 		})
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("GetTrendingTags rows: %w", err)
+		return nil, fmt.Errorf("GetTrendingTags rows: %w", mapErr(err))
 	}
 
 	// Sort by total uses descending and cap at limit.

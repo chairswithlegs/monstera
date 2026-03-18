@@ -61,6 +61,16 @@ const (
 	ObjectTypeReject   ObjectType = "Reject"
 	ObjectTypeBlock    ObjectType = "Block"
 
+	// Object types
+	ObjectTypeImage    ObjectType = "Image"
+	ObjectTypeVideo    ObjectType = "Video"
+	ObjectTypeAudio    ObjectType = "Audio"
+	ObjectTypeDocument ObjectType = "Document"
+
+	// Tag types
+	ObjectTypeHashtag ObjectType = "Hashtag"
+	ObjectTypeMention ObjectType = "Mention"
+
 	// Collection types
 	ObjectTypeOrderedCollection     ObjectType = "OrderedCollection"
 	ObjectTypeOrderedCollectionPage ObjectType = "OrderedCollectionPage"

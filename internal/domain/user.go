@@ -2,6 +2,7 @@ package domain
 
 import "time"
 
+// User is the local authentication and preferences record linked to an Account.
 type User struct {
 	ID                 string
 	AccountID          string

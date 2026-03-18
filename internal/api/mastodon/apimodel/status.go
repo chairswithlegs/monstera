@@ -107,8 +107,19 @@ func MentionFromAccount(a *domain.Account, instanceDomain string) Mention {
 // TagFromName builds a Tag for a hashtag name.
 func TagFromName(name, instanceDomain string) Tag {
 	return Tag{
-		Name: name,
-		URL:  "https://" + instanceDomain + "/tags/" + name,
+		Name:    name,
+		URL:     "https://" + instanceDomain + "/tags/" + name,
+		History: []TagHistory{},
+	}
+}
+
+// TagFromDomain builds a Tag from a domain.Hashtag, optionally with following state.
+func TagFromDomain(h *domain.Hashtag, instanceDomain string, following bool) Tag {
+	return Tag{
+		Name:      h.Name,
+		URL:       "https://" + instanceDomain + "/tags/" + h.Name,
+		Following: following,
+		History:   []TagHistory{},
 	}
 }
 
@@ -119,6 +130,7 @@ func FollowedTagFromDomain(h domain.Hashtag, instanceDomain string) Tag {
 		Name:      h.Name,
 		URL:       "https://" + instanceDomain + "/tags/" + h.Name,
 		Following: true,
+		History:   []TagHistory{},
 	}
 }
 
@@ -252,6 +264,13 @@ type UpdateStatusRequest struct {
 	Status      string `json:"status"`
 	SpoilerText string `json:"spoiler_text"`
 	Sensitive   bool   `json:"sensitive"`
+}
+
+func (r *UpdateStatusRequest) Validate() error {
+	if strings.TrimSpace(r.Status) == "" {
+		return fmt.Errorf("validate status: %w", api.NewUnprocessableError("status text is required"))
+	}
+	return nil
 }
 
 func (r *UpdateStatusRequest) Sanitize() {

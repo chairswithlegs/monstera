@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -10,22 +11,17 @@ import (
 	"mvdan.cc/xurls/v2"
 )
 
-// MentionResolver resolves a mention (username, optional domain) to an account.
-type MentionResolver func(username string, domain *string) *domain.Account
+type mentionResolver func(username string, domain *string) *domain.Account
 
-// MentionRef is a resolved @mention for persistence.
-// TODO: this could be internalized to the status write service.
-type MentionRef struct {
+type mentionRef struct {
 	Username  string
 	Domain    *string
 	AccountID string
 }
 
-// RenderResult is the output of the content rendering pipeline.
-// TODO: this could be internalized to the status write service.
-type RenderResult struct {
+type renderResult struct {
 	HTML     string
-	Mentions []MentionRef
+	Mentions []mentionRef
 	Tags     []string
 }
 
@@ -35,20 +31,16 @@ var (
 	strictURLs   = xurls.Strict()
 )
 
-// Render transforms plain text to HTML with mentions and hashtags extracted.
-// TODO: this is only used by the status write service, and the mention resolver is just an abstraction
-// of the account service, which is already a dependency of the status write service.
-// We should consider moving this logic into the status write service.
-func Render(text string, instanceDomain string, resolve MentionResolver) (RenderResult, error) {
-	// TODO: figure out if there is a standard for how to santize this content
+func (svc *statusWriteService) renderContent(ctx context.Context, text string) (renderResult, error) { //nolint:unparam // error is always nil currently; retained for future content validation
 	strict := bluemonday.StrictPolicy()
 	text = strict.Sanitize(text)
 	text = unescapeQuotes(text)
 
 	text = replaceURLs(text)
-	var mentions []MentionRef
+	var mentions []mentionRef
+	resolve := svc.buildMentionResolver(ctx)
 	text = replaceMentions(text, resolve, &mentions)
-	text, tags := replaceHashtags(text, instanceDomain)
+	text, tags := replaceHashtags(text, svc.instanceDomain)
 	text = paragraphWrap(text)
 
 	ugc := bluemonday.UGCPolicy()
@@ -58,11 +50,9 @@ func Render(text string, instanceDomain string, resolve MentionResolver) (Render
 	text = ugc.Sanitize(text)
 	text = unescapeQuotes(text)
 
-	return RenderResult{HTML: text, Mentions: mentions, Tags: tags}, nil
+	return renderResult{HTML: text, Mentions: mentions, Tags: tags}, nil
 }
 
-// unescapeQuotes restores double and single quotes that bluemonday encodes as
-// HTML entities, so content displays with normal punctuation.
 func unescapeQuotes(s string) string {
 	s = strings.ReplaceAll(s, "&#34;", `"`)
 	s = strings.ReplaceAll(s, "&#39;", "'")
@@ -71,7 +61,7 @@ func unescapeQuotes(s string) string {
 	return s
 }
 
-func replaceMentions(text string, resolve MentionResolver, out *[]MentionRef) string {
+func replaceMentions(text string, resolve mentionResolver, out *[]mentionRef) string {
 	matches := mentionRegex.FindAllStringSubmatchIndex(text, -1)
 	if len(matches) == 0 {
 		return text
@@ -92,7 +82,7 @@ func replaceMentions(text string, resolve MentionResolver, out *[]MentionRef) st
 		if account == nil {
 			continue
 		}
-		*out = append(*out, MentionRef{Username: username, Domain: domain, AccountID: account.ID})
+		*out = append(*out, mentionRef{Username: username, Domain: domain, AccountID: account.ID})
 		replacement := `<span class="h-card"><a href="` + account.APID + `" class="u-url mention">@<span>` + username + `</span></a></span>`
 		replacements = append(replacements, repl{m[0], m[1], replacement})
 	}
@@ -103,8 +93,6 @@ func replaceMentions(text string, resolve MentionResolver, out *[]MentionRef) st
 	return text
 }
 
-// TODO: when we move the functions into the status write service, we can remove the instanceDomain parameter
-// since it is already set on the status write service.
 func replaceHashtags(text string, instanceDomain string) (string, []string) {
 	var tags []string
 	seen := make(map[string]bool)
@@ -136,9 +124,7 @@ func replaceURLs(text string) string {
 	})
 }
 
-// CountStatusCharacters returns the effective character count for status length validation.
-// Each URL counts as 23 characters (Mastodon convention); other runes count as 1.
-func CountStatusCharacters(text string) int {
+func countStatusCharacters(text string) int {
 	urls := strictURLs.FindAllString(text, -1)
 	totalRunes := utf8.RuneCountInString(text)
 	urlRunes := 0

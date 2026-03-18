@@ -25,6 +25,7 @@ type ScheduledStatusParams struct {
 	MediaIDs    []string `json:"media_ids"`
 }
 
+// Status is a post, reblog, or reply in the federated timeline.
 type Status struct {
 	ID                  string
 	URI                 string
@@ -41,7 +42,6 @@ type Status struct {
 	QuoteApprovalPolicy string // public | followers | nobody
 	QuotesCount         int
 	APID                string
-	APRaw               json.RawMessage
 	Sensitive           bool
 	Local               bool
 	EditedAt            *time.Time
@@ -53,6 +53,7 @@ type Status struct {
 	DeletedAt           *time.Time
 }
 
+// StatusEdit records one revision of an edited status.
 type StatusEdit struct {
 	ID             string
 	StatusID       string
@@ -109,4 +110,13 @@ type QuoteApprovalRecord struct {
 	QuotingStatusID string
 	QuotedStatusID  string
 	RevokedAt       *time.Time
+}
+
+// Favourite records that an account favourited (liked) a status.
+type Favourite struct {
+	ID        string
+	AccountID string
+	StatusID  string
+	APID      string
+	CreatedAt time.Time
 }

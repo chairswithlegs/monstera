@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -35,9 +36,9 @@ func toDbCreateAccountParams(in store.CreateAccountInput) db.CreateAccountParams
 		FollowersUrl: in.FollowersURL,
 		FollowingUrl: in.FollowingURL,
 		ApID:         in.APID,
-		ApRaw:        in.ApRaw,
 		Bot:          in.Bot,
 		Locked:       in.Locked,
+		Url:          in.URL,
 	}
 }
 
@@ -68,7 +69,6 @@ func toDbCreateStatusParams(in store.CreateStatusInput) db.CreateStatusParams {
 		QuotedStatusID:      in.QuotedStatusID,
 		QuoteApprovalPolicy: in.QuoteApprovalPolicy,
 		ApID:                in.APID,
-		ApRaw:               in.ApRaw,
 		Sensitive:           in.Sensitive,
 		Local:               in.Local,
 	}
@@ -544,7 +544,7 @@ func (s *PostgresStore) GetStatusMentions(ctx context.Context, statusID string) 
 	}
 	out := make([]*domain.Account, 0, len(rows))
 	for i := range rows {
-		acc := ToDomainAccount(rows[i])
+		acc := rowWithURLsToDomainAccount(rows[i].Account, rows[i].AvatarUrl, rows[i].HeaderUrl)
 		out = append(out, &acc)
 	}
 	return out, nil
@@ -606,6 +606,90 @@ func (s *PostgresStore) SearchHashtagsByPrefix(ctx context.Context, prefix strin
 		out = append(out, ToDomainHashtag(r))
 	}
 	return out, nil
+}
+
+func (s *PostgresStore) CreatePushSubscription(ctx context.Context, in store.CreatePushSubscriptionInput) (*domain.PushSubscription, error) {
+	alertsJSON, err := json.Marshal(in.Alerts)
+	if err != nil {
+		return nil, fmt.Errorf("CreatePushSubscription: marshal alerts: %w", err)
+	}
+	row, err := s.q.CreatePushSubscription(ctx, db.CreatePushSubscriptionParams{
+		ID:            in.ID,
+		AccessTokenID: in.AccessTokenID,
+		AccountID:     in.AccountID,
+		Endpoint:      in.Endpoint,
+		KeyP256dh:     in.KeyP256DH,
+		KeyAuth:       in.KeyAuth,
+		Alerts:        alertsJSON,
+		Policy:        in.Policy,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := toDomainPushSubscription(row)
+	return &d, nil
+}
+
+func (s *PostgresStore) GetPushSubscription(ctx context.Context, accessTokenID string) (*domain.PushSubscription, error) {
+	row, err := s.q.GetPushSubscriptionByAccessToken(ctx, accessTokenID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := toDomainPushSubscription(row)
+	return &d, nil
+}
+
+func (s *PostgresStore) UpdatePushSubscription(ctx context.Context, accessTokenID string, alerts domain.PushAlerts, policy string) (*domain.PushSubscription, error) {
+	alertsJSON, err := json.Marshal(alerts)
+	if err != nil {
+		return nil, fmt.Errorf("UpdatePushSubscription: marshal alerts: %w", err)
+	}
+	row, err := s.q.UpdatePushSubscriptionAlerts(ctx, db.UpdatePushSubscriptionAlertsParams{
+		AccessTokenID: accessTokenID,
+		Alerts:        alertsJSON,
+		Policy:        policy,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := toDomainPushSubscription(row)
+	return &d, nil
+}
+
+func (s *PostgresStore) DeletePushSubscription(ctx context.Context, accessTokenID string) error {
+	return mapErr(s.q.DeletePushSubscription(ctx, accessTokenID))
+}
+
+func (s *PostgresStore) ListPushSubscriptionsByAccountID(ctx context.Context, accountID string) ([]domain.PushSubscription, error) {
+	rows, err := s.q.ListPushSubscriptionsByAccountID(ctx, accountID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	result := make([]domain.PushSubscription, len(rows))
+	for i, row := range rows {
+		result[i] = toDomainPushSubscription(row)
+	}
+	return result, nil
+}
+
+func (s *PostgresStore) GetHashtagByName(ctx context.Context, name string) (*domain.Hashtag, error) {
+	h, err := s.q.GetHashtagByName(ctx, name)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainHashtag(h)
+	return &d, nil
+}
+
+func (s *PostgresStore) IsFollowingTag(ctx context.Context, accountID, tagID string) (bool, error) {
+	following, err := s.q.IsFollowingTag(ctx, db.IsFollowingTagParams{
+		AccountID: accountID,
+		TagID:     tagID,
+	})
+	if err != nil {
+		return false, mapErr(err)
+	}
+	return following, nil
 }
 
 func (s *PostgresStore) FollowTag(ctx context.Context, id, accountID, tagID string) error {
@@ -775,14 +859,6 @@ func (s *PostgresStore) IsConversationMuted(ctx context.Context, accountID, conv
 		return false, mapErr(err)
 	}
 	return ok, nil
-}
-
-func (s *PostgresStore) ListMutedConversationIDs(ctx context.Context, accountID string) ([]string, error) {
-	rows, err := s.q.ListMutedConversationIDs(ctx, accountID)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return rows, nil
 }
 
 func (s *PostgresStore) CreateConversation(ctx context.Context, id string) error {
@@ -1489,10 +1565,10 @@ func toDbUpdateAccountParams(in store.UpdateAccountInput) db.UpdateAccountParams
 		Note:          in.Note,
 		AvatarMediaID: in.AvatarMediaID,
 		HeaderMediaID: in.HeaderMediaID,
-		ApRaw:         in.APRaw,
 		Bot:           in.Bot,
 		Locked:        in.Locked,
 		Fields:        fields,
+		Url:           in.URL,
 	}
 }
 
@@ -1501,11 +1577,20 @@ func (s *PostgresStore) UpdateAccount(ctx context.Context, in store.UpdateAccoun
 	return mapErr(err)
 }
 
-func (s *PostgresStore) UpdateAccountKeys(ctx context.Context, id, publicKey string, apRaw []byte) error {
+func (s *PostgresStore) UpdateAccountKeys(ctx context.Context, id, publicKey string) error {
 	return mapErr(s.q.UpdateAccountKeys(ctx, db.UpdateAccountKeysParams{
 		ID:        id,
 		PublicKey: publicKey,
-		ApRaw:     apRaw,
+	}))
+}
+
+func (s *PostgresStore) UpdateAccountURLs(ctx context.Context, id, inboxURL, outboxURL, followersURL, followingURL string) error {
+	return mapErr(s.q.UpdateAccountURLs(ctx, db.UpdateAccountURLsParams{
+		ID:           id,
+		InboxURL:     inboxURL,
+		OutboxURL:    outboxURL,
+		FollowersURL: followersURL,
+		FollowingURL: followingURL,
 	}))
 }
 
@@ -1522,6 +1607,7 @@ func toDbCreateMediaAttachmentParams(in store.CreateMediaAttachmentInput) db.Cre
 		ID:          in.ID,
 		AccountID:   in.AccountID,
 		Type:        in.Type,
+		ContentType: in.ContentType,
 		StorageKey:  in.StorageKey,
 		Url:         in.URL,
 		PreviewUrl:  in.PreviewURL,
@@ -1870,24 +1956,6 @@ func (s *PostgresStore) CreateDomainBlock(ctx context.Context, in store.CreateDo
 	return &d, nil
 }
 
-func (s *PostgresStore) GetDomainBlock(ctx context.Context, domain string) (*domain.DomainBlock, error) {
-	b, err := s.q.GetDomainBlock(ctx, domain)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	d := ToDomainDomainBlock(b)
-	return &d, nil
-}
-
-func (s *PostgresStore) UpdateDomainBlock(ctx context.Context, domain string, severity string, reason *string) (*domain.DomainBlock, error) {
-	b, err := s.q.UpdateDomainBlock(ctx, db.UpdateDomainBlockParams{Domain: domain, Severity: severity, Reason: reason})
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	d := ToDomainDomainBlock(b)
-	return &d, nil
-}
-
 func (s *PostgresStore) DeleteDomainBlock(ctx context.Context, domain string) error {
 	return mapErr(s.q.DeleteDomainBlock(ctx, domain))
 }
@@ -1902,18 +1970,6 @@ func (s *PostgresStore) CreateAdminAction(ctx context.Context, in store.CreateAd
 		Metadata:        in.Metadata,
 	})
 	return mapErr(err)
-}
-
-func (s *PostgresStore) ListAdminActionsByTarget(ctx context.Context, targetAccountID string) ([]domain.AdminAction, error) {
-	rows, err := s.q.ListAdminActionsByTarget(ctx, &targetAccountID)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	out := make([]domain.AdminAction, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, ToDomainAdminAction(r))
-	}
-	return out, nil
 }
 
 func (s *PostgresStore) CreateInvite(ctx context.Context, in store.CreateInviteInput) (*domain.Invite, error) {
@@ -1996,15 +2052,6 @@ func (s *PostgresStore) CreateServerFilter(ctx context.Context, in store.CreateS
 		Scope:  in.Scope,
 		Action: in.Action,
 	})
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	d := ToDomainServerFilter(f)
-	return &d, nil
-}
-
-func (s *PostgresStore) GetServerFilter(ctx context.Context, id string) (*domain.ServerFilter, error) {
-	f, err := s.q.GetServerFilter(ctx, id)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -2276,6 +2323,14 @@ func (s *PostgresStore) ListListAccountIDs(ctx context.Context, listID string) (
 	return ids, nil
 }
 
+func (s *PostgresStore) GetListIDsByMemberAccountID(ctx context.Context, accountID string) ([]string, error) {
+	ids, err := s.q.GetListIDsByMemberAccountID(ctx, accountID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return ids, nil
+}
+
 func (s *PostgresStore) AddAccountToList(ctx context.Context, listID, accountID string) error {
 	return mapErr(s.q.AddAccountToList(ctx, db.AddAccountToListParams{
 		ListID:    listID,
@@ -2479,7 +2534,7 @@ func (s *PostgresStore) InsertOutboxEvent(ctx context.Context, in store.InsertOu
 		Payload:       in.Payload,
 	})
 	if err != nil {
-		return fmt.Errorf("InsertOutboxEvent(%s): %w", in.ID, err)
+		return fmt.Errorf("InsertOutboxEvent(%s): %w", in.ID, mapErr(err))
 	}
 	return nil
 }
@@ -2491,7 +2546,7 @@ func (s *PostgresStore) GetAndLockUnpublishedOutboxEvents(ctx context.Context, l
 	}
 	rows, err := s.q.GetAndLockUnpublishedOutboxEvents(ctx, l)
 	if err != nil {
-		return nil, fmt.Errorf("GetAndLockUnpublishedOutboxEvents: %w", err)
+		return nil, fmt.Errorf("GetAndLockUnpublishedOutboxEvents: %w", mapErr(err))
 	}
 	events := make([]domain.DomainEvent, len(rows))
 	for i, r := range rows {
@@ -2508,7 +2563,7 @@ func (s *PostgresStore) GetAndLockUnpublishedOutboxEvents(ctx context.Context, l
 
 func (s *PostgresStore) MarkOutboxEventsPublished(ctx context.Context, ids []string) error {
 	if err := s.q.MarkOutboxEventsPublished(ctx, ids); err != nil {
-		return fmt.Errorf("MarkOutboxEventsPublished: %w", err)
+		return fmt.Errorf("MarkOutboxEventsPublished: %w", mapErr(err))
 	}
 	return nil
 }
@@ -2516,7 +2571,7 @@ func (s *PostgresStore) MarkOutboxEventsPublished(ctx context.Context, ids []str
 func (s *PostgresStore) DeletePublishedOutboxEventsBefore(ctx context.Context, before time.Time) error {
 	ts := pgtype.Timestamptz{Time: before, Valid: true}
 	if err := s.q.DeletePublishedOutboxEventsBefore(ctx, ts); err != nil {
-		return fmt.Errorf("DeletePublishedOutboxEventsBefore: %w", err)
+		return fmt.Errorf("DeletePublishedOutboxEventsBefore: %w", mapErr(err))
 	}
 	return nil
 }

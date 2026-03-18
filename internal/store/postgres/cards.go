@@ -38,7 +38,7 @@ func (s *PostgresStore) UpsertStatusCard(ctx context.Context, in store.UpsertSta
 		in.Width, in.Height,
 	)
 	if err != nil {
-		return fmt.Errorf("UpsertStatusCard(%s): %w", in.StatusID, err)
+		return fmt.Errorf("UpsertStatusCard(%s): %w", in.StatusID, mapErr(err))
 	}
 	return nil
 }

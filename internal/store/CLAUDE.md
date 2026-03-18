@@ -10,4 +10,6 @@ Design doc: `docs/architecture/05-database.md`
 - Wrap unexpected pgx errors with the query name: `fmt.Errorf("GetAccountByID(%s): %w", id, err)`.
 - Never log errors in the store layer — return them for the handler to log.
 - Use `pgxpool` for connection management. Never hold a connection outside a request scope.
-- Migrations live in `internal/store/migrations/` as sequential numbered SQL files (000001–000032).
+- Migrations live in `internal/store/migrations/` as sequential numbered SQL files (000001–000058).
+- Row-to-domain conversion for statuses uses `statusRowParams` struct instead of positional arguments — see `internal/store/postgres/convert.go`.
+- Accounts have a nullable `url` column for storing the human-readable profile URL of remote accounts.

@@ -11,7 +11,6 @@ import (
 
 	"github.com/chairswithlegs/monstera/internal/activitypub/vocab"
 	"github.com/chairswithlegs/monstera/internal/api"
-	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
 )
@@ -21,14 +20,14 @@ const maxOutboxPageSize = 40
 
 // OutboxHandler serves GET /users/{username}/outbox — paginated OrderedCollectionPage of Create{Note} activities.
 type OutboxHandler struct {
-	accounts  service.AccountService
-	timelines service.TimelineService
-	config    *config.Config
+	accounts        service.AccountService
+	timelines       service.TimelineService
+	instanceBaseURL string
 }
 
 // NewOutbox returns a new OutboxHandler.
-func NewOutbox(accounts service.AccountService, timelines service.TimelineService, config *config.Config) *OutboxHandler {
-	return &OutboxHandler{accounts: accounts, timelines: timelines, config: config}
+func NewOutbox(accounts service.AccountService, timelines service.TimelineService, instanceBaseURL string) *OutboxHandler {
+	return &OutboxHandler{accounts: accounts, timelines: timelines, instanceBaseURL: instanceBaseURL}
 }
 
 // GETOutbox serves the outbox collection or a page.
@@ -43,7 +42,7 @@ func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	base := h.config.InstanceBaseURL()
+	base := h.instanceBaseURL
 	outboxID := base + "/users/" + username + "/outbox"
 
 	page := r.URL.Query().Get("page")
@@ -56,8 +55,7 @@ func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 		coll := vocab.NewOrderedCollection(outboxID, int(total))
 		coll.First = outboxID + "?page=true"
 		w.Header().Set("Cache-Control", "max-age=60")
-		w.Header().Set("Content-Type", "application/activity+json; charset=utf-8")
-		api.WriteJSON(w, http.StatusOK, coll)
+		api.WriteActivityJSON(w, http.StatusOK, coll)
 		return
 	}
 
@@ -90,7 +88,15 @@ func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 	}
 	var orderedItems []json.RawMessage
 	for i := range publicStatuses {
-		note := vocab.StatusToNote(&publicStatuses[i], account, base)
+		note, err := vocab.LocalStatusToNote(vocab.LocalStatusToNoteInput{
+			Status:       &publicStatuses[i],
+			Author:       account,
+			InstanceBase: base,
+		})
+		if err != nil {
+			slog.WarnContext(r.Context(), "outbox: local status to note failed", slog.String("status_id", publicStatuses[i].ID), slog.Any("error", err))
+			continue
+		}
 		activityID := vocab.StatusNoteID(&publicStatuses[i], base)
 		create, err := vocab.NewCreateNoteActivity(activityID, note)
 		if err != nil {
@@ -113,6 +119,5 @@ func (h *OutboxHandler) GETOutbox(w http.ResponseWriter, r *http.Request) {
 		pageResp.Next = outboxID + "?page=true&max_id=" + url.QueryEscape(publicStatuses[len(publicStatuses)-1].ID)
 	}
 	w.Header().Set("Cache-Control", "max-age=60")
-	w.Header().Set("Content-Type", "application/activity+json; charset=utf-8")
-	api.WriteJSON(w, http.StatusOK, pageResp)
+	api.WriteActivityJSON(w, http.StatusOK, pageResp)
 }

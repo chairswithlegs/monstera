@@ -94,7 +94,7 @@ func (q *Queries) IsMuted(ctx context.Context, arg IsMutedParams) (bool, error) 
 }
 
 const listMutedAccountsPaginated = `-- name: ListMutedAccountsPaginated :many
-SELECT m.id AS cursor, a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.ap_raw, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, am.url AS avatar_url, hm.url AS header_url
+SELECT m.id AS cursor, a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, am.url AS avatar_url, hm.url AS header_url
 FROM accounts a
 INNER JOIN mutes m ON m.target_id = a.id
 LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
@@ -141,7 +141,6 @@ func (q *Queries) ListMutedAccountsPaginated(ctx context.Context, arg ListMutedA
 			&i.Account.FollowersUrl,
 			&i.Account.FollowingUrl,
 			&i.Account.ApID,
-			&i.Account.ApRaw,
 			&i.Account.Bot,
 			&i.Account.Locked,
 			&i.Account.Suspended,
@@ -155,6 +154,7 @@ func (q *Queries) ListMutedAccountsPaginated(ctx context.Context, arg ListMutedA
 			&i.Account.StatusesCount,
 			&i.Account.Fields,
 			&i.Account.LastStatusAt,
+			&i.Account.Url,
 			&i.AvatarUrl,
 			&i.HeaderUrl,
 		); err != nil {

@@ -24,16 +24,17 @@ type trendingCache struct {
 }
 
 type trendsService struct {
-	store    store.Store
-	mu       sync.RWMutex
-	cached   *trendingCache
-	cachedAt time.Time
-	cacheTTL time.Duration
+	store     store.Store
+	statusSvc StatusService
+	mu        sync.RWMutex
+	cached    *trendingCache
+	cachedAt  time.Time
+	cacheTTL  time.Duration
 }
 
 // NewTrendsService returns a TrendsService backed by the pre-computed trending index.
-func NewTrendsService(s store.Store) TrendsService {
-	return &trendsService{store: s, cacheTTL: 15 * time.Minute}
+func NewTrendsService(s store.Store, statusSvc StatusService) TrendsService {
+	return &trendsService{store: s, statusSvc: statusSvc, cacheTTL: 15 * time.Minute}
 }
 
 func (svc *trendsService) TrendingStatuses(ctx context.Context, limit int) ([]EnrichedStatus, error) {
@@ -97,38 +98,18 @@ func (svc *trendsService) fill(ctx context.Context) (*trendingCache, error) {
 		return nil, fmt.Errorf("GetTrendingStatusIDs: %w", err)
 	}
 
-	statuses := make([]EnrichedStatus, 0, len(trendingEntries))
+	statuses := make([]*domain.Status, 0, len(trendingEntries))
 	for _, entry := range trendingEntries {
 		s, err := svc.store.GetStatusByID(ctx, entry.StatusID)
 		if err != nil {
 			slog.WarnContext(ctx, "trending status not found", slog.String("status_id", entry.StatusID))
 			continue
 		}
-		author, err := svc.store.GetAccountByID(ctx, s.AccountID)
-		if err != nil {
-			slog.WarnContext(ctx, "trending status author not found",
-				slog.String("status_id", s.ID), slog.String("account_id", s.AccountID))
-			continue
-		}
-		mentions, err := svc.store.GetStatusMentions(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusMentions(%s): %w", s.ID, err)
-		}
-		tags, err := svc.store.GetStatusHashtags(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusHashtags(%s): %w", s.ID, err)
-		}
-		media, err := svc.store.GetStatusAttachments(ctx, s.ID)
-		if err != nil {
-			return nil, fmt.Errorf("GetStatusAttachments(%s): %w", s.ID, err)
-		}
-		statuses = append(statuses, EnrichedStatus{
-			Status:   s,
-			Author:   author,
-			Mentions: mentions,
-			Tags:     tags,
-			Media:    media,
-		})
+		statuses = append(statuses, s)
+	}
+	enriched, err := svc.statusSvc.EnrichStatuses(ctx, statuses, EnrichOpts{})
+	if err != nil {
+		return nil, fmt.Errorf("EnrichStatuses: %w", err)
 	}
 
 	tags, err := svc.store.GetTrendingTags(ctx, 7, maxTrending)
@@ -136,7 +117,7 @@ func (svc *trendsService) fill(ctx context.Context) (*trendingCache, error) {
 		return nil, fmt.Errorf("GetTrendingTags: %w", err)
 	}
 
-	return &trendingCache{statuses: statuses, tags: tags}, nil
+	return &trendingCache{statuses: enriched, tags: tags}, nil
 }
 
 func (svc *trendsService) RefreshIndexes(ctx context.Context) error {
@@ -147,11 +128,7 @@ func (svc *trendsService) RefreshIndexes(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("GetTopScoredPublicStatuses: %w", err)
 	}
-	entries := make([]store.TrendingStatusEntry, len(scored))
-	for i, s := range scored {
-		entries[i] = store.TrendingStatusEntry{StatusID: s.StatusID, Score: s.Score}
-	}
-	if err := svc.store.ReplaceTrendingStatuses(ctx, entries); err != nil {
+	if err := svc.store.ReplaceTrendingStatuses(ctx, scored); err != nil {
 		return fmt.Errorf("ReplaceTrendingStatuses: %w", err)
 	}
 
@@ -162,9 +139,9 @@ func (svc *trendsService) RefreshIndexes(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("GetHashtagDailyStats: %w", err)
 	}
-	tagEntries := make([]store.TrendingTagHistoryEntry, len(stats))
+	tagEntries := make([]domain.TrendingTagHistory, len(stats))
 	for i, s := range stats {
-		tagEntries[i] = store.TrendingTagHistoryEntry{
+		tagEntries[i] = domain.TrendingTagHistory{
 			HashtagID: s.HashtagID,
 			Day:       s.Day,
 			Uses:      s.Uses,
@@ -176,7 +153,7 @@ func (svc *trendsService) RefreshIndexes(ctx context.Context) error {
 	}
 
 	slog.InfoContext(ctx, "trending indexes updated",
-		slog.Int("statuses", len(entries)),
+		slog.Int("statuses", len(scored)),
 		slog.Int("tag_days", len(tagEntries)))
 	return nil
 }

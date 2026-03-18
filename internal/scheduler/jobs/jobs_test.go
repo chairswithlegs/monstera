@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,19 +13,36 @@ import (
 	"github.com/chairswithlegs/monstera/internal/service"
 )
 
-// fakeStatusWriteService stubs service.StatusWriteService for job tests.
-type fakeStatusWriteService struct {
-	service.StatusWriteService
-	publishDueErr   error
-	publishDueCalls int
+type fakeScheduledStatusService struct {
+	publishDueErr    error
+	publishDueCalls  int
+	publishDueCounts []int
 }
 
-func (f *fakeStatusWriteService) PublishDueStatuses(_ context.Context, _ int) error {
+func (f *fakeScheduledStatusService) CreateScheduledStatus(context.Context, string, []byte, time.Time) (*domain.ScheduledStatus, error) {
+	return nil, nil
+}
+
+func (f *fakeScheduledStatusService) UpdateScheduledStatus(context.Context, string, string, []byte, time.Time) (*domain.ScheduledStatus, error) {
+	return nil, nil
+}
+
+func (f *fakeScheduledStatusService) DeleteScheduledStatus(context.Context, string, string) error {
+	return nil
+}
+
+func (f *fakeScheduledStatusService) PublishDueStatuses(_ context.Context, _ int) (int, error) {
+	idx := f.publishDueCalls
 	f.publishDueCalls++
-	return f.publishDueErr
+	if f.publishDueErr != nil {
+		return 0, f.publishDueErr
+	}
+	if idx < len(f.publishDueCounts) {
+		return f.publishDueCounts[idx], nil
+	}
+	return 0, nil
 }
 
-// fakeTrendsService stubs service.TrendsService for job tests.
 type fakeTrendsService struct {
 	service.TrendsService
 	refreshErr   error
@@ -44,10 +62,24 @@ func (f *fakeTrendsService) TrendingTags(_ context.Context, _ int) ([]domain.Tre
 	return nil, nil
 }
 
-func TestScheduledStatuses_success(t *testing.T) {
+func TestScheduledStatuses_drains_queue(t *testing.T) {
 	t.Parallel()
 
-	svc := &fakeStatusWriteService{}
+	svc := &fakeScheduledStatusService{
+		publishDueCounts: []int{100, 100, 42},
+	}
+	handler := ScheduledStatuses(svc)
+	err := handler(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 3, svc.publishDueCalls)
+}
+
+func TestScheduledStatuses_single_batch(t *testing.T) {
+	t.Parallel()
+
+	svc := &fakeScheduledStatusService{
+		publishDueCounts: []int{5},
+	}
 	handler := ScheduledStatuses(svc)
 	err := handler(context.Background())
 	require.NoError(t, err)
@@ -57,7 +89,7 @@ func TestScheduledStatuses_success(t *testing.T) {
 func TestScheduledStatuses_propagatesError(t *testing.T) {
 	t.Parallel()
 
-	svc := &fakeStatusWriteService{publishDueErr: errors.New("store down")}
+	svc := &fakeScheduledStatusService{publishDueErr: errors.New("store down")}
 	handler := ScheduledStatuses(svc)
 	err := handler(context.Background())
 	require.Error(t, err)
@@ -82,25 +114,34 @@ func TestUpdateTrendingIndexes_propagatesError(t *testing.T) {
 	require.Error(t, err)
 }
 
-// fakeCardService stubs service.CardService for job tests.
 type fakeCardService struct {
-	fetchErr   error
-	fetchCalls int
+	fetchErr    error
+	fetchCalls  int
+	fetchCounts []int
 }
 
 func (f *fakeCardService) ProcessPendingCards(_ context.Context, _ int) (int, error) {
+	idx := f.fetchCalls
 	f.fetchCalls++
-	return 0, f.fetchErr
+	if f.fetchErr != nil {
+		return 0, f.fetchErr
+	}
+	if idx < len(f.fetchCounts) {
+		return f.fetchCounts[idx], nil
+	}
+	return 0, nil
 }
 
-func TestProcessPendingCards_success(t *testing.T) {
+func TestProcessPendingCards_drains_queue(t *testing.T) {
 	t.Parallel()
 
-	svc := &fakeCardService{}
+	svc := &fakeCardService{
+		fetchCounts: []int{100, 50},
+	}
 	handler := ProcessPendingCards(svc)
 	err := handler(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, 1, svc.fetchCalls)
+	assert.Equal(t, 2, svc.fetchCalls)
 }
 
 func TestProcessPendingCards_propagatesError(t *testing.T) {

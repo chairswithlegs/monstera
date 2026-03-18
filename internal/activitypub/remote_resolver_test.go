@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,12 +15,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/chairswithlegs/monstera/internal/activitypub/vocab"
-	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/testutil"
 )
+
+const testWebfingerPath = "/.well-known/webfinger"
 
 func TestRemoteAccountResolver_ResolveRemoteAccount_invalidAcct(t *testing.T) {
 	t.Parallel()
@@ -31,8 +33,7 @@ func TestRemoteAccountResolver_ResolveRemoteAccount_invalidAcct(t *testing.T) {
 	}, CreateOrUpdateRemoteAccountFunc: func(ctx context.Context, in service.CreateOrUpdateRemoteInput) (*domain.Account, error) {
 		return nil, domain.ErrNotFound
 	}}
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	r := NewRemoteAccountResolver(svc, cfg)
+	r := NewRemoteAccountResolver(svc, "", false, "example.com")
 
 	for _, acct := range []string{"", "invalid", "no-at", "@nodomain", "user@"} {
 		_, err := r.ResolveRemoteAccount(ctx, acct)
@@ -47,8 +48,7 @@ func TestRemoteAccountResolver_ResolveRemoteAccount_local(t *testing.T) {
 	fake := testutil.NewFakeStore()
 	svc := service.NewAccountService(fake, "https://example.com")
 
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	r := NewRemoteAccountResolver(svc, cfg)
+	r := NewRemoteAccountResolver(svc, "", false, "example.com")
 
 	_, err := fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID:           "01alice",
@@ -73,7 +73,7 @@ func TestRemoteAccountResolver_ResolveRemoteAccount_local_notFound(t *testing.T)
 	t.Parallel()
 	ctx := context.Background()
 	svc := service.NewAccountService(testutil.NewFakeStore(), "https://example.com")
-	r := NewRemoteAccountResolver(svc, &config.Config{InstanceDomain: "example.com"})
+	r := NewRemoteAccountResolver(svc, "", false, "example.com")
 
 	_, err := r.ResolveRemoteAccount(ctx, "nobody@example.com")
 	require.Error(t, err)
@@ -98,7 +98,7 @@ func TestRemoteAccountResolver_ResolveRemoteAccount_remote_cached(t *testing.T) 
 	})
 	require.NoError(t, err)
 
-	r := NewRemoteAccountResolver(svc, &config.Config{InstanceDomain: "example.com"})
+	r := NewRemoteAccountResolver(svc, "", false, "example.com")
 	acc, err := r.ResolveRemoteAccount(ctx, "bob@remote.example")
 	require.NoError(t, err)
 	require.NotNil(t, acc)
@@ -139,7 +139,7 @@ func TestRemoteAccountResolver_ResolveRemoteAccount_stale_cache(t *testing.T) {
 	require.NoError(t, err)
 
 	transport := &roundTripFunc{fn: func(req *http.Request) (*http.Response, error) {
-		if req.URL.Path == "/.well-known/webfinger" {
+		if req.URL.Path == testWebfingerPath {
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Content-Type": {"application/jrd+json"}},
@@ -192,7 +192,7 @@ func TestRemoteAccountResolver_ResolveRemoteAccount_success(t *testing.T) {
 	require.NoError(t, err)
 
 	transport := &roundTripFunc{fn: func(req *http.Request) (*http.Response, error) {
-		if req.URL.Path == "/.well-known/webfinger" {
+		if req.URL.Path == testWebfingerPath {
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Content-Type": {"application/jrd+json"}},
@@ -270,6 +270,163 @@ func TestRemoteAccountResolver_FetchActor_success(t *testing.T) {
 	assert.Equal(t, "-----BEGIN PUBLIC KEY-----nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnqsKxoOwP/8Ic01DuvIVnglLrxMHWswc7hBSnoYuyzCLt+Iok/6kDGzKKalONU03uxcMDeXX7QwdSWH6mWQzwn6HtjIBCKUSk32H3MPgEyyZR0HC6jP2YbrJ2QZ8S+8oUNQ9yt8gJKzUKdE2QjRVP5ndvLCFbqcILE/64g9468F0gogccTjSYcTBYMzLkgM5bEAvlH5XvOgov+Ck0PkNnuBn4hx9Oc9zuTRTRKz9Ps81ZcmDNNOU33FEp0UKDC//NxmDBQtu8OcPlNG7u6ZxWpFTnxc8JH5gyL6CeursnqGgR+tmXJQ7Y0emOgkltdjT/3sOglJCezXAyCZ2h5NtJjhwwn3QIDAQABn-----END PUBLIC KEY-----n", out.PublicKey.PublicKeyPem)
 	assert.False(t, out.ManuallyApprovesFollowers)
 	assert.Equal(t, "2026-01-10T00:00:00Z", out.Published)
+}
+
+func TestRemoteAccountResolver_ResolveRemoteAccount_stale_webfinger_fails_returns_stale(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := service.NewAccountService(fake, "https://example.com")
+	domainPtr := testutil.StrPtr("remote.example")
+	fake.SeedAccount(&domain.Account{
+		ID:        "01bob",
+		Username:  "bob",
+		Domain:    domainPtr,
+		APID:      "https://remote.example/users/bob",
+		UpdatedAt: time.Now().Add(-2 * staleRemoteActorDuration),
+	})
+
+	transport := &roundTripFunc{fn: func(_ *http.Request) (*http.Response, error) {
+		return nil, errors.New("connection refused")
+	}}
+
+	r := &RemoteAccountResolver{
+		accounts:       svc,
+		instanceDomain: "example.com",
+		httpClient:     &http.Client{Transport: transport},
+	}
+
+	acc, err := r.ResolveRemoteAccount(ctx, "bob@remote.example")
+	require.NoError(t, err)
+	assert.Equal(t, "01bob", acc.ID)
+	assert.Equal(t, "bob", acc.Username)
+}
+
+func TestRemoteAccountResolver_ResolveRemoteAccount_stale_actor_fetch_fails_returns_stale(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := service.NewAccountService(fake, "https://example.com")
+	domainPtr := testutil.StrPtr("remote.example")
+	fake.SeedAccount(&domain.Account{
+		ID:        "01bob",
+		Username:  "bob",
+		Domain:    domainPtr,
+		APID:      "https://remote.example/users/bob",
+		UpdatedAt: time.Now().Add(-2 * staleRemoteActorDuration),
+	})
+
+	wfResp := JRD{
+		Subject: "https://remote.example/users/bob",
+		Links:   []JRDLink{{Rel: "self", Type: "application/activity+json", Href: "https://remote.example/users/bob"}},
+	}
+	wfJSON, err := json.Marshal(wfResp)
+	require.NoError(t, err)
+
+	transport := &roundTripFunc{fn: func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path == testWebfingerPath {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": {"application/jrd+json"}},
+				Body:       io.NopCloser(bytes.NewReader(wfJSON)),
+			}, nil
+		}
+		return &http.Response{StatusCode: http.StatusInternalServerError, Body: http.NoBody}, nil
+	}}
+
+	r := &RemoteAccountResolver{
+		accounts:       svc,
+		instanceDomain: "example.com",
+		httpClient:     &http.Client{Transport: transport},
+	}
+
+	acc, err := r.ResolveRemoteAccount(ctx, "bob@remote.example")
+	require.NoError(t, err)
+	assert.Equal(t, "01bob", acc.ID)
+}
+
+func TestRemoteAccountResolver_ResolveRemoteAccountByIRI_own_domain_uses_local_lookup(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := service.NewAccountService(fake, "https://example.com")
+	_, err := fake.CreateAccount(ctx, store.CreateAccountInput{
+		ID:           "01alice",
+		Username:     "alice",
+		Domain:       nil,
+		APID:         "https://example.com/users/alice",
+		InboxURL:     "https://example.com/users/alice/inbox",
+		OutboxURL:    "https://example.com/users/alice/outbox",
+		FollowersURL: "https://example.com/users/alice/followers",
+		FollowingURL: "https://example.com/users/alice/following",
+	})
+	require.NoError(t, err)
+
+	transport := &roundTripFunc{fn: func(_ *http.Request) (*http.Response, error) {
+		t.Error("own-domain IRI should not trigger HTTP fetch")
+		return nil, errors.New("unexpected fetch")
+	}}
+
+	r := &RemoteAccountResolver{
+		accounts:       svc,
+		instanceDomain: "example.com",
+		httpClient:     &http.Client{Transport: transport},
+	}
+
+	acc, err := r.ResolveRemoteAccountByIRI(ctx, "https://example.com/users/alice")
+	require.NoError(t, err)
+	assert.Equal(t, "01alice", acc.ID)
+	assert.Equal(t, "alice", acc.Username)
+}
+
+func TestRemoteAccountResolver_ResolveRemoteAccountByIRI_stale_fetch_fails_returns_stale(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := service.NewAccountService(fake, "https://example.com")
+	domainPtr := testutil.StrPtr("remote.example")
+	fake.SeedAccount(&domain.Account{
+		ID:        "01bob",
+		Username:  "bob",
+		Domain:    domainPtr,
+		APID:      "https://remote.example/users/bob",
+		UpdatedAt: time.Now().Add(-2 * staleRemoteActorDuration),
+	})
+
+	transport := &roundTripFunc{fn: func(_ *http.Request) (*http.Response, error) {
+		return nil, errors.New("connection refused")
+	}}
+
+	r := &RemoteAccountResolver{
+		accounts:       svc,
+		instanceDomain: "example.com",
+		httpClient:     &http.Client{Transport: transport},
+	}
+
+	acc, err := r.ResolveRemoteAccountByIRI(ctx, "https://remote.example/users/bob")
+	require.NoError(t, err)
+	assert.Equal(t, "01bob", acc.ID)
+}
+
+func TestRemoteAccountResolver_ResolveRemoteAccount_no_cache_webfinger_fails_returns_error(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := service.NewAccountService(fake, "https://example.com")
+
+	transport := &roundTripFunc{fn: func(_ *http.Request) (*http.Response, error) {
+		return nil, errors.New("connection refused")
+	}}
+
+	r := &RemoteAccountResolver{
+		accounts:       svc,
+		instanceDomain: "example.com",
+		httpClient:     &http.Client{Transport: transport},
+	}
+
+	_, err := r.ResolveRemoteAccount(ctx, "nobody@remote.example")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "webfinger")
 }
 
 type roundTripFunc struct {

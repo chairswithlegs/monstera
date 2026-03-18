@@ -16,9 +16,14 @@ func ToAccount(a *domain.Account, instanceDomain string) Account {
 	if a.Domain != nil && *a.Domain != "" {
 		acct = a.Username + "@" + *a.Domain
 	}
-	urlStr := a.APID
-	if a.Domain == nil || *a.Domain == "" {
+	var urlStr string
+	switch {
+	case a.Domain == nil || *a.Domain == "":
 		urlStr = "https://" + instanceDomain + "/@" + a.Username
+	case a.ProfileURL != "":
+		urlStr = a.ProfileURL
+	default:
+		urlStr = a.APID
 	}
 	note := ""
 	if a.Note != nil {

@@ -53,8 +53,16 @@ func (f *fakeMediaService) Update(_ context.Context, _, _ string, _ *string, _, 
 	return nil, errors.New("not implemented")
 }
 
-func (f *fakeMediaService) CreateRemote(_ context.Context, _ string, _ string) (*domain.MediaAttachment, error) {
+func (f *fakeMediaService) CreateRemote(_ context.Context, _ service.CreateRemoteMediaInput) (*domain.MediaAttachment, error) {
 	return nil, errors.New("not implemented")
+}
+
+func newTestFollowServices(st *testutil.FakeStore) (service.FollowService, service.TagFollowService) {
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	remoteFollowSvc := service.NewRemoteFollowService(st)
+	followSvc := service.NewFollowService(st, accountSvc, remoteFollowSvc)
+	tagFollowSvc := service.NewTagFollowService(st)
+	return followSvc, tagFollowSvc
 }
 
 func TestAccountsHandler_VerifyCredentials(t *testing.T) {
@@ -62,8 +70,8 @@ func TestAccountsHandler_VerifyCredentials(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"))
-	handler := NewAccountsHandler(accountSvc, followSvc, nil, nil, nil, 0, "example.com")
+	followSvc, tagFollowSvc := newTestFollowServices(st)
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/verify_credentials", nil)
@@ -74,10 +82,10 @@ func TestAccountsHandler_VerifyCredentials(t *testing.T) {
 
 	t.Run("authenticated with valid account returns 200 and account", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "alice",
-			Email:        "alice@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "alice",
+			Email:    "alice@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 
@@ -107,8 +115,8 @@ func TestAccountsHandler_GETAccountsLookup(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"))
-	handler := NewAccountsHandler(accountSvc, followSvc, nil, nil, nil, 0, "example.com")
+	followSvc, tagFollowSvc := newTestFollowServices(st)
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
 
 	t.Run("missing acct returns 422", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/lookup", nil)
@@ -164,8 +172,8 @@ func TestAccountsHandler_GETAccounts(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"))
-	handler := NewAccountsHandler(accountSvc, followSvc, nil, nil, nil, 0, "example.com")
+	followSvc, tagFollowSvc := newTestFollowServices(st)
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
 
 	t.Run("missing id returns 422", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/", nil)
@@ -222,14 +230,14 @@ func TestAccountsHandler_GETRelationships(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"))
-	handler := NewAccountsHandler(accountSvc, followSvc, nil, nil, nil, 0, "example.com")
+	followSvc, tagFollowSvc := newTestFollowServices(st)
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
 
 	alice, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	bob, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "bob"})
@@ -280,9 +288,10 @@ func TestAccountsHandler_GETAccountStatuses(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"))
-	timelineSvc := service.NewTimelineService(st, accountSvc, &allowAllVisibilityChecker{})
-	handler := NewAccountsHandler(accountSvc, followSvc, timelineSvc, nil, nil, 0, "example.com")
+	followSvc, tagFollowSvc := newTestFollowServices(st)
+	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
+	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc)
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, timelineSvc, nil, nil, 0, "example.com")
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
 		acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
@@ -295,12 +304,12 @@ func TestAccountsHandler_GETAccountStatuses(t *testing.T) {
 	})
 
 	t.Run("timeline nil returns 422", func(t *testing.T) {
-		handlerNoTimeline := NewAccountsHandler(accountSvc, followSvc, nil, nil, nil, 0, "example.com")
+		handlerNoTimeline := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "bob",
-			Email:        "bob@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "bob",
+			Email:    "bob@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+acc.ID+"/statuses", nil)
@@ -313,10 +322,10 @@ func TestAccountsHandler_GETAccountStatuses(t *testing.T) {
 
 	t.Run("authenticated returns 200 and empty or status list", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "charlie",
-			Email:        "charlie@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "charlie",
+			Email:    "charlie@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+acc.ID+"/statuses", nil)
@@ -336,14 +345,14 @@ func TestAccountsHandler_GETFollowers(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"))
-	handler := NewAccountsHandler(accountSvc, followSvc, nil, nil, nil, 0, "example.com")
+	followSvc, tagFollowSvc := newTestFollowServices(st)
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
 
 	alice, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice-followers",
-		Email:        "alice-followers@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice-followers",
+		Email:    "alice-followers@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -375,6 +384,52 @@ func TestAccountsHandler_GETFollowers(t *testing.T) {
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
 		assert.Empty(t, body)
 	})
+
+	t.Run("locked account own followers visible to self", func(t *testing.T) {
+		lockedUser, err := accountSvc.Register(ctx, service.RegisterInput{
+			Username: "locked-user-followers",
+			Email:    "locked-user-followers@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
+		})
+		require.NoError(t, err)
+		_, _, err = accountSvc.UpdateCredentials(ctx, service.UpdateCredentialsInput{AccountID: lockedUser.ID, Locked: true})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+lockedUser.ID+"/followers", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), lockedUser))
+		req = testutil.AddChiURLParam(req, "id", lockedUser.ID)
+		rec := httptest.NewRecorder()
+		handler.GETFollowers(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("locked account followers hidden from non-followers", func(t *testing.T) {
+		lockedUser, err := accountSvc.Register(ctx, service.RegisterInput{
+			Username: "locked-hidden-followers",
+			Email:    "locked-hidden-followers@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
+		})
+		require.NoError(t, err)
+		_, _, err = accountSvc.UpdateCredentials(ctx, service.UpdateCredentialsInput{AccountID: lockedUser.ID, Locked: true})
+		require.NoError(t, err)
+		viewer, err := accountSvc.Register(ctx, service.RegisterInput{
+			Username: "viewer-followers",
+			Email:    "viewer-followers@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
+		})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+lockedUser.ID+"/followers", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), viewer))
+		req = testutil.AddChiURLParam(req, "id", lockedUser.ID)
+		rec := httptest.NewRecorder()
+		handler.GETFollowers(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body []any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Empty(t, body)
+	})
 }
 
 func TestAccountsHandler_GETFollowing(t *testing.T) {
@@ -382,14 +437,14 @@ func TestAccountsHandler_GETFollowing(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"))
-	handler := NewAccountsHandler(accountSvc, followSvc, nil, nil, nil, 0, "example.com")
+	followSvc, tagFollowSvc := newTestFollowServices(st)
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
 
 	alice, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice-following",
-		Email:        "alice-following@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice-following",
+		Email:    "alice-following@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -412,6 +467,34 @@ func TestAccountsHandler_GETFollowing(t *testing.T) {
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
 		assert.Empty(t, body)
 	})
+
+	t.Run("locked account following hidden from non-followers", func(t *testing.T) {
+		lockedUser, err := accountSvc.Register(ctx, service.RegisterInput{
+			Username: "locked-hidden-following",
+			Email:    "locked-hidden-following@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
+		})
+		require.NoError(t, err)
+		_, _, err = accountSvc.UpdateCredentials(ctx, service.UpdateCredentialsInput{AccountID: lockedUser.ID, Locked: true})
+		require.NoError(t, err)
+		viewer, err := accountSvc.Register(ctx, service.RegisterInput{
+			Username: "viewer-following",
+			Email:    "viewer-following@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
+		})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+lockedUser.ID+"/following", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), viewer))
+		req = testutil.AddChiURLParam(req, "id", lockedUser.ID)
+		rec := httptest.NewRecorder()
+		handler.GETFollowing(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body []any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Empty(t, body)
+	})
 }
 
 func TestAccountsHandler_GETBlocks(t *testing.T) {
@@ -419,21 +502,21 @@ func TestAccountsHandler_GETBlocks(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"))
-	handler := NewAccountsHandler(accountSvc, followSvc, nil, nil, nil, 0, "example.com")
+	followSvc, tagFollowSvc := newTestFollowServices(st)
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
 
 	actor, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	target, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "bob",
-		Email:        "bob@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "bob",
+		Email:    "bob@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -472,10 +555,10 @@ func TestAccountsHandler_GETBlocks(t *testing.T) {
 
 	t.Run("authenticated with multiple blocks returns Link pagination and second page", func(t *testing.T) {
 		target2, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "carol",
-			Email:        "carol@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "carol",
+			Email:    "carol@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		// actor already blocked target in a previous subtest; add second block only
@@ -515,21 +598,21 @@ func TestAccountsHandler_GETMutes(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"))
-	handler := NewAccountsHandler(accountSvc, followSvc, nil, nil, nil, 0, "example.com")
+	followSvc, tagFollowSvc := newTestFollowServices(st)
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
 
 	actor, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	target, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "bob",
-		Email:        "bob@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "bob",
+		Email:    "bob@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -568,10 +651,10 @@ func TestAccountsHandler_GETMutes(t *testing.T) {
 
 	t.Run("authenticated with multiple mutes returns Link pagination and second page", func(t *testing.T) {
 		target2, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "carol",
-			Email:        "carol@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "carol",
+			Email:    "carol@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		// actor already muted target in a previous subtest; add second mute only
@@ -611,25 +694,25 @@ func TestAccountsHandler_FollowedTags(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"))
-	handler := NewAccountsHandler(accountSvc, followSvc, nil, nil, nil, 0, "example.com")
+	_, tagFollowSvc := newTestFollowServices(st)
+	handler := NewAccountsHandler(accountSvc, nil, tagFollowSvc, nil, nil, nil, 0, "example.com")
 
 	actor, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
-	t.Run("GET unauthenticated returns 401", func(t *testing.T) {
+	t.Run("GET followed_tags unauthenticated returns 401", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/followed_tags", nil)
 		rec := httptest.NewRecorder()
 		handler.GETFollowedTags(rec, req)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	})
 
-	t.Run("GET authenticated empty returns 200 and empty array", func(t *testing.T) {
+	t.Run("GET followed_tags authenticated empty returns 200 and empty array", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/followed_tags", nil)
 		req = req.WithContext(middleware.WithAccount(req.Context(), actor))
 		rec := httptest.NewRecorder()
@@ -640,32 +723,87 @@ func TestAccountsHandler_FollowedTags(t *testing.T) {
 		assert.Empty(t, body)
 	})
 
-	t.Run("POST unauthenticated returns 401", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/followed_tags", strings.NewReader(`{"name":"golang"}`))
-		req.Header.Set("Content-Type", "application/json")
+	t.Run("GET tag by name unauthenticated returns tag without following", func(t *testing.T) {
+		_, err := tagFollowSvc.FollowTag(ctx, actor.ID, "golang")
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/tags/golang", nil)
+		req = testutil.AddChiURLParam(req, "name", "golang")
 		rec := httptest.NewRecorder()
-		handler.POSTFollowedTags(rec, req)
-		assert.Equal(t, http.StatusUnauthorized, rec.Code)
-	})
-
-	t.Run("POST with name returns 200 and tag with following true", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/followed_tags", strings.NewReader(`{"name":"golang"}`))
-		req.Header.Set("Content-Type", "application/json")
-		req = req.WithContext(middleware.WithAccount(req.Context(), actor))
-		rec := httptest.NewRecorder()
-		handler.POSTFollowedTags(rec, req)
+		handler.GETTag(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		var body map[string]any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
 		assert.Equal(t, "golang", body["name"])
-		assert.True(t, body["following"].(bool))
-		assert.NotEmpty(t, body["id"])
 		assert.Contains(t, body["url"], "/tags/golang")
+		following, _ := body["following"].(bool)
+		assert.False(t, following, "unauthenticated should see following: false or absent")
+		assert.NotNil(t, body["history"], "history should always be present")
 	})
 
-	t.Run("GET after follow returns tag in list", func(t *testing.T) {
-		_, err := followSvc.FollowTag(ctx, actor.ID, "rust")
-		require.NoError(t, err)
+	t.Run("GET tag by name authenticated returns following true", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/tags/golang", nil)
+		req = testutil.AddChiURLParam(req, "name", "golang")
+		req = req.WithContext(middleware.WithAccount(req.Context(), actor))
+		rec := httptest.NewRecorder()
+		handler.GETTag(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.True(t, body["following"].(bool))
+	})
+
+	t.Run("GET tag unknown returns 404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/tags/nonexistent", nil)
+		req = testutil.AddChiURLParam(req, "name", "nonexistent")
+		rec := httptest.NewRecorder()
+		handler.GETTag(rec, req)
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("POST tag follow unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/tags/rust/follow", nil)
+		req = testutil.AddChiURLParam(req, "name", "rust")
+		rec := httptest.NewRecorder()
+		handler.POSTTagFollow(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("POST tag follow by name returns 200 with following true", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/tags/rust/follow", nil)
+		req = testutil.AddChiURLParam(req, "name", "rust")
+		req = req.WithContext(middleware.WithAccount(req.Context(), actor))
+		rec := httptest.NewRecorder()
+		handler.POSTTagFollow(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Equal(t, "rust", body["name"])
+		assert.True(t, body["following"].(bool))
+	})
+
+	t.Run("POST tag unfollow unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/tags/rust/unfollow", nil)
+		req = testutil.AddChiURLParam(req, "name", "rust")
+		rec := httptest.NewRecorder()
+		handler.POSTTagUnfollow(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("POST tag unfollow by name returns 200 with following false", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/tags/rust/unfollow", nil)
+		req = testutil.AddChiURLParam(req, "name", "rust")
+		req = req.WithContext(middleware.WithAccount(req.Context(), actor))
+		rec := httptest.NewRecorder()
+		handler.POSTTagUnfollow(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Equal(t, "rust", body["name"])
+		following, _ := body["following"].(bool)
+		assert.False(t, following)
+	})
+
+	t.Run("GET followed_tags after follow and unfollow shows only golang", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/followed_tags", nil)
 		req = req.WithContext(middleware.WithAccount(req.Context(), actor))
 		rec := httptest.NewRecorder()
@@ -673,40 +811,12 @@ func TestAccountsHandler_FollowedTags(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 		var body []map[string]any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
-		var found bool
+		names := make([]string, 0, len(body))
 		for _, tag := range body {
-			if tag["name"] == "rust" {
-				found = true
-				assert.True(t, tag["following"].(bool))
-				break
-			}
+			names = append(names, tag["name"].(string))
 		}
-		assert.True(t, found, "expected tag 'rust' in list")
-	})
-
-	t.Run("DELETE unauthenticated returns 401", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodDelete, "/api/v1/followed_tags/tag-rust", nil)
-		rec := httptest.NewRecorder()
-		handler.DELETEFollowedTag(rec, req)
-		assert.Equal(t, http.StatusUnauthorized, rec.Code)
-	})
-
-	t.Run("DELETE by tag id returns 200 and removes from list", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodDelete, "/api/v1/followed_tags/tag-rust", nil)
-		req = req.WithContext(middleware.WithAccount(req.Context(), actor))
-		req = testutil.AddChiURLParam(req, "id", "tag-rust")
-		rec := httptest.NewRecorder()
-		handler.DELETEFollowedTag(rec, req)
-		assert.Equal(t, http.StatusOK, rec.Code)
-		listReq := httptest.NewRequest(http.MethodGet, "/api/v1/followed_tags", nil)
-		listReq = listReq.WithContext(middleware.WithAccount(listReq.Context(), actor))
-		listRec := httptest.NewRecorder()
-		handler.GETFollowedTags(listRec, listReq)
-		var list []map[string]any
-		require.NoError(t, json.NewDecoder(listRec.Body).Decode(&list))
-		for _, tag := range list {
-			assert.NotEqual(t, "rust", tag["name"], "rust should be removed after DELETE")
-		}
+		assert.Contains(t, names, "golang")
+		assert.NotContains(t, names, "rust", "rust should be removed after unfollow")
 	})
 }
 
@@ -715,21 +825,21 @@ func TestAccountsHandler_BlockUnblock(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"))
-	handler := NewAccountsHandler(accountSvc, followSvc, nil, nil, nil, 0, "example.com")
+	followSvc, tagFollowSvc := newTestFollowServices(st)
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
 
 	actor, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	target, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "bob",
-		Email:        "bob@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "bob",
+		Email:    "bob@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -771,21 +881,21 @@ func TestAccountsHandler_MuteUnmute(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"))
-	handler := NewAccountsHandler(accountSvc, followSvc, nil, nil, nil, 0, "example.com")
+	followSvc, tagFollowSvc := newTestFollowServices(st)
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
 
 	actor, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	target, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "bob",
-		Email:        "bob@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "bob",
+		Email:    "bob@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -824,8 +934,8 @@ func TestAccountsHandler_PATCHUpdateCredentials(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"))
-	handler := NewAccountsHandler(accountSvc, followSvc, nil, nil, nil, 0, "example.com")
+	followSvc, tagFollowSvc := newTestFollowServices(st)
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPatch, "/api/v1/accounts/update_credentials", nil)
@@ -836,10 +946,10 @@ func TestAccountsHandler_PATCHUpdateCredentials(t *testing.T) {
 
 	t.Run("authenticated with display_name returns 200", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "alice",
-			Email:        "alice@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "alice",
+			Email:    "alice@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		req := httptest.NewRequest(http.MethodPatch, "/api/v1/accounts/update_credentials", bytes.NewBufferString("display_name=Alice+Updated"))
@@ -858,16 +968,16 @@ func TestAccountsHandler_PATCHUpdateCredentials(t *testing.T) {
 		localSt := testutil.NewFakeStore()
 		localAccountSvc := service.NewAccountService(localSt, "https://example.com")
 		acc, err := localAccountSvc.Register(ctx, service.RegisterInput{
-			Username:     "bob",
-			Email:        "bob@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "bob",
+			Email:    "bob@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 
 		uploadedAttachment := &domain.MediaAttachment{ID: "media-123", Type: "image", URL: "https://example.com/media/avatar.jpg"}
 		mediaSvc := &fakeMediaService{attachment: uploadedAttachment}
-		localHandler := NewAccountsHandler(localAccountSvc, nil, nil, nil, mediaSvc, 10<<20, "example.com")
+		localHandler := NewAccountsHandler(localAccountSvc, nil, nil, nil, nil, mediaSvc, 10<<20, "example.com")
 
 		imgBytes := testutil.MinimalPNG(t)
 		var buf bytes.Buffer
@@ -892,15 +1002,15 @@ func TestAccountsHandler_GETDirectory(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"))
-	handler := NewAccountsHandler(accountSvc, followSvc, nil, nil, nil, 0, "example.com")
+	followSvc, tagFollowSvc := newTestFollowServices(st)
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
 
 	t.Run("returns 200 with accounts and default order active", func(t *testing.T) {
 		_, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "alice",
-			Email:        "alice@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "alice",
+			Email:    "alice@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/directory?limit=10", nil)
@@ -996,7 +1106,7 @@ func TestAccountsHandler_POSTAccounts(t *testing.T) {
 		st := testutil.NewFakeStore()
 		accountSvc := service.NewAccountService(st, "https://example.com")
 		settingsSvc := &fakeSettingsService{mode: mode}
-		return NewAccountsHandler(accountSvc, nil, nil, settingsSvc, nil, 0, "example.com")
+		return NewAccountsHandler(accountSvc, nil, nil, nil, settingsSvc, nil, 0, "example.com")
 	}
 
 	t.Run("open mode returns 200 with account and pending false", func(t *testing.T) {
@@ -1086,14 +1196,14 @@ func TestAccountsHandler_POSTAccounts(t *testing.T) {
 		st := testutil.NewFakeStore()
 		accountSvc := service.NewAccountService(st, "https://example.com")
 		settingsSvc := &fakeSettingsService{mode: domain.MonsteraRegistrationModeOpen}
-		handler := NewAccountsHandler(accountSvc, nil, nil, settingsSvc, nil, 0, "example.com")
+		handler := NewAccountsHandler(accountSvc, nil, nil, nil, settingsSvc, nil, 0, "example.com")
 
 		ctx := context.Background()
 		_, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "taken",
-			Email:        "taken@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "taken",
+			Email:    "taken@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 
@@ -1114,7 +1224,7 @@ func TestAccountsHandler_POSTAccounts(t *testing.T) {
 		require.NoError(t, st.UpdateMonsteraSettings(ctx, &domain.MonsteraSettings{RegistrationMode: domain.MonsteraRegistrationModeInvite}))
 		accountSvc := service.NewAccountService(st, "https://example.com")
 		settingsSvc := &fakeSettingsService{mode: domain.MonsteraRegistrationModeInvite}
-		handler := NewAccountsHandler(accountSvc, nil, nil, settingsSvc, nil, 0, "example.com")
+		handler := NewAccountsHandler(accountSvc, nil, nil, nil, settingsSvc, nil, 0, "example.com")
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", strings.NewReader(validBody))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()

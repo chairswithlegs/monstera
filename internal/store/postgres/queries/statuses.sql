@@ -9,12 +9,12 @@ INSERT INTO statuses (
     id, uri, account_id, text, content, content_warning,
     visibility, language, in_reply_to_id, in_reply_to_account_id, reblog_of_id,
     quoted_status_id, quote_approval_policy, quotes_count,
-    ap_id, ap_raw, sensitive, local
+    ap_id, sensitive, local
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
     $7, $8, $9, $10, $11,
     $12, $13, 0,
-    $14, $15, $16, $17
+    $14, $15, $16
 ) RETURNING *;
 
 -- name: UpdateStatus :one

@@ -9,15 +9,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/chairswithlegs/monstera/internal/testutil"
 )
 
 func TestNodeInfoPointerHandler_GETNodeInfoPointer(t *testing.T) {
 	t.Parallel()
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	h := NewNodeInfoPointerHandler(cfg)
+	h := NewNodeInfoPointerHandler("https://example.com")
 	r := httptest.NewRequest(http.MethodGet, "/.well-known/nodeinfo", nil)
 	w := httptest.NewRecorder()
 	h.GETNodeInfoPointer(w, r)
@@ -36,8 +34,7 @@ func TestNodeInfoPointerHandler_GETNodeInfoPointer(t *testing.T) {
 func TestNodeInfoHandler_GETNodeInfo(t *testing.T) {
 	t.Parallel()
 	fake := testutil.NewFakeStore()
-	cfg := &config.Config{InstanceDomain: "example.com", Version: "0.1.0"}
-	h := NewNodeInfoHandler(service.NewInstanceService(fake), cfg)
+	h := NewNodeInfoHandler(service.NewInstanceService(fake), "0.1.0")
 	r := httptest.NewRequest(http.MethodGet, "/nodeinfo/2.0", nil)
 	w := httptest.NewRecorder()
 	h.GETNodeInfo(w, r)

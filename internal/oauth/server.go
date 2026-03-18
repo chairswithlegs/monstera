@@ -50,6 +50,7 @@ type TokenResponse struct {
 // TokenClaims is the resolved identity associated with a valid Bearer token.
 // Stored in the request context by the auth middleware.
 type TokenClaims struct {
+	AccessTokenID string // the token row ID
 	AccountID     string // empty for app-only tokens
 	ApplicationID string
 	Scopes        ScopeSet
@@ -78,14 +79,14 @@ const authCodeTTL = 10 * time.Minute
 //
 // Server is safe for concurrent use.
 type Server struct {
-	store  store.Store
-	cache  cache.Store
-	logger *slog.Logger
+	store          store.Store
+	cache          cache.SharedStore
+	vapidPublicKey string
 }
 
 // NewServer constructs an OAuth Server.
-func NewServer(s store.Store, c cache.Store, logger *slog.Logger) *Server {
-	return &Server{store: s, cache: c, logger: logger}
+func NewServer(s store.Store, c cache.SharedStore, vapidPublicKey string) *Server {
+	return &Server{store: s, cache: c, vapidPublicKey: vapidPublicKey}
 }
 
 // RegisterApplication creates a new OAuth application.
@@ -136,7 +137,7 @@ func (s *Server) RegisterApplication(ctx context.Context, name, redirectURIs, sc
 		ClientID:     app.ClientID,
 		ClientSecret: app.ClientSecret,
 		RedirectURI:  app.RedirectURIs,
-		VapidKey:     "",
+		VapidKey:     s.vapidPublicKey,
 	}, nil
 }
 
@@ -235,8 +236,7 @@ func (s *Server) ExchangeCode(ctx context.Context, req TokenRequest) (*TokenResp
 	}
 
 	if err := s.store.DeleteAuthorizationCode(ctx, req.Code); err != nil {
-		err = fmt.Errorf("delete authorization code after exchange: %w", err)
-		s.logger.Error("failed to delete authorization code after exchange",
+		slog.ErrorContext(ctx, "failed to delete authorization code after exchange",
 			slog.String("code_id", authCode.ID), slog.Any("error", err))
 	}
 
@@ -268,7 +268,7 @@ func (s *Server) ExchangeClientCredentials(ctx context.Context, req TokenRequest
 // already revoked or does not exist — this prevents token enumeration.
 func (s *Server) RevokeToken(ctx context.Context, token string) error {
 	if err := s.store.RevokeAccessToken(ctx, token); err != nil {
-		s.logger.Warn("revoke token: db error (treated as success per RFC 7009)", slog.Any("error", err))
+		slog.WarnContext(ctx, "revoke token: db error (treated as success per RFC 7009)", slog.Any("error", err))
 	}
 
 	cacheKey := tokenCacheKey(token)
@@ -307,6 +307,7 @@ func (s *Server) LookupToken(ctx context.Context, rawToken string) (*TokenClaims
 	}
 
 	claims = TokenClaims{
+		AccessTokenID: tok.ID,
 		ApplicationID: tok.ApplicationID,
 		Scopes:        Parse(tok.Scopes),
 	}
@@ -332,6 +333,10 @@ func (s *Server) issueToken(ctx context.Context, appID string, accountID *string
 		return nil, fmt.Errorf("oauth: generate token: %w", err)
 	}
 
+	// ExpiresAt is nil (non-expiring) to match current Mastodon behavior.
+	// Mastodon does not yet support refresh tokens or token expiry; all major
+	// clients (Ivory, Tusky, Elk, Mona, Ice Cubes) assume infinite token lifetime.
+	// Revisit when Mastodon ships refresh token support (tracked in mastodon/mastodon#34316).
 	tok, err := s.store.CreateAccessToken(ctx, store.CreateAccessTokenInput{
 		ID:            uid.New(),
 		ApplicationID: appID,

@@ -11,20 +11,20 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/events"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/uid"
 )
 
 type AccountService interface {
 	GetByID(ctx context.Context, id string) (*domain.Account, error)
-	GetAccountsByIDs(ctx context.Context, ids []string) ([]*domain.Account, error)
 	GetByAPID(ctx context.Context, apID string) (*domain.Account, error)
 	GetLocalByUsername(ctx context.Context, username string) (*domain.Account, error)
 	GetActiveLocalAccount(ctx context.Context, username string) (*domain.Account, error)
 	GetByUsername(ctx context.Context, username string, accountDomain *string) (*domain.Account, error)
 	Create(ctx context.Context, in CreateAccountInput) (*domain.Account, error)
 	CreateOrUpdateRemoteAccount(ctx context.Context, in CreateOrUpdateRemoteInput) (*domain.Account, error)
-	Suspend(ctx context.Context, accountID string) error
+	SuspendRemote(ctx context.Context, accountID string) error
 	CountFollowers(ctx context.Context, accountID string) (int64, error)
 	CountFollowing(ctx context.Context, accountID string) (int64, error)
 	GetRelationship(ctx context.Context, accountID, targetID string) (*domain.Relationship, error)
@@ -32,7 +32,6 @@ type AccountService interface {
 	UpdateCredentials(ctx context.Context, in UpdateCredentialsInput) (*domain.Account, *domain.User, error)
 	Register(ctx context.Context, in RegisterInput) (*domain.Account, error)
 	ListLocalUsers(ctx context.Context, limit, offset int) ([]domain.User, error)
-	GetUserByID(ctx context.Context, userID string) (*domain.User, error)
 	ListDirectory(ctx context.Context, order string, localOnly bool, offset, limit int) ([]domain.Account, error)
 	UpdatePreferences(ctx context.Context, userID string, in UpdatePreferencesInput) (*domain.User, error)
 	ChangeEmail(ctx context.Context, userID, newEmail string) (*domain.User, error)
@@ -100,7 +99,6 @@ func (svc *accountService) Create(ctx context.Context, in CreateAccountInput) (*
 		FollowersURL: followersURL,
 		FollowingURL: followingURL,
 		APID:         apID,
-		ApRaw:        nil,
 		Bot:          in.Bot,
 		Locked:       in.Locked,
 	}
@@ -117,7 +115,7 @@ type RegisterInput struct {
 	DisplayName        *string
 	Note               *string
 	Email              string
-	PasswordHash       string
+	Password           string
 	Role               string
 	RegistrationReason *string // optional; used when registration_mode is approval
 	InviteCode         *string // required when registration_mode is invite
@@ -127,9 +125,14 @@ type RegisterInput struct {
 // Behaviour depends on instance setting registration_mode: "open" (or unset) confirms immediately;
 // "approval" leaves user unconfirmed and stores RegistrationReason; "invite" requires a valid InviteCode and confirms on success.
 func (svc *accountService) Register(ctx context.Context, in RegisterInput) (*domain.Account, error) {
-	if in.Username == "" || in.Email == "" || in.PasswordHash == "" {
+	if in.Username == "" || in.Email == "" || in.Password == "" {
 		return nil, fmt.Errorf("Register: %w", domain.ErrValidation)
 	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, fmt.Errorf("Register: hash password: %w", err)
+	}
+	passwordHash := string(hash)
 	if in.Role == "" {
 		in.Role = domain.RoleUser
 	}
@@ -159,24 +162,40 @@ func (svc *accountService) Register(ctx context.Context, in RegisterInput) (*dom
 			return nil, fmt.Errorf("Register: invite code exhausted: %w", domain.ErrValidation)
 		}
 	}
+	publicKey, privateKey, err := generateRSAKeyPair()
+	if err != nil {
+		return nil, fmt.Errorf("Register: generate key pair: %w", err)
+	}
+	accountID := uid.New()
+	apID := fmt.Sprintf("%s/users/%s", svc.instanceBaseURL, in.Username)
+
 	var created *domain.Account
 	err = svc.store.WithTx(ctx, func(tx store.Store) error {
-		acc, err := svc.Create(ctx, CreateAccountInput{
-			Username:    in.Username,
-			DisplayName: in.DisplayName,
-			Note:        in.Note,
-			Bot:         false,
-			Locked:      false,
+		acc, err := tx.CreateAccount(ctx, store.CreateAccountInput{
+			ID:           accountID,
+			Username:     in.Username,
+			Domain:       nil,
+			DisplayName:  in.DisplayName,
+			Note:         in.Note,
+			PublicKey:    publicKey,
+			PrivateKey:   &privateKey,
+			InboxURL:     fmt.Sprintf("%s/users/%s/inbox", svc.instanceBaseURL, in.Username),
+			OutboxURL:    fmt.Sprintf("%s/users/%s/outbox", svc.instanceBaseURL, in.Username),
+			FollowersURL: fmt.Sprintf("%s/users/%s/followers", svc.instanceBaseURL, in.Username),
+			FollowingURL: fmt.Sprintf("%s/users/%s/following", svc.instanceBaseURL, in.Username),
+			APID:         apID,
+			Bot:          false,
+			Locked:       false,
 		})
 		if err != nil {
-			return fmt.Errorf("Create: %w", err)
+			return fmt.Errorf("CreateAccount: %w", err)
 		}
 		userID := uid.New()
 		_, err = tx.CreateUser(ctx, store.CreateUserInput{
 			ID:                 userID,
 			AccountID:          acc.ID,
 			Email:              in.Email,
-			PasswordHash:       in.PasswordHash,
+			PasswordHash:       passwordHash,
 			Role:               in.Role,
 			RegistrationReason: in.RegistrationReason,
 		})
@@ -211,15 +230,6 @@ func (svc *accountService) GetByID(ctx context.Context, id string) (*domain.Acco
 	return acc, nil
 }
 
-// GetAccountsByIDs returns accounts for the given IDs. Missing IDs are omitted; order is not guaranteed.
-func (svc *accountService) GetAccountsByIDs(ctx context.Context, ids []string) ([]*domain.Account, error) {
-	accounts, err := svc.store.GetAccountsByIDs(ctx, ids)
-	if err != nil {
-		return nil, fmt.Errorf("GetAccountsByIDs: %w", err)
-	}
-	return accounts, nil
-}
-
 // GetByAPID returns the account by ActivityPub ID (actor IRI), or ErrNotFound.
 func (svc *accountService) GetByAPID(ctx context.Context, apID string) (*domain.Account, error) {
 	acc, err := svc.store.GetAccountByAPID(ctx, apID)
@@ -250,12 +260,16 @@ type CreateOrUpdateRemoteInput struct {
 	OutboxURL      string
 	FollowersURL   string
 	FollowingURL   string
+	SharedInboxURL string
+	AvatarURL      string
+	HeaderURL      string
+	URL            string
+	Fields         json.RawMessage
 	Bot            bool
 	Locked         bool
 	FollowersCount int
 	FollowingCount int
 	StatusesCount  int
-	ApRaw          []byte
 }
 
 // CreateOrUpdateRemoteAccount creates a remote account from federation input, or updates it if it already exists by APID.
@@ -263,19 +277,33 @@ func (svc *accountService) CreateOrUpdateRemoteAccount(ctx context.Context, in C
 	// Check if the account already exists.
 	existing, err := svc.store.GetAccountByAPID(ctx, in.APID)
 	if err == nil {
-		// TODO: Verify that we are allowing updates to all the correct fields.
+		if existing.Domain == nil {
+			return nil, fmt.Errorf("CreateOrUpdateRemoteAccount: cannot update local account: %w", domain.ErrForbidden)
+		}
+		fields := in.Fields
+		if len(fields) == 0 {
+			fields = existing.Fields
+		}
+		var urlPtr *string
+		if in.URL != "" {
+			urlPtr = &in.URL
+		}
 		if err := svc.store.UpdateAccount(ctx, store.UpdateAccountInput{
 			ID:          existing.ID,
 			DisplayName: in.DisplayName,
 			Note:        in.Note,
-			APRaw:       in.ApRaw,
 			Bot:         in.Bot,
 			Locked:      in.Locked,
+			Fields:      fields,
+			URL:         urlPtr,
 		}); err != nil {
 			return nil, fmt.Errorf("CreateOrUpdateRemoteAccount UpdateAccount: %w", err)
 		}
+		if err := svc.store.UpdateAccountURLs(ctx, existing.ID, in.InboxURL, in.OutboxURL, in.FollowersURL, in.FollowingURL); err != nil {
+			return nil, fmt.Errorf("CreateOrUpdateRemoteAccount UpdateAccountURLs: %w", err)
+		}
 		if in.PublicKey != "" && in.PublicKey != existing.PublicKey {
-			if err := svc.store.UpdateAccountKeys(ctx, existing.ID, in.PublicKey, in.ApRaw); err != nil {
+			if err := svc.store.UpdateAccountKeys(ctx, existing.ID, in.PublicKey); err != nil {
 				return nil, fmt.Errorf("CreateOrUpdateRemoteAccount UpdateAccountKeys: %w", err)
 			}
 		}
@@ -283,6 +311,7 @@ func (svc *accountService) CreateOrUpdateRemoteAccount(ctx context.Context, in C
 		if getErr != nil {
 			return nil, fmt.Errorf("CreateOrUpdateRemoteAccount GetAccountByAPID after update: %w", getErr)
 		}
+		enrichRemoteAccountURLs(acc, in)
 		return acc, nil
 	}
 
@@ -290,8 +319,15 @@ func (svc *accountService) CreateOrUpdateRemoteAccount(ctx context.Context, in C
 		return nil, fmt.Errorf("CreateOrUpdateRemoteAccount GetAccountByAPID: %w", err)
 	}
 
-	// Since the account does not exist, create it.
+	if in.Domain == "" {
+		return nil, fmt.Errorf("CreateOrUpdateRemoteAccount: empty domain: %w", domain.ErrValidation)
+	}
+
 	dom := in.Domain
+	var urlPtr *string
+	if in.URL != "" {
+		urlPtr = &in.URL
+	}
 	storeIn := store.CreateAccountInput{
 		ID:           uid.New(),
 		Username:     in.Username,
@@ -304,23 +340,42 @@ func (svc *accountService) CreateOrUpdateRemoteAccount(ctx context.Context, in C
 		FollowersURL: in.FollowersURL,
 		FollowingURL: in.FollowingURL,
 		APID:         in.APID,
-		ApRaw:        in.ApRaw,
 		Bot:          in.Bot,
 		Locked:       in.Locked,
+		URL:          urlPtr,
 	}
 	acc, createErr := svc.store.CreateAccount(ctx, storeIn)
 	if createErr != nil {
 		return nil, fmt.Errorf("CreateOrUpdateRemoteAccount CreateAccount: %w", createErr)
 	}
+	enrichRemoteAccountURLs(acc, in)
 	return acc, nil
 }
 
-// Suspend suspends the account by ID (e.g. for Delete{Person}).
-// TODO: it doesn't make sense to suspend a remote account.
-// We should add validation to ensure the account is local.
-func (svc *accountService) Suspend(ctx context.Context, accountID string) error {
+// enrichRemoteAccountURLs overlays avatar/header URLs from the federation input
+// onto the account. The DB query only populates these via a media_attachments
+// JOIN (for local uploads), so remote avatar/header URLs need to be applied here.
+func enrichRemoteAccountURLs(acc *domain.Account, in CreateOrUpdateRemoteInput) {
+	if acc.AvatarURL == "" && in.AvatarURL != "" {
+		acc.AvatarURL = in.AvatarURL
+	}
+	if acc.HeaderURL == "" && in.HeaderURL != "" {
+		acc.HeaderURL = in.HeaderURL
+	}
+}
+
+// SuspendRemote suspends a remote account by ID (e.g. from federation Delete{Person}).
+// Returns ErrForbidden if the account is local. Does not emit domain events.
+func (svc *accountService) SuspendRemote(ctx context.Context, accountID string) error {
+	acc, err := svc.store.GetAccountByID(ctx, accountID)
+	if err != nil {
+		return fmt.Errorf("SuspendRemote(%s): %w", accountID, err)
+	}
+	if acc.Domain == nil {
+		return fmt.Errorf("SuspendRemote(%s): %w", accountID, domain.ErrForbidden)
+	}
 	if err := svc.store.SuspendAccount(ctx, accountID); err != nil {
-		return fmt.Errorf("Suspend(%s): %w", accountID, err)
+		return fmt.Errorf("SuspendRemote(%s): %w", accountID, err)
 	}
 	return nil
 }
@@ -498,6 +553,9 @@ func (svc *accountService) UpdateCredentials(ctx context.Context, in UpdateCrede
 	if err != nil {
 		return nil, nil, fmt.Errorf("UpdateCredentials GetUserByAccountID after: %w", err)
 	}
+	_ = events.EmitEvent(ctx, svc.store, domain.EventAccountUpdated, "account", updated.ID, domain.AccountUpdatedPayload{
+		Account: updated,
+	})
 	return updated, user, nil
 }
 
@@ -510,22 +568,8 @@ func (svc *accountService) ListLocalUsers(ctx context.Context, limit, offset int
 	return users, nil
 }
 
-// GetUserByID returns a user by ID for admin operations.
-func (svc *accountService) GetUserByID(ctx context.Context, userID string) (*domain.User, error) {
-	u, err := svc.store.GetUserByID(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("GetUserByID(%s): %w", userID, err)
-	}
-	return u, nil
-}
-
 func (svc *accountService) ListDirectory(ctx context.Context, order string, localOnly bool, offset, limit int) ([]domain.Account, error) {
-	if limit <= 0 {
-		limit = DefaultServiceListLimit
-	}
-	if limit > MaxServicePageLimit {
-		limit = MaxServicePageLimit
-	}
+	limit = ClampLimit(limit, DefaultServiceListLimit, MaxServicePageLimit)
 	if order != "active" && order != "new" {
 		order = "active"
 	}

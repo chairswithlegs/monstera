@@ -26,10 +26,10 @@ func TestMarkersHandler_GETMarkers(t *testing.T) {
 	handler := NewMarkersHandler(markerSvc)
 
 	account, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -61,10 +61,10 @@ func TestMarkersHandler_POSTMarkers(t *testing.T) {
 	handler := NewMarkersHandler(markerSvc)
 
 	account, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 

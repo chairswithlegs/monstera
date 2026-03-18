@@ -13,7 +13,6 @@ import (
 	"github.com/chairswithlegs/monstera/internal/store/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
-	"golang.org/x/crypto/bcrypt"
 )
 
 var userCmd = &cobra.Command{
@@ -71,18 +70,12 @@ func runUserCreate(cmd *cobra.Command, args []string) error {
 		return errors.New("user already exists")
 	}
 
-	// Create the user
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return fmt.Errorf("bcrypt: %w", err)
-	}
-
 	created, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     username,
-		Email:        email,
-		PasswordHash: string(hash),
-		DisplayName:  &displayName,
-		Role:         role,
+		Username:    username,
+		Email:       email,
+		Password:    password,
+		DisplayName: &displayName,
+		Role:        role,
 	})
 	if err != nil {
 		return fmt.Errorf("register: %w", err)

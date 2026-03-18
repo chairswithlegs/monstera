@@ -21,10 +21,10 @@ func TestConversationService_ListConversations_empty(t *testing.T) {
 	convSvc := NewConversationService(fake, statusSvc)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -43,10 +43,10 @@ func TestConversationService_UpdateForDirectStatus_creates_conversation(t *testi
 	convSvc := NewConversationService(fake, statusSvc)
 
 	alice, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	bob, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
@@ -94,10 +94,10 @@ func TestConversationService_MarkConversationRead(t *testing.T) {
 	convSvc := NewConversationService(fake, statusSvc)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	convID := uid.New()
@@ -125,10 +125,10 @@ func TestConversationService_RemoveConversation(t *testing.T) {
 	convSvc := NewConversationService(fake, statusSvc)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	convID := uid.New()
@@ -158,14 +158,60 @@ func TestConversationService_MarkConversationRead_not_found(t *testing.T) {
 	convSvc := NewConversationService(fake, statusSvc)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
 	_, err = convSvc.MarkConversationRead(ctx, acc.ID, "nonexistent")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrNotFound)
+}
+
+func TestConversationService_MuteConversation(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	convSvc := NewConversationService(fake, statusSvc)
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, convSvc, "https://example.com", "example.com", 500)
+
+	acc, err := accountSvc.Register(ctx, RegisterInput{
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
+	})
+	require.NoError(t, err)
+	result, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID:  acc.ID,
+		Username:   acc.Username,
+		Text:       "conversational",
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+	statusID := result.Status.ID
+
+	t.Run("mute makes conversation muted in store", func(t *testing.T) {
+		err := convSvc.MuteConversation(ctx, acc.ID, statusID)
+		require.NoError(t, err)
+		root, err := fake.GetConversationRoot(ctx, statusID)
+		require.NoError(t, err)
+		muted, err := fake.IsConversationMuted(ctx, acc.ID, root)
+		require.NoError(t, err)
+		assert.True(t, muted)
+	})
+
+	t.Run("unmute makes conversation unmuted in store", func(t *testing.T) {
+		err := convSvc.UnmuteConversation(ctx, acc.ID, statusID)
+		require.NoError(t, err)
+		root, err := fake.GetConversationRoot(ctx, statusID)
+		require.NoError(t, err)
+		muted, err := fake.IsConversationMuted(ctx, acc.ID, root)
+		require.NoError(t, err)
+		assert.False(t, muted)
+	})
 }

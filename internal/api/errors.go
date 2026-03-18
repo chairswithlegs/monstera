@@ -71,8 +71,10 @@ func HandleError(w http.ResponseWriter, r *http.Request, err error) {
 		WriteJSON(w, http.StatusUnprocessableEntity, ErrorResponse{Error: unwrapMessage(err)})
 
 	case errors.Is(err, domain.ErrRateLimited):
-		w.Header().Set("Retry-After", "900")
 		WriteJSON(w, http.StatusTooManyRequests, ErrorResponse{Error: "Rate limit exceeded"})
+
+	case isMaxBytesError(err):
+		WriteJSON(w, http.StatusRequestEntityTooLarge, ErrorResponse{Error: "Payload too large"})
 
 	case errors.Is(err, domain.ErrGone):
 		WriteJSON(w, http.StatusGone, ErrorResponse{Error: "Gone"})
@@ -90,6 +92,11 @@ func HandleError(w http.ResponseWriter, r *http.Request, err error) {
 		)
 		WriteJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "Internal server error"})
 	}
+}
+
+func isMaxBytesError(err error) bool {
+	var mbe *http.MaxBytesError
+	return errors.As(err, &mbe)
 }
 
 // unwrapMessage extracts the outermost message from a wrapped error chain.

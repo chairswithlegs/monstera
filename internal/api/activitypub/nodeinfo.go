@@ -5,19 +5,18 @@ import (
 
 	"github.com/chairswithlegs/monstera/internal/api"
 	"github.com/chairswithlegs/monstera/internal/api/activitypub/apimodel"
-	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/service"
 )
 
 // NodeInfoPointerHandler serves the well-known nodeinfo pointer document.
 // GET /.well-known/nodeinfo
 type NodeInfoPointerHandler struct {
-	config *config.Config
+	instanceBaseURL string
 }
 
 // NewNodeInfoPointerHandler returns a new NodeInfoPointerHandler.
-func NewNodeInfoPointerHandler(config *config.Config) *NodeInfoPointerHandler {
-	return &NodeInfoPointerHandler{config: config}
+func NewNodeInfoPointerHandler(instanceBaseURL string) *NodeInfoPointerHandler {
+	return &NodeInfoPointerHandler{instanceBaseURL: instanceBaseURL}
 }
 
 // GETNodeInfoPointer serves the nodeinfo pointer.
@@ -26,7 +25,7 @@ func (h *NodeInfoPointerHandler) GETNodeInfoPointer(w http.ResponseWriter, r *ht
 		Links: []apimodel.NodeInfoPointerLink{
 			{
 				Rel:  "http://nodeinfo.diaspora.software/ns/schema/2.0",
-				Href: h.config.InstanceBaseURL() + "/nodeinfo/2.0",
+				Href: h.instanceBaseURL + "/nodeinfo/2.0",
 			},
 		},
 	}
@@ -38,12 +37,12 @@ func (h *NodeInfoPointerHandler) GETNodeInfoPointer(w http.ResponseWriter, r *ht
 // GET /nodeinfo/2.0
 type NodeInfoHandler struct {
 	instance service.InstanceService
-	config   *config.Config
+	version  string
 }
 
 // NewNodeInfoHandler returns a new NodeInfoHandler.
-func NewNodeInfoHandler(instance service.InstanceService, config *config.Config) *NodeInfoHandler {
-	return &NodeInfoHandler{instance: instance, config: config}
+func NewNodeInfoHandler(instance service.InstanceService, version string) *NodeInfoHandler {
+	return &NodeInfoHandler{instance: instance, version: version}
 }
 
 // GETNodeInfo serves the NodeInfo 2.0 document.
@@ -58,7 +57,7 @@ func (h *NodeInfoHandler) GETNodeInfo(w http.ResponseWriter, r *http.Request) {
 		Version: "2.0",
 		Software: apimodel.NodeInfoSoftware{
 			Name:    "monstera",
-			Version: h.config.Version,
+			Version: h.version,
 		},
 		Protocols: []string{"activitypub"},
 		Usage: apimodel.NodeInfoUsage{

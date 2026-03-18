@@ -120,6 +120,20 @@ func linkHeaderWithNext(requestURL, cursor string) string {
 	return fmt.Sprintf("<%s>; rel=%q", base.String(), "next")
 }
 
+// parseLimitParam reads the "limit" query parameter and clamps it between
+// defaultLimit and maxLimit. Invalid or missing values return defaultLimit.
+func parseLimitParam(r *http.Request, defaultLimit, maxLimit int) int { //nolint:unparam // defaultLimit is always DefaultListLimit for now but keeps the helper reusable
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			if n > maxLimit {
+				return maxLimit
+			}
+			return n
+		}
+	}
+	return defaultLimit
+}
+
 // optionalString returns a pointer to s if non-empty, otherwise nil.
 func optionalString(s string) *string {
 	if s == "" {

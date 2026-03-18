@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nats-io/nats.go/jetstream"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/testutil"
@@ -41,8 +41,7 @@ func TestOutboxFanoutWorker_ProcessMessage_PublishesDeliveryPerInbox(t *testing.
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	followSvc := service.NewFollowService(fake, service.NewAccountService(fake, "https://example.com"))
-	cfg := &config.Config{InstanceDomain: "example.com"}
+	followSvc := service.NewRemoteFollowService(fake)
 
 	acc, err := fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID: "01author", Username: "alice", APID: "https://example.com/users/alice",
@@ -75,7 +74,7 @@ func TestOutboxFanoutWorker_ProcessMessage_PublishesDeliveryPerInbox(t *testing.
 	data, err := json.Marshal(fanoutMsg)
 	require.NoError(t, err)
 
-	w := &outboxFanoutWorker{followers: followSvc, delivery: deliveryMock, cfg: cfg}
+	w := &outboxFanoutWorker{followers: followSvc, delivery: deliveryMock, workerConcurrency: 0}
 	w.processMessage(ctx, &testutil.MockJetstreamMsg{DataBytes: data})
 
 	require.Len(t, delivered, 1)
@@ -89,8 +88,7 @@ func TestOutboxFanoutWorker_ProcessMessage_Pagination(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	followSvc := service.NewFollowService(fake, service.NewAccountService(fake, "https://example.com"))
-	cfg := &config.Config{InstanceDomain: "example.com"}
+	followSvc := service.NewRemoteFollowService(fake)
 
 	acc, err := fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID: "01author", Username: "alice", APID: "https://example.com/users/alice",
@@ -125,7 +123,7 @@ func TestOutboxFanoutWorker_ProcessMessage_Pagination(t *testing.T) {
 	data, err := json.Marshal(fanoutMsg)
 	require.NoError(t, err)
 
-	w := &outboxFanoutWorker{followers: followSvc, delivery: deliveryMock, cfg: cfg}
+	w := &outboxFanoutWorker{followers: followSvc, delivery: deliveryMock, workerConcurrency: 0}
 	w.processMessage(ctx, &testutil.MockJetstreamMsg{DataBytes: data})
 
 	require.Len(t, delivered, 3)
@@ -140,8 +138,7 @@ func TestOutboxFanoutWorker_ProcessMessage_EmptyFollowers_Acks(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	followSvc := service.NewFollowService(fake, service.NewAccountService(fake, "https://example.com"))
-	cfg := &config.Config{InstanceDomain: "example.com"}
+	followSvc := service.NewRemoteFollowService(fake)
 
 	acc, err := fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID: "01author", Username: "alice", APID: "https://example.com/users/alice",
@@ -167,16 +164,15 @@ func TestOutboxFanoutWorker_ProcessMessage_EmptyFollowers_Acks(t *testing.T) {
 	acked := false
 	mockMsg := &testutil.MockJetstreamMsg{DataBytes: data, AckFn: func() { acked = true }}
 
-	w := &outboxFanoutWorker{followers: followSvc, delivery: deliveryMock, cfg: cfg}
+	w := &outboxFanoutWorker{followers: followSvc, delivery: deliveryMock, workerConcurrency: 0}
 	w.processMessage(ctx, mockMsg)
 
 	assert.Empty(t, delivered)
 	assert.True(t, acked)
 }
 
-// failingFanoutStore is a store that returns an error from GetDistinctFollowerInboxURLsPaginated.
 type failingFollowSvc struct {
-	service.FollowService
+	service.RemoteFollowService
 	err error
 }
 
@@ -188,9 +184,8 @@ func TestOutboxFanoutWorker_ProcessMessage_DBError_RetriesRemaining_NakWithDelay
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	followSvc := service.NewFollowService(fake, service.NewAccountService(fake, "https://example.com"))
-	failingFollowSvc := &failingFollowSvc{FollowService: followSvc, err: errors.New("db error")}
-	cfg := &config.Config{InstanceDomain: "example.com"}
+	followSvc := service.NewRemoteFollowService(fake)
+	failingFollowSvc := &failingFollowSvc{RemoteFollowService: followSvc, err: errors.New("db error")}
 
 	acc, err := fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID: "01author", Username: "alice", APID: "https://example.com/users/alice",
@@ -209,7 +204,7 @@ func TestOutboxFanoutWorker_ProcessMessage_DBError_RetriesRemaining_NakWithDelay
 	}
 	deliveryMock := &mockDeliveryPublisher{publishFn: func(context.Context, string, OutboxDeliveryMessage) error { return nil }}
 
-	w := &outboxFanoutWorker{followers: failingFollowSvc, delivery: deliveryMock, cfg: cfg}
+	w := &outboxFanoutWorker{followers: failingFollowSvc, delivery: deliveryMock, workerConcurrency: 0}
 	w.processMessage(ctx, mockMsg)
 
 	assert.True(t, nakWithDelayCalled)
@@ -220,24 +215,15 @@ func TestOutboxFanoutWorker_ProcessMessage_DBError_RetryExhausted_SendsToDLQ(t *
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	followSvc := service.NewFollowService(fake, service.NewAccountService(fake, "https://example.com"))
-	failingFollowSvc := &failingFollowSvc{FollowService: followSvc, err: errors.New("db error")}
-	cfg := &config.Config{InstanceDomain: "example.com"}
+	followSvc := service.NewRemoteFollowService(fake)
+	failingFollowSvc := &failingFollowSvc{RemoteFollowService: followSvc, err: errors.New("db error")}
 
 	acc, err := fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID: "01author", Username: "alice", APID: "https://example.com/users/alice",
 	})
 	require.NoError(t, err)
 
-	var dlqSubject string
-	var dlqPayload []byte
-	dlqMock := &mockFanoutDLQPublisher{
-		publishFn: func(_ context.Context, subject string, payload []byte) error {
-			dlqSubject = subject
-			dlqPayload = payload
-			return nil
-		},
-	}
+	jsMock := &mockJetStreamPublisher{}
 	acked := false
 	mockMsg := &testutil.MockJetstreamMsg{
 		DataBytes:        mustMarshal(t, OutboxFanoutMessage{ActivityID: "https://example.com/01act", Activity: json.RawMessage(`{}`), SenderID: acc.ID}),
@@ -247,20 +233,20 @@ func TestOutboxFanoutWorker_ProcessMessage_DBError_RetryExhausted_SendsToDLQ(t *
 	}
 	deliveryMock := &mockDeliveryPublisher{publishFn: func(context.Context, string, OutboxDeliveryMessage) error { return nil }}
 
-	w := &outboxFanoutWorker{followers: failingFollowSvc, delivery: deliveryMock, dlqPublisher: dlqMock, cfg: cfg}
+	w := &outboxFanoutWorker{js: jsMock, followers: failingFollowSvc, delivery: deliveryMock, workerConcurrency: 0}
 	w.processMessage(ctx, mockMsg)
 
 	assert.True(t, acked)
-	assert.Equal(t, subjectPrefixFanoutDLQ+"create", dlqSubject)
-	assert.NotEmpty(t, dlqPayload)
+	require.Len(t, jsMock.published, 1)
+	assert.Equal(t, subjectPrefixFanoutDLQ+"create", jsMock.published[0].subject)
+	assert.NotEmpty(t, jsMock.published[0].data)
 }
 
 func TestOutboxFanoutWorker_ProcessMessage_PublishError_RetriesRemaining_NakWithDelay(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	followSvc := service.NewFollowService(fake, service.NewAccountService(fake, "https://example.com"))
-	cfg := &config.Config{InstanceDomain: "example.com"}
+	followSvc := service.NewRemoteFollowService(fake)
 
 	acc, err := fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID: "01author", Username: "alice", APID: "https://example.com/users/alice",
@@ -289,7 +275,7 @@ func TestOutboxFanoutWorker_ProcessMessage_PublishError_RetriesRemaining_NakWith
 		publishFn: func(context.Context, string, OutboxDeliveryMessage) error { return errors.New("nats publish failed") },
 	}
 
-	w := &outboxFanoutWorker{followers: followSvc, delivery: deliveryMock, cfg: cfg}
+	w := &outboxFanoutWorker{followers: followSvc, delivery: deliveryMock, workerConcurrency: 0}
 	w.processMessage(ctx, mockMsg)
 
 	assert.True(t, nakWithDelayCalled)
@@ -299,8 +285,7 @@ func TestOutboxFanoutWorker_ProcessMessage_PublishError_RetryExhausted_SendsToDL
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	followSvc := service.NewFollowService(fake, service.NewAccountService(fake, "https://example.com"))
-	cfg := &config.Config{InstanceDomain: "example.com"}
+	followSvc := service.NewRemoteFollowService(fake)
 
 	acc, err := fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID: "01author", Username: "alice", APID: "https://example.com/users/alice",
@@ -317,13 +302,7 @@ func TestOutboxFanoutWorker_ProcessMessage_PublishError_RetryExhausted_SendsToDL
 	})
 	require.NoError(t, err)
 
-	var dlqSubject string
-	dlqMock := &mockFanoutDLQPublisher{
-		publishFn: func(_ context.Context, subject string, _ []byte) error {
-			dlqSubject = subject
-			return nil
-		},
-	}
+	jsMock := &mockJetStreamPublisher{}
 	acked := false
 	mockMsg := &testutil.MockJetstreamMsg{
 		DataBytes:        mustMarshal(t, OutboxFanoutMessage{ActivityID: "https://example.com/01act", Activity: json.RawMessage(`{}`), SenderID: acc.ID}),
@@ -335,11 +314,12 @@ func TestOutboxFanoutWorker_ProcessMessage_PublishError_RetryExhausted_SendsToDL
 		publishFn: func(context.Context, string, OutboxDeliveryMessage) error { return errors.New("nats publish failed") },
 	}
 
-	w := &outboxFanoutWorker{followers: followSvc, delivery: deliveryMock, dlqPublisher: dlqMock, cfg: cfg}
+	w := &outboxFanoutWorker{js: jsMock, followers: followSvc, delivery: deliveryMock, workerConcurrency: 0}
 	w.processMessage(ctx, mockMsg)
 
 	assert.True(t, acked)
-	assert.Equal(t, subjectPrefixFanoutDLQ+"delete", dlqSubject)
+	require.Len(t, jsMock.published, 1)
+	assert.Equal(t, subjectPrefixFanoutDLQ+"delete", jsMock.published[0].subject)
 }
 
 func TestOutboxFanoutWorker_getActivityType(t *testing.T) {
@@ -357,13 +337,18 @@ func mustMarshal(t *testing.T, v any) []byte {
 	return data
 }
 
-type mockFanoutDLQPublisher struct {
-	publishFn func(ctx context.Context, subject string, payload []byte) error
+type publishedMsg struct {
+	subject string
+	data    []byte
 }
 
-func (m *mockFanoutDLQPublisher) Publish(ctx context.Context, subject string, payload []byte) error {
-	if m.publishFn != nil {
-		return m.publishFn(ctx, subject, payload)
-	}
-	return nil
+// mockJetStreamPublisher implements jetstream.JetStream with only Publish for test use.
+type mockJetStreamPublisher struct {
+	jetstream.JetStream
+	published []publishedMsg
+}
+
+func (m *mockJetStreamPublisher) Publish(_ context.Context, subject string, payload []byte, _ ...jetstream.PublishOpt) (*jetstream.PubAck, error) {
+	m.published = append(m.published, publishedMsg{subject: subject, data: payload})
+	return &jetstream.PubAck{}, nil
 }

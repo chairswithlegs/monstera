@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/chairswithlegs/monstera/internal/store"
@@ -30,10 +29,9 @@ func TestCollectionsHandler_GETFollowers(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, fake.ConfirmUser(ctx, "01USERALICE"))
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	accountSvc := service.NewAccountService(fake, cfg.InstanceBaseURL())
-	statusSvc := service.NewStatusService(fake, "https://example.com", cfg.InstanceDomain, 5000)
-	h := NewCollectionsHandler(accountSvc, statusSvc, cfg)
+	accountSvc := service.NewAccountService(fake, "https://example.com")
+	statusSvc := service.NewStatusService(fake, "https://example.com", "example.com", 5000)
+	h := NewCollectionsHandler(accountSvc, statusSvc, "https://example.com")
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/followers", nil)
 	r = r.WithContext(ctx)
 	r = testutil.AddChiURLParam(r, "username", "alice")
@@ -62,10 +60,9 @@ func TestCollectionsHandler_GETFollowing(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, fake.ConfirmUser(ctx, "01USERALICE"))
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	accountSvc := service.NewAccountService(fake, cfg.InstanceBaseURL())
-	statusSvc := service.NewStatusService(fake, "https://example.com", cfg.InstanceDomain, 5000)
-	h := NewCollectionsHandler(accountSvc, statusSvc, cfg)
+	accountSvc := service.NewAccountService(fake, "https://example.com")
+	statusSvc := service.NewStatusService(fake, "https://example.com", "example.com", 5000)
+	h := NewCollectionsHandler(accountSvc, statusSvc, "https://example.com")
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/following", nil)
 	r = r.WithContext(ctx)
 	r = testutil.AddChiURLParam(r, "username", "alice")
@@ -94,10 +91,9 @@ func TestCollectionsHandler_GETFeatured(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, fake.ConfirmUser(ctx, "01USERALICE"))
-	cfg := &config.Config{InstanceDomain: "example.com"}
-	accountSvc := service.NewAccountService(fake, cfg.InstanceBaseURL())
-	statusSvc := service.NewStatusService(fake, "https://example.com", cfg.InstanceDomain, 5000)
-	h := NewCollectionsHandler(accountSvc, statusSvc, cfg)
+	accountSvc := service.NewAccountService(fake, "https://example.com")
+	statusSvc := service.NewStatusService(fake, "https://example.com", "example.com", 5000)
+	h := NewCollectionsHandler(accountSvc, statusSvc, "https://example.com")
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/collections/featured", nil)
 	r = r.WithContext(ctx)
 	r = testutil.AddChiURLParam(r, "username", "alice")

@@ -78,7 +78,7 @@ func (h *MarkersHandler) POSTMarkers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		if err := r.ParseForm(); err != nil {
+		if err := r.ParseForm(); err != nil { //nolint:gosec // G120: body size limited by upstream MaxBodySize middleware
 			api.HandleError(w, r, api.NewBadRequestError("invalid form"))
 			return
 		}

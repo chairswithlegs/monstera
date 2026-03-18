@@ -1,3 +1,7 @@
+# Task tracking
+
+At the start of each session, check TaskList for pending work items. If such a task exists, ask the user if you should begin working on it.
+
 # Monstera Project
 
 Monstera is a self-hosted **ActivityPub server** written in Go 1.26 that exposes a **Mastodon-compatible REST API**. Any Mastodon client (Ivory, Tusky, Elk, Mona, etc.) connects without modification.
@@ -32,23 +36,24 @@ monstera/
 │   ├── store/           # Storage interface; postgres/ has the sqlc implementation
 │   ├── service/         # Business logic — depends on store, never on api
 │   ├── api/
-│   │   ├── mastodon/    # Mastodon REST handlers
+│   │   ├── mastodon/    # Mastodon REST handlers; sse/ subpackage for SSE streaming
 │   │   ├── activitypub/ # ActivityPub HTTP endpoints (inbox, outbox, WebFinger)
 │   │   ├── oauth/       # OAuth 2.0 endpoints
 │   │   ├── monstera/    # Monstera-specific API endpoints
 │   │   ├── middleware/  # HTTP middleware (auth, logging, etc.)
 │   │   └── router/      # Route registration
 │   ├── activitypub/     # ActivityPub logic (HTTP Signatures, federation delivery, federation subscriber)
-│   ├── outbox/          # Transactional outbox poller and DOMAIN_EVENTS stream config
+│   ├── blocklist/       # Domain blocklist cache
 │   ├── oauth/           # OAuth 2.0 flows
 │   ├── media/           # Media processing; local/ and s3/ storage drivers
 │   ├── cache/           # Cache interface + implementation
 │   ├── email/           # Email interface + implementation
-│   ├── nats/            # NATS JetStream integration
-│   ├── events/          # Event and type definitions, SSE implementation
+│   ├── natsutil/        # NATS JetStream integration
+│   ├── events/          # Event and type definitions, outbox poller, notification subscriber
 │   ├── scheduler/       # Background job scheduler; jobs/ for job definitions
 │   ├── observability/   # Metrics and tracing setup
 │   ├── config/          # 12-factor env-var configuration
+│   ├── ssrf/            # SSRF protection for outbound HTTP
 │   ├── uid/             # ULID generation
 │   └── testutil/        # Shared test helpers
 ├── ui/                  # Next.js frontend (app router, shadcn/Tailwind)
@@ -65,63 +70,26 @@ monstera/
 - Code in the "adapter" layer (e.g API handlers, workers) should not use the store directly, they should use services instead.
 - Client implementations of system dependencies (Postgres, NATs, email) should always be abstracted behind an interface.
 
----
+## Local/Remote Entity Safety
 
-# Code style
+Follow these rules to prevent local/remote entity conflation bugs:
 
-- Use `require` for preconditions, `assert` for verifications in tests.
-- Use `t.Helper()` in all test helpers.
-- No comments that just narrate what the code does.
-- Structured logging via `slog` — no `fmt.Printf` or `log.Println`.
+1. **Guard service mutations** — Methods that only apply to remote entities must call `requireRemote(st.Local, "MethodName")` at the top. Methods that only apply to local entities should call `requireLocal(st.Local, "MethodName")` when the locality is determined by a caller-supplied input; if the method itself explicitly sets locality (e.g. `Local: true` in a create path), the guard is unnecessary.
+2. **`*Remote` naming convention** — Methods like `CreateRemote`, `DeleteRemote`, `CreateRemoteFollow` handle remote-originated operations. Both local and remote methods should emit domain events; it is up to consumers (e.g. the federation subscriber) to decide what actions to take based on locality.
+3. **Federation subscriber locality checks** — Handlers must check payload locality (`Author.Domain == nil` or `payload.Local`) before federating. Never federate remote-originated events.
+4. **Inbox handlers use `*Remote` variants** — Inbox handlers must never call generic service methods. Use `*Remote` variants to avoid triggering outbound federation.
+5. **Check Domain, not InboxURL** — Use `account.Domain == nil` for local accounts and `status.Local` for local statuses. Never use `InboxURL == ""` or other proxy fields.
+6. **Event payloads include locality** — Include `Local bool` where applicable so subscribers can filter correctly.
 
 ---
 
 ## Logging
 
-Use the standard library `log/slog` and its **exported package-level functions**. Do not create or pass around `*slog.Logger` instances; the default logger is configured once at application startup. Do not store logger on structs.
+Use the standard library `log/slog` **exported package-level functions** only. Do not create, inject, or store `*slog.Logger` instances.
 
-### Use Context methods when context is available
-
-Prefer `*Context()` variants so log output can be tied to request/trace context:
-
-- `slog.DebugContext(ctx, msg, ...)`
-- `slog.InfoContext(ctx, msg, ...)`
-- `slog.WarnContext(ctx, msg, ...)`
-- `slog.ErrorContext(ctx, msg, ...)`
-
-When no `context.Context` is in scope, use `slog.Debug`, `slog.Info`, `slog.Warn`, `slog.Error`.
-
-### Do not
-
-- Construct or inject `*slog.Logger` (or interfaces wrapping it) into handlers, services, or stores.
-- Store logger on structs.
-- Use `fmt.Printf`, `log.Println`, or other ad-hoc logging.
-
-### Examples
-
-```go
-// ❌ BAD — passing a logger
-func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    h.logger.InfoContext(r.Context(), "request received")
-}
-
-// ✅ GOOD — package-level slog with context
-func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    slog.InfoContext(r.Context(), "request received")
-}
-```
-
-```go
-// ❌ BAD — no context when context is available
-func process(ctx context.Context, id string) {
-    slog.Info("processing", slog.String("id", id))
-}
-
-// ✅ GOOD
-func process(ctx context.Context, id string) {
-    slog.InfoContext(ctx, "processing", slog.String("id", id))
-}
-```
+- When `context.Context` is available: `slog.DebugContext`, `slog.InfoContext`, `slog.WarnContext`, `slog.ErrorContext`.
+- Without context: `slog.Debug`, `slog.Info`, `slog.Warn`, `slog.Error`.
+- Do not use `fmt.Printf`, `log.Println`, or inject loggers into structs.
 
 ---
 
@@ -155,56 +123,21 @@ If the changes touch any integration points, run the integration tests as well.
    go fmt ./...
    ```
 
-### When to run
-
-- After implementing a feature or fix.
-- After refactoring or touching multiple files.
-- Before committing or marking a task complete.
-
-### If something fails
-
-- **Linter**: Address each finding; do not leave suppressions or TODOs without a clear reason.
-- **Tests**: Fix failing tests or update expectations; do not skip or disable tests to make the build green.
+Fix all linter findings and failing tests before considering the change done. Do not suppress findings or skip tests to make the build green.
 
 ---
 
 ## Testing Conventions
 
-### Tools
-
-- **go test** (stdlib) — test runner.
-- **testify** (v1.10.0) — `assert`, `require`, HTTP helpers, mocking.
-- **golangci-lint** — linter; see lint section above for usage.
-
-### Organisation
-
-- Tests live alongside code (`*_test.go` in same package).
-- Integration tests (PostgreSQL, NATS) use `//go:build integration` and live in the same package for white-box access. Run with: `go test -tags=integration ./path/...`.
-
-### Conventions
-
-- **require** for preconditions (stop on failure); **assert** for verifications (continue so you see all failures).
-- **Table-driven tests** for varying inputs; name each case in the struct (e.g. `name: "plain text"`) — it appears in failure output.
-- Call **t.Helper()** in any helper that calls `t.Fatal`/`t.Error`/`require`/`assert` so failures point to the caller.
-- Mark tests with no shared mutable state as **t.Parallel()**.
-- **HTTP handler tests** use `net/http/httptest` and testify assertions.
-- Never log errors in test helpers — use `require`/`assert` so failures report via `t`.
-
-### Mocking
-
-- Prefer **hand-written fakes** for simple interfaces (`store.Store`, `cache.Store`, etc.).
-- Use testify **mock** when you need to assert call order or arguments (e.g. "Send called once with this subject").
-
-### No Conditional Skips
-
-When `make test` is run, **all** unit tests must execute. Do not add conditional skips.
-
-When `make test-integration` is run, **all** integration tests must execute. Do not add conditional skips.
-
-### Do not
-
-- Use `t.Skip()` or `t.Skipf()` when a dependency (e.g. DB, NATS, MinIO) is unavailable or env vars are unset.
-- Use `t.Skip()` based on environment detection so that CI or local `make test-integration` skips tests.
+- Tests live alongside code (`*_test.go` in same package). Use **testify** `assert`/`require`.
+- Integration tests (PostgreSQL, NATS) use `//go:build integration`; run with `go test -tags=integration ./path/...`.
+- **require** for preconditions (stop on failure); **assert** for verifications (continue to see all failures).
+- Table-driven tests for varying inputs; name each case in the struct.
+- Call `t.Helper()` in any helper that calls `t.Fatal`/`t.Error`/`require`/`assert`.
+- Mark tests with no shared mutable state as `t.Parallel()`.
+- HTTP handler tests use `net/http/httptest`.
+- Prefer hand-written fakes for simple interfaces; use testify mock when asserting call order or arguments.
+- Do not use `t.Skip()` — all unit tests must run under `make test`; all integration tests must run under `make test-integration`.
 
 ---
 
@@ -214,7 +147,7 @@ When `make test-integration` is run, **all** integration tests must execute. Do 
 
 - **Sentinels in the owning package.** Domain errors (`ErrNotFound`, `ErrConflict`, `ErrForbidden`, etc.) live in `internal/domain/errors.go`. Infra packages (cache, media, email) define their own sentinels.
 - **Wrap with context using `%w`.** Each layer adds context: `fmt.Errorf("GetAccountByID(%s): %w", id, err)`. Never wrap with `%v` (breaks `errors.Is`).
-- **No HTTP below handlers.** Store, service, cache, media, and email never import `net/http` or use status codes. They return domain/infra errors only.
+- **No REST API types below handlers.** Store, service, cache, media, and email must not import `internal/api` or use HTTP status codes. They return domain/infra errors only. Services **may** import `net/http` for outbound HTTP calls (e.g. fetching URLs, card metadata) — the restriction prevents leaking the inbound REST API into business logic, not outbound HTTP in general.
 - **Map to HTTP once.** Handlers use `api.HandleError(w, r, err)`. Match via `errors.Is(err, domain.ErrNotFound)` etc.
 
 ### Handler pattern
@@ -270,26 +203,11 @@ Available custom commands (invoke with `/command-name`):
 | `/repository-documentation` | Create or update documentation |
 | `/vercel-react-best-practices` | React/Next.js performance optimization |
 
-### How to apply
-
-1. **Review available commands first.** Before outlining steps or writing code, check the table above for any that match the task.
-2. **Use matching commands.** If a command's description matches the work (e.g. "Use when implementing…"), read and follow its instructions as part of the plan.
-3. **Invoke commands early.** Apply relevant commands at the start of the task, not only when stuck.
-
-### Examples
-
-- **Federation / inbox / signatures** → `/activitypub-expert`
-- **Mastodon client compatibility / OAuth / timelines** → `/mastodon-api-expert`
-- **Docs or README** → `/repository-documentation`
-- **Coupling, layers, structure** → `/system-architect`
-
-Do not mention a command without using it: if it is relevant, apply it.
+Check the table above before outlining steps or writing code. If a command matches, invoke it early. Do not mention a command without using it.
 
 ---
 
 ## Subdirectory Rules
-
-Additional conventions are loaded automatically when working in these directories:
 
 - `internal/CLAUDE.md` — interface/implementation pattern
 - `internal/store/CLAUDE.md` — database store layer

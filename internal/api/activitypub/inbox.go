@@ -12,22 +12,20 @@ import (
 	ap "github.com/chairswithlegs/monstera/internal/activitypub"
 	"github.com/chairswithlegs/monstera/internal/activitypub/vocab"
 	"github.com/chairswithlegs/monstera/internal/api"
-	"github.com/chairswithlegs/monstera/internal/cache"
-	"github.com/chairswithlegs/monstera/internal/config"
 )
 
 // InboxHandler handles POST /users/{username}/inbox and POST /inbox.
 // Verifies HTTP Signature, parses the activity, and dispatches to InboxProcessor.
 // Always returns 202 Accepted per ActivityPub spec.
 type InboxHandler struct {
-	inbox    ap.Inbox
-	cache    cache.Store
-	verifier ap.HTTPSignatureService
+	inbox          ap.Inbox
+	verifier       ap.HTTPSignatureService
+	instanceDomain string
 }
 
 // NewInboxHandler returns a new InboxHandler.
-func NewInboxHandler(inbox ap.Inbox, cache cache.Store, cfg *config.Config, verifier ap.HTTPSignatureService) *InboxHandler {
-	return &InboxHandler{inbox: inbox, cache: cache, verifier: verifier}
+func NewInboxHandler(inbox ap.Inbox, verifier ap.HTTPSignatureService, instanceDomain string) *InboxHandler {
+	return &InboxHandler{inbox: inbox, verifier: verifier, instanceDomain: instanceDomain}
 }
 
 // POSTInbox handles POST to the inbox.
@@ -75,6 +73,12 @@ func (h *InboxHandler) POSTInbox(w http.ResponseWriter, r *http.Request) {
 	if keyDomain != actorDomain {
 		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "key domain does not match actor"), slog.String("key_domain", keyDomain), slog.String("actor_domain", actorDomain))
 		err := api.NewBadRequestError("key domain does not match actor")
+		api.HandleError(w, r, err)
+		return
+	}
+	if actorDomain == h.instanceDomain {
+		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "activities from own domain are illegitimate"), slog.String("actor_domain", actorDomain))
+		err := api.NewBadRequestError("activities from own domain are illegitimate")
 		api.HandleError(w, r, err)
 		return
 	}

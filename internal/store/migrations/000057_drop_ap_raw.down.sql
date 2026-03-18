@@ -1,0 +1,2 @@
+ALTER TABLE accounts ADD COLUMN ap_raw JSONB;
+ALTER TABLE statuses ADD COLUMN ap_raw JSONB;
