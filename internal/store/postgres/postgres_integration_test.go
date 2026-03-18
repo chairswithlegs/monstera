@@ -55,7 +55,6 @@ func TestIntegration_PostgresStore(t *testing.T) {
 			FollowersURL: followers,
 			FollowingURL: following,
 			APID:         apID,
-			ApRaw:        nil,
 			Bot:          false,
 			Locked:       false,
 		}

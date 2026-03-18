@@ -94,7 +94,7 @@ func (q *Queries) GetFavouriteByAccountAndStatus(ctx context.Context, arg GetFav
 }
 
 const getFavouritesTimeline = `-- name: GetFavouritesTimeline :many
-SELECT f.id AS cursor, s.id, s.uri, s.account_id, s.text, s.content, s.content_warning, s.visibility, s.language, s.in_reply_to_id, s.reblog_of_id, s.ap_id, s.ap_raw, s.sensitive, s.local, s.edited_at, s.replies_count, s.reblogs_count, s.favourites_count, s.created_at, s.updated_at, s.deleted_at, s.in_reply_to_account_id
+SELECT f.id AS cursor, s.id, s.uri, s.account_id, s.text, s.content, s.content_warning, s.visibility, s.language, s.in_reply_to_id, s.reblog_of_id, s.ap_id, s.sensitive, s.local, s.edited_at, s.replies_count, s.reblogs_count, s.favourites_count, s.created_at, s.updated_at, s.deleted_at, s.in_reply_to_account_id
 FROM favourites f
 INNER JOIN statuses s ON s.id = f.status_id
 WHERE f.account_id = $1 AND s.deleted_at IS NULL
@@ -122,7 +122,6 @@ type GetFavouritesTimelineRow struct {
 	InReplyToID        *string            `json:"in_reply_to_id"`
 	ReblogOfID         *string            `json:"reblog_of_id"`
 	ApID               string             `json:"ap_id"`
-	ApRaw              []byte             `json:"ap_raw"`
 	Sensitive          bool               `json:"sensitive"`
 	Local              bool               `json:"local"`
 	EditedAt           pgtype.Timestamptz `json:"edited_at"`
@@ -157,7 +156,6 @@ func (q *Queries) GetFavouritesTimeline(ctx context.Context, arg GetFavouritesTi
 			&i.InReplyToID,
 			&i.ReblogOfID,
 			&i.ApID,
-			&i.ApRaw,
 			&i.Sensitive,
 			&i.Local,
 			&i.EditedAt,
@@ -180,7 +178,7 @@ func (q *Queries) GetFavouritesTimeline(ctx context.Context, arg GetFavouritesTi
 }
 
 const getStatusFavouritedBy = `-- name: GetStatusFavouritedBy :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.ap_raw, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, am.url AS avatar_url, hm.url AS header_url
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, am.url AS avatar_url, hm.url AS header_url
 FROM accounts a
 INNER JOIN favourites f ON f.account_id = a.id
 LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
@@ -225,7 +223,6 @@ func (q *Queries) GetStatusFavouritedBy(ctx context.Context, arg GetStatusFavour
 			&i.Account.FollowersUrl,
 			&i.Account.FollowingUrl,
 			&i.Account.ApID,
-			&i.Account.ApRaw,
 			&i.Account.Bot,
 			&i.Account.Locked,
 			&i.Account.Suspended,
@@ -239,6 +236,7 @@ func (q *Queries) GetStatusFavouritedBy(ctx context.Context, arg GetStatusFavour
 			&i.Account.StatusesCount,
 			&i.Account.Fields,
 			&i.Account.LastStatusAt,
+			&i.Account.Url,
 			&i.AvatarUrl,
 			&i.HeaderUrl,
 		); err != nil {

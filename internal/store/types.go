@@ -3,31 +3,9 @@ package store
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/chairswithlegs/monstera/internal/domain"
 )
-
-// TrendingStatusEntry is one row written to the trending_statuses cache table.
-type TrendingStatusEntry struct {
-	StatusID string
-	Score    float64
-}
-
-// TrendingTagHistoryEntry is one row written to the trending_tag_history cache table.
-type TrendingTagHistoryEntry struct {
-	HashtagID string
-	Day       time.Time
-	Uses      int64
-	Accounts  int64
-}
-
-// HashtagDailyStats is the aggregated usage of a hashtag on a single calendar day,
-// returned by GetHashtagDailyStats for use by the trending-index job.
-type HashtagDailyStats struct {
-	HashtagID   string
-	HashtagName string
-	Day         time.Time
-	Uses        int64
-	Accounts    int64
-}
 
 // CreateAccountInput is the input for creating an account.
 type CreateAccountInput struct {
@@ -43,9 +21,9 @@ type CreateAccountInput struct {
 	FollowersURL string
 	FollowingURL string
 	APID         string
-	ApRaw        []byte
 	Bot          bool
 	Locked       bool
+	URL          *string
 }
 
 // CreateUserInput is the input for creating a user.
@@ -74,7 +52,6 @@ type CreateStatusInput struct {
 	QuotedStatusID      *string
 	QuoteApprovalPolicy string
 	APID                string
-	ApRaw               []byte
 	Sensitive           bool
 	Local               bool
 }
@@ -224,10 +201,10 @@ type UpdateAccountInput struct {
 	Note          *string
 	AvatarMediaID *string
 	HeaderMediaID *string
-	APRaw         []byte
 	Bot           bool
 	Locked        bool
 	Fields        json.RawMessage // when not updating fields, pass current account.Fields
+	URL           *string
 }
 
 // CreateMediaAttachmentInput is the input for creating a media attachment.
@@ -235,6 +212,7 @@ type CreateMediaAttachmentInput struct {
 	ID          string
 	AccountID   string
 	Type        string
+	ContentType *string
 	StorageKey  string
 	URL         string
 	PreviewURL  *string
@@ -400,4 +378,16 @@ type UpsertStatusCardInput struct {
 	ImageURL        string
 	Width           int
 	Height          int
+}
+
+// CreatePushSubscriptionInput is the input for creating a push subscription.
+type CreatePushSubscriptionInput struct {
+	ID            string
+	AccessTokenID string
+	AccountID     string
+	Endpoint      string
+	KeyP256DH     string
+	KeyAuth       string
+	Alerts        domain.PushAlerts
+	Policy        string
 }

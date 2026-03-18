@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"io"
+	"strings"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/media"
@@ -20,7 +21,18 @@ type MediaService interface {
 	UploadAvatar(ctx context.Context, accountID string, body io.Reader, contentType string) (*UploadResult, error)
 	UploadHeader(ctx context.Context, accountID string, body io.Reader, contentType string) (*UploadResult, error)
 	Update(ctx context.Context, accountID, mediaID string, description *string, focusX, focusY *float64) (*domain.MediaAttachment, error)
-	CreateRemote(ctx context.Context, accountID string, remoteURL string) (*domain.MediaAttachment, error)
+	CreateRemote(ctx context.Context, in CreateRemoteMediaInput) (*domain.MediaAttachment, error)
+}
+
+// CreateRemoteMediaInput is the input for creating a remote media attachment (e.g. from federation).
+type CreateRemoteMediaInput struct {
+	AccountID   string
+	RemoteURL   string
+	Description *string
+	MediaType   string
+	Blurhash    *string
+	Width       int
+	Height      int
 }
 
 type mediaService struct {
@@ -134,6 +146,7 @@ func (svc *mediaService) upload(ctx context.Context, accountID string, body io.R
 		ID:          id,
 		AccountID:   accountID,
 		Type:        typeStr,
+		ContentType: &contentType,
 		StorageKey:  key,
 		URL:         urlStr,
 		PreviewURL:  previewURLStr,
@@ -156,7 +169,7 @@ func (svc *mediaService) Update(ctx context.Context, accountID, mediaID string, 
 		return nil, fmt.Errorf("Update: %w", err)
 	}
 	if att.AccountID != accountID {
-		return nil, domain.ErrNotFound
+		return nil, fmt.Errorf("Update: %w", domain.ErrNotFound)
 	}
 	if att.StatusID != nil {
 		return nil, fmt.Errorf("Update: media already attached to status: %w", domain.ErrUnprocessable)
@@ -198,20 +211,60 @@ func (svc *mediaService) Update(ctx context.Context, accountID, mediaID string, 
 }
 
 // CreateRemote creates a media attachment record for a remote URL (no upload). Used for incoming Note attachments.
-func (svc *mediaService) CreateRemote(ctx context.Context, accountID string, remoteURL string) (*domain.MediaAttachment, error) {
-	if remoteURL == "" {
+func (svc *mediaService) CreateRemote(ctx context.Context, in CreateRemoteMediaInput) (*domain.MediaAttachment, error) {
+	if in.RemoteURL == "" {
 		return nil, fmt.Errorf("CreateRemote: %w (empty URL)", domain.ErrValidation)
 	}
+	typeStr := svc.inferMediaTypeFromMIME(in.MediaType)
+	var meta []byte
+	if in.Width > 0 || in.Height > 0 {
+		metaMap := map[string]any{
+			"original": map[string]int{"width": in.Width, "height": in.Height},
+		}
+		var err error
+		meta, err = json.Marshal(metaMap)
+		if err != nil {
+			return nil, fmt.Errorf("CreateRemote: marshal meta: %w", err)
+		}
+	}
+	var ct *string
+	if in.MediaType != "" {
+		ct = &in.MediaType
+	}
 	att, err := svc.store.CreateMediaAttachment(ctx, store.CreateMediaAttachmentInput{
-		ID:         uid.New(),
-		AccountID:  accountID,
-		Type:       "image",
-		StorageKey: "",
-		URL:        remoteURL,
-		RemoteURL:  &remoteURL,
+		ID:          uid.New(),
+		AccountID:   in.AccountID,
+		Type:        typeStr,
+		ContentType: ct,
+		StorageKey:  "",
+		URL:         in.RemoteURL,
+		RemoteURL:   &in.RemoteURL,
+		Description: in.Description,
+		Blurhash:    in.Blurhash,
+		Meta:        meta,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("CreateRemote: %w", err)
 	}
 	return att, nil
+}
+
+func (svc *mediaService) inferMediaTypeFromMIME(mime string) string {
+	if t, ok := svc.allowedTypes[mime]; ok {
+		return t
+	}
+	mime = strings.ToLower(strings.TrimSpace(mime))
+	switch {
+	case strings.HasPrefix(mime, "image/"):
+		if strings.HasPrefix(mime, "image/gif") {
+			return domain.MediaTypeGifv
+		}
+		return domain.MediaTypeImage
+	case strings.HasPrefix(mime, "video/"):
+		return domain.MediaTypeVideo
+	case strings.HasPrefix(mime, "audio/"):
+		return domain.MediaTypeAudio
+	default:
+		return domain.MediaTypeImage
+	}
 }

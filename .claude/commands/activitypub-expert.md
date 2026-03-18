@@ -12,6 +12,92 @@ When helping with ActivityPub tasks:
 
 ---
 
+## Monstera Codebase Conventions
+
+When working on ActivityPub code in Monstera, follow these codebase-specific conventions in addition to the protocol knowledge below. These reflect the current project structure after the service decomposition refactoring.
+
+### Package layout
+
+```
+internal/activitypub/
+├── inbox.go            # Inbox interface + dispatcher; routes activities to type-specific handlers
+├── inbox_follow.go     # Follow, Accept, Reject, Block handlers
+├── inbox_status.go     # Create, Update, Delete, Announce, Like handlers
+├── inbox_undo.go       # Undo handlers (Undo Follow, Undo Like, Undo Announce, Undo Block)
+├── federation_subscriber.go  # Consumes domain events → builds AP activities → sends to outbox workers
+├── remote_resolver.go  # Resolves remote actors via WebFinger + Actor fetch; SyncActorToStore
+├── httpsignature.go    # HTTP Signature creation and verification
+├── streams.go          # NATS stream/subject definitions for federation
+├── vocab/              # AP type definitions and domain↔AP conversion functions
+│   ├── vocab.go        # Base types (Object, ObjectType, PublicKey, Tag, Attachment, etc.)
+│   ├── actor.go        # Actor struct, ActorToRemoteFields, PropertyValue parsing
+│   ├── note.go         # Note struct, LocalStatusToNote, NoteVisibility, NoteStatusFields, ContentMap, Source
+│   ├── activity.go     # Activity struct, NewCreateActivity, NewAnnounceActivity, NewLikeActivity, etc.
+│   ├── collection.go   # OrderedCollection/Page types
+│   └── utils.go        # DomainFromIRI and other helpers
+└── internal/           # Outbox delivery workers (not imported outside this package)
+    ├── outbox_fanout_worker.go   # Fans out activities to follower inboxes
+    ├── outbox_delivery_worker.go # Delivers signed activities to remote inboxes
+    └── streams.go                # NATS stream/subject definitions for outbox queues
+```
+
+### Inbox conventions
+
+The inbox is a pure AP-to-service translation layer. It maps incoming activities to service calls and contains no business logic.
+
+- **Own-domain rejection**: Activities whose actor domain matches the instance domain are rejected with `ErrInboxFatal` to prevent spoofing.
+- **Blocklist check**: Blocked/suspended domains are rejected before processing (via `blocklist.BlocklistCache` from `internal/blocklist`).
+- **Remote methods only**: Inbox handlers call `*Remote` service methods — `RemoteStatusWriteService.CreateRemote`, `RemoteStatusWriteService.CreateRemoteReblog`, `RemoteFollowService.CreateRemoteFollow`, `RemoteFollowService.CreateRemoteBlock`, etc. Never generic methods that assume a local actor.
+- **Actor resolution**: Unknown actors are resolved via `RemoteAccountResolver.SyncActorToStore`, which fetches, sanitizes, and stores the Actor document.
+
+### Service decomposition for federation callers
+
+The inbox depends on these decomposed service interfaces:
+
+| Service | Purpose |
+|---------|---------|
+| `RemoteStatusWriteService` | Remote status CRUD from federation (CreateRemote, UpdateRemote, DeleteRemote, CreateRemoteReblog, CreateRemoteFavourite, DeleteRemoteFavourite) |
+| `RemoteFollowService` | Remote follow operations (CreateRemoteFollow, AcceptFollow, DeleteRemoteFollow, CreateRemoteBlock, HasLocalFollower, GetFollowerInboxURLsPaginated) |
+| `StatusService` | Read-only status lookups (GetByID, GetByAPID) |
+| `StatusInteractionService` | Not used by inbox — only for local user-initiated interactions |
+| `FollowService` | Local follow operations — not used by inbox |
+| `AccountService` | Account lookups and CreateOrUpdateRemoteAccount |
+| `MediaService` | Remote media attachment handling |
+
+### Federation subscriber conventions
+
+The `FederationSubscriber` listens to the `DOMAIN_EVENTS` NATS stream (consumer: `events.ConsumerFederation`) and translates domain events into AP activities for outbound delivery.
+
+- **Locality checks**: Use `Account.Domain != nil` (remote) or `Account.Domain == nil` (local). Never use `InboxURL == ""` as a locality proxy.
+- **Activity construction**: Use `vocab.New*Activity` constructors from the vocab package.
+- **Delivery**: Activities go through fanout (resolves follower lists via `RemoteFollowService`) then delivery (signs and POSTs to remote inboxes).
+- **SSE-only events**: `EventStatusCreatedRemote`, `EventStatusDeletedRemote`, and `EventNotificationCreated` are ACKed and skipped — they are handled by the SSE subscriber, not federation.
+
+### Vocab package conventions
+
+The `vocab/` subpackage owns all AP type definitions and conversion logic between domain types and AP types.
+
+- **PropertyValue**: Actor profile metadata fields are parsed from `Actor.Attachment` entries with `Type == "PropertyValue"`. Stored as `json.RawMessage` of `[{"name":"...","value":"..."}]` on `domain.Account.Fields`. The `verified_at` field is not stored — only the originating server knows verification state.
+- **ContentMap**: Outbound Notes include `ContentMap` (map of language code to HTML content) when the status has a language set, for language-aware rendering on remote servers.
+- **Source.Content**: Inbound Notes use `note.Source.Content` (plain text) over `note.Content` (HTML) for the domain `Text` field.
+- **To/Cc addressing**: `LocalStatusToNote` sets correct To/Cc based on visibility (Public, Unlisted, Followers-only, Direct). Public addresses include the full IRI `https://www.w3.org/ns/activitystreams#Public`.
+- **Inbound field extraction**: `ActorToRemoteFields(actor) → RemoteActorFields` extracts stored fields (including `URL` for profile page and `Fields` from PropertyValue). `NoteToStatusFields(note) → NoteStatusFields` extracts non-sanitized fields.
+- **Outbound**: `LocalStatusToNote(input) → (*Note, error)` builds an AP Note for local statuses. `AccountToActor(account, domain) → Actor` builds an AP Actor.
+
+### Local/remote safety guards
+
+Service methods enforce locality with `requireLocal` / `requireRemote` guards that return `domain.ErrForbidden` if violated. The inbox should only call `*Remote` methods; API handlers should only call local methods.
+
+### NATS package
+
+NATS utilities live in `internal/natsutil` (not `internal/nats`). This package provides `Client`, `Publisher`, `Subscriber`, and `Subscription` interfaces.
+
+### Remote resolver conventions
+
+`RemoteAccountResolver.SyncActorToStore` is the single path for creating or updating remote accounts from Actor documents. It sanitizes input, extracts fields via `vocab.ActorToRemoteFields` (including `ProfileURL` and `Fields`), fetches collection counts, and calls `AccountService.CreateOrUpdateRemoteAccount`.
+
+---
+
 ## Protocol Foundations
 
 ### Specs You Must Know Cold
@@ -80,7 +166,28 @@ Every dereferenceable entity must be served as `application/activity+json` or
 - **Key ID format**: Must be `{actorId}#main-key` or `{actorId}#key` — Mastodon hardcodes
   this assumption in many places.
 - **Missing `url` field**: Not required by spec but Mastodon uses it for the profile link.
-  Without it, remote profiles show a broken or missing link.
+  Without it, remote profiles show a broken or missing link. In Monstera, stored as `ProfileURL`
+  on domain accounts (from `Actor.URL`).
+
+### Profile Metadata Fields (PropertyValue)
+
+Mastodon-style profile fields are carried in `attachment` as `PropertyValue` objects:
+
+```json
+{
+  "attachment": [
+    {
+      "type": "PropertyValue",
+      "name": "Website",
+      "value": "<a href=\"https://example.com\">example.com</a>"
+    }
+  ]
+}
+```
+
+In Monstera, these are parsed by `vocab.ActorToRemoteFields` and stored as `json.RawMessage`
+on `domain.Account.Fields`. The `verified_at` field present in Mastodon's serialization is
+not stored — only the originating server can verify link ownership.
 
 ---
 
@@ -303,6 +410,7 @@ Check: valid JSON, correct `Content-Type`, `id` matches URL, `publicKey` present
 - Check remote server logs for `401 Unauthorized` or `403 Forbidden`
 - Enable verbose logging on your signature construction
 - Verify system clock: `date` on both servers, must be within 30s
+- Test with [httpsig.org](https://httpsig.org) or Mastodon's built-in diagnostics
 
 ### Layer 3: Activity Shape
 - Validate your JSON against known-good Mastodon payloads
@@ -326,7 +434,7 @@ Check: valid JSON, correct `Content-Type`, `id` matches URL, `publicKey` present
 When in doubt about correct federation behavior, consult these well-tested open source implementations:
 
 - **GoToSocial** — pragmatic, extensively commented federation code; handles every known Mastodon quirk
-- **Mastodon** (Ruby) — ground truth for de-facto fediverse behavior; check `app/lib/activitypub/`
+- **Mastodon** (Ruby) — ground truth for de-facto fediverse behavior; check `app/lib/activitypub/` 
 - **Misskey/Calckey** — useful for understanding non-Mastodon federation variants
 
 ---
@@ -339,8 +447,10 @@ When in doubt about correct federation behavior, consult these well-tested open 
 - **Hashtags**: Must be `Tag` objects with `type: "Hashtag"`, `name: "#tagname"`, `href` pointing to a search URL
 - **Mentions**: `Tag` objects with `type: "Mention"`, `name: "@user@host"`, `href` pointing to actor URL
 - **`to` and `cc` required**: Mastodon ignores activities where `to`/`cc` are missing or only `as:Public`
-- **Public URI**: Use `https://www.w3.org/ns/activitystreams#Public` (full URI), aliased as `as:Public` — both appear in the wild
+- **Public URI**: Use `https://www.w3.org/ns/activitystreams#Public` (full URI), aliased as `as:Public` — both appear in the wild. In Monstera's vocab package, `isPublicAddress` accepts all three forms (`as:Public`, `Public`, and the full IRI)
 - **`url` on Note**: Should be the human-readable HTML URL, not the `id` API URL
+- **`contentMap`**: Mastodon includes `contentMap` on Notes for language-aware rendering. In Monstera, outbound Notes set `ContentMap` when the status has a language
+- **`source`**: Mastodon includes `source.content` (plain text) and `source.mediaType` on Notes for editable posts. Monstera reads `Source.Content` for the domain `Text` field on inbound Notes
 - **Tombstone on Delete**: When deleting, send `Delete` with `object` set to a `Tombstone` with the original `id` — some servers won't process a bare ID string
 
 ---

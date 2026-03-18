@@ -110,7 +110,7 @@ Reference these guidelines when:
 
 ## How to Use
 
-Read individual rule files in `.cursor/skills/vercel-react-best-practices/rules/` for detailed explanations and code examples. Each rule file contains:
+Each rule listed above covers:
 - Brief explanation of why it matters
 - Incorrect code example with explanation
 - Correct code example with explanation

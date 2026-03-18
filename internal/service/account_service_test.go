@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testRemoteDomain = "remote.example"
+
 func TestAccountService_Create(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -115,10 +117,10 @@ func TestAccountService_Register_invalid_role_returns_validation(t *testing.T) {
 	svc := NewAccountService(fake, "https://example.com")
 
 	_, err := svc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hashed",
-		Role:         "superadmin",
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hashed",
+		Role:     "superadmin",
 	})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrValidation)
@@ -131,10 +133,10 @@ func TestAccountService_Register(t *testing.T) {
 	svc := NewAccountService(fake, "https://example.com")
 
 	acc, err := svc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hashed",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hashed",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, acc)
@@ -152,10 +154,10 @@ func TestAccountService_GetAccountWithUser(t *testing.T) {
 	svc := NewAccountService(fake, "https://example.com")
 
 	registered, err := svc.Register(ctx, RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -317,4 +319,92 @@ func TestAccountService_GetActiveLocalAccount_returns_avatar_and_header_urls(t *
 	require.NoError(t, err)
 	assert.Equal(t, "https://example.com/media/avatar.jpg", got.AvatarURL)
 	assert.Equal(t, "https://example.com/media/header.jpg", got.HeaderURL)
+}
+
+func TestAccountService_SuspendRemote_remote_account(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+
+	remoteDomain := testRemoteDomain
+	acc, err := fake.CreateAccount(ctx, store.CreateAccountInput{
+		ID: "01remote", Username: "bob", Domain: &remoteDomain,
+	})
+	require.NoError(t, err)
+
+	err = svc.SuspendRemote(ctx, acc.ID)
+	require.NoError(t, err)
+
+	got, err := svc.GetByID(ctx, acc.ID)
+	require.NoError(t, err)
+	assert.True(t, got.Suspended)
+}
+
+func TestAccountService_SuspendRemote_local_account_returns_forbidden(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+
+	acc, err := svc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+
+	err = svc.SuspendRemote(ctx, acc.ID)
+	assert.ErrorIs(t, err, domain.ErrForbidden)
+}
+
+func TestAccountService_SuspendRemote_not_found(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+
+	err := svc.SuspendRemote(ctx, "nonexistent")
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+}
+
+func TestAccountService_CreateOrUpdateRemoteAccount_local_account_returns_forbidden(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+
+	acc, err := svc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+
+	evilName := "Evil"
+	_, err = svc.CreateOrUpdateRemoteAccount(ctx, CreateOrUpdateRemoteInput{
+		APID:         acc.APID,
+		Username:     "alice",
+		Domain:       "evil.example",
+		DisplayName:  &evilName,
+		PublicKey:    "fake-key",
+		InboxURL:     "https://evil.example/users/alice/inbox",
+		OutboxURL:    "https://evil.example/users/alice/outbox",
+		FollowersURL: "https://evil.example/users/alice/followers",
+		FollowingURL: "https://evil.example/users/alice/following",
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrForbidden)
+}
+
+func TestAccountService_CreateOrUpdateRemoteAccount_empty_domain_returns_validation(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+
+	_, err := svc.CreateOrUpdateRemoteAccount(ctx, CreateOrUpdateRemoteInput{
+		APID:         "https://" + testRemoteDomain + "/users/bob",
+		Username:     "bob",
+		Domain:       "",
+		PublicKey:    "fake-key",
+		InboxURL:     "https://" + testRemoteDomain + "/users/bob/inbox",
+		OutboxURL:    "https://" + testRemoteDomain + "/users/bob/outbox",
+		FollowersURL: "https://" + testRemoteDomain + "/users/bob/followers",
+		FollowingURL: "https://" + testRemoteDomain + "/users/bob/following",
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrValidation)
 }

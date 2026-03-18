@@ -12,3 +12,15 @@ const DefaultServiceListLimit = 80
 // honor. Callers (handlers) should enforce API-specific caps; this is a
 // safety ceiling to avoid unbounded DB queries.
 const MaxServicePageLimit = 1000
+
+// ClampLimit normalises a caller-supplied limit: zero/negative values become
+// defaultLimit, values above maxLimit are capped to maxLimit.
+func ClampLimit(limit, defaultLimit, maxLimit int) int {
+	if limit <= 0 {
+		return defaultLimit
+	}
+	if limit > maxLimit {
+		return maxLimit
+	}
+	return limit
+}

@@ -20,14 +20,15 @@ func TestFollowRequestsHandler_GETFollowRequests(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"))
+	remoteFollowSvc := service.NewRemoteFollowService(st)
+	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"), remoteFollowSvc)
 	handler := NewFollowRequestsHandler(followSvc, accountSvc, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -55,14 +56,15 @@ func TestFollowRequestsHandler_POSTAuthorize(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"))
+	remoteFollowSvc := service.NewRemoteFollowService(st)
+	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"), remoteFollowSvc)
 	handler := NewFollowRequestsHandler(followSvc, accountSvc, "example.com")
 
 	target, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "target",
-		Email:        "target@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "target",
+		Email:    "target@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	requester, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "requester"})
@@ -90,15 +92,16 @@ func TestFollowRequestsHandler_POSTReject(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"))
+	remoteFollowSvc := service.NewRemoteFollowService(st)
+	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"), remoteFollowSvc)
 	handler := NewFollowRequestsHandler(followSvc, accountSvc, "example.com")
 
 	ctx := context.Background()
 	target, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "target",
-		Email:        "target@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "target",
+		Email:    "target@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	requester, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "requester"})

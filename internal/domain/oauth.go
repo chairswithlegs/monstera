@@ -2,6 +2,7 @@ package domain
 
 import "time"
 
+// OAuthApplication is a registered OAuth 2.0 client (Mastodon app).
 type OAuthApplication struct {
 	ID           string
 	Name         string
@@ -13,6 +14,7 @@ type OAuthApplication struct {
 	CreatedAt    time.Time
 }
 
+// OAuthAccessToken is an issued access token for API authentication.
 type OAuthAccessToken struct {
 	ID            string
 	ApplicationID string
@@ -24,6 +26,7 @@ type OAuthAccessToken struct {
 	CreatedAt     time.Time
 }
 
+// OAuthAuthorizationCode is a short-lived code exchanged for an access token.
 type OAuthAuthorizationCode struct {
 	ID                  string
 	Code                string

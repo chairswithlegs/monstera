@@ -27,13 +27,14 @@ func TestPollsHandler_GETPoll(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewPollsHandler(statusSvc, statusWriteSvc)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	handler := NewPollsHandler(statusSvc, interactionSvc)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -101,13 +102,14 @@ func TestPollsHandler_POSTVotes(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewPollsHandler(statusSvc, statusWriteSvc)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	handler := NewPollsHandler(statusSvc, interactionSvc)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "voter",
-		Email:        "voter@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "voter",
+		Email:    "voter@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -160,7 +162,39 @@ func TestPollsHandler_POSTVotes(t *testing.T) {
 		assert.InDelta(t, 2.0, ownVotes[1].(float64), 0.01)
 	})
 
-	// Expired poll: create one with expires_at in the past via store
+	t.Run("422 when choices empty", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"choices":[]}`)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/polls/"+pollID+"/votes", body)
+		req = testutil.AddChiURLParam(req, "id", pollID)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		rec := httptest.NewRecorder()
+		handler.POSTVotes(rec, req)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	})
+
+	t.Run("422 when choices contain duplicates", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"choices":[0,0]}`)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/polls/"+pollID+"/votes", body)
+		req = testutil.AddChiURLParam(req, "id", pollID)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		rec := httptest.NewRecorder()
+		handler.POSTVotes(rec, req)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	})
+
+	t.Run("422 when choices contain negative index", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"choices":[-1]}`)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/polls/"+pollID+"/votes", body)
+		req = testutil.AddChiURLParam(req, "id", pollID)
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		rec := httptest.NewRecorder()
+		handler.POSTVotes(rec, req)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	})
+
 	t.Run("422 when poll expired", func(t *testing.T) {
 		expiredAt := time.Now().Add(-time.Hour)
 		expiredStatusID := uid.New()

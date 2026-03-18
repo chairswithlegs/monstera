@@ -1,6 +1,5 @@
 # Cursor files
-.cursor/mcp.json
-.cursor/plans
+.cursor/
 
 # Claude files
 .claude/settings.json
@@ -12,3 +11,7 @@ bin/
 
 # Federation testing
 /federation-testing/elk-storage
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db

@@ -73,7 +73,11 @@ func (h *TimelinesHandler) GETPublic(w http.ResponseWriter, r *http.Request) {
 	params := PageParamsFromRequest(r)
 	localOnly := api.QueryParamIsTrue(r, "local")
 	maxID := optionalString(params.MaxID)
-	enriched, err := h.timeline.PublicLocalEnriched(r.Context(), localOnly, maxID, params.Limit)
+	var viewerID *string
+	if account := middleware.AccountFromContext(r.Context()); account != nil {
+		viewerID = &account.ID
+	}
+	enriched, err := h.timeline.PublicLocalEnriched(r.Context(), localOnly, viewerID, maxID, params.Limit)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -258,7 +262,11 @@ func (h *TimelinesHandler) GETTag(w http.ResponseWriter, r *http.Request) {
 	}
 	params := PageParamsFromRequest(r)
 	maxID := optionalString(params.MaxID)
-	enriched, err := h.timeline.HashtagTimelineEnriched(r.Context(), strings.ToLower(hashtag), maxID, params.Limit)
+	var viewerID *string
+	if account := middleware.AccountFromContext(r.Context()); account != nil {
+		viewerID = &account.ID
+	}
+	enriched, err := h.timeline.HashtagTimelineEnriched(r.Context(), strings.ToLower(hashtag), viewerID, maxID, params.Limit)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return

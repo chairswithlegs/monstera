@@ -2,6 +2,7 @@ package domain
 
 import "time"
 
+// Notification is an activity (mention, reblog, favourite, etc.) delivered to an account.
 type Notification struct {
 	ID        string
 	AccountID string

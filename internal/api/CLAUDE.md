@@ -6,6 +6,8 @@ When adding a new API handler, follow the structure and conventions used in `int
 
 - **Shared package** (`internal/api`): `HandleError`, `WriteJSON` / `WriteActivityJSON` / `WriteJRD`, `DecodeJSONBody`, `DecodeAndValidateJSON`, `Validatable`, `ValidateRequiredField`, `ValidateOneOf`, `ValidateRFC3339`, `ValidatePositiveInt`, `ErrorResponse`, and API sentinels (`ErrUnauthorized`, `ErrNotFound`, etc.). No handler logic.
 - **Subpackages** group handlers by protocol or surface (mastodon, activitypub, oauth). Put response DTOs and domain→API conversion in an `apimodel` subpackage when the response shape is non-trivial (e.g. `mastodon/apimodel/`).
+- **SSE streaming** lives in `internal/api/mastodon/sse/` (hub, subscriber, event formatting).
+- **Handler file decomposition**: when a resource handler grows large, split into focused files using the pattern `{resource}_{concern}.go` (e.g. `statuses_actions.go`, `statuses_context.go`, `accounts_relationships.go`, `accounts_tags.go`).
 
 ## Handler struct and constructor
 
@@ -14,15 +16,17 @@ When adding a new API handler, follow the structure and conventions used in `int
 - **Methods**: `{METHOD}{ResourceOrAction}` — e.g. `GETAccounts`, `POSTStatuses`, `GETVerifyCredentials`, `GETActor`. One method per route.
 
 ```go
-// Example: handler struct and constructor
+// Example: handler struct and constructor (reflects post-decomposition services)
 type StatusesHandler struct {
-	accounts       *service.AccountService
-	statuses       *service.StatusService
+	accounts       service.AccountService
+	statuses       service.StatusService
+	statusWrites   service.StatusWriteService
+	interactions   service.StatusInteractionService
+	scheduled      service.ScheduledStatusService
+	conversations  service.ConversationService
 	instanceDomain string
-}
-
-func NewStatusesHandler(accounts *service.AccountService, statuses *service.StatusService, instanceDomain string) *StatusesHandler {
-	return &StatusesHandler{accounts: accounts, statuses: statuses, instanceDomain: instanceDomain}
+	cache          cache.Store
+	pollLimits     *service.PollLimits
 }
 ```
 

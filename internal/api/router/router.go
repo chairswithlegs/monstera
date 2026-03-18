@@ -17,13 +17,24 @@ import (
 	"github.com/chairswithlegs/monstera/internal/media/local"
 	oauthpkg "github.com/chairswithlegs/monstera/internal/oauth"
 	"github.com/chairswithlegs/monstera/internal/observability"
+	"github.com/chairswithlegs/monstera/internal/ratelimit"
 	"github.com/chairswithlegs/monstera/internal/service"
 )
+
+// RateLimitConfig holds rate limit parameters for the router.
+type RateLimitConfig struct {
+	Limiter      ratelimit.Limiter
+	AuthLimit    int
+	AuthWindow   time.Duration
+	PublicLimit  int
+	PublicWindow time.Duration
+}
 
 // Deps holds dependencies required to build the HTTP router.
 type Deps struct {
 	OAuthServer     *oauthpkg.Server
 	AccountsService service.AccountService
+	RateLimit       *RateLimitConfig
 
 	// Health check handlers
 	Health *api.HealthChecker
@@ -53,6 +64,7 @@ type Deps struct {
 	Markers           *mastodon.MarkersHandler
 	FeaturedTags      *mastodon.FeaturedTagsHandler
 	Announcements     *mastodon.AnnouncementsHandler
+	Push              *mastodon.PushHandler
 
 	// ActivityPub handlers
 	WebFinger   *activitypub.WebFingerHandler
@@ -62,6 +74,10 @@ type Deps struct {
 	Collections *activitypub.CollectionsHandler
 	Outbox      *activitypub.OutboxHandler
 	Inbox       *activitypub.InboxHandler
+
+	// Body size limits.
+	MaxRequestBodyBytes int64
+	MediaMaxBytes       int64
 
 	// MediaFileServer serves locally-stored media files (local driver only).
 	// nil when media is served externally (e.g. S3/CDN).
@@ -86,7 +102,7 @@ func New(deps Deps) http.Handler {
 
 	r.Use(chimw.RequestID)
 	r.Use(chimw.RealIP)
-	r.Use(observability.RequestIDMiddlware())
+	r.Use(observability.RequestIDMiddleware())
 	r.Use(observability.RequestLoggerMiddleware())
 	r.Use(observability.MetricsMiddleware())
 	r.Use(middleware.Recoverer())
@@ -94,13 +110,16 @@ func New(deps Deps) http.Handler {
 
 	r.Group(func(r chi.Router) {
 		r.Use(chimw.Timeout(30 * time.Second))
+		if deps.MaxRequestBodyBytes > 0 {
+			r.Use(middleware.MaxBodySize(deps.MaxRequestBodyBytes))
+		}
 
 		// Health check routes
 		r.Get("/healthz/live", deps.Health.GETLiveness)
 		r.Get("/healthz/ready", deps.Health.GETReadiness)
 
-		// ActivityPub routes
-		// TODO: determine if any of these routes should be prefixed
+		// ActivityPub routes — paths are protocol-mandated and must not be prefixed.
+		// Co-hosting with the UI is handled via reverse proxy + content negotiation.
 		r.Get("/.well-known/webfinger", deps.WebFinger.GETWebFinger)
 		r.Get("/.well-known/nodeinfo", deps.NodeInfoPtr.GETNodeInfoPointer)
 		r.Get("/nodeinfo/2.0", deps.NodeInfo.GETNodeInfo)
@@ -121,11 +140,22 @@ func New(deps Deps) http.Handler {
 		r.Get("/instance", deps.Instance.GETInstance)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.OptionalAuth(deps.OAuthServer, deps.AccountsService))
+			if rl := deps.RateLimit; rl != nil {
+				r.Use(middleware.RateLimitByIP(rl.Limiter, rl.PublicLimit, rl.PublicWindow))
+			}
 			r.Get("/search", deps.Search.GETSearch)
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth(deps.OAuthServer, deps.AccountsService))
-			r.Method("POST", "/media", middleware.RequiredScopes("write:media")(http.HandlerFunc(deps.Media.POSTMedia)))
+			if rl := deps.RateLimit; rl != nil {
+				r.Use(middleware.RateLimitByAccount(rl.Limiter, rl.AuthLimit, rl.AuthWindow))
+			}
+			r.Group(func(r chi.Router) {
+				if deps.MediaMaxBytes > 0 {
+					r.Use(middleware.MaxBodySize(deps.MediaMaxBytes))
+				}
+				r.Method("POST", "/media", middleware.RequiredScopes("write:media")(http.HandlerFunc(deps.Media.POSTMedia)))
+			})
 			r.Method("GET", "/suggestions", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Suggestions.GETSuggestions)))
 		})
 	})
@@ -138,6 +168,8 @@ func New(deps Deps) http.Handler {
 			r.Use(middleware.StreamingTokenFromQuery)
 			r.Use(middleware.RequireAuth(deps.OAuthServer, deps.AccountsService))
 			r.Get("/streaming/user", deps.Streaming.GETUser)
+			r.Get("/streaming/list", deps.Streaming.GETList)
+			r.Get("/streaming/direct", deps.Streaming.GETDirect)
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.StreamingTokenFromQuery)
@@ -158,6 +190,9 @@ func New(deps Deps) http.Handler {
 			// Auth optional routes
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.OptionalAuth(deps.OAuthServer, deps.AccountsService))
+				if rl := deps.RateLimit; rl != nil {
+					r.Use(middleware.RateLimitByIP(rl.Limiter, rl.PublicLimit, rl.PublicWindow))
+				}
 				r.Get("/accounts/lookup", deps.Accounts.GETAccountsLookup)
 				r.Get("/accounts/{id}", deps.Accounts.GETAccounts)
 				r.Get("/directory", deps.Accounts.GETDirectory)
@@ -169,6 +204,7 @@ func New(deps Deps) http.Handler {
 				r.Get("/polls/{id}", deps.Polls.GETPoll)
 				r.Get("/timelines/public", deps.Timelines.GETPublic)
 				r.Get("/timelines/tag/{hashtag}", deps.Timelines.GETTag)
+				r.Get("/tags/{name}", deps.Accounts.GETTag)
 				r.Get("/trends/statuses", deps.Trends.GETTrendsStatuses)
 				r.Get("/trends/tags", deps.Trends.GETTrendsTags)
 				r.Get("/trends/links", deps.Trends.GETTrendsLinks)
@@ -177,6 +213,9 @@ func New(deps Deps) http.Handler {
 			// Auth required routes
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequireAuth(deps.OAuthServer, deps.AccountsService))
+				if rl := deps.RateLimit; rl != nil {
+					r.Use(middleware.RateLimitByAccount(rl.Limiter, rl.AuthLimit, rl.AuthWindow))
+				}
 				r.Method("GET", "/accounts/verify_credentials", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Accounts.GETVerifyCredentials)))
 				r.Method("GET", "/preferences", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Preferences.GETPreferences)))
 				r.Method("GET", "/statuses/{id}/quotes", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.Statuses.GETQuotes)))
@@ -196,8 +235,8 @@ func New(deps Deps) http.Handler {
 				r.Method("POST", "/accounts/{id}/mute", middleware.RequiredScopes("write:mutes")(http.HandlerFunc(deps.Accounts.POSTMute)))
 				r.Method("POST", "/accounts/{id}/unmute", middleware.RequiredScopes("write:mutes")(http.HandlerFunc(deps.Accounts.POSTUnmute)))
 				r.Method("GET", "/followed_tags", middleware.RequiredScopes("read:follows")(http.HandlerFunc(deps.Accounts.GETFollowedTags)))
-				r.Method("POST", "/followed_tags", middleware.RequiredScopes("write:follows")(http.HandlerFunc(deps.Accounts.POSTFollowedTags)))
-				r.Method("DELETE", "/followed_tags/{id}", middleware.RequiredScopes("write:follows")(http.HandlerFunc(deps.Accounts.DELETEFollowedTag)))
+				r.Method("POST", "/tags/{name}/follow", middleware.RequiredScopes("write:follows")(http.HandlerFunc(deps.Accounts.POSTTagFollow)))
+				r.Method("POST", "/tags/{name}/unfollow", middleware.RequiredScopes("write:follows")(http.HandlerFunc(deps.Accounts.POSTTagUnfollow)))
 				r.Method("GET", "/featured_tags", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.FeaturedTags.GETFeaturedTags)))
 				r.Method("POST", "/featured_tags", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.FeaturedTags.POSTFeaturedTags)))
 				r.Method("DELETE", "/featured_tags/{id}", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.FeaturedTags.DELETEFeaturedTag)))
@@ -210,8 +249,13 @@ func New(deps Deps) http.Handler {
 						r.Method("DELETE", "/", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.Announcements.DELETEAnnouncementReaction)))
 					})
 				})
-				r.Method("POST", "/media", middleware.RequiredScopes("write:media")(http.HandlerFunc(deps.Media.POSTMedia)))
-				r.Method("PUT", "/media/{id}", middleware.RequiredScopes("write:media")(http.HandlerFunc(deps.Media.PUTMedia)))
+				r.Group(func(r chi.Router) {
+					if deps.MediaMaxBytes > 0 {
+						r.Use(middleware.MaxBodySize(deps.MediaMaxBytes))
+					}
+					r.Method("POST", "/media", middleware.RequiredScopes("write:media")(http.HandlerFunc(deps.Media.POSTMedia)))
+					r.Method("PUT", "/media/{id}", middleware.RequiredScopes("write:media")(http.HandlerFunc(deps.Media.PUTMedia)))
+				})
 				r.Method("POST", "/statuses", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.POSTStatuses)))
 				r.Method("DELETE", "/statuses/{id}", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.DELETEStatuses)))
 				r.Method("POST", "/statuses/{id}/reblog", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.POSTReblog)))
@@ -259,6 +303,10 @@ func New(deps Deps) http.Handler {
 				r.Method("POST", "/notifications/clear", middleware.RequiredScopes("write:notifications")(http.HandlerFunc(deps.Notifications.POSTClear)))
 				r.Method("POST", "/notifications/{id}/dismiss", middleware.RequiredScopes("write:notifications")(http.HandlerFunc(deps.Notifications.POSTDismiss)))
 				r.Method("POST", "/reports", middleware.RequiredScopes("write:reports")(http.HandlerFunc(deps.Reports.POSTReports)))
+				r.Method("POST", "/push/subscription", middleware.RequiredScopes("push")(http.HandlerFunc(deps.Push.POSTSubscription)))
+				r.Method("GET", "/push/subscription", middleware.RequiredScopes("push")(http.HandlerFunc(deps.Push.GETSubscription)))
+				r.Method("PUT", "/push/subscription", middleware.RequiredScopes("push")(http.HandlerFunc(deps.Push.PUTSubscription)))
+				r.Method("DELETE", "/push/subscription", middleware.RequiredScopes("push")(http.HandlerFunc(deps.Push.DELETESubscription)))
 				r.Method("GET", "/follow_requests", middleware.RequiredScopes("read:follows")(http.HandlerFunc(deps.FollowRequests.GETFollowRequests)))
 				r.Route("/follow_requests/{id}", func(r chi.Router) {
 					r.Method("POST", "/authorize", middleware.RequiredScopes("write:follows")(http.HandlerFunc(deps.FollowRequests.POSTAuthorize)))

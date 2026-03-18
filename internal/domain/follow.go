@@ -2,6 +2,7 @@ package domain
 
 import "time"
 
+// Follow represents a follow relationship between two accounts (pending or accepted).
 type Follow struct {
 	ID        string
 	AccountID string

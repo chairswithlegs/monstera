@@ -11,8 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/chairswithlegs/monstera/internal/activitypub/blocklist"
-	"github.com/chairswithlegs/monstera/internal/config"
+	"github.com/chairswithlegs/monstera/internal/blocklist"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/testutil"
@@ -40,9 +39,7 @@ func TestOutboxDeliveryWorker_processMessage_invalidJSON_acksMessage(t *testing.
 		subject: subjectPrefixDeliver + "create",
 		ack:     func() error { acked = true; return nil },
 	}
-	cfg := &config.Config{}
-	w := NewOutboxDeliveryWorker(nil, bl, nil, cfg)
-	// nil js and signer would panic if we reach deliverHTTP; invalid JSON path only unmarshals and acks
+	w := NewOutboxDeliveryWorker(nil, bl, nil, "", false, 0).(*outboxDeliveryWorker)
 	w.processMessage(ctx, msg)
 	assert.True(t, acked, "message should be acked when payload is invalid")
 }
@@ -71,9 +68,7 @@ func TestOutboxDeliveryWorker_processMessage_validJSON_suspendedDomain_acksWitho
 		subject: subjectPrefixDeliver + "create",
 		ack:     func() error { acked = true; return nil },
 	}
-	cfg := &config.Config{}
-	// Nil js and signer - processMessage checks blocklist first and acks without calling deliverHTTP
-	w := NewOutboxDeliveryWorker(nil, bl, nil, cfg)
+	w := NewOutboxDeliveryWorker(nil, bl, nil, "", false, 0).(*outboxDeliveryWorker)
 	w.processMessage(ctx, msg)
 	assert.True(t, acked)
 }

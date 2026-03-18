@@ -97,7 +97,7 @@ type Tag struct {
 	Name      string       `json:"name"`
 	URL       string       `json:"url"`
 	Following bool         `json:"following,omitempty"`
-	History   []TagHistory `json:"history,omitempty"`
+	History   []TagHistory `json:"history"`
 }
 
 // TagHistory is one day of usage statistics for a trending hashtag.

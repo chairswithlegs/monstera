@@ -1,10 +1,10 @@
 # Domain events and transactional outbox
 
-This document describes the event-driven architecture that decouples the service layer from federation and SSE delivery.
+This document describes the event-driven architecture that decouples the service layer from federation, SSE, notifications, and push delivery.
 
 ## Solution: transactional outbox
 
-Services write **domain events** to an `outbox_events` table within the same database transaction as the domain change. A **poller** reads unpublished events and publishes them to a NATS JetStream stream. Independent **subscribers** (federation, SSE) consume events and perform their work. Services are fully ignorant of federation and SSE. The inbox becomes a thin AP-to-service translation layer.
+Services write **domain events** to an `outbox_events` table within the same database transaction as the domain change. A **poller** reads unpublished events and publishes them to a NATS JetStream stream. Independent **subscribers** (federation, SSE, notifications, push delivery) consume events and perform their work. Services are fully ignorant of downstream consumers. The inbox is a thin AP-to-service translation layer.
 
 ```
   Service Layer                  Outbox Poller           NATS (DOMAIN_EVENTS)
@@ -39,18 +39,24 @@ Defined in `internal/domain/events.go`.
 
 | Event | Subscribers | Trigger |
 |-------|-------------|---------|
-| `status.created` | Federation + SSE | Local status published |
+| `status.created` | Federation, SSE, Notifications | Local status published |
 | `status.updated` | Federation | Local status edited |
-| `status.deleted` | Federation + SSE | Local status deleted |
-| `status.created.remote` | SSE only | Remote status ingested via inbox |
-| `status.deleted.remote` | SSE only | Remote status deleted via inbox |
-| `follow.created` | Federation | Local user follows someone |
-| `follow.removed` | Federation | Local user unfollows |
+| `status.deleted` | Federation, SSE | Local status deleted |
+| `status.created.remote` | SSE, Notifications | Remote status ingested via inbox |
+| `status.updated.remote` | SSE | Remote status edited via inbox |
+| `status.deleted.remote` | SSE | Remote status deleted via inbox |
+| `follow.created` | Federation, Notifications | User follows someone |
+| `follow.removed` | Federation | User unfollows |
 | `follow.accepted` | Federation | Follow request accepted |
-| `block.created` | Federation | Local user blocks someone |
-| `block.removed` | Federation | Local user unblocks |
+| `follow.requested` | Notifications | Remote follow request received |
+| `favourite.created` | Federation, Notifications | Status favourited |
+| `favourite.removed` | Federation | Favourite removed (undo) |
+| `reblog.created` | Federation, Notifications | Status reblogged |
+| `reblog.removed` | Federation | Reblog removed (undo) |
+| `block.created` | Federation | User blocks someone |
+| `block.removed` | Federation | User unblocks |
 | `account.updated` | Federation | Local profile updated |
-| `notification.created` | SSE only | Notification created |
+| `notification.created` | SSE, Push delivery | Notification created |
 
 Each event payload carries the full domain objects needed by subscribers (status, author, mentions, hashtags, media attachments), so subscribers rarely need additional queries.
 
@@ -99,17 +105,19 @@ Safe for multiple instances: `SKIP LOCKED` prevents contention, NATS dedup (5-mi
 | Setting | Value |
 |---------|-------|
 | Stream | `DOMAIN_EVENTS` |
-| Subjects | `domain.events.*` |
+| Subjects | `domain.events.>` |
 | Retention | Interest-based (deleted when all consumers ACK) |
 | Dedup window | 5 minutes |
 | Max age | 72 hours |
 
-Two durable pull consumers:
+Four durable pull consumers:
 
-| Consumer | Purpose | MaxAckPending |
-|----------|---------|---------------|
-| `domain-events-federation` | Translates events to AP activities | 50 |
-| `domain-events-sse` | Fans out to SSE clients | 100 |
+| Consumer | Purpose | Filter | MaxAckPending |
+|----------|---------|--------|---------------|
+| `domain-events-federation` | Translates events to AP activities | all events | 50 |
+| `domain-events-sse` | Fans out to SSE clients | all events | 100 |
+| `domain-events-notifications` | Creates notifications reactively | all events | 50 |
+| `domain-events-push-delivery` | Sends Web Push notifications | `notification.*` only | 50 |
 
 ### Federation subscriber (`internal/activitypub/federation_subscriber.go`)
 
@@ -117,21 +125,38 @@ Consumes from the `domain-events-federation` consumer. For each event:
 
 - **Status events** → builds AP `Create{Note}`, `Update{Note}`, or `Delete{Tombstone}` and enqueues to the **fanout stream** (broadcast to followers)
 - **Follow/block events** → builds AP `Follow`, `Undo{Follow}`, `Accept{Follow}`, `Block`, `Undo{Block}` and enqueues to the **delivery stream** (single inbox)
+- **Favourite/reblog events** → builds AP `Like`, `Undo{Like}`, `Announce`, `Undo{Announce}` and enqueues to the **delivery stream**
 - **Account updated** → builds AP `Update{Person}` and enqueues to the fanout stream
-- **SSE-only events** → ACK and skip
+- **Non-federation events** → ACK and skip
 
 The existing delivery and fanout workers handle the actual HTTP POST to remote inboxes.
 
-### SSE subscriber (`internal/events/sse/subscriber.go`)
+### SSE subscriber (`internal/api/mastodon/sse/subscriber.go`)
 
 Consumes from the `domain-events-sse` consumer. For each event:
 
-- **Status created** → marshals to Mastodon API JSON, routes to visibility-based NATS core subjects (public, public:local, user streams, hashtag streams)
+- **Status created** → marshals to Mastodon API JSON, routes to visibility-based NATS core subjects (public, public:local, user streams, hashtag streams, list streams, direct streams)
 - **Status deleted** → publishes delete events to the same subjects
 - **Notification created** → enriches with status data and publishes to the user's stream
-- **Federation-only events** → ACK and skip
+- **Non-SSE events** → ACK and skip
 
-The existing SSE Hub (`internal/events/sse/hub.go`) subscribes to these NATS core subjects and fans out to connected clients — unchanged from before.
+The SSE Hub (`internal/api/mastodon/sse/hub.go`) subscribes to these NATS core subjects and fans out to connected clients.
+
+### Notification subscriber (`internal/events/notification_subscriber.go`)
+
+Consumes from the `domain-events-notifications` consumer. Centralizes all notification creation, removing it from inline service code and inbox handlers. For each event:
+
+- **Follow / follow request** → creates a follow or follow-request notification for the target if local
+- **Favourite / reblog** → creates a notification for the status author if local (skips self-interactions)
+- **Status created (local or remote)** → creates mention notifications for local mentioned accounts (respects conversation muting)
+
+See [07-notifications-and-push.md](07-notifications-and-push.md) for details.
+
+### Push delivery subscriber (`internal/events/push_delivery_subscriber.go`)
+
+Consumes from the `domain-events-push-delivery` consumer (filtered to `notification.*` subjects only). When a `notification.created` event arrives, it looks up the recipient's Web Push subscriptions and delivers a push notification to each subscribed endpoint that has the relevant alert type enabled.
+
+See [07-notifications-and-push.md](07-notifications-and-push.md) for details.
 
 ### Cleanup
 
@@ -155,5 +180,7 @@ A scheduled job (`cleanup-outbox-events`, hourly) deletes published events older
 | `internal/events/outbox_poller.go` | Background poller: DB → NATS |
 | `internal/events/streams.go` | NATS stream and consumer configuration |
 | `internal/activitypub/federation_subscriber.go` | Domain events → AP activities |
-| `internal/events/sse/subscriber.go` | Domain events → SSE fan-out |
+| `internal/api/mastodon/sse/subscriber.go` | Domain events → SSE fan-out |
+| `internal/events/notification_subscriber.go` | Domain events → notification creation |
+| `internal/events/push_delivery_subscriber.go` | Notification events → Web Push delivery |
 | `internal/scheduler/jobs/jobs.go` | `CleanupOutboxEvents` job |

@@ -23,7 +23,6 @@ type Account struct {
 	FollowersUrl   string             `json:"followers_url"`
 	FollowingUrl   string             `json:"following_url"`
 	ApID           string             `json:"ap_id"`
-	ApRaw          []byte             `json:"ap_raw"`
 	Bot            bool               `json:"bot"`
 	Locked         bool               `json:"locked"`
 	Suspended      bool               `json:"suspended"`
@@ -37,6 +36,7 @@ type Account struct {
 	StatusesCount  int32              `json:"statuses_count"`
 	Fields         []byte             `json:"fields"`
 	LastStatusAt   pgtype.Timestamptz `json:"last_status_at"`
+	Url            *string            `json:"url"`
 }
 
 type AccountConversation struct {
@@ -182,6 +182,19 @@ type Hashtag struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type PushSubscription struct {
+	ID            string             `json:"id"`
+	AccessTokenID string             `json:"access_token_id"`
+	AccountID     string             `json:"account_id"`
+	Endpoint      string             `json:"endpoint"`
+	KeyP256dh     string             `json:"key_p256dh"`
+	KeyAuth       string             `json:"key_auth"`
+	Alerts        []byte             `json:"alerts"`
+	Policy        string             `json:"policy"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Invite struct {
 	ID        string             `json:"id"`
 	Code      string             `json:"code"`
@@ -228,6 +241,7 @@ type MediaAttachment struct {
 	AccountID   string             `json:"account_id"`
 	StatusID    *string            `json:"status_id"`
 	Type        string             `json:"type"`
+	ContentType *string            `json:"content_type"`
 	StorageKey  string             `json:"storage_key"`
 	Url         string             `json:"url"`
 	PreviewUrl  *string            `json:"preview_url"`
@@ -386,7 +400,6 @@ type Status struct {
 	InReplyToID         *string            `json:"in_reply_to_id"`
 	ReblogOfID          *string            `json:"reblog_of_id"`
 	ApID                string             `json:"ap_id"`
-	ApRaw               []byte             `json:"ap_raw"`
 	Sensitive           bool               `json:"sensitive"`
 	Local               bool               `json:"local"`
 	EditedAt            pgtype.Timestamptz `json:"edited_at"`

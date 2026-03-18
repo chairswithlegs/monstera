@@ -8,21 +8,20 @@ import (
 
 	"github.com/chairswithlegs/monstera/internal/activitypub/vocab"
 	"github.com/chairswithlegs/monstera/internal/api"
-	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/service"
 )
 
 // CollectionsHandler serves GET /users/{username}/followers, /following, /collections/featured.
 // Returns OrderedCollections with totalItems only (no item enumeration).
 type CollectionsHandler struct {
-	accounts service.AccountService
-	statuses service.StatusService
-	config   *config.Config
+	accounts        service.AccountService
+	statuses        service.StatusService
+	instanceBaseURL string
 }
 
 // NewCollectionsHandler returns a new CollectionsHandler.
-func NewCollectionsHandler(accounts service.AccountService, statuses service.StatusService, config *config.Config) *CollectionsHandler {
-	return &CollectionsHandler{accounts: accounts, statuses: statuses, config: config}
+func NewCollectionsHandler(accounts service.AccountService, statuses service.StatusService, instanceBaseURL string) *CollectionsHandler {
+	return &CollectionsHandler{accounts: accounts, statuses: statuses, instanceBaseURL: instanceBaseURL}
 }
 
 // GETFollowers handles GET /users/{username}/followers.
@@ -42,7 +41,7 @@ func (h *CollectionsHandler) GETFollowers(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, err)
 		return
 	}
-	base := h.config.InstanceBaseURL()
+	base := h.instanceBaseURL
 	id := base + "/users/" + username + "/followers"
 	coll := vocab.NewOrderedCollection(id, int(count))
 	w.Header().Set("Cache-Control", "max-age=300")
@@ -66,7 +65,7 @@ func (h *CollectionsHandler) GETFollowing(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, err)
 		return
 	}
-	base := h.config.InstanceBaseURL()
+	base := h.instanceBaseURL
 	id := base + "/users/" + username + "/following"
 	coll := vocab.NewOrderedCollection(id, int(count))
 	w.Header().Set("Cache-Control", "max-age=300")
@@ -97,14 +96,21 @@ func (h *CollectionsHandler) GETFeatured(w http.ResponseWriter, r *http.Request)
 		if err != nil || st == nil {
 			continue
 		}
-		note := vocab.StatusToNote(st, account, h.config.InstanceBaseURL())
+		note, err := vocab.LocalStatusToNote(vocab.LocalStatusToNoteInput{
+			Status:       st,
+			Author:       account,
+			InstanceBase: h.instanceBaseURL,
+		})
+		if err != nil {
+			continue
+		}
 		raw, err := json.Marshal(note)
 		if err != nil {
 			continue
 		}
 		orderedItems = append(orderedItems, raw)
 	}
-	base := h.config.InstanceBaseURL()
+	base := h.instanceBaseURL
 	id := base + "/users/" + username + "/collections/featured"
 	coll := vocab.NewOrderedCollectionWithItems(id, orderedItems)
 	w.Header().Set("Cache-Control", "max-age=300")

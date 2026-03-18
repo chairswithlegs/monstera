@@ -2,7 +2,6 @@ package oauth
 
 import (
 	"context"
-	"log/slog"
 	"testing"
 	"time"
 
@@ -18,7 +17,7 @@ func TestServer_RegisterApplication(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = c.Close() }()
 
-	srv := NewServer(testutil.NewFakeStore(), c, slog.Default())
+	srv := NewServer(testutil.NewFakeStore(), c, "")
 
 	app, err := srv.RegisterApplication(ctx, "Test App", "https://app.example/cb", "read write", "https://app.example")
 	require.NoError(t, err)
@@ -49,7 +48,7 @@ func TestServer_AuthorizeRequest_ExchangeCode(t *testing.T) {
 	})
 	require.NotNil(t, app)
 
-	srv := NewServer(st, c, slog.Default())
+	srv := NewServer(st, c, "")
 
 	code, err := srv.AuthorizeRequest(ctx, AuthorizeRequest{
 		ApplicationID:       app.ID,
@@ -101,7 +100,7 @@ func TestServer_ExchangeClientCredentials(t *testing.T) {
 	})
 	require.NotNil(t, app)
 
-	srv := NewServer(st, c, slog.Default())
+	srv := NewServer(st, c, "")
 
 	resp, err := srv.ExchangeClientCredentials(ctx, TokenRequest{
 		GrantType:    "client_credentials",
@@ -136,7 +135,7 @@ func TestServer_RevokeToken(t *testing.T) {
 	})
 	require.NotNil(t, app)
 
-	srv := NewServer(st, c, slog.Default())
+	srv := NewServer(st, c, "")
 	resp, err := srv.ExchangeClientCredentials(ctx, TokenRequest{
 		GrantType: "client_credentials", ClientID: "c", ClientSecret: "s",
 	})

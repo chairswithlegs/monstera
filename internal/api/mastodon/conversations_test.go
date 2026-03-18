@@ -27,10 +27,10 @@ func TestConversationsHandler_GETConversations(t *testing.T) {
 	handler := NewConversationsHandler(convSvc, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -63,10 +63,10 @@ func TestConversationsHandler_DELETEConversation(t *testing.T) {
 	handler := NewConversationsHandler(convSvc, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	convID := uid.New()
@@ -110,10 +110,10 @@ func TestConversationsHandler_POSTConversationRead(t *testing.T) {
 	handler := NewConversationsHandler(convSvc, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	convID := uid.New()

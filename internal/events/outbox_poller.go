@@ -10,6 +10,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/natsutil"
 	"github.com/chairswithlegs/monstera/internal/store"
 )
 
@@ -42,7 +43,7 @@ func (p *Poller) Start(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("outbox poller stopped: %w", ctx.Err())
+			return nil
 		case <-ticker.C:
 			if err := p.poll(ctx); err != nil {
 				slog.ErrorContext(ctx, "outbox poller: poll failed", slog.Any("error", err))
@@ -94,11 +95,9 @@ func (p *Poller) publish(ctx context.Context, e domain.DomainEvent) error {
 		return fmt.Errorf("marshal event: %w", err)
 	}
 
-	// Subject: domain.events.status.created, domain.events.follow.created, etc.
 	subject := SubjectPrefix + e.EventType
-	_, err = p.js.Publish(ctx, subject, raw, jetstream.WithMsgID(e.ID))
-	if err != nil {
-		return fmt.Errorf("nats publish to %s: %w", subject, err)
+	if err := natsutil.Publish(ctx, p.js, subject, raw, jetstream.WithMsgID(e.ID)); err != nil {
+		return fmt.Errorf("publish event %s: %w", e.EventType, err)
 	}
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
@@ -16,6 +17,13 @@ type StatusVisibilityChecker interface {
 	CanViewStatus(ctx context.Context, st *domain.Status, viewerAccountID *string) (bool, error)
 }
 
+// EnrichOpts controls which optional fields are loaded when enriching statuses.
+type EnrichOpts struct {
+	IncludeCard bool
+	IncludePoll bool
+	ViewerID    *string
+}
+
 // StatusService handles status lookup, enrichment, and read-only queries.
 // Write operations with side effects (create, delete, reblog, favourite, bookmark, pin, etc.) live in StatusWriteService.
 type StatusService interface {
@@ -25,6 +33,8 @@ type StatusService interface {
 	GetByID(ctx context.Context, id string) (*domain.Status, error)
 	GetByAPID(ctx context.Context, apID string) (*domain.Status, error)
 	GetByIDEnriched(ctx context.Context, id string, viewerAccountID *string) (EnrichedStatus, error)
+	GetByIDsEnriched(ctx context.Context, ids []string, viewerAccountID *string) ([]EnrichedStatus, error)
+	EnrichStatuses(ctx context.Context, statuses []*domain.Status, opts EnrichOpts) ([]EnrichedStatus, error)
 	GetContext(ctx context.Context, statusID string, viewerAccountID *string) (ContextResult, error)
 	GetStatusHistory(ctx context.Context, statusID string, viewerAccountID *string) ([]domain.StatusEdit, error)
 	GetStatusSource(ctx context.Context, statusID string, viewerAccountID *string) (text, spoilerText string, err error)
@@ -34,9 +44,6 @@ type StatusService interface {
 	GetFavouriteByAccountAndStatus(ctx context.Context, accountID, statusID string) (*domain.Favourite, error)
 	GetFavouritedBy(ctx context.Context, statusID string, viewerAccountID *string, maxID *string, limit int) ([]*domain.Account, error)
 	GetRebloggedBy(ctx context.Context, statusID string, viewerAccountID *string, maxID *string, limit int) ([]*domain.Account, error)
-
-	// Bookmark reads.
-	IsBookmarked(ctx context.Context, accountID, statusID string) (bool, error)
 
 	// Pin reads.
 	ListPinnedStatusIDs(ctx context.Context, accountID string) ([]string, error)
@@ -48,14 +55,12 @@ type StatusService interface {
 	// Poll reads.
 	GetPoll(ctx context.Context, pollID string, viewerAccountID *string) (*EnrichedPoll, error)
 
-	// Conversation reads.
-	GetConversationRoot(ctx context.Context, statusID string) (string, error)
-	IsConversationMutedForViewer(ctx context.Context, viewerAccountID, statusID string) (bool, error)
-	ListMutedConversationIDs(ctx context.Context, accountID string) ([]string, error)
-
 	// Quote reads.
 	GetQuoteApproval(ctx context.Context, quotingStatusID string) (*domain.QuoteApprovalRecord, error)
 	ListQuotesOfStatus(ctx context.Context, quotedStatusID string, maxID *string, limit int, viewerAccountID *string) ([]EnrichedStatus, error)
+
+	// Conversation checks.
+	IsConversationMutedForViewer(ctx context.Context, viewerAccountID, statusID string) (bool, error)
 }
 
 type statusService struct {
@@ -135,7 +140,7 @@ func (svc *statusService) canViewStatus(ctx context.Context, st *domain.Status, 
 		if err != nil {
 			return false, fmt.Errorf("GetStatusMentionAccountIDs: %w", err)
 		}
-		if sliceContains(mentionIDs, *viewerAccountID) {
+		if slices.Contains(mentionIDs, *viewerAccountID) {
 			break
 		}
 		return false, nil
@@ -150,7 +155,7 @@ func (svc *statusService) canViewStatus(ctx context.Context, st *domain.Status, 
 		if err != nil {
 			return false, fmt.Errorf("GetStatusMentionAccountIDs: %w", err)
 		}
-		if !sliceContains(mentionIDs, *viewerAccountID) {
+		if !slices.Contains(mentionIDs, *viewerAccountID) {
 			return false, nil
 		}
 	default:
@@ -166,15 +171,6 @@ func (svc *statusService) canViewStatus(ctx context.Context, st *domain.Status, 
 		}
 	}
 	return true, nil
-}
-
-func sliceContains(s []string, x string) bool {
-	for _, v := range s {
-		if v == x {
-			return true
-		}
-	}
-	return false
 }
 
 // CanViewStatus implements StatusVisibilityChecker.
@@ -199,59 +195,115 @@ func (svc *statusService) GetByIDEnriched(ctx context.Context, id string, viewer
 	if !ok {
 		return EnrichedStatus{}, fmt.Errorf("GetByIDEnriched(%s): %w", id, domain.ErrNotFound)
 	}
-	author, err := svc.store.GetAccountByID(ctx, st.AccountID)
+	enriched, err := svc.EnrichStatuses(ctx, []*domain.Status{st}, EnrichOpts{
+		IncludeCard: true,
+		IncludePoll: true,
+		ViewerID:    viewerAccountID,
+	})
 	if err != nil {
-		return EnrichedStatus{}, fmt.Errorf("GetAccountByID: %w", err)
+		return EnrichedStatus{}, err
 	}
-	mentions, err := svc.store.GetStatusMentions(ctx, st.ID)
-	if err != nil {
-		return EnrichedStatus{}, fmt.Errorf("GetStatusMentions: %w", err)
-	}
-	tags, err := svc.store.GetStatusHashtags(ctx, st.ID)
-	if err != nil {
-		return EnrichedStatus{}, fmt.Errorf("GetStatusHashtags: %w", err)
-	}
-	media, err := svc.store.GetStatusAttachments(ctx, st.ID)
-	if err != nil {
-		return EnrichedStatus{}, fmt.Errorf("GetStatusAttachments: %w", err)
-	}
-	card, err := svc.store.GetStatusCard(ctx, st.ID)
-	if err != nil && !errors.Is(err, domain.ErrNotFound) {
-		return EnrichedStatus{}, fmt.Errorf("GetStatusCard: %w", err)
-	}
-	out := EnrichedStatus{
-		Status:   st,
-		Author:   author,
-		Mentions: mentions,
-		Tags:     tags,
-		Media:    media,
-		Card:     card,
-	}
-	poll, pollErr := svc.store.GetPollByStatusID(ctx, st.ID)
-	if pollErr == nil && poll != nil {
-		enrichedPoll, enrichErr := svc.getPollEnriched(ctx, poll.ID, viewerAccountID)
-		if enrichErr == nil {
-			out.Poll = enrichedPoll
+	return enriched[0], nil
+}
+
+// GetByIDsEnriched fetches multiple statuses, filters out deleted or invisible
+// ones, and enriches the remainder in a single batch call. Statuses that cannot
+// be found or cannot be viewed are silently skipped (order is preserved).
+func (svc *statusService) GetByIDsEnriched(ctx context.Context, ids []string, viewerAccountID *string) ([]EnrichedStatus, error) {
+	var visible []*domain.Status
+	for _, id := range ids {
+		st, err := svc.store.GetStatusByID(ctx, id)
+		if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				continue
+			}
+			return nil, fmt.Errorf("GetByIDsEnriched GetStatusByID(%s): %w", id, err)
 		}
-	}
-	if viewerAccountID != nil {
-		if ok, err := svc.store.IsBookmarked(ctx, *viewerAccountID, st.ID); err == nil {
-			out.Bookmarked = ok
+		if st.DeletedAt != nil {
+			continue
 		}
-		if st.AccountID == *viewerAccountID {
-			pinnedIDs, err := svc.store.ListPinnedStatusIDs(ctx, *viewerAccountID)
-			if err == nil {
-				for _, pid := range pinnedIDs {
-					if pid == st.ID {
-						out.Pinned = true
-						break
-					}
+		ok, err := svc.canViewStatus(ctx, st, viewerAccountID)
+		if err != nil {
+			return nil, fmt.Errorf("GetByIDsEnriched canViewStatus(%s): %w", id, err)
+		}
+		if !ok {
+			continue
+		}
+		visible = append(visible, st)
+	}
+	if len(visible) == 0 {
+		return nil, nil
+	}
+	return svc.EnrichStatuses(ctx, visible, EnrichOpts{
+		IncludeCard: true,
+		IncludePoll: true,
+		ViewerID:    viewerAccountID,
+	})
+}
+
+// EnrichStatuses loads author, mentions, tags, media, and optionally card, poll, and viewer flags for each status.
+func (svc *statusService) EnrichStatuses(ctx context.Context, statuses []*domain.Status, opts EnrichOpts) ([]EnrichedStatus, error) {
+	out := make([]EnrichedStatus, 0, len(statuses))
+	for _, st := range statuses {
+		author, err := svc.store.GetAccountByID(ctx, st.AccountID)
+		if err != nil {
+			return nil, fmt.Errorf("GetAccountByID(%s): %w", st.AccountID, err)
+		}
+		mentions, err := svc.store.GetStatusMentions(ctx, st.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetStatusMentions(%s): %w", st.ID, err)
+		}
+		tags, err := svc.store.GetStatusHashtags(ctx, st.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetStatusHashtags(%s): %w", st.ID, err)
+		}
+		media, err := svc.store.GetStatusAttachments(ctx, st.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetStatusAttachments(%s): %w", st.ID, err)
+		}
+		e := EnrichedStatus{
+			Status:   st,
+			Author:   author,
+			Mentions: mentions,
+			Tags:     tags,
+			Media:    media,
+		}
+		if opts.IncludeCard {
+			card, err := svc.store.GetStatusCard(ctx, st.ID)
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
+				return nil, fmt.Errorf("GetStatusCard(%s): %w", st.ID, err)
+			}
+			e.Card = card
+		}
+		if opts.IncludePoll {
+			poll, pollErr := svc.store.GetPollByStatusID(ctx, st.ID)
+			if pollErr == nil && poll != nil {
+				enrichedPoll, enrichErr := svc.getPollEnriched(ctx, poll.ID, opts.ViewerID)
+				if enrichErr == nil {
+					e.Poll = enrichedPoll
 				}
 			}
 		}
-		if muted, err := svc.IsConversationMutedForViewer(ctx, *viewerAccountID, st.ID); err == nil {
-			out.Muted = muted
+		if opts.ViewerID != nil {
+			if ok, err := svc.store.IsBookmarked(ctx, *opts.ViewerID, st.ID); err == nil {
+				e.Bookmarked = ok
+			}
+			if st.AccountID == *opts.ViewerID {
+				pinnedIDs, err := svc.store.ListPinnedStatusIDs(ctx, *opts.ViewerID)
+				if err == nil {
+					for _, pid := range pinnedIDs {
+						if pid == st.ID {
+							e.Pinned = true
+							break
+						}
+					}
+				}
+			}
+			if muted, err := svc.IsConversationMutedForViewer(ctx, *opts.ViewerID, st.ID); err == nil {
+				e.Muted = muted
+			}
 		}
+		out = append(out, e)
 	}
 	return out, nil
 }
@@ -330,15 +382,6 @@ func (svc *statusService) GetPoll(ctx context.Context, pollID string, viewerAcco
 	return enriched, nil
 }
 
-// IsBookmarked returns whether the account has bookmarked the status.
-func (svc *statusService) IsBookmarked(ctx context.Context, accountID, statusID string) (bool, error) {
-	ok, err := svc.store.IsBookmarked(ctx, accountID, statusID)
-	if err != nil {
-		return false, fmt.Errorf("IsBookmarked: %w", err)
-	}
-	return ok, nil
-}
-
 func (svc *statusService) ListPinnedStatusIDs(ctx context.Context, accountID string) ([]string, error) {
 	ids, err := svc.store.ListPinnedStatusIDs(ctx, accountID)
 	if err != nil {
@@ -400,21 +443,16 @@ func (svc *statusService) GetStatusSource(ctx context.Context, statusID string, 
 func (svc *statusService) GetScheduledStatus(ctx context.Context, id, accountID string) (*domain.ScheduledStatus, error) {
 	s, err := svc.store.GetScheduledStatusByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			return nil, fmt.Errorf("GetScheduledStatus: %w", err)
-		}
 		return nil, fmt.Errorf("GetScheduledStatus: %w", err)
 	}
 	if s.AccountID != accountID {
-		return nil, domain.ErrNotFound
+		return nil, fmt.Errorf("GetScheduledStatus: %w", domain.ErrNotFound)
 	}
 	return s, nil
 }
 
 func (svc *statusService) ListScheduledStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.ScheduledStatus, error) {
-	if limit <= 0 || limit > 40 {
-		limit = 20
-	}
+	limit = ClampLimit(limit, 20, 40)
 	list, err := svc.store.ListScheduledStatuses(ctx, accountID, maxID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("ListScheduledStatuses: %w", err)
@@ -531,15 +569,6 @@ func (svc *statusService) GetRebloggedBy(ctx context.Context, statusID string, v
 	return out, nil
 }
 
-// GetConversationRoot returns the root status ID of the conversation (thread) containing the given status.
-func (svc *statusService) GetConversationRoot(ctx context.Context, statusID string) (string, error) {
-	root, err := svc.store.GetConversationRoot(ctx, statusID)
-	if err != nil {
-		return "", fmt.Errorf("GetConversationRoot: %w", err)
-	}
-	return root, nil
-}
-
 // IsConversationMutedForViewer returns whether the viewer has muted the conversation containing the given status.
 func (svc *statusService) IsConversationMutedForViewer(ctx context.Context, viewerAccountID, statusID string) (bool, error) {
 	root, err := svc.store.GetConversationRoot(ctx, statusID)
@@ -551,15 +580,6 @@ func (svc *statusService) IsConversationMutedForViewer(ctx context.Context, view
 		return false, fmt.Errorf("IsConversationMuted: %w", err)
 	}
 	return ok, nil
-}
-
-// ListMutedConversationIDs returns the list of conversation (root) IDs the account has muted.
-func (svc *statusService) ListMutedConversationIDs(ctx context.Context, accountID string) ([]string, error) {
-	ids, err := svc.store.ListMutedConversationIDs(ctx, accountID)
-	if err != nil {
-		return nil, fmt.Errorf("ListMutedConversationIDs: %w", err)
-	}
-	return ids, nil
 }
 
 // GetQuoteApproval returns the quote approval record for a quoting status, or ErrNotFound.
@@ -588,9 +608,7 @@ func (svc *statusService) ListQuotesOfStatus(ctx context.Context, quotedStatusID
 	if !ok {
 		return nil, fmt.Errorf("ListQuotesOfStatus: %w", domain.ErrNotFound)
 	}
-	if limit <= 0 || limit > 80 {
-		limit = 20
-	}
+	limit = ClampLimit(limit, 20, 80)
 	list, err := svc.store.ListQuotesOfStatus(ctx, quotedStatusID, maxID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("ListQuotesOfStatus: %w", err)

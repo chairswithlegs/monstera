@@ -18,6 +18,24 @@ type AnnouncementItem struct {
 	Reactions    []domain.AnnouncementReactionCount
 }
 
+// CreateAnnouncementInput is the service-level input for creating an announcement.
+type CreateAnnouncementInput struct {
+	Content  string
+	StartsAt *time.Time
+	EndsAt   *time.Time
+	AllDay   bool
+}
+
+// UpdateAnnouncementInput is the service-level input for updating an announcement.
+type UpdateAnnouncementInput struct {
+	ID          string
+	Content     string
+	StartsAt    *time.Time
+	EndsAt      *time.Time
+	AllDay      bool
+	PublishedAt time.Time
+}
+
 // AnnouncementService handles announcement listing, dismiss, and reactions.
 type AnnouncementService interface {
 	ListActive(ctx context.Context, accountID string) ([]AnnouncementItem, error)
@@ -25,8 +43,8 @@ type AnnouncementService interface {
 	AddReaction(ctx context.Context, accountID, announcementID, name string) error
 	RemoveReaction(ctx context.Context, accountID, announcementID, name string) error
 	GetByID(ctx context.Context, id string) (*domain.Announcement, error)
-	Create(ctx context.Context, in store.CreateAnnouncementInput) (*domain.Announcement, error)
-	Update(ctx context.Context, in store.UpdateAnnouncementInput) error
+	Create(ctx context.Context, in CreateAnnouncementInput) (*domain.Announcement, error)
+	Update(ctx context.Context, in UpdateAnnouncementInput) error
 	ListAll(ctx context.Context) ([]domain.Announcement, error)
 }
 
@@ -102,7 +120,7 @@ func (svc *announcementService) Dismiss(ctx context.Context, accountID, announce
 // AddReaction adds an emoji reaction from the account to the announcement.
 func (svc *announcementService) AddReaction(ctx context.Context, accountID, announcementID, name string) error {
 	if name == "" {
-		return domain.ErrValidation
+		return fmt.Errorf("AddReaction: %w", domain.ErrValidation)
 	}
 	if _, err := svc.store.GetAnnouncementByID(ctx, announcementID); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -119,7 +137,7 @@ func (svc *announcementService) AddReaction(ctx context.Context, accountID, anno
 // RemoveReaction removes an emoji reaction from the account for the announcement.
 func (svc *announcementService) RemoveReaction(ctx context.Context, accountID, announcementID, name string) error {
 	if name == "" {
-		return domain.ErrValidation
+		return fmt.Errorf("RemoveReaction: %w", domain.ErrValidation)
 	}
 	if _, err := svc.store.GetAnnouncementByID(ctx, announcementID); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -143,14 +161,16 @@ func (svc *announcementService) GetByID(ctx context.Context, id string) (*domain
 }
 
 // Create creates an announcement (admin).
-func (svc *announcementService) Create(ctx context.Context, in store.CreateAnnouncementInput) (*domain.Announcement, error) {
-	if in.ID == "" {
-		in.ID = uid.New()
-	}
-	if in.PublishedAt.IsZero() {
-		in.PublishedAt = time.Now()
-	}
-	a, err := svc.store.CreateAnnouncement(ctx, in)
+func (svc *announcementService) Create(ctx context.Context, in CreateAnnouncementInput) (*domain.Announcement, error) {
+	now := time.Now()
+	a, err := svc.store.CreateAnnouncement(ctx, store.CreateAnnouncementInput{
+		ID:          uid.New(),
+		Content:     in.Content,
+		StartsAt:    in.StartsAt,
+		EndsAt:      in.EndsAt,
+		AllDay:      in.AllDay,
+		PublishedAt: now,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("CreateAnnouncement: %w", err)
 	}
@@ -158,14 +178,21 @@ func (svc *announcementService) Create(ctx context.Context, in store.CreateAnnou
 }
 
 // Update updates an announcement (admin).
-func (svc *announcementService) Update(ctx context.Context, in store.UpdateAnnouncementInput) error {
+func (svc *announcementService) Update(ctx context.Context, in UpdateAnnouncementInput) error {
 	if _, err := svc.store.GetAnnouncementByID(ctx, in.ID); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return fmt.Errorf("Update: %w", err)
 		}
 		return fmt.Errorf("GetAnnouncementByID: %w", err)
 	}
-	if err := svc.store.UpdateAnnouncement(ctx, in); err != nil {
+	if err := svc.store.UpdateAnnouncement(ctx, store.UpdateAnnouncementInput{
+		ID:          in.ID,
+		Content:     in.Content,
+		StartsAt:    in.StartsAt,
+		EndsAt:      in.EndsAt,
+		AllDay:      in.AllDay,
+		PublishedAt: in.PublishedAt,
+	}); err != nil {
 		return fmt.Errorf("UpdateAnnouncement: %w", err)
 	}
 	return nil

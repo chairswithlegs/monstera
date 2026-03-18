@@ -26,10 +26,10 @@ func TestNotificationsHandler_GETNotifications(t *testing.T) {
 	handler := NewNotificationsHandler(notifSvc, accountSvc, nil, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -62,10 +62,10 @@ func TestNotificationsHandler_GETNotification(t *testing.T) {
 	handler := NewNotificationsHandler(notifSvc, accountSvc, nil, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	fromAcc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "bob"})
@@ -119,10 +119,10 @@ func TestNotificationsHandler_POSTClear(t *testing.T) {
 	handler := NewNotificationsHandler(notifSvc, accountSvc, nil, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -151,10 +151,10 @@ func TestNotificationsHandler_POSTDismiss(t *testing.T) {
 	handler := NewNotificationsHandler(notifSvc, accountSvc, nil, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	notifID := uid.New()

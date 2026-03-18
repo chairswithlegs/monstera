@@ -12,10 +12,18 @@ import (
 
 var sfGroup singleflight.Group
 
+// cacheOps is the common method set shared by Store and SharedStore.
+// Used by the generic helpers so they accept either type.
+type cacheOps interface {
+	Get(ctx context.Context, key string) ([]byte, error)
+	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
+	Delete(ctx context.Context, key string) error
+}
+
 // GetJSON unmarshals the cached bytes at key into dest.
 // Returns (true, nil) on a cache hit, (false, nil) on a miss, and
 // (false, err) if the value exists but cannot be unmarshalled.
-func GetJSON[T any](ctx context.Context, s Store, key string, dest *T) (bool, error) {
+func GetJSON[T any](ctx context.Context, s cacheOps, key string, dest *T) (bool, error) {
 	b, err := s.Get(ctx, key)
 	if err != nil {
 		if errors.Is(err, ErrCacheMiss) {
@@ -31,7 +39,7 @@ func GetJSON[T any](ctx context.Context, s Store, key string, dest *T) (bool, er
 }
 
 // SetJSON marshals val to JSON and stores it at key with the given TTL.
-func SetJSON[T any](ctx context.Context, s Store, key string, val T, ttl time.Duration) error {
+func SetJSON[T any](ctx context.Context, s cacheOps, key string, val T, ttl time.Duration) error {
 	b, err := json.Marshal(val)
 	if err != nil {
 		return fmt.Errorf("cache: marshal %q: %w", key, err)
@@ -46,7 +54,7 @@ func SetJSON[T any](ctx context.Context, s Store, key string, val T, ttl time.Du
 // protection. On miss it calls fn (once per key under concurrency), stores the
 // result, and returns it. Cache write errors are not returned.
 // Get errors (e.g. connection failure) are treated as a miss: fn is called and its result returned.
-func GetOrSet[T any](ctx context.Context, s Store, key string, ttl time.Duration, fn func() (T, error)) (T, error) {
+func GetOrSet[T any](ctx context.Context, s cacheOps, key string, ttl time.Duration, fn func() (T, error)) (T, error) {
 	var cached T
 	if hit, _ := GetJSON(ctx, s, key, &cached); hit {
 		return cached, nil

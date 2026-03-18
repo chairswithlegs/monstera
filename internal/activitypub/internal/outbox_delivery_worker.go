@@ -15,10 +15,8 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/chairswithlegs/monstera/internal/activitypub/blocklist"
-	"github.com/chairswithlegs/monstera/internal/config"
-	natsutil "github.com/chairswithlegs/monstera/internal/nats"
-	"github.com/chairswithlegs/monstera/internal/observability"
+	"github.com/chairswithlegs/monstera/internal/blocklist"
+	"github.com/chairswithlegs/monstera/internal/natsutil"
 	"github.com/chairswithlegs/monstera/internal/ssrf"
 )
 
@@ -45,11 +43,11 @@ type OutboxHTTPSigner interface {
 }
 
 type outboxDeliveryWorker struct {
-	js        jetstream.JetStream
-	blocklist *blocklist.BlocklistCache
-	cfg       *config.Config
-	signer    OutboxHTTPSigner
-	http      *http.Client
+	js                jetstream.JetStream
+	blocklist         *blocklist.BlocklistCache
+	workerConcurrency int
+	signer            OutboxHTTPSigner
+	http              *http.Client
 }
 
 // NewOutboxDeliveryWorker constructs an outbox delivery worker. Call Start to begin consuming.
@@ -57,13 +55,14 @@ func NewOutboxDeliveryWorker(
 	js jetstream.JetStream,
 	bl *blocklist.BlocklistCache,
 	signer OutboxHTTPSigner,
-	cfg *config.Config,
-) *outboxDeliveryWorker {
+	appEnv string,
+	insecureSkipTLS bool,
+	workerConcurrency int,
+) OutboxDeliveryWorker {
 	var client *http.Client
-	if cfg.AppEnv != "production" && cfg.FederationInsecureSkipTLS {
-		transport := &http.Transport{}
-		if cfg.FederationInsecureSkipTLS {
-			transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // G402: intentional for development federation with self-signed certs
+	if appEnv != "production" && insecureSkipTLS {
+		transport := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // G402: intentional for development federation with self-signed certs
 		}
 		client = &http.Client{
 			Timeout:   outboxDeliveryTimeout,
@@ -81,11 +80,11 @@ func NewOutboxDeliveryWorker(
 		})
 	}
 	return &outboxDeliveryWorker{
-		js:        js,
-		blocklist: bl,
-		cfg:       cfg,
-		signer:    signer,
-		http:      client,
+		js:                js,
+		blocklist:         bl,
+		workerConcurrency: workerConcurrency,
+		signer:            signer,
+		http:              client,
 	}
 }
 
@@ -95,76 +94,48 @@ func NewOutboxDeliveryWorker(
 // The server has one logical consumer; work is distributed across replicas with no
 // duplicate delivery.
 func (w *outboxDeliveryWorker) Start(ctx context.Context) error {
-	consumer, err := w.js.Consumer(ctx, StreamOutboxDelivery, consumerDelivery)
-	if err != nil {
-		return fmt.Errorf("activitypub worker: get consumer: %w", err)
-	}
-
-	concurrency := w.cfg.FederationWorkerConcurrency
+	concurrency := w.workerConcurrency
 	if concurrency <= 0 {
 		concurrency = 5
 	}
-
-	slog.Info("activitypub worker started",
-		slog.Int("concurrency", concurrency),
-		slog.String("consumer", consumerDelivery),
-	)
-
-	consCtx, err := consumer.Consume(
-		func(msg jetstream.Msg) {
-			go w.processMessage(ctx, msg)
-		},
-		jetstream.PullMaxMessages(concurrency),
-		jetstream.PullExpiry(5*time.Second),
-		jetstream.ConsumeErrHandler(func(_ jetstream.ConsumeContext, err error) {
-			if ctx.Err() == nil {
-				slog.Warn("federation worker consume error", slog.Any("error", err))
-			}
-		}),
-	)
-	if err != nil {
-		return fmt.Errorf("activitypub worker: consume: %w", err)
+	if err := natsutil.RunConsumer(ctx, w.js, StreamOutboxDelivery, consumerDelivery,
+		func(msg jetstream.Msg) { go w.processMessage(ctx, msg) },
+		natsutil.WithMaxMessages(concurrency),
+		natsutil.WithLabel("activitypub delivery worker"),
+	); err != nil {
+		return fmt.Errorf("delivery worker: %w", err)
 	}
-
-	<-ctx.Done()
-	slog.Info("activitypub worker stopping")
-	consCtx.Stop()
-	<-consCtx.Closed()
 	return nil
 }
 
 // Publish sends a delivery message to the stream for processing.
 // activityType is used as the subject suffix (e.g. "create" -> "federation.deliver.create").
-func (w *outboxDeliveryWorker) Publish(ctx context.Context, activityType string, msg OutboxDeliveryMessage) (err error) {
+func (w *outboxDeliveryWorker) Publish(ctx context.Context, activityType string, msg OutboxDeliveryMessage) error {
 	slog.DebugContext(ctx, "outbox delivery worker: publishing message", slog.String("activity_type", activityType), slog.String("activity_id", msg.ActivityID))
 
 	subject := subjectPrefixDeliver + strings.ToLower(activityType)
-
-	defer func() {
-		if err != nil {
-			observability.IncNATSPublish(subject, "error")
-		} else {
-			observability.IncNATSPublish(subject, "ok")
-		}
-	}()
-
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("activitypub: marshal delivery message: %w", err)
 	}
-	_, err = w.js.Publish(ctx, subject, data)
-	if err != nil {
-		return fmt.Errorf("activitypub: publish to %s: %w", subject, err)
+	if err := natsutil.Publish(ctx, w.js, subject, data); err != nil {
+		return fmt.Errorf("delivery publish: %w", err)
 	}
 	return nil
 }
 
 func (w *outboxDeliveryWorker) processMessage(ctx context.Context, msg jetstream.Msg) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.ErrorContext(ctx, "outbox delivery worker: panic in processMessage", slog.Any("panic", r), slog.String("subject", msg.Subject()))
+			_ = msg.Nak()
+		}
+	}()
 	slog.DebugContext(ctx, "outbox delivery worker: processing message", slog.String("subject", msg.Subject()))
 
 	var delivery OutboxDeliveryMessage
 	if err := json.Unmarshal(msg.Data(), &delivery); err != nil {
-		slog.Warn("activitypub worker: invalid payload", slog.Any("error", err))
+		slog.WarnContext(ctx, "activitypub worker: invalid payload", slog.Any("error", err))
 		_ = msg.Ack()
 		return
 	}
@@ -179,7 +150,7 @@ func (w *outboxDeliveryWorker) processMessage(ctx context.Context, msg jetstream
 
 	statusCode, err := w.deliverHTTP(ctx, delivery)
 	if err != nil {
-		slog.Warn("activitypub worker: delivery failed",
+		slog.WarnContext(ctx, "activitypub worker: delivery failed",
 			slog.String("activity_id", delivery.ActivityID),
 			slog.String("target", delivery.TargetInbox),
 			slog.String("sender_id", delivery.SenderID),
@@ -240,7 +211,7 @@ func (w *outboxDeliveryWorker) handleDeliveryFailure(ctx context.Context, msg je
 
 	if statusCode >= 400 && statusCode < 500 {
 		if err := w.sendToDLQ(ctx, activityType, delivery); err != nil {
-			slog.Warn("activitypub worker: publish DLQ failed", slog.String("activity_id", delivery.ActivityID), slog.Any("error", err))
+			slog.WarnContext(ctx, "activitypub worker: publish DLQ failed", slog.String("activity_id", delivery.ActivityID), slog.Any("error", err))
 		}
 		_ = msg.Term()
 		return
@@ -248,7 +219,7 @@ func (w *outboxDeliveryWorker) handleDeliveryFailure(ctx context.Context, msg je
 
 	if meta.NumDelivered >= uint64(len(deliveryRetries)) {
 		if err := w.sendToDLQ(ctx, activityType, delivery); err != nil {
-			slog.Warn("activitypub worker: publish DLQ failed", slog.String("activity_id", delivery.ActivityID), slog.Any("error", err))
+			slog.WarnContext(ctx, "activitypub worker: publish DLQ failed", slog.String("activity_id", delivery.ActivityID), slog.Any("error", err))
 		}
 		_ = msg.Ack()
 		return
@@ -259,29 +230,20 @@ func (w *outboxDeliveryWorker) handleDeliveryFailure(ctx context.Context, msg je
 
 func (w *outboxDeliveryWorker) termToDLQ(ctx context.Context, msg jetstream.Msg, activityType string, delivery OutboxDeliveryMessage) {
 	if err := w.sendToDLQ(ctx, activityType, delivery); err != nil {
-		slog.Warn("activitypub worker: publish DLQ failed", slog.String("activity_id", delivery.ActivityID), slog.Any("error", err))
+		slog.WarnContext(ctx, "activitypub worker: publish DLQ failed", slog.String("activity_id", delivery.ActivityID), slog.Any("error", err))
 	}
 	_ = msg.Term()
 }
 
 // sendToDLQ moves a failed delivery message to the dead-letter queue.
-func (w *outboxDeliveryWorker) sendToDLQ(ctx context.Context, activityType string, msg OutboxDeliveryMessage) (err error) {
+func (w *outboxDeliveryWorker) sendToDLQ(ctx context.Context, activityType string, msg OutboxDeliveryMessage) error {
 	subject := subjectPrefixDeliverDLQ + strings.ToLower(activityType)
-	defer func() {
-		if err != nil {
-			observability.IncNATSPublish(subject, "error")
-		} else {
-			observability.IncNATSPublish(subject, "ok")
-		}
-	}()
-
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("activitypub: marshal DLQ message: %w", err)
 	}
-	_, err = w.js.Publish(ctx, subject, data)
-	if err != nil {
-		return fmt.Errorf("activitypub: publish DLQ to %s: %w", subject, err)
+	if err := natsutil.Publish(ctx, w.js, subject, data); err != nil {
+		return fmt.Errorf("DLQ publish: %w", err)
 	}
 	return nil
 }

@@ -2,6 +2,7 @@ package apimodel
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -91,6 +92,32 @@ func TestCreateStatusRequest_Sanitize_pollOptions(t *testing.T) {
 	assert.Equal(t, "no <b>bold</b>", req.Poll.Options[1])
 }
 
+func TestUpdateStatusRequest_Validate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		status  string
+		wantErr bool
+	}{
+		{"valid text", "hello world", false},
+		{"empty string", "", true},
+		{"whitespace only", "   \t\n  ", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req := UpdateStatusRequest{Status: tc.status}
+			err := req.Validate()
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestUpdateStatusRequest_Sanitize(t *testing.T) {
 	t.Parallel()
 
@@ -169,21 +196,21 @@ func TestParseCreateStatusRequest(t *testing.T) {
 	t.Parallel()
 
 	t.Run("invalid JSON returns error", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses", bytes.NewBufferString(`{invalid`))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/statuses", bytes.NewBufferString(`{invalid`))
 		req.Header.Set("Content-Type", "application/json")
 		_, err := ParseCreateStatusRequest(req)
 		assert.ErrorIs(t, err, api.ErrBadRequest)
 	})
 
 	t.Run("empty status returns error", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses", bytes.NewBufferString(`{"status":""}`))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/statuses", bytes.NewBufferString(`{"status":""}`))
 		req.Header.Set("Content-Type", "application/json")
 		_, err := ParseCreateStatusRequest(req)
 		assert.ErrorIs(t, err, api.ErrUnprocessable)
 	})
 
 	t.Run("valid JSON parses fields", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses", bytes.NewBufferString(`{"status":"hi","visibility":"private","spoiler_text":"cw","sensitive":true,"language":"en"}`))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/statuses", bytes.NewBufferString(`{"status":"hi","visibility":"private","spoiler_text":"cw","sensitive":true,"language":"en"}`))
 		req.Header.Set("Content-Type", "application/json")
 		parsed, err := ParseCreateStatusRequest(req)
 		require.NoError(t, err)

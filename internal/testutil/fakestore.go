@@ -83,12 +83,14 @@ type FakeStore struct {
 
 	// Trending index test data
 	TrendingStatuses   []domain.TrendingStatus
-	TrendingTagHistory []store.TrendingTagHistoryEntry
-	HashtagDailyStats  []store.HashtagDailyStats
+	TrendingTagHistory []domain.TrendingTagHistory
+	HashtagDailyStats  []domain.HashtagDailyStats
 
 	StatusCards map[string]*domain.Card // status_id -> card
 
 	OutboxEvents []domain.DomainEvent // transactional outbox events
+
+	pushSubscriptions []*domain.PushSubscription
 }
 
 type quoteApprovalEntry struct {
@@ -224,7 +226,11 @@ func (f *FakeStore) SeedAccount(a *domain.Account) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.accountsByID[a.ID] = a
-	f.accountsByUsername[a.Username] = a
+	key := a.Username
+	if a.Domain != nil {
+		key = a.Username + "@" + *a.Domain
+	}
+	f.accountsByUsername[key] = a
 }
 
 const noCursorSentinel = "ZZZZZZZZZZZZZZZZZZZZZZZZZZ"
@@ -256,6 +262,10 @@ func (f *FakeStore) CreateAccount(ctx context.Context, in store.CreateAccountInp
 		return nil, domain.ErrConflict
 	}
 	now := time.Now()
+	profileURL := ""
+	if in.URL != nil {
+		profileURL = *in.URL
+	}
 	acc := &domain.Account{
 		ID:           in.ID,
 		Username:     in.Username,
@@ -269,7 +279,7 @@ func (f *FakeStore) CreateAccount(ctx context.Context, in store.CreateAccountInp
 		FollowersURL: in.FollowersURL,
 		FollowingURL: in.FollowingURL,
 		APID:         in.APID,
-		APRaw:        in.ApRaw,
+		ProfileURL:   profileURL,
 		Bot:          in.Bot,
 		Locked:       in.Locked,
 		CreatedAt:    now,
@@ -449,10 +459,6 @@ func (f *FakeStore) CreateStatus(ctx context.Context, in store.CreateStatusInput
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	now := time.Now()
-	var apRaw json.RawMessage
-	if len(in.ApRaw) > 0 {
-		apRaw = in.ApRaw
-	}
 	policy := in.QuoteApprovalPolicy
 	if policy == "" {
 		policy = "public"
@@ -472,7 +478,6 @@ func (f *FakeStore) CreateStatus(ctx context.Context, in store.CreateStatusInput
 		QuoteApprovalPolicy: policy,
 		QuotesCount:         0,
 		APID:                in.APID,
-		APRaw:               apRaw,
 		Sensitive:           in.Sensitive,
 		Local:               in.Local,
 		CreatedAt:           now,
@@ -711,40 +716,126 @@ func (f *FakeStore) GetHashtagTimeline(ctx context.Context, tagName string, maxI
 func (f *FakeStore) GetStatusAncestors(ctx context.Context, statusID string) ([]domain.Status, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	// FakeStore does not walk reply chains; return empty.
-	return nil, nil
+	currentID := statusID
+	var ancestors []domain.Status
+	visited := make(map[string]struct{})
+	for {
+		st, ok := f.statusesByID[currentID]
+		if !ok || st == nil || st.DeletedAt != nil {
+			break
+		}
+		if st.InReplyToID == nil || *st.InReplyToID == "" {
+			break
+		}
+		parentID := *st.InReplyToID
+		if _, seen := visited[parentID]; seen {
+			break
+		}
+		visited[parentID] = struct{}{}
+		parent, ok := f.statusesByID[parentID]
+		if !ok || parent == nil || parent.DeletedAt != nil {
+			break
+		}
+		ancestors = append(ancestors, *parent)
+		currentID = parentID
+	}
+	for i, j := 0, len(ancestors)-1; i < j; i, j = i+1, j-1 {
+		ancestors[i], ancestors[j] = ancestors[j], ancestors[i]
+	}
+	return ancestors, nil
 }
 
 func (f *FakeStore) GetStatusDescendants(ctx context.Context, statusID string) ([]domain.Status, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	// FakeStore does not walk reply chains; return empty.
-	return nil, nil
+	var collect func(parentID string) []*domain.Status
+	collect = func(parentID string) []*domain.Status {
+		var out []*domain.Status
+		for _, s := range f.statusesByID {
+			if s.DeletedAt != nil {
+				continue
+			}
+			if s.InReplyToID == nil || *s.InReplyToID != parentID {
+				continue
+			}
+			out = append(out, s)
+		}
+		for _, child := range out {
+			out = append(out, collect(child.ID)...)
+		}
+		return out
+	}
+	descendants := collect(statusID)
+	sort.Slice(descendants, func(i, j int) bool { return descendants[i].CreatedAt.Before(descendants[j].CreatedAt) })
+	out := make([]domain.Status, 0, len(descendants))
+	for _, s := range descendants {
+		out = append(out, *s)
+	}
+	return out, nil
 }
 
 func (f *FakeStore) GetStatusFavouritedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]domain.Account, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	// FakeStore does not track favourites; return empty.
-	return nil, nil
+	var entries []*domain.Favourite
+	for _, fav := range f.favouritesByID {
+		if fav.StatusID != statusID {
+			continue
+		}
+		if maxID != nil && *maxID != "" && fav.ID >= *maxID {
+			continue
+		}
+		entries = append(entries, fav)
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].ID > entries[j].ID })
+	if limit <= 0 {
+		limit = 40
+	}
+	if len(entries) > limit {
+		entries = entries[:limit]
+	}
+	out := make([]domain.Account, 0, len(entries))
+	for _, e := range entries {
+		a, ok := f.accountsByID[e.AccountID]
+		if ok && a != nil {
+			acc := *a
+			f.resolveAccountMediaURLs(&acc)
+			out = append(out, acc)
+		}
+	}
+	return out, nil
 }
 
 func (f *FakeStore) GetRebloggedBy(ctx context.Context, statusID string, maxID *string, limit int) ([]domain.Account, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	// FakeStore: collect accounts that have a reblog status for this ID.
-	out := make([]domain.Account, 0)
+	var reblogs []*domain.Status
 	for _, s := range f.statusesByID {
 		if s.DeletedAt != nil {
 			continue
 		}
-		if s.ReblogOfID != nil && *s.ReblogOfID == statusID {
-			a := f.accountsByID[s.AccountID]
-			if a != nil {
-				acc := *a
-				f.resolveAccountMediaURLs(&acc)
-				out = append(out, acc)
-			}
+		if s.ReblogOfID == nil || *s.ReblogOfID != statusID {
+			continue
+		}
+		if maxID != nil && *maxID != "" && s.ID >= *maxID {
+			continue
+		}
+		reblogs = append(reblogs, s)
+	}
+	sort.Slice(reblogs, func(i, j int) bool { return reblogs[i].ID > reblogs[j].ID })
+	if limit <= 0 {
+		limit = 40
+	}
+	if len(reblogs) > limit {
+		reblogs = reblogs[:limit]
+	}
+	out := make([]domain.Account, 0, len(reblogs))
+	for _, s := range reblogs {
+		a, ok := f.accountsByID[s.AccountID]
+		if ok && a != nil {
+			acc := *a
+			f.resolveAccountMediaURLs(&acc)
+			out = append(out, acc)
 		}
 	}
 	return out, nil
@@ -961,6 +1052,106 @@ func (f *FakeStore) SearchHashtagsByPrefix(ctx context.Context, prefix string, l
 	return out, nil
 }
 
+func (f *FakeStore) CreatePushSubscription(_ context.Context, in store.CreatePushSubscriptionInput) (*domain.PushSubscription, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	now := time.Now()
+	ps := &domain.PushSubscription{
+		ID:            in.ID,
+		AccessTokenID: in.AccessTokenID,
+		AccountID:     in.AccountID,
+		Endpoint:      in.Endpoint,
+		KeyP256DH:     in.KeyP256DH,
+		KeyAuth:       in.KeyAuth,
+		Alerts:        in.Alerts,
+		Policy:        in.Policy,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	for i, existing := range f.pushSubscriptions {
+		if existing.AccessTokenID == in.AccessTokenID {
+			ps.CreatedAt = existing.CreatedAt
+			f.pushSubscriptions[i] = ps
+			return ps, nil
+		}
+	}
+	f.pushSubscriptions = append(f.pushSubscriptions, ps)
+	return ps, nil
+}
+
+func (f *FakeStore) GetPushSubscription(_ context.Context, accessTokenID string) (*domain.PushSubscription, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, ps := range f.pushSubscriptions {
+		if ps.AccessTokenID == accessTokenID {
+			return ps, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
+func (f *FakeStore) UpdatePushSubscription(_ context.Context, accessTokenID string, alerts domain.PushAlerts, policy string) (*domain.PushSubscription, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, ps := range f.pushSubscriptions {
+		if ps.AccessTokenID == accessTokenID {
+			ps.Alerts = alerts
+			ps.Policy = policy
+			ps.UpdatedAt = time.Now()
+			return ps, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
+func (f *FakeStore) DeletePushSubscription(_ context.Context, accessTokenID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, ps := range f.pushSubscriptions {
+		if ps.AccessTokenID == accessTokenID {
+			f.pushSubscriptions = append(f.pushSubscriptions[:i], f.pushSubscriptions[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
+
+func (f *FakeStore) ListPushSubscriptionsByAccountID(_ context.Context, accountID string) ([]domain.PushSubscription, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var result []domain.PushSubscription
+	for _, ps := range f.pushSubscriptions {
+		if ps.AccountID == accountID {
+			result = append(result, *ps)
+		}
+	}
+	if result == nil {
+		result = []domain.PushSubscription{}
+	}
+	return result, nil
+}
+
+func (f *FakeStore) GetHashtagByName(_ context.Context, name string) (*domain.Hashtag, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := strings.ToLower(name)
+	if h, ok := f.hashtagsByName[key]; ok {
+		return h, nil
+	}
+	return nil, domain.ErrNotFound
+}
+
+func (f *FakeStore) IsFollowingTag(_ context.Context, accountID, tagID string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, e := range f.followedTagsList {
+		if e.AccountID == accountID && e.TagID == tagID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (f *FakeStore) FollowTag(ctx context.Context, id, accountID, tagID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -1143,18 +1334,6 @@ func (f *FakeStore) IsConversationMuted(ctx context.Context, accountID, conversa
 	defer f.mu.Unlock()
 	_, ok := f.conversationMutesByKey[convMuteKey(accountID, conversationID)]
 	return ok, nil
-}
-
-func (f *FakeStore) ListMutedConversationIDs(ctx context.Context, accountID string) ([]string, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var out []string
-	for _, e := range f.conversationMutesList {
-		if e.AccountID == accountID {
-			out = append(out, e.ConversationID)
-		}
-	}
-	return out, nil
 }
 
 func (f *FakeStore) CreateConversation(ctx context.Context, id string) error {
@@ -1649,6 +1828,17 @@ func (f *FakeStore) GetFollowByID(ctx context.Context, id string) (*domain.Follo
 	return nil, domain.ErrNotFound
 }
 func (f *FakeStore) GetFollowByAPID(ctx context.Context, apID string) (*domain.Follow, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if apID == "" {
+		return nil, domain.ErrNotFound
+	}
+	for _, follow := range f.followsByKey {
+		if follow.APID != nil && *follow.APID == apID {
+			cp := *follow
+			return &cp, nil
+		}
+	}
 	return nil, domain.ErrNotFound
 }
 func (f *FakeStore) CreateFollow(ctx context.Context, in store.CreateFollowInput) (*domain.Follow, error) {
@@ -1683,10 +1873,67 @@ func (f *FakeStore) DeleteFollow(ctx context.Context, accountID, targetID string
 	return nil
 }
 func (f *FakeStore) GetFollowers(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error) {
-	return nil, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var entries []*domain.Follow
+	for _, follow := range f.followsByKey {
+		if follow.TargetID != accountID || follow.State != domain.FollowStateAccepted {
+			continue
+		}
+		if maxID != nil && *maxID != "" && follow.ID >= *maxID {
+			continue
+		}
+		entries = append(entries, follow)
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].ID > entries[j].ID })
+	if limit <= 0 {
+		limit = 40
+	}
+	if len(entries) > limit {
+		entries = entries[:limit]
+	}
+	out := make([]domain.Account, 0, len(entries))
+	for _, e := range entries {
+		a, ok := f.accountsByID[e.AccountID]
+		if ok && a != nil {
+			acc := *a
+			f.resolveAccountMediaURLs(&acc)
+			out = append(out, acc)
+		}
+	}
+	return out, nil
 }
+
 func (f *FakeStore) GetFollowing(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, error) {
-	return nil, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var entries []*domain.Follow
+	for _, follow := range f.followsByKey {
+		if follow.AccountID != accountID || follow.State != domain.FollowStateAccepted {
+			continue
+		}
+		if maxID != nil && *maxID != "" && follow.ID >= *maxID {
+			continue
+		}
+		entries = append(entries, follow)
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].ID > entries[j].ID })
+	if limit <= 0 {
+		limit = 40
+	}
+	if len(entries) > limit {
+		entries = entries[:limit]
+	}
+	out := make([]domain.Account, 0, len(entries))
+	for _, e := range entries {
+		a, ok := f.accountsByID[e.TargetID]
+		if ok && a != nil {
+			acc := *a
+			f.resolveAccountMediaURLs(&acc)
+			out = append(out, acc)
+		}
+	}
+	return out, nil
 }
 
 func (f *FakeStore) GetPendingFollowRequests(ctx context.Context, targetID string, maxID *string, limit int) ([]domain.Account, *string, error) {
@@ -1857,6 +2104,21 @@ func (f *FakeStore) ListListAccountIDs(ctx context.Context, listID string) ([]st
 	out := make([]string, len(ids))
 	copy(out, ids)
 	return out, nil
+}
+
+func (f *FakeStore) GetListIDsByMemberAccountID(_ context.Context, accountID string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var result []string
+	for listID, members := range f.listAccountIDs {
+		for _, mid := range members {
+			if mid == accountID {
+				result = append(result, listID)
+				break
+			}
+		}
+	}
+	return result, nil
 }
 
 func (f *FakeStore) AddAccountToList(ctx context.Context, listID, accountID string) error {
@@ -2421,11 +2683,27 @@ func (f *FakeStore) UpdateAccount(ctx context.Context, in store.UpdateAccountInp
 	if len(in.Fields) > 0 {
 		acc.Fields = in.Fields
 	}
+	if in.URL != nil {
+		acc.ProfileURL = *in.URL
+	}
 	acc.Bot = in.Bot
 	acc.Locked = in.Locked
 	return nil
 }
-func (f *FakeStore) UpdateAccountKeys(ctx context.Context, id, publicKey string, apRaw []byte) error {
+func (f *FakeStore) UpdateAccountKeys(ctx context.Context, id, publicKey string) error {
+	return nil
+}
+func (f *FakeStore) UpdateAccountURLs(ctx context.Context, id, inboxURL, outboxURL, followersURL, followingURL string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	acc := f.accountsByID[id]
+	if acc == nil {
+		return domain.ErrNotFound
+	}
+	acc.InboxURL = inboxURL
+	acc.OutboxURL = outboxURL
+	acc.FollowersURL = followersURL
+	acc.FollowingURL = followingURL
 	return nil
 }
 func (f *FakeStore) AttachMediaToStatus(ctx context.Context, mediaID, statusID, accountID string) error {
@@ -2438,6 +2716,7 @@ func (f *FakeStore) CreateMediaAttachment(ctx context.Context, in store.CreateMe
 		ID:          in.ID,
 		AccountID:   in.AccountID,
 		Type:        in.Type,
+		ContentType: in.ContentType,
 		StorageKey:  in.StorageKey,
 		URL:         in.URL,
 		PreviewURL:  in.PreviewURL,
@@ -2722,28 +3001,6 @@ func (f *FakeStore) CreateDomainBlock(ctx context.Context, in store.CreateDomain
 	f.domainBlocksByDomain[key] = b
 	return b, nil
 }
-func (f *FakeStore) GetDomainBlock(ctx context.Context, domainName string) (*domain.DomainBlock, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	key := strings.ToLower(strings.TrimSpace(domainName))
-	if b, ok := f.domainBlocksByDomain[key]; ok {
-		copy := *b
-		return &copy, nil
-	}
-	return nil, domain.ErrNotFound
-}
-func (f *FakeStore) UpdateDomainBlock(ctx context.Context, domainName string, severity string, reason *string) (*domain.DomainBlock, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	key := strings.ToLower(strings.TrimSpace(domainName))
-	if b, ok := f.domainBlocksByDomain[key]; ok {
-		b.Severity = severity
-		b.Reason = reason
-		copy := *b
-		return &copy, nil
-	}
-	return nil, domain.ErrNotFound
-}
 func (f *FakeStore) DeleteDomainBlock(ctx context.Context, domain string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -2753,9 +3010,6 @@ func (f *FakeStore) DeleteDomainBlock(ctx context.Context, domain string) error 
 }
 func (f *FakeStore) CreateAdminAction(ctx context.Context, in store.CreateAdminActionInput) error {
 	return nil
-}
-func (f *FakeStore) ListAdminActionsByTarget(ctx context.Context, targetAccountID string) ([]domain.AdminAction, error) {
-	return nil, nil
 }
 func (f *FakeStore) CreateInvite(ctx context.Context, in store.CreateInviteInput) (*domain.Invite, error) {
 	return &domain.Invite{ID: in.ID, Code: in.Code, CreatedBy: in.CreatedBy, MaxUses: in.MaxUses, Uses: 0, ExpiresAt: in.ExpiresAt, CreatedAt: time.Now()}, nil
@@ -2784,10 +3038,6 @@ func (f *FakeStore) CountKnownInstances(ctx context.Context) (int64, error) {
 }
 func (f *FakeStore) CreateServerFilter(ctx context.Context, in store.CreateServerFilterInput) (*domain.ServerFilter, error) {
 	return &domain.ServerFilter{ID: in.ID, Phrase: in.Phrase, Scope: in.Scope, Action: in.Action, CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil
-}
-func (f *FakeStore) GetServerFilter(ctx context.Context, id string) (*domain.ServerFilter, error) {
-	_ = id
-	return nil, domain.ErrNotFound
 }
 func (f *FakeStore) ListServerFilters(ctx context.Context) ([]domain.ServerFilter, error) {
 	return nil, nil
@@ -3096,26 +3346,23 @@ func (f *FakeStore) GetTopScoredPublicStatuses(_ context.Context, _ time.Time, _
 	return append([]domain.TrendingStatus{}, f.TrendingStatuses...), nil
 }
 
-func (f *FakeStore) GetHashtagDailyStats(_ context.Context, _ time.Time) ([]store.HashtagDailyStats, error) {
+func (f *FakeStore) GetHashtagDailyStats(_ context.Context, _ time.Time) ([]domain.HashtagDailyStats, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]store.HashtagDailyStats{}, f.HashtagDailyStats...), nil
+	return append([]domain.HashtagDailyStats{}, f.HashtagDailyStats...), nil
 }
 
-func (f *FakeStore) ReplaceTrendingStatuses(_ context.Context, entries []store.TrendingStatusEntry) error {
+func (f *FakeStore) ReplaceTrendingStatuses(_ context.Context, entries []domain.TrendingStatus) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.TrendingStatuses = make([]domain.TrendingStatus, len(entries))
-	for i, e := range entries {
-		f.TrendingStatuses[i] = domain.TrendingStatus{StatusID: e.StatusID, Score: e.Score}
-	}
+	f.TrendingStatuses = append([]domain.TrendingStatus{}, entries...)
 	return nil
 }
 
-func (f *FakeStore) UpsertTrendingTagHistory(_ context.Context, entries []store.TrendingTagHistoryEntry) error {
+func (f *FakeStore) UpsertTrendingTagHistory(_ context.Context, entries []domain.TrendingTagHistory) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.TrendingTagHistory = append([]store.TrendingTagHistoryEntry{}, entries...)
+	f.TrendingTagHistory = append([]domain.TrendingTagHistory{}, entries...)
 	return nil
 }
 

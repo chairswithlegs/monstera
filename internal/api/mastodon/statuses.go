@@ -32,13 +32,16 @@ type StatusesHandler struct {
 	accounts       service.AccountService
 	statuses       service.StatusService
 	statusWrites   service.StatusWriteService
+	interactions   service.StatusInteractionService
+	scheduled      service.ScheduledStatusService
+	conversations  service.ConversationService
 	instanceDomain string
-	cache          cache.Store // optional; when set, Idempotency-Key is honored
+	cache          cache.SharedStore // optional; when set, Idempotency-Key is honored
 	pollLimits     *service.PollLimits
 }
 
 // NewStatusesHandler returns a new StatusesHandler. idempotencyCache may be nil to disable idempotency. pollLimits may be nil to use defaults.
-func NewStatusesHandler(accounts service.AccountService, statuses service.StatusService, statusWrites service.StatusWriteService, instanceDomain string, idempotencyCache cache.Store, pollLimits *service.PollLimits) *StatusesHandler {
+func NewStatusesHandler(accounts service.AccountService, statuses service.StatusService, statusWrites service.StatusWriteService, interactions service.StatusInteractionService, scheduled service.ScheduledStatusService, conversations service.ConversationService, instanceDomain string, idempotencyCache cache.SharedStore, pollLimits *service.PollLimits) *StatusesHandler {
 	if pollLimits == nil {
 		pollLimits = &service.PollLimits{
 			MaxOptions:    DefaultPollMaxOptions,
@@ -46,7 +49,7 @@ func NewStatusesHandler(accounts service.AccountService, statuses service.Status
 			MaxExpiration: DefaultPollMaxExpiration,
 		}
 	}
-	return &StatusesHandler{accounts: accounts, statuses: statuses, statusWrites: statusWrites, instanceDomain: instanceDomain, cache: idempotencyCache, pollLimits: pollLimits}
+	return &StatusesHandler{accounts: accounts, statuses: statuses, statusWrites: statusWrites, interactions: interactions, scheduled: scheduled, conversations: conversations, instanceDomain: instanceDomain, cache: idempotencyCache, pollLimits: pollLimits}
 }
 
 type idempotencyCached struct {
@@ -94,7 +97,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 			api.HandleError(w, r, err)
 			return
 		}
-		s, err := h.statusWrites.CreateScheduledStatus(ctx, account.ID, paramsJSON, scheduledAt)
+		s, err := h.scheduled.CreateScheduledStatus(ctx, account.ID, paramsJSON, scheduledAt)
 		if err != nil {
 			if errors.Is(err, domain.ErrValidation) {
 				api.HandleError(w, r, api.NewUnprocessableError("scheduled_at must be in the future"))
@@ -109,9 +112,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 			Params:           mastodonScheduledParams(s.Params),
 			MediaAttachments: nil,
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(out)
+		api.WriteJSON(w, http.StatusOK, out)
 		return
 	}
 
@@ -122,6 +123,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			var cached idempotencyCached
 			if json.Unmarshal(b, &cached) == nil {
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
 				w.WriteHeader(cached.Status)
 				_, _ = w.Write(cached.Body)
 				return
@@ -177,15 +179,13 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 
 	out := enrichedStatusToAPIModel(result, h.instanceDomain)
 	h.setQuoteApprovalOnStatus(ctx, result, &out, &account.ID)
-	body, _ := json.Marshal(out)
 	if idemKey != "" && h.cache != nil {
 		cacheKey := "idempotency:" + account.ID + ":" + idemKey
+		body, _ := json.Marshal(out)
 		cached, _ := json.Marshal(idempotencyCached{Status: http.StatusCreated, Body: body})
 		_ = h.cache.Set(ctx, cacheKey, cached, idempotencyTTL)
 	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(http.StatusCreated)
-	_, _ = w.Write(body)
+	api.WriteJSON(w, http.StatusCreated, out)
 }
 
 // GETStatuses handles GET /api/v1/statuses/:id. Auth optional.
@@ -206,49 +206,6 @@ func (h *StatusesHandler) GETStatuses(w http.ResponseWriter, r *http.Request) {
 	}
 	out := enrichedStatusToAPIModel(result, h.instanceDomain)
 	h.setQuoteApprovalOnStatus(r.Context(), result, &out, viewerID)
-	api.WriteJSON(w, http.StatusOK, out)
-}
-
-// GETQuotes handles GET /api/v1/statuses/:id/quotes (Mastodon-style quotes). Auth required. Returns statuses that quote the given status.
-func (h *StatusesHandler) GETQuotes(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	params := PageParamsFromRequest(r)
-	maxID := optionalString(params.MaxID)
-	limit := params.Limit
-	if limit <= 0 {
-		limit = DefaultPageLimit
-	}
-	if limit > MaxPageLimit {
-		limit = MaxPageLimit
-	}
-	enriched, err := h.statuses.ListQuotesOfStatus(r.Context(), id, maxID, limit, &account.ID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	out := make([]apimodel.Status, 0, len(enriched))
-	for i := range enriched {
-		s := enrichedStatusToAPIModel(enriched[i], h.instanceDomain)
-		h.setQuoteApprovalOnStatus(r.Context(), enriched[i], &s, &account.ID)
-		out = append(out, s)
-	}
-	firstID, lastID := firstLastIDsFromEnriched(enriched)
-	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
-		w.Header().Set("Link", link)
-	}
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -293,7 +250,7 @@ func (h *StatusesHandler) POSTPin(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	result, err := h.statusWrites.Pin(r.Context(), account.ID, id)
+	result, err := h.interactions.Pin(r.Context(), account.ID, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -327,7 +284,7 @@ func (h *StatusesHandler) POSTUnpin(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	result, err := h.statusWrites.Unpin(r.Context(), account.ID, id)
+	result, err := h.interactions.Unpin(r.Context(), account.ID, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -344,68 +301,6 @@ func (h *StatusesHandler) POSTUnpin(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
-// POSTMuteConversation handles POST /api/v1/statuses/:id/mute (thread mute).
-func (h *StatusesHandler) POSTMuteConversation(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	if err := h.statusWrites.MuteConversation(r.Context(), account.ID, id); err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	viewerID := &account.ID
-	result, err := h.statuses.GetByIDEnriched(r.Context(), id, viewerID)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
-	out.Muted = true
-	api.WriteJSON(w, http.StatusOK, out)
-}
-
-// POSTUnmuteConversation handles POST /api/v1/statuses/:id/unmute (thread unmute).
-func (h *StatusesHandler) POSTUnmuteConversation(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	if err := h.statusWrites.UnmuteConversation(r.Context(), account.ID, id); err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	viewerID := &account.ID
-	result, err := h.statuses.GetByIDEnriched(r.Context(), id, viewerID)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
-	out.Muted = false
-	api.WriteJSON(w, http.StatusOK, out)
-}
-
 // PUTStatuses handles PUT /api/v1/statuses/:id.
 func (h *StatusesHandler) PUTStatuses(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
@@ -419,10 +314,11 @@ func (h *StatusesHandler) PUTStatuses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req apimodel.UpdateStatusRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
+	if err := api.DecodeAndValidateJSON(r, &req); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
+	req.Sanitize()
 	result, err := h.statusWrites.Update(r.Context(), service.UpdateStatusInput{
 		AccountID:   account.ID,
 		StatusID:    id,
@@ -507,68 +403,6 @@ func (h *StatusesHandler) PUTInteractionPolicy(w http.ResponseWriter, r *http.Re
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
-// GETStatusHistory handles GET /api/v1/statuses/:id/history.
-func (h *StatusesHandler) GETStatusHistory(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	var viewerID *string
-	if account := middleware.AccountFromContext(r.Context()); account != nil {
-		viewerID = &account.ID
-	}
-	edits, err := h.statuses.GetStatusHistory(r.Context(), id, viewerID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	out := make([]apimodel.StatusEdit, 0, len(edits))
-	if len(edits) > 0 {
-		author, err := h.accounts.GetByID(r.Context(), edits[0].AccountID)
-		if err != nil {
-			api.HandleError(w, r, err)
-			return
-		}
-		authorAPI := apimodel.ToAccount(author, h.instanceDomain)
-		for _, e := range edits {
-			out = append(out, apimodel.StatusEditFromDomain(e, authorAPI))
-		}
-	}
-	api.WriteJSON(w, http.StatusOK, out)
-}
-
-// GETStatusSource handles GET /api/v1/statuses/:id/source.
-func (h *StatusesHandler) GETStatusSource(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	var viewerID *string
-	if account := middleware.AccountFromContext(r.Context()); account != nil {
-		viewerID = &account.ID
-	}
-	text, spoiler, err := h.statuses.GetStatusSource(r.Context(), id, viewerID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	api.WriteJSON(w, http.StatusOK, apimodel.StatusSource{
-		ID:          id,
-		Text:        text,
-		SpoilerText: spoiler,
-	})
-}
-
 // DELETEStatuses handles DELETE /api/v1/statuses/:id. Auth required.
 func (h *StatusesHandler) DELETEStatuses(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
@@ -581,284 +415,16 @@ func (h *StatusesHandler) DELETEStatuses(w http.ResponseWriter, r *http.Request)
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	st, err := h.statuses.GetByID(r.Context(), id)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	if st.AccountID != account.ID {
-		api.HandleError(w, r, api.ErrForbidden)
-		return
-	}
 	result, err := h.statuses.GetByIDEnriched(r.Context(), id, &account.ID)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
-	if err := h.statusWrites.Delete(r.Context(), id); err != nil {
+	if err := h.statusWrites.Delete(r.Context(), id, account.ID); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
 	out := enrichedStatusToAPIModel(result, h.instanceDomain)
-	api.WriteJSON(w, http.StatusOK, out)
-}
-
-// POSTReblog handles POST /api/v1/statuses/:id/reblog.
-func (h *StatusesHandler) POSTReblog(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	result, err := h.statusWrites.CreateReblog(r.Context(), account.ID, account.Username, id)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		if errors.Is(err, domain.ErrForbidden) {
-			api.HandleError(w, r, api.ErrForbidden)
-			return
-		}
-		if errors.Is(err, domain.ErrConflict) {
-			api.HandleError(w, r, api.NewUnprocessableError("already reblogged"))
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	out := enrichedStatusToAPIModelWithReblog(r.Context(), result, id, &account.ID, h)
-	api.WriteJSON(w, http.StatusOK, out)
-}
-
-// POSTUnreblog handles POST /api/v1/statuses/:id/unreblog.
-func (h *StatusesHandler) POSTUnreblog(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	if err := h.statusWrites.DeleteReblog(r.Context(), account.ID, id); err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	result, err := h.statuses.GetByIDEnriched(r.Context(), id, &account.ID)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	api.WriteJSON(w, http.StatusOK, enrichedStatusToAPIModel(result, h.instanceDomain))
-}
-
-// POSTFavourite handles POST /api/v1/statuses/:id/favourite.
-func (h *StatusesHandler) POSTFavourite(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	result, err := h.statusWrites.CreateFavourite(r.Context(), account.ID, id)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
-	out.Favourited = true
-	api.WriteJSON(w, http.StatusOK, out)
-}
-
-// POSTUnfavourite handles POST /api/v1/statuses/:id/unfavourite.
-func (h *StatusesHandler) POSTUnfavourite(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	result, err := h.statusWrites.DeleteFavourite(r.Context(), account.ID, id)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
-	out.Favourited = false
-	api.WriteJSON(w, http.StatusOK, out)
-}
-
-// POSTBookmark handles POST /api/v1/statuses/:id/bookmark.
-func (h *StatusesHandler) POSTBookmark(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	result, err := h.statusWrites.Bookmark(r.Context(), account.ID, id)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
-	out.Bookmarked = true
-	api.WriteJSON(w, http.StatusOK, out)
-}
-
-// POSTUnbookmark handles POST /api/v1/statuses/:id/unbookmark.
-func (h *StatusesHandler) POSTUnbookmark(w http.ResponseWriter, r *http.Request) {
-	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
-	}
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	result, err := h.statusWrites.Unbookmark(r.Context(), account.ID, id)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
-	out.Bookmarked = false
-	api.WriteJSON(w, http.StatusOK, out)
-}
-
-// GETContext handles GET /api/v1/statuses/:id/context.
-func (h *StatusesHandler) GETContext(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	var viewerID *string
-	if account := middleware.AccountFromContext(r.Context()); account != nil {
-		viewerID = &account.ID
-	}
-	ctxResult, err := h.statuses.GetContext(r.Context(), id, viewerID)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	ancestors := make([]apimodel.Status, 0, len(ctxResult.Ancestors))
-	for i := range ctxResult.Ancestors {
-		enriched, err := h.statuses.GetByIDEnriched(r.Context(), ctxResult.Ancestors[i].ID, viewerID)
-		if err != nil {
-			continue
-		}
-		ancestors = append(ancestors, enrichedStatusToAPIModel(enriched, h.instanceDomain))
-	}
-	descendants := make([]apimodel.Status, 0, len(ctxResult.Descendants))
-	for i := range ctxResult.Descendants {
-		enriched, err := h.statuses.GetByIDEnriched(r.Context(), ctxResult.Descendants[i].ID, viewerID)
-		if err != nil {
-			continue
-		}
-		descendants = append(descendants, enrichedStatusToAPIModel(enriched, h.instanceDomain))
-	}
-	api.WriteJSON(w, http.StatusOK, map[string]interface{}{
-		"ancestors":   ancestors,
-		"descendants": descendants,
-	})
-}
-
-// GETFavouritedBy handles GET /api/v1/statuses/:id/favourited_by.
-func (h *StatusesHandler) GETFavouritedBy(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	var viewerID *string
-	if account := middleware.AccountFromContext(r.Context()); account != nil {
-		viewerID = &account.ID
-	}
-	params := PageParamsFromRequest(r)
-	list, err := h.statuses.GetFavouritedBy(r.Context(), id, viewerID, optionalString(params.MaxID), params.Limit)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	out := make([]apimodel.Account, 0, len(list))
-	for _, a := range list {
-		out = append(out, apimodel.ToAccount(a, h.instanceDomain))
-	}
-	firstID, lastID := firstLastAccountIDs(list)
-	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
-		w.Header().Set("Link", link)
-	}
-	api.WriteJSON(w, http.StatusOK, out)
-}
-
-// GETRebloggedBy handles GET /api/v1/statuses/:id/reblogged_by.
-func (h *StatusesHandler) GETRebloggedBy(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		api.HandleError(w, r, api.ErrNotFound)
-		return
-	}
-	var viewerID *string
-	if account := middleware.AccountFromContext(r.Context()); account != nil {
-		viewerID = &account.ID
-	}
-	params := PageParamsFromRequest(r)
-	list, err := h.statuses.GetRebloggedBy(r.Context(), id, viewerID, optionalString(params.MaxID), params.Limit)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.ErrNotFound)
-			return
-		}
-		api.HandleError(w, r, err)
-		return
-	}
-	out := make([]apimodel.Account, 0, len(list))
-	for _, a := range list {
-		out = append(out, apimodel.ToAccount(a, h.instanceDomain))
-	}
-	firstID, lastID := firstLastAccountIDs(list)
-	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
-		w.Header().Set("Link", link)
-	}
 	api.WriteJSON(w, http.StatusOK, out)
 }
 

@@ -41,7 +41,7 @@ func (q *Queries) DeleteBookmark(ctx context.Context, arg DeleteBookmarkParams) 
 }
 
 const getBookmarksTimeline = `-- name: GetBookmarksTimeline :many
-SELECT b.id AS cursor, s.id, s.uri, s.account_id, s.text, s.content, s.content_warning, s.visibility, s.language, s.in_reply_to_id, s.reblog_of_id, s.ap_id, s.ap_raw, s.sensitive, s.local, s.edited_at, s.replies_count, s.reblogs_count, s.favourites_count, s.created_at, s.updated_at, s.deleted_at, s.in_reply_to_account_id
+SELECT b.id AS cursor, s.id, s.uri, s.account_id, s.text, s.content, s.content_warning, s.visibility, s.language, s.in_reply_to_id, s.reblog_of_id, s.ap_id, s.sensitive, s.local, s.edited_at, s.replies_count, s.reblogs_count, s.favourites_count, s.created_at, s.updated_at, s.deleted_at, s.in_reply_to_account_id
 FROM bookmarks b
 INNER JOIN statuses s ON s.id = b.status_id
 WHERE b.account_id = $1 AND s.deleted_at IS NULL
@@ -69,7 +69,6 @@ type GetBookmarksTimelineRow struct {
 	InReplyToID        *string            `json:"in_reply_to_id"`
 	ReblogOfID         *string            `json:"reblog_of_id"`
 	ApID               string             `json:"ap_id"`
-	ApRaw              []byte             `json:"ap_raw"`
 	Sensitive          bool               `json:"sensitive"`
 	Local              bool               `json:"local"`
 	EditedAt           pgtype.Timestamptz `json:"edited_at"`
@@ -104,7 +103,6 @@ func (q *Queries) GetBookmarksTimeline(ctx context.Context, arg GetBookmarksTime
 			&i.InReplyToID,
 			&i.ReblogOfID,
 			&i.ApID,
-			&i.ApRaw,
 			&i.Sensitive,
 			&i.Local,
 			&i.EditedAt,

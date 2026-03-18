@@ -40,16 +40,26 @@ func (svc *monsteraSettingsService) Get(ctx context.Context) (domain.MonsteraSet
 	return *settings, nil
 }
 
-// Update persists the given settings. RegistrationMode must be one of open, approval, invite, closed.
+// Update validates and persists the given settings.
 func (svc *monsteraSettingsService) Update(ctx context.Context, in domain.MonsteraSettings) error {
-	switch in.RegistrationMode {
-	case domain.MonsteraRegistrationModeOpen, domain.MonsteraRegistrationModeApproval,
-		domain.MonsteraRegistrationModeInvite, domain.MonsteraRegistrationModeClosed:
-	default:
-		return fmt.Errorf("invalid registration_mode %q: %w", in.RegistrationMode, domain.ErrValidation)
+	if err := validateMonsteraSettings(in); err != nil {
+		return err
 	}
 	if err := svc.store.UpdateMonsteraSettings(ctx, &in); err != nil {
 		return fmt.Errorf("UpdateMonsteraSettings: %w", err)
+	}
+	return nil
+}
+
+func validateMonsteraSettings(s domain.MonsteraSettings) error {
+	switch s.RegistrationMode {
+	case domain.MonsteraRegistrationModeOpen, domain.MonsteraRegistrationModeApproval,
+		domain.MonsteraRegistrationModeInvite, domain.MonsteraRegistrationModeClosed:
+	default:
+		return fmt.Errorf("invalid registration_mode %q: %w", s.RegistrationMode, domain.ErrValidation)
+	}
+	if s.ServerName != nil && len(*s.ServerName) > 24 {
+		return fmt.Errorf("server_name must be 24 characters or fewer: %w", domain.ErrValidation)
 	}
 	return nil
 }

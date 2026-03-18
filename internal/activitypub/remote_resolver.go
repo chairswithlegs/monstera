@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/chairswithlegs/monstera/internal/activitypub/vocab"
-	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/chairswithlegs/monstera/internal/ssrf"
@@ -43,9 +43,6 @@ type JRD struct {
 
 // RemoteAccountResolver resolves a remote account by acct (user@domain) via WebFinger and actor fetch.
 // Used by the Mastodon search API when resolve=true.
-//
-// TODO: this service makes a variety of outbound HTTP requests to externally sourced IRI endpoints.
-// There's probably some SSRF risks here. Consider using something secure_egress_http_client.go.
 type RemoteAccountResolver struct {
 	accounts       service.AccountService
 	instanceDomain string
@@ -54,9 +51,9 @@ type RemoteAccountResolver struct {
 
 // NewRemoteAccountResolver returns a resolver that uses the given account service and actor fetch.
 // instanceDomain is used to skip resolution for local accounts (e.g. "example.com").
-func NewRemoteAccountResolver(accounts service.AccountService, cfg *config.Config) *RemoteAccountResolver {
+func NewRemoteAccountResolver(accounts service.AccountService, appEnv string, insecureSkipTLS bool, instanceDomain string) *RemoteAccountResolver {
 	var client *http.Client
-	if cfg.AppEnv != "production" && cfg.FederationInsecureSkipTLS {
+	if appEnv != "production" && insecureSkipTLS {
 		client = &http.Client{
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
 			Transport: &http.Transport{
@@ -69,7 +66,7 @@ func NewRemoteAccountResolver(accounts service.AccountService, cfg *config.Confi
 
 	return &RemoteAccountResolver{
 		accounts:       accounts,
-		instanceDomain: strings.TrimSpace(strings.ToLower(cfg.InstanceDomain)),
+		instanceDomain: strings.TrimSpace(strings.ToLower(instanceDomain)),
 		httpClient:     client,
 	}
 }
@@ -96,16 +93,21 @@ func (r *RemoteAccountResolver) ResolveRemoteAccount(ctx context.Context, acct s
 	if err == nil && !r.isRemoteActorAccountStale(existing) {
 		return existing, nil
 	}
-	// TODO: there is an edge case here where one of the following operations could fail
-	// but we have a (stale) account in the database we could return instead.
-	// Same situation with ResolveRemoteAccountByIRI.
-	actorIRI, err := r.fetchWebFingerActorIRI(ctx, acct)
-	if err != nil {
-		return nil, fmt.Errorf("ResolveRemoteAccount webfinger: %w", err)
+	actorIRI, fetchErr := r.fetchWebFingerActorIRI(ctx, acct)
+	if fetchErr != nil {
+		if existing != nil {
+			slog.WarnContext(ctx, "webfinger failed, returning stale account", slog.String("acct", acct), slog.Any("error", fetchErr))
+			return existing, nil
+		}
+		return nil, fmt.Errorf("ResolveRemoteAccount webfinger: %w", fetchErr)
 	}
-	actor, err := r.fetchActor(ctx, actorIRI)
-	if err != nil {
-		return nil, fmt.Errorf("ResolveRemoteAccount actor fetch: %w", err)
+	actor, fetchErr := r.fetchActor(ctx, actorIRI)
+	if fetchErr != nil {
+		if existing != nil {
+			slog.WarnContext(ctx, "actor fetch failed, returning stale account", slog.String("acct", acct), slog.Any("error", fetchErr))
+			return existing, nil
+		}
+		return nil, fmt.Errorf("ResolveRemoteAccount actor fetch: %w", fetchErr)
 	}
 	return r.SyncActorToStore(ctx, actor)
 }
@@ -113,18 +115,34 @@ func (r *RemoteAccountResolver) ResolveRemoteAccount(ctx context.Context, acct s
 // ResolveRemoteAccountByIRI resolves the given actor IRI to a domain.Account.
 // If the account already exists and is not stale, returns it.
 // Otherwise, fetches the actor document, creates/updates the account, and returns it.
-//
-// TODO: currently, we aren't fetching additional details from a remote actor's IRI endpoints.
-// This means we don't have things like the actor's followers count, following count, or statuses.
-// When resolving an actor, we should also fetch these details.
 func (r *RemoteAccountResolver) ResolveRemoteAccountByIRI(ctx context.Context, actorIRI string) (*domain.Account, error) {
+	if r.instanceDomain != "" {
+		u, parseErr := url.Parse(actorIRI)
+		if parseErr == nil && u.Host != "" {
+			host := strings.ToLower(strings.TrimSpace(u.Host))
+			if idx := strings.Index(host, ":"); idx >= 0 {
+				host = host[:idx]
+			}
+			if host == r.instanceDomain {
+				acc, err := r.accounts.GetByAPID(ctx, actorIRI)
+				if err != nil {
+					return nil, fmt.Errorf("ResolveRemoteAccountByIRI(local): %w", err)
+				}
+				return acc, nil
+			}
+		}
+	}
 	acc, err := r.accounts.GetByAPID(ctx, actorIRI)
 	if err == nil && !r.isRemoteActorAccountStale(acc) {
 		return acc, nil
 	}
-	actor, err := r.fetchActor(ctx, actorIRI)
-	if err != nil {
-		return nil, fmt.Errorf("ResolveRemoteAccountByIRI actor fetch: %w", err)
+	actor, fetchErr := r.fetchActor(ctx, actorIRI)
+	if fetchErr != nil {
+		if acc != nil {
+			slog.WarnContext(ctx, "actor fetch failed, returning stale account", slog.String("iri", actorIRI), slog.Any("error", fetchErr))
+			return acc, nil
+		}
+		return nil, fmt.Errorf("ResolveRemoteAccountByIRI actor fetch: %w", fetchErr)
 	}
 	return r.SyncActorToStore(ctx, actor)
 }
@@ -187,17 +205,58 @@ func (r *RemoteAccountResolver) SyncActorToStore(ctx context.Context, actor *voc
 	displayName := bluemonday.UGCPolicy().Sanitize(actor.Name)
 	note := bluemonday.UGCPolicy().Sanitize(actor.Summary)
 
-	apRaw, _ := json.Marshal(actor)
 	sanitized := *actor
 	sanitized.PreferredUsername = username
 	sanitized.Name = displayName
 	sanitized.Summary = note
-	in := vocab.ActorToServiceInput(&sanitized, apRaw)
-	acc, err := r.accounts.CreateOrUpdateRemoteAccount(ctx, in)
+	fields := vocab.ActorToRemoteFields(&sanitized)
+
+	followersCount := r.fetchCollectionCount(ctx, actor.Followers)
+	followingCount := r.fetchCollectionCount(ctx, actor.Following)
+	statusesCount := r.fetchCollectionCount(ctx, actor.Outbox)
+
+	acc, err := r.accounts.CreateOrUpdateRemoteAccount(ctx, service.CreateOrUpdateRemoteInput{
+		APID:           fields.APID,
+		Username:       fields.Username,
+		Domain:         fields.Domain,
+		DisplayName:    &fields.DisplayName,
+		Note:           &fields.Note,
+		PublicKey:      fields.PublicKey,
+		InboxURL:       fields.InboxURL,
+		OutboxURL:      fields.OutboxURL,
+		FollowersURL:   fields.FollowersURL,
+		FollowingURL:   fields.FollowingURL,
+		SharedInboxURL: fields.SharedInboxURL,
+		URL:            fields.URL,
+		Fields:         fields.Fields,
+		AvatarURL:      fields.AvatarURL,
+		HeaderURL:      fields.HeaderURL,
+		Bot:            fields.Bot,
+		Locked:         fields.Locked,
+		FollowersCount: followersCount,
+		FollowingCount: followingCount,
+		StatusesCount:  statusesCount,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("SyncActorToStore: %w", err)
 	}
 	return acc, nil
+}
+
+// fetchCollectionCount fetches an AP OrderedCollection/Collection and returns
+// its totalItems. Returns 0 on any failure (non-critical enrichment).
+func (r *RemoteAccountResolver) fetchCollectionCount(ctx context.Context, iri string) int {
+	if iri == "" {
+		return 0
+	}
+	var coll struct {
+		TotalItems int `json:"totalItems"`
+	}
+	if err := r.resolveIRIDocument(ctx, iri, &coll); err != nil {
+		slog.DebugContext(ctx, "fetchCollectionCount failed", slog.String("iri", iri), slog.Any("error", err))
+		return 0
+	}
+	return coll.TotalItems
 }
 
 func (r *RemoteAccountResolver) isRemoteActorAccountStale(acc *domain.Account) bool {

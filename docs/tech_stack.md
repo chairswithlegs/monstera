@@ -18,7 +18,8 @@ High-level overview of the technologies and libraries used in the Monstera proje
 |-----------|-----------|------|
 | Database | **PostgreSQL 16+** | Primary data store. Relational schema for the social graph, JSONB columns for raw ActivityPub payloads. |
 | Message Broker | **NATS JetStream** | Durable federation delivery queues (at-least-once) and ephemeral core pub/sub for SSE fan-out across replicas. |
-| Cache | **In-memory (ristretto)** | Timeline caching, idempotency keys, HTTP signature replay prevention, token lookup cache. |
+| Cache (local) | **In-memory (ristretto)** | Per-process caching: timeline, token lookup. |
+| Cache (shared) | **NATS JetStream KV** | Cross-pod state: rate limiting, idempotency keys, HTTP signature replay prevention. Falls back to in-memory when only one replica is running. |
 | Object Storage | **S3-compatible** or **local filesystem** | Media attachment storage (images, video, audio). |
 
 ---
@@ -97,6 +98,6 @@ The UI is implemented as a **separate Next.js application** in the `ui/` directo
 | golangci-lint | Linter aggregator — runs `staticcheck`, `gosec`, `errcheck`, `testifylint`, and others |
 | gofumpt | via golangci-lint formatters — strict `gofmt` superset |
 
-See `.cursor/rules/testing.mdc` for test conventions; `.cursor/rules/lint-and-test.mdc` for lint/test commands and CI.
+See the root `CLAUDE.md` for test conventions and lint/test commands.
 
 ---

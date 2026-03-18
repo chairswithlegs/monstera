@@ -8,7 +8,7 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	natsutil "github.com/chairswithlegs/monstera/internal/nats"
+	"github.com/chairswithlegs/monstera/internal/natsutil"
 )
 
 var retryBackoff = []time.Duration{30 * time.Second, 2 * time.Minute}
@@ -57,12 +57,12 @@ func (s *natsScheduler) Start(ctx context.Context) error {
 	errc := make(chan error, len(s.jobs)*2)
 
 	for _, job := range s.jobs {
-		consumer, err := s.js.CreateOrUpdateConsumer(ctx, streamName, consumerConfigForJob(job))
+		_, err := s.js.CreateOrUpdateConsumer(ctx, streamName, consumerConfigForJob(job))
 		if err != nil {
 			return fmt.Errorf("scheduler: create consumer for %s: %w", job.Name, err)
 		}
 		go s.runPublisher(ctx, job, errc)
-		go s.runConsumer(ctx, job, consumer, errc)
+		go s.runConsumer(ctx, job, errc)
 	}
 
 	select {
@@ -96,12 +96,11 @@ func (s *natsScheduler) runPublisher(ctx context.Context, job Job, _ chan<- erro
 		case t := <-ticker.C:
 			slot := t.Truncate(job.Interval).Unix()
 			msgID := fmt.Sprintf("%s.%d", job.Name, slot)
-			_, err := s.js.Publish(ctx, subjectPrefix+job.Name, nil, jetstream.WithMsgID(msgID))
-			if err != nil {
+			if err := natsutil.Publish(ctx, s.js, subjectPrefix+job.Name, nil, jetstream.WithMsgID(msgID)); err != nil {
 				if ctx.Err() != nil {
 					return
 				}
-				slog.Warn("scheduler: publish tick failed",
+				slog.WarnContext(ctx, "scheduler: publish tick failed",
 					slog.String("job", job.Name),
 					slog.Any("error", err),
 				)
@@ -110,36 +109,21 @@ func (s *natsScheduler) runPublisher(ctx context.Context, job Job, _ chan<- erro
 	}
 }
 
-func (s *natsScheduler) runConsumer(ctx context.Context, job Job, consumer jetstream.Consumer, errc chan<- error) {
-	consCtx, err := consumer.Consume(
-		func(msg jetstream.Msg) {
-			go s.processMessage(ctx, job, msg)
-		},
-		jetstream.PullMaxMessages(1),
-		jetstream.PullExpiry(5*time.Second),
-		jetstream.ConsumeErrHandler(func(_ jetstream.ConsumeContext, err error) {
-			if ctx.Err() == nil {
-				slog.Warn("scheduler: consume error",
-					slog.String("job", job.Name),
-					slog.Any("error", err),
-				)
-			}
-		}),
-	)
-	if err != nil {
-		errc <- fmt.Errorf("scheduler: consume for %s: %w", job.Name, err)
-		return
+func (s *natsScheduler) runConsumer(ctx context.Context, job Job, errc chan<- error) {
+	consumerName := "scheduler-" + job.Name
+	if err := natsutil.RunConsumer(ctx, s.js, streamName, consumerName,
+		func(msg jetstream.Msg) { go s.processMessage(ctx, job, msg) },
+		natsutil.WithMaxMessages(1),
+		natsutil.WithLabel("scheduler: "+job.Name),
+	); err != nil {
+		errc <- err
 	}
-
-	<-ctx.Done()
-	consCtx.Stop()
-	<-consCtx.Closed()
 }
 
 func (s *natsScheduler) processMessage(ctx context.Context, job Job, msg jetstream.Msg) {
 	defer func() {
 		if r := recover(); r != nil {
-			slog.Error("scheduler: job panicked",
+			slog.ErrorContext(ctx, "scheduler: job panicked",
 				slog.String("job", job.Name),
 				slog.Any("panic", r),
 			)
@@ -148,7 +132,7 @@ func (s *natsScheduler) processMessage(ctx context.Context, job Job, msg jetstre
 	}()
 
 	if err := job.Handler(ctx); err != nil {
-		slog.Warn("scheduler: job handler failed",
+		slog.WarnContext(ctx, "scheduler: job handler failed",
 			slog.String("job", job.Name),
 			slog.Any("error", err),
 		)

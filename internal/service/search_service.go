@@ -43,14 +43,10 @@ type SearchService interface {
 type searchService struct {
 	store    store.Store
 	resolver WebFingerResolver
-	logger   *slog.Logger
 }
 
-// NewSearchService returns a SearchService that uses the given store and optional resolver.
-// resolver may be nil; then resolve=true in Search will not perform remote resolution.
-// logger may be nil; then resolve failures are not logged.
-func NewSearchService(s store.Store, resolver WebFingerResolver, logger *slog.Logger) SearchService {
-	return &searchService{store: s, resolver: resolver, logger: logger}
+func NewSearchService(s store.Store, resolver WebFingerResolver) SearchService {
+	return &searchService{store: s, resolver: resolver}
 }
 
 // acctPattern matches user@domain (username and domain non-empty).
@@ -68,12 +64,7 @@ func (svc *searchService) Search(ctx context.Context, viewer *domain.Account, q 
 			Hashtags: []domain.Hashtag{},
 		}, nil
 	}
-	if limit <= 0 {
-		limit = 5
-	}
-	if limit > 40 {
-		limit = 40
-	}
+	limit = ClampLimit(limit, 5, 40)
 	out := &SearchResult{
 		Accounts: []*domain.Account{},
 		Statuses: []*domain.Status{}, // Phase 1: always empty
@@ -91,9 +82,7 @@ func (svc *searchService) Search(ctx context.Context, viewer *domain.Account, q 
 		if resolve && svc.resolver != nil && acctPattern.MatchString(q) {
 			remote, err := svc.resolver.ResolveRemoteAccount(ctx, q)
 			if err != nil {
-				if svc.logger != nil {
-					svc.logger.Debug("search resolve failed", slog.String("acct", q), slog.Any("error", err))
-				}
+				slog.DebugContext(ctx, "search resolve failed", slog.String("acct", q), slog.Any("error", err))
 			} else {
 				seen := make(map[string]bool)
 				for _, a := range out.Accounts {

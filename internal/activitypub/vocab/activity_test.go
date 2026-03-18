@@ -44,6 +44,43 @@ func TestNewFollowActivity(t *testing.T) {
 	require.Equal(t, "https://b.com/users/bob", obj)
 }
 
+func TestNewAnnounceActivity(t *testing.T) {
+	to := []string{PublicAddress}
+	cc := []string{"https://example.com/users/alice/followers"}
+	act, err := NewAnnounceActivity(
+		"https://example.com/activities/announce-1",
+		"https://example.com/users/alice",
+		"https://remote.example/statuses/123",
+		to, cc,
+	)
+	require.NoError(t, err)
+	require.Equal(t, ObjectTypeAnnounce, act.Type)
+	require.Equal(t, "https://example.com/activities/announce-1", act.ID)
+	require.Equal(t, "https://example.com/users/alice", act.Actor)
+	require.Equal(t, to, act.To)
+	require.Equal(t, cc, act.Cc)
+	var obj string
+	require.NoError(t, json.Unmarshal(act.ObjectRaw, &obj))
+	require.Equal(t, "https://remote.example/statuses/123", obj)
+}
+
+func TestNewLikeActivity(t *testing.T) {
+	act, err := NewLikeActivity(
+		"https://example.com/activities/like-1",
+		"https://example.com/users/alice",
+		"https://remote.example/statuses/456",
+		[]string{"https://remote.example/users/bob"},
+	)
+	require.NoError(t, err)
+	require.Equal(t, ObjectTypeLike, act.Type)
+	require.Equal(t, "https://example.com/activities/like-1", act.ID)
+	require.Equal(t, "https://example.com/users/alice", act.Actor)
+	require.Equal(t, []string{"https://remote.example/users/bob"}, act.To)
+	var obj string
+	require.NoError(t, json.Unmarshal(act.ObjectRaw, &obj))
+	require.Equal(t, "https://remote.example/statuses/456", obj)
+}
+
 func TestNewUndoActivity(t *testing.T) {
 	inner, _ := NewFollowActivity("https://example.com/f", "https://a.com/users/alice", "https://b.com/users/bob")
 	act, err := NewUndoActivity("https://example.com/undo-1", "https://a.com/users/alice", inner)
@@ -107,6 +144,25 @@ func TestActivity_ObjectID(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "https://example.com/users/bob", id)
 	require.Empty(t, a.ObjectType())
+}
+
+func TestActivity_ObjectID_embedded_object(t *testing.T) {
+	raw := `{"id":"https://example.com/activities/1","type":"Delete","actor":"https://example.com/users/alice","object":{"type":"Tombstone","id":"https://example.com/notes/42"}}`
+	var a Activity
+	err := json.Unmarshal([]byte(raw), &a)
+	require.NoError(t, err)
+	id, ok := a.ObjectID()
+	require.True(t, ok)
+	require.Equal(t, "https://example.com/notes/42", id)
+}
+
+func TestActivity_ObjectID_empty(t *testing.T) {
+	raw := `{"id":"x","type":"Delete","actor":"a","object":{}}`
+	var a Activity
+	err := json.Unmarshal([]byte(raw), &a)
+	require.NoError(t, err)
+	_, ok := a.ObjectID()
+	require.False(t, ok)
 }
 
 func TestActivity_ObjectNote(t *testing.T) {

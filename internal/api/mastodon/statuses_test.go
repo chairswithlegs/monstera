@@ -28,7 +28,9 @@ func TestStatusesHandler_Create(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
 		body := bytes.NewBufferString(`{"status":"hello world"}`)
@@ -41,10 +43,10 @@ func TestStatusesHandler_Create(t *testing.T) {
 
 	t.Run("blank status returns 422", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "alice",
-			Email:        "alice@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "alice",
+			Email:    "alice@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 
@@ -59,10 +61,10 @@ func TestStatusesHandler_Create(t *testing.T) {
 
 	t.Run("valid JSON creates status and returns 201", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "bob",
-			Email:        "bob@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "bob",
+			Email:    "bob@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 
@@ -81,10 +83,10 @@ func TestStatusesHandler_Create(t *testing.T) {
 
 	t.Run("valid form body creates status", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "charlie",
-			Email:        "charlie@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "charlie",
+			Email:    "charlie@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 
@@ -102,10 +104,10 @@ func TestStatusesHandler_Create(t *testing.T) {
 
 	t.Run("scheduled_at in future returns ScheduledStatus", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "scheduler",
-			Email:        "scheduler@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "scheduler",
+			Email:    "scheduler@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		scheduledAt := time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)
@@ -130,10 +132,10 @@ func TestStatusesHandler_Create(t *testing.T) {
 
 	t.Run("scheduled_at in past returns 422", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "past",
-			Email:        "past@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "past",
+			Email:    "past@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		past := time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339)
@@ -148,10 +150,10 @@ func TestStatusesHandler_Create(t *testing.T) {
 
 	t.Run("create with poll returns status with embedded poll", func(t *testing.T) {
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "pollster",
-			Email:        "pollster@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "pollster",
+			Email:    "pollster@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		body := bytes.NewBufferString(`{"status":"What do you think?","poll":{"options":["Yes","No"],"expires_in":3600,"multiple":false}}`)
@@ -184,7 +186,9 @@ func TestStatusesHandler_Create_account_without_user_returns_401(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "nouser"})
 	require.NoError(t, err)
@@ -206,13 +210,15 @@ func TestStatusesHandler_POSTReblog(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	statusID := uid.New()
@@ -258,13 +264,15 @@ func TestStatusesHandler_POSTUnreblog(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	statusID := uid.New()
@@ -306,13 +314,15 @@ func TestStatusesHandler_POSTPin(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	statusID := uid.New()
@@ -350,10 +360,10 @@ func TestStatusesHandler_POSTPin(t *testing.T) {
 
 	t.Run("pin other account status returns 403", func(t *testing.T) {
 		otherAcc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "bob",
-			Email:        "bob@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "bob",
+			Email:    "bob@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/"+statusID+"/pin", nil)
@@ -373,13 +383,15 @@ func TestStatusesHandler_POSTUnpin(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	statusID := uid.New()
@@ -425,13 +437,15 @@ func TestStatusesHandler_ConversationMute(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	statusID := uid.New()
@@ -512,13 +526,15 @@ func TestStatusesHandler_PUTStatuses(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	statusID := uid.New()
@@ -562,10 +578,10 @@ func TestStatusesHandler_PUTStatuses(t *testing.T) {
 
 	t.Run("edit other account status returns 403", func(t *testing.T) {
 		otherAcc, err := accountSvc.Register(ctx, service.RegisterInput{
-			Username:     "bob",
-			Email:        "bob@example.com",
-			PasswordHash: "hash",
-			Role:         domain.RoleUser,
+			Username: "bob",
+			Email:    "bob@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
 		})
 		require.NoError(t, err)
 		body := bytes.NewBufferString(`{"status":"hacked"}`)
@@ -587,13 +603,15 @@ func TestStatusesHandler_GETStatusHistory(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	statusID := uid.New()
@@ -664,13 +682,15 @@ func TestStatusesHandler_GETStatusSource(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	statusID := uid.New()
@@ -710,13 +730,15 @@ func TestStatusesHandler_POSTFavourite(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	statusID := uid.New()
@@ -768,13 +790,15 @@ func TestStatusesHandler_POSTUnfavourite(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	statusID := uid.New()
@@ -816,20 +840,22 @@ func TestStatusesHandler_DELETEStatuses(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	alice, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	bob, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "bob",
-		Email:        "bob@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "bob",
+		Email:    "bob@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	statusID := uid.New()
@@ -892,13 +918,15 @@ func TestStatusesHandler_POSTBookmark(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	statusID := uid.New()
@@ -952,13 +980,15 @@ func TestStatusesHandler_POSTUnbookmark(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	statusID := uid.New()
@@ -1003,7 +1033,9 @@ func TestStatusesHandler_GETContext(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	statusID := uid.New()
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
@@ -1041,7 +1073,9 @@ func TestStatusesHandler_GETStatuses_private_returns_404_when_unauthenticated(t 
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -1074,7 +1108,9 @@ func TestStatusesHandler_GETFavouritedBy(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -1103,7 +1139,9 @@ func TestStatusesHandler_GETRebloggedBy(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -1160,13 +1198,15 @@ func TestStatusesHandler_POSTStatuses_idempotency(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", cacheStore, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", cacheStore, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -1203,13 +1243,15 @@ func TestStatusesHandler_POSTStatuses_quote(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	alice, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	quotedID := uid.New()
@@ -1227,10 +1269,10 @@ func TestStatusesHandler_POSTStatuses_quote(t *testing.T) {
 	require.NoError(t, err)
 
 	bob, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "bob",
-		Email:        "bob@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "bob",
+		Email:    "bob@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -1312,13 +1354,15 @@ func TestStatusesHandler_GETQuotes(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	quotedID := uid.New()
@@ -1397,20 +1441,22 @@ func TestStatusesHandler_POSTRevokeQuote(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	alice, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	bob, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "bob",
-		Email:        "bob@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "bob",
+		Email:    "bob@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 
@@ -1488,20 +1534,22 @@ func TestStatusesHandler_PUTInteractionPolicy(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	conversationSvc := service.NewConversationService(st, statusSvc)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, "example.com", nil, nil)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "alice",
-		Email:        "alice@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 	otherAcc, err := accountSvc.Register(ctx, service.RegisterInput{
-		Username:     "bob",
-		Email:        "bob@example.com",
-		PasswordHash: "hash",
-		Role:         domain.RoleUser,
+		Username: "bob",
+		Email:    "bob@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
 	})
 	require.NoError(t, err)
 

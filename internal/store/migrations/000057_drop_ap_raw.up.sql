@@ -1,0 +1,2 @@
+ALTER TABLE accounts DROP COLUMN IF EXISTS ap_raw;
+ALTER TABLE statuses DROP COLUMN IF EXISTS ap_raw;

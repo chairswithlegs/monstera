@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go/jetstream"
+
+	"github.com/chairswithlegs/monstera/internal/natsutil"
 )
 
 // Subject prefixes for the activitypub outbound streams.
@@ -31,13 +33,8 @@ var (
 	fanoutRetries   = []time.Duration{5 * time.Minute}
 )
 
-// streamConfig describes a JetStream stream and its optional durable consumer.
-type streamConfig struct {
-	Stream   jetstream.StreamConfig
-	Consumer *jetstream.ConsumerConfig
-}
-
-var Streams = []streamConfig{
+// StreamConfigs defines the JetStream streams and consumers for ActivityPub federation.
+var StreamConfigs = []natsutil.StreamConfig{
 	{
 		Stream: jetstream.StreamConfig{
 			Name:      StreamOutboxDelivery,
@@ -48,13 +45,15 @@ var Streams = []streamConfig{
 			MaxBytes:  4 * 1024 * 1024,
 			Discard:   jetstream.DiscardOld,
 		},
-		Consumer: &jetstream.ConsumerConfig{
-			Durable:       consumerDelivery,
-			AckPolicy:     jetstream.AckExplicitPolicy,
-			MaxAckPending: 50,
-			AckWait:       60 * time.Second,
-			MaxDeliver:    len(deliveryRetries),
-			BackOff:       deliveryRetries,
+		Consumers: []jetstream.ConsumerConfig{
+			{
+				Durable:       consumerDelivery,
+				AckPolicy:     jetstream.AckExplicitPolicy,
+				MaxAckPending: 50,
+				AckWait:       60 * time.Second,
+				MaxDeliver:    len(deliveryRetries),
+				BackOff:       deliveryRetries,
+			},
 		},
 	},
 	{
@@ -76,13 +75,15 @@ var Streams = []streamConfig{
 			MaxBytes:  4 * 1024 * 1024,
 			Discard:   jetstream.DiscardOld,
 		},
-		Consumer: &jetstream.ConsumerConfig{
-			Durable:       consumerFanout,
-			AckPolicy:     jetstream.AckExplicitPolicy,
-			MaxAckPending: 20,
-			AckWait:       120 * time.Second,
-			MaxDeliver:    len(fanoutRetries),
-			BackOff:       fanoutRetries,
+		Consumers: []jetstream.ConsumerConfig{
+			{
+				Durable:       consumerFanout,
+				AckPolicy:     jetstream.AckExplicitPolicy,
+				MaxAckPending: 20,
+				AckWait:       120 * time.Second,
+				MaxDeliver:    len(fanoutRetries),
+				BackOff:       fanoutRetries,
+			},
 		},
 	},
 	{

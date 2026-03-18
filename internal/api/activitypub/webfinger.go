@@ -8,7 +8,6 @@ import (
 
 	"github.com/chairswithlegs/monstera/internal/api"
 	"github.com/chairswithlegs/monstera/internal/api/activitypub/apimodel"
-	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
 )
@@ -17,13 +16,14 @@ import (
 //
 // Returns a JRD (RFC 7033) document that maps an acct: URI to the AP Actor URL.
 type WebFingerHandler struct {
-	accounts service.AccountService
-	config   *config.Config
+	accounts        service.AccountService
+	instanceDomain  string
+	instanceBaseURL string
 }
 
 // NewWebFingerHandler returns a new WebFingerHandler.
-func NewWebFingerHandler(accounts service.AccountService, config *config.Config) *WebFingerHandler {
-	return &WebFingerHandler{accounts: accounts, config: config}
+func NewWebFingerHandler(accounts service.AccountService, instanceDomain string, instanceBaseURL string) *WebFingerHandler {
+	return &WebFingerHandler{accounts: accounts, instanceDomain: instanceDomain, instanceBaseURL: instanceBaseURL}
 }
 
 // GETWebFinger handles the WebFinger request.
@@ -47,7 +47,7 @@ func (h *WebFingerHandler) GETWebFinger(w http.ResponseWriter, r *http.Request) 
 	}
 	username := parts[0]
 	acctDomain := parts[1]
-	if !strings.EqualFold(acctDomain, h.config.InstanceDomain) {
+	if !strings.EqualFold(acctDomain, h.instanceDomain) {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
@@ -60,7 +60,7 @@ func (h *WebFingerHandler) GETWebFinger(w http.ResponseWriter, r *http.Request) 
 		api.HandleError(w, r, err)
 		return
 	}
-	actorURL := fmt.Sprintf("%s/users/%s", h.config.InstanceBaseURL(), account.Username)
+	actorURL := fmt.Sprintf("%s/users/%s", h.instanceBaseURL, account.Username)
 	resp := apimodel.WebFingerResponse{
 		Subject: resource,
 		Aliases: []string{actorURL},

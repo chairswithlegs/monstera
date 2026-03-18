@@ -1,88 +1,32 @@
 # Interface and Implementation
 
-Interfaces and their implementations should be colocated, in either the same file or with the implementation(s) living in nested packages.
+Interfaces and their implementations should be colocated — either in the same file or with the implementation(s) in a nested package.
 
-## Example (same file)
+## Same file (simple implementations)
 
-For simple implementations, the implementation can live in the same file as the interface.
-
-In this situation, the implementation type should be unexported.
+The implementation type is unexported; the constructor returns the interface.
 
 ```go
-// Interface (exported)
 type AccountService interface {
 	GetByID(ctx context.Context, id string) (*domain.Account, error)
-	Create(ctx context.Context, in CreateAccountInput) (*domain.Account, error)
 }
 
-// Implementation (unexported)
-type accountService struct {
-	store            store.Store
-	instanceBaseURL  string
-}
+type accountService struct{ store store.Store }
 
-// Constructor returns the interface
-func NewAccountService(s store.Store, instanceBaseURL string) AccountService {
-	return &accountService{store: s, instanceBaseURL: strings.TrimSuffix(instanceBaseURL, "/")}
-}
-
-// Methods on the unexported type
-func (svc *accountService) GetByID(ctx context.Context, id string) (*domain.Account, error) { ... }
-func (svc *accountService) Create(ctx context.Context, in CreateAccountInput) (*domain.Account, error) { ... }
-```
-
-## Example (nested package)
-
-When the implementation is large or there are multiple implementations, put the interface and shared input/result types in the parent package; put the implementation(s) in a nested package(s). The nested package's constructor returns the interface type so callers depend only on the parent.
-
-**Parent package** (`internal/store/store.go` and `types.go`): interface and shared types.
-
-```go
-package store
-
-type Store interface {
-	CreateAccount(ctx context.Context, in CreateAccountInput) (*domain.Account, error)
-	GetAccountByID(ctx context.Context, id string) (*domain.Account, error)
-	WithTx(ctx context.Context, fn func(Store) error) error
-	// ...
-}
-
-// CreateAccountInput and other input types live in the same package (e.g. types.go).
-type CreateAccountInput struct {
-	ID       string
-	Username string
-	// ...
+func NewAccountService(s store.Store) AccountService {
+	return &accountService{store: s}
 }
 ```
 
-**Nested implementation** (`internal/store/postgres/store.go`): implements the interface; constructor returns `store.Store`.
+## Nested package (large or multiple implementations)
+
+Interface and shared input/result types live in the parent package (`internal/store/store.go`). The implementation lives in a child package (`internal/store/postgres/`). The constructor returns the parent interface type so callers depend only on the parent.
 
 ```go
+// internal/store/postgres/store.go
 package postgres
 
-import (
-	"context"
-
-	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/chairswithlegs/monstera/internal/domain"
-	"github.com/chairswithlegs/monstera/internal/store"
-	db "github.com/chairswithlegs/monstera/internal/store/postgres/generated"
-)
-
-type PostgresStore struct {
-	q    *db.Queries
-	pool *pgxpool.Pool
-}
-
 func New(pool *pgxpool.Pool) store.Store {
-	return &PostgresStore{
-		q:    db.New(pool),
-		pool: pool,
-	}
-}
-
-func (s *PostgresStore) GetAccountByID(ctx context.Context, id string) (*domain.Account, error) {
-	// ... delegate to s.q, translate pgx errors to domain errors
+	return &PostgresStore{q: db.New(pool), pool: pool}
 }
 ```

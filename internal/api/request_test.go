@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,7 +15,7 @@ func TestDecodeJSONBody(t *testing.T) {
 	t.Parallel()
 
 	t.Run("nil body returns ErrBadRequest", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(nil))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", bytes.NewReader(nil))
 		req.Body = nil
 		var v map[string]string
 		err := DecodeJSONBody(req, &v)
@@ -24,7 +25,7 @@ func TestDecodeJSONBody(t *testing.T) {
 	})
 
 	t.Run("invalid JSON returns ErrBadRequest", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte("not json")))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", bytes.NewReader([]byte("not json")))
 		var v map[string]string
 		err := DecodeJSONBody(req, &v)
 		require.Error(t, err)
@@ -33,7 +34,7 @@ func TestDecodeJSONBody(t *testing.T) {
 	})
 
 	t.Run("valid JSON decodes into v", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte(`{"foo":"bar"}`)))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", bytes.NewReader([]byte(`{"foo":"bar"}`)))
 		var v map[string]string
 		err := DecodeJSONBody(req, &v)
 		require.NoError(t, err)
@@ -53,7 +54,7 @@ func TestDecodeAndValidateJSON(t *testing.T) {
 	t.Parallel()
 
 	t.Run("decode error is returned", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte("not json")))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", bytes.NewReader([]byte("not json")))
 		var body decodeAndValidateTestRequest
 		err := DecodeAndValidateJSON(req, &body)
 		require.Error(t, err)
@@ -61,7 +62,7 @@ func TestDecodeAndValidateJSON(t *testing.T) {
 	})
 
 	t.Run("validation error is returned", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte(`{}`)))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", bytes.NewReader([]byte(`{}`)))
 		var body decodeAndValidateTestRequest
 		err := DecodeAndValidateJSON(req, &body)
 		require.Error(t, err)
@@ -69,7 +70,7 @@ func TestDecodeAndValidateJSON(t *testing.T) {
 	})
 
 	t.Run("success", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte(`{"name":"x"}`)))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", bytes.NewReader([]byte(`{"name":"x"}`)))
 		var body decodeAndValidateTestRequest
 		err := DecodeAndValidateJSON(req, &body)
 		require.NoError(t, err)

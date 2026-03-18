@@ -17,6 +17,8 @@ type ConversationService interface {
 	MarkConversationRead(ctx context.Context, accountID, conversationID string) (*ConversationResult, error)
 	RemoveConversation(ctx context.Context, accountID, conversationID string) error
 	UpdateForDirectStatus(ctx context.Context, status *domain.Status, authorID string, mentionedAccountIDs []string) error
+	MuteConversation(ctx context.Context, accountID, statusID string) error
+	UnmuteConversation(ctx context.Context, accountID, statusID string) error
 }
 
 // ConversationResult is a single conversation with resolved last status and participants.
@@ -37,12 +39,7 @@ func NewConversationService(s store.Store, statusService StatusService) Conversa
 }
 
 func (svc *conversationService) ListConversations(ctx context.Context, accountID string, maxID *string, limit int) ([]ConversationResult, *string, error) {
-	if limit <= 0 {
-		limit = DefaultServiceListLimit
-	}
-	if limit > MaxServicePageLimit {
-		limit = MaxServicePageLimit
-	}
+	limit = ClampLimit(limit, DefaultServiceListLimit, MaxServicePageLimit)
 	rows, nextCursor, err := svc.store.ListAccountConversations(ctx, accountID, maxID, limit)
 	if err != nil {
 		return nil, nil, fmt.Errorf("ListAccountConversations: %w", err)
@@ -138,6 +135,28 @@ func (svc *conversationService) UpdateForDirectStatus(ctx context.Context, statu
 		}); err != nil {
 			return fmt.Errorf("UpsertAccountConversation: %w", err)
 		}
+	}
+	return nil
+}
+
+func (svc *conversationService) MuteConversation(ctx context.Context, accountID, statusID string) error {
+	root, err := svc.store.GetConversationRoot(ctx, statusID)
+	if err != nil {
+		return fmt.Errorf("MuteConversation GetConversationRoot: %w", err)
+	}
+	if err := svc.store.CreateConversationMute(ctx, accountID, root); err != nil {
+		return fmt.Errorf("CreateConversationMute: %w", err)
+	}
+	return nil
+}
+
+func (svc *conversationService) UnmuteConversation(ctx context.Context, accountID, statusID string) error {
+	root, err := svc.store.GetConversationRoot(ctx, statusID)
+	if err != nil {
+		return fmt.Errorf("UnmuteConversation GetConversationRoot: %w", err)
+	}
+	if err := svc.store.DeleteConversationMute(ctx, accountID, root); err != nil {
+		return fmt.Errorf("DeleteConversationMute: %w", err)
 	}
 	return nil
 }

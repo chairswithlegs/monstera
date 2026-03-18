@@ -14,7 +14,6 @@ const (
 	AdminActionUnsuspend           = "unsuspend"
 	AdminActionSilence             = "silence"
 	AdminActionUnsilence           = "unsilence"
-	AdminActionWarn                = "warn"
 	AdminActionDeleteAccount       = "delete_account"
 	AdminActionSetRole             = "set_role"
 	AdminActionApproveRegistration = "approve_registration"
@@ -41,7 +40,6 @@ type ModerationService interface {
 	CreateDomainBlock(ctx context.Context, moderatorID string, in CreateDomainBlockInput) (*domain.DomainBlock, error)
 	DeleteDomainBlock(ctx context.Context, moderatorID, domain string) error
 	ListDomainBlocks(ctx context.Context) ([]domain.DomainBlock, error)
-	ListAdminActions(ctx context.Context, targetAccountID string) ([]domain.AdminAction, error)
 }
 
 type moderationService struct {
@@ -85,6 +83,13 @@ func (svc *moderationService) writeAdminAction(ctx context.Context, moderatorID 
 }
 
 func (svc *moderationService) SuspendAccount(ctx context.Context, moderatorID, targetID string) error {
+	acc, err := svc.store.GetAccountByID(ctx, targetID)
+	if err != nil {
+		return fmt.Errorf("GetAccountByID(%s): %w", targetID, err)
+	}
+	if acc.Domain != nil {
+		return fmt.Errorf("SuspendAccount: cannot suspend remote account, use domain blocks: %w", domain.ErrForbidden)
+	}
 	if err := svc.store.SuspendAccount(ctx, targetID); err != nil {
 		return fmt.Errorf("SuspendAccount(%s): %w", targetID, err)
 	}
@@ -107,6 +112,13 @@ func (svc *moderationService) UnsuspendAccount(ctx context.Context, moderatorID,
 }
 
 func (svc *moderationService) SilenceAccount(ctx context.Context, moderatorID, targetID string) error {
+	acc, err := svc.store.GetAccountByID(ctx, targetID)
+	if err != nil {
+		return fmt.Errorf("GetAccountByID(%s): %w", targetID, err)
+	}
+	if acc.Domain != nil {
+		return fmt.Errorf("SilenceAccount: cannot silence remote account, use domain blocks: %w", domain.ErrForbidden)
+	}
 	if err := svc.store.SilenceAccount(ctx, targetID); err != nil {
 		return fmt.Errorf("SilenceAccount(%s): %w", targetID, err)
 	}
@@ -254,12 +266,4 @@ func (svc *moderationService) ListDomainBlocks(ctx context.Context) ([]domain.Do
 		return nil, fmt.Errorf("ListDomainBlocks: %w", err)
 	}
 	return blocks, nil
-}
-
-func (svc *moderationService) ListAdminActions(ctx context.Context, targetAccountID string) ([]domain.AdminAction, error) {
-	actions, err := svc.store.ListAdminActionsByTarget(ctx, targetAccountID)
-	if err != nil {
-		return nil, fmt.Errorf("ListAdminActionsByTarget: %w", err)
-	}
-	return actions, nil
 }

@@ -15,7 +15,7 @@ func TestDomainFromIRI(t *testing.T) {
 
 func TestStatusNoteID(t *testing.T) {
 	t.Parallel()
-	base := "https://example.com"
+	base := testInstanceBase
 
 	t.Run("APID present", func(t *testing.T) {
 		s := &domain.Status{ID: "01S", APID: "https://example.com/statuses/01S", URI: "https://example.com/statuses/01S"}
@@ -35,7 +35,7 @@ func TestStatusNoteID(t *testing.T) {
 
 func TestAccountActorID(t *testing.T) {
 	t.Parallel()
-	base := "https://example.com"
+	base := testInstanceBase
 
 	t.Run("APID present", func(t *testing.T) {
 		a := &domain.Account{Username: "alice", APID: "https://example.com/users/alice"}
@@ -45,5 +45,25 @@ func TestAccountActorID(t *testing.T) {
 	t.Run("constructed fallback", func(t *testing.T) {
 		a := &domain.Account{Username: "alice"}
 		require.Equal(t, "https://example.com/users/alice", AccountActorID(a, base))
+	})
+}
+
+func TestAccountFollowersURL(t *testing.T) {
+	t.Parallel()
+	base := testInstanceBase
+
+	t.Run("FollowersURL present", func(t *testing.T) {
+		a := &domain.Account{Username: "alice", FollowersURL: "https://example.com/users/alice/followers"}
+		require.Equal(t, "https://example.com/users/alice/followers", AccountFollowersURL(a, base))
+	})
+
+	t.Run("constructed fallback", func(t *testing.T) {
+		a := &domain.Account{Username: "alice"}
+		require.Equal(t, "https://example.com/users/alice/followers", AccountFollowersURL(a, base))
+	})
+
+	t.Run("uses APID for fallback", func(t *testing.T) {
+		a := &domain.Account{Username: "alice", APID: "https://other.example/users/alice"}
+		require.Equal(t, "https://other.example/users/alice/followers", AccountFollowersURL(a, base))
 	})
 }
