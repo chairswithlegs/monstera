@@ -14,7 +14,7 @@ func setEnv(t *testing.T, key, value string) {
 
 func setRequiredEnvs(t *testing.T) {
 	t.Helper()
-	setEnv(t, "INSTANCE_DOMAIN", "test.example.com")
+	setEnv(t, "MONSTERA_INSTANCE_DOMAIN", "test.example.com")
 	setEnv(t, "DATABASE_HOST", "localhost")
 	setEnv(t, "NATS_URL", "nats://localhost:4222")
 	setEnv(t, "MEDIA_BASE_URL", "https://test.example.com/media")
@@ -32,7 +32,7 @@ func TestLoad_success(t *testing.T) {
 	require.NotNil(t, cfg)
 	assert.Equal(t, "development", cfg.AppEnv)
 	assert.Equal(t, 8080, cfg.AppPort)
-	assert.Equal(t, "test.example.com", cfg.InstanceDomain)
+	assert.Equal(t, "test.example.com", cfg.MonsteraInstanceDomain)
 	assert.Equal(t, "memory", cfg.CacheDriver)
 	assert.Equal(t, "local", cfg.MediaDriver)
 	assert.Equal(t, 500, cfg.MaxStatusChars)

@@ -17,12 +17,13 @@ const appEnvDevelopment = "development"
 const appEnvProduction = "production"
 
 type Config struct {
-	AppEnv         string
-	AppPort        int
-	InstanceDomain string
-	MonsteraUIURL  *url.URL
-	InstanceName   string
-	LogLevel       string
+	AppEnv                 string
+	AppPort                int
+	MonsteraInstanceDomain string
+	MonsteraServerURL      *url.URL
+	MonsteraUIURL          *url.URL
+	InstanceName           string
+	LogLevel               string
 
 	DatabaseHost         string
 	DatabasePort         string
@@ -76,12 +77,13 @@ func Load() (*Config, error) {
 	var errs []string
 
 	cfg := &Config{
-		AppEnv:         envString("APP_ENV", appEnvDevelopment),
-		AppPort:        envInt("APP_PORT", 8080),
-		InstanceDomain: envStringRequired("INSTANCE_DOMAIN", &errs),
-		MonsteraUIURL:  envRequiredURL("MONSTERA_UI_URL", &errs),
-		InstanceName:   envString("INSTANCE_NAME", "Monstera"),
-		LogLevel:       envString("LOG_LEVEL", "info"),
+		AppEnv:                 envString("APP_ENV", appEnvDevelopment),
+		AppPort:                envInt("APP_PORT", 8080),
+		MonsteraInstanceDomain: envStringRequired("MONSTERA_INSTANCE_DOMAIN", &errs),
+		MonsteraUIURL:          envRequiredURL("MONSTERA_UI_URL", &errs),
+		MonsteraServerURL:      envOptionalURL("MONSTERA_SERVER_URL", &errs),
+		InstanceName:           envString("INSTANCE_NAME", "Monstera"),
+		LogLevel:               envString("LOG_LEVEL", "info"),
 
 		DatabaseHost:         envStringRequired("DATABASE_HOST", &errs),
 		DatabasePort:         envString("DATABASE_PORT", "5432"),
@@ -136,6 +138,14 @@ func Load() (*Config, error) {
 		return nil, errors.New(strings.Join(errs, "; "))
 	}
 
+	if cfg.MonsteraServerURL == nil && cfg.MonsteraInstanceDomain != "" {
+		cfg.MonsteraServerURL, _ = url.Parse("https://" + cfg.MonsteraInstanceDomain)
+	}
+
+	if len(errs) > 0 {
+		return nil, errors.New(strings.Join(errs, "; "))
+	}
+
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -182,6 +192,10 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Sprintf("SECRET_KEY_BASE must be at least %d bytes (decode hex for 64 hex chars)", minSecretKeyBytes))
 	}
 
+	if c.MonsteraServerURL != nil && c.MonsteraServerURL.Scheme != "https" {
+		errs = append(errs, "MONSTERA_SERVER_URL scheme must be https")
+	}
+
 	if len(errs) > 0 {
 		return errors.New(strings.Join(errs, "; "))
 	}
@@ -209,7 +223,7 @@ func (c *Config) IsDevelopment() bool {
 
 // InstanceBaseURL returns the canonical base URL for this instance (e.g. "https://example.com").
 func (c *Config) InstanceBaseURL() string {
-	return "https://" + c.InstanceDomain
+	return strings.TrimSuffix(c.MonsteraServerURL.String(), "/")
 }
 
 // SecretKeyBytes returns the raw secret key bytes from SECRET_KEY_BASE (hex or raw string).
@@ -274,6 +288,19 @@ func envRequiredURL(key string, errs *[]string) *url.URL {
 	v := os.Getenv(key)
 	if v == "" {
 		*errs = append(*errs, key+" is required")
+		return nil
+	}
+	u, err := url.Parse(v)
+	if err != nil {
+		*errs = append(*errs, key+" is invalid: "+err.Error())
+		return nil
+	}
+	return u
+}
+
+func envOptionalURL(key string, errs *[]string) *url.URL {
+	v := os.Getenv(key)
+	if v == "" {
 		return nil
 	}
 	u, err := url.Parse(v)

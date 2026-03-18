@@ -3,6 +3,7 @@ package vocab
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
@@ -43,9 +44,9 @@ type Actor struct {
 }
 
 // AccountToActor builds an ActivityPub Actor from a domain account.
-// instanceDomain is the host (e.g. "example.com") for building IRIs.
-func AccountToActor(a *domain.Account, instanceDomain string) *Actor {
-	base := "https://" + instanceDomain
+// serverBaseURL is the base URL (e.g. "https://api.example.com") for building IRIs.
+func AccountToActor(a *domain.Account, serverBaseURL string) *Actor {
+	base := strings.TrimSuffix(serverBaseURL, "/")
 	id := a.APID
 	if id == "" {
 		id = base + "/users/" + a.Username

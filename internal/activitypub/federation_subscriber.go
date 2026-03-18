@@ -26,7 +26,6 @@ type FederationSubscriber struct {
 	fanout          internal.OutboxFanoutWorker
 	delivery        internal.OutboxDeliveryWorker
 	instanceBaseURL string
-	instanceDomain  string
 }
 
 // NewFederationSubscriber creates a federation subscriber.
@@ -36,7 +35,6 @@ func NewFederationSubscriber(
 	bl *blocklist.BlocklistCache,
 	signer HTTPSignatureService,
 	instanceBaseURL string,
-	instanceDomain string,
 	appEnv string,
 	insecureSkipTLS bool,
 	workerConcurrency int,
@@ -49,7 +47,6 @@ func NewFederationSubscriber(
 		delivery:        delivery,
 		fanout:          fanout,
 		instanceBaseURL: instanceBaseURL,
-		instanceDomain:  instanceDomain,
 	}
 }
 
@@ -461,7 +458,7 @@ func (s *FederationSubscriber) handleAccountUpdated(ctx context.Context, event d
 	if payload.Account == nil || payload.Account.Domain != nil {
 		return nil
 	}
-	actor := vocab.AccountToActor(payload.Account, s.instanceDomain)
+	actor := vocab.AccountToActor(payload.Account, s.instanceBaseURL)
 	actorID := actor.ID
 	activityID := fmt.Sprintf("%s/activities/%s", s.instanceBaseURL, uid.New())
 	update, err := vocab.NewUpdateActorActivity(activityID, actorID, actor)

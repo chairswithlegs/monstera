@@ -10,7 +10,7 @@ services:
     environment:
       APP_ENV: production
       APP_PORT: "8080"
-      INSTANCE_DOMAIN: localhost:8080
+      MONSTERA_INSTANCE_DOMAIN: localhost:8080
       MONSTERA_UI_URL: http://localhost:3000
       INSTANCE_NAME: Monstera
       LOG_LEVEL: debug

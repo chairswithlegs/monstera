@@ -14,15 +14,13 @@ import (
 // ActorHandler serves GET /users/{username} — AP Actor document.
 type ActorHandler struct {
 	accounts        service.AccountService
-	instanceDomain  string
 	instanceBaseURL string
 }
 
 // NewActorHandler returns a new ActorHandler.
-func NewActorHandler(accounts service.AccountService, instanceDomain, instanceBaseURL string) *ActorHandler {
+func NewActorHandler(accounts service.AccountService, instanceBaseURL string) *ActorHandler {
 	return &ActorHandler{
 		accounts:        accounts,
-		instanceDomain:  instanceDomain,
 		instanceBaseURL: strings.TrimSuffix(instanceBaseURL, "/"),
 	}
 }
@@ -46,7 +44,7 @@ func (h *ActorHandler) GETActor(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	actor := vocab.AccountToActor(acc, h.instanceDomain)
+	actor := vocab.AccountToActor(acc, h.instanceBaseURL)
 	w.Header().Set("Cache-Control", "max-age=300")
 	api.WriteActivityJSON(w, http.StatusOK, actor)
 }

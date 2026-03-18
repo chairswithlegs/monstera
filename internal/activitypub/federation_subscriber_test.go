@@ -58,7 +58,6 @@ func newTestSubscriber(deliveryWorker mockDeliveryWorker, fanoutWorker mockFanou
 		delivery:        &deliveryWorker,
 		fanout:          &fanoutWorker,
 		instanceBaseURL: "https://example.com",
-		instanceDomain:  "example.com",
 	}
 }
 

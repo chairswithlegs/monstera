@@ -38,7 +38,7 @@ services:
     environment:
       APP_ENV: development
       APP_PORT: "8080"
-      INSTANCE_DOMAIN: monstera.local
+      MONSTERA_INSTANCE_DOMAIN: monstera.local
       INSTANCE_NAME: Monstera A (local)
       MONSTERA_UI_URL: http://localhost:3000
       LOG_LEVEL: debug
@@ -82,7 +82,7 @@ services:
     environment:
       APP_ENV: development
       APP_PORT: "8080"
-      INSTANCE_DOMAIN: monstera2.local
+      MONSTERA_INSTANCE_DOMAIN: monstera2.local
       INSTANCE_NAME: Monstera B (local)
       MONSTERA_UI_URL: http://localhost:3001
       LOG_LEVEL: debug

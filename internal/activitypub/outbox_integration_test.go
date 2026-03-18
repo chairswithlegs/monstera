@@ -24,6 +24,7 @@ import (
 
 	"github.com/chairswithlegs/monstera/internal/activitypub/internal"
 	"github.com/chairswithlegs/monstera/internal/cache"
+	natscache "github.com/chairswithlegs/monstera/internal/cache/nats"
 	"github.com/chairswithlegs/monstera/internal/config"
 	"github.com/chairswithlegs/monstera/internal/natsutil"
 	"github.com/chairswithlegs/monstera/internal/service"
@@ -53,7 +54,7 @@ func TestDeliveryWorker_PullDeliverAndNoDuplicate(t *testing.T) {
 
 	natsCfg := &config.Config{
 		NATSUrl:        url,
-		InstanceDomain: "test.example",
+		MonsteraInstanceDomain: "test.example",
 	}
 	client, err := natsutil.New(natsCfg)
 	require.NoError(t, err)
@@ -117,8 +118,11 @@ func TestDeliveryWorker_PullDeliverAndNoDuplicate(t *testing.T) {
 	cacheStore, err := cache.New(cache.Config{Driver: "memory"})
 	require.NoError(t, err)
 	defer func() { _ = cacheStore.Close() }()
+	sharedCache, err := natscache.New(ctx, client.JS, time.Hour)
+	require.NoError(t, err)
+	defer func() { _ = sharedCache.Close() }()
 	accountSvc := service.NewAccountService(fake, instanceBaseURL)
-	signer := NewHTTPSignatureService(true, instanceBaseURL, cacheStore, accountSvc)
+	signer := NewHTTPSignatureService(true, instanceBaseURL, sharedCache, cacheStore, accountSvc)
 	worker := internal.NewOutboxDeliveryWorker(client.JS, nil, signer, "development", true, 1)
 	require.NoError(t, worker.Publish(ctx, "create", delivery))
 	workerCtx, workerCancel := context.WithCancel(context.Background())
@@ -158,7 +162,7 @@ func TestOutboxFanoutWorker_Integration(t *testing.T) {
 
 	natsCfg := &config.Config{
 		NATSUrl:        url,
-		InstanceDomain: "test.example",
+		MonsteraInstanceDomain: "test.example",
 	}
 	client, err := natsutil.New(natsCfg)
 	require.NoError(t, err)
@@ -228,9 +232,12 @@ func TestOutboxFanoutWorker_Integration(t *testing.T) {
 	cacheStore, err := cache.New(cache.Config{Driver: "memory"})
 	require.NoError(t, err)
 	defer func() { _ = cacheStore.Close() }()
+	sharedCache, err := natscache.New(ctx, client.JS, time.Hour)
+	require.NoError(t, err)
+	defer func() { _ = sharedCache.Close() }()
 	accountSvc := service.NewAccountService(fake, instanceBaseURL)
 	remoteFollowSvc := service.NewRemoteFollowService(fake)
-	signer := NewHTTPSignatureService(true, instanceBaseURL, cacheStore, accountSvc)
+	signer := NewHTTPSignatureService(true, instanceBaseURL, sharedCache, cacheStore, accountSvc)
 	outboxDeliveryWorker := internal.NewOutboxDeliveryWorker(client.JS, nil, signer, "development", true, 1)
 	fanoutWorker := internal.NewOutboxFanoutWorker(client.JS, remoteFollowSvc, outboxDeliveryWorker, 1)
 
