@@ -1,6 +1,7 @@
 package vocab
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -22,24 +23,24 @@ var ErrLocalAuthorRequired = errors.New("vocab: LocalStatusToNote requires local
 // ContentMap is a Mastodon extension that maps language codes to localised
 // content.
 type Note struct {
-	Context      any                `json:"@context,omitempty"`
-	ID           string             `json:"id"`
-	Type         ObjectType         `json:"type"` // "Note"
-	AttributedTo string             `json:"attributedTo"`
-	Content      string             `json:"content"` // rendered HTML
-	ContentMap   map[string]string  `json:"contentMap,omitempty"`
-	Source       *NoteSource        `json:"source,omitempty"`
-	To           []string           `json:"to"`
-	Cc           []string           `json:"cc,omitempty"`
-	InReplyTo    *string            `json:"inReplyTo"` // null or parent Note IRI
-	Published    string             `json:"published"` // ISO 8601
-	Updated      string             `json:"updated,omitempty"`
-	URL          string             `json:"url"`
-	Sensitive    bool               `json:"sensitive"`
-	Summary      *string            `json:"summary"` // content warning; null if none
-	Tag          []Tag              `json:"tag,omitempty"`
-	Attachment   []Attachment       `json:"attachment,omitempty"`
-	Replies      *OrderedCollection `json:"replies,omitempty"`
+	Context      any               `json:"@context,omitempty"`
+	ID           string            `json:"id"`
+	Type         ObjectType        `json:"type"` // "Note"
+	AttributedTo string            `json:"attributedTo"`
+	Content      string            `json:"content"` // rendered HTML
+	ContentMap   map[string]string `json:"contentMap,omitempty"`
+	Source       *NoteSource       `json:"source,omitempty"`
+	To           []string          `json:"to"`
+	Cc           []string          `json:"cc,omitempty"`
+	InReplyTo    *string           `json:"inReplyTo"` // null or parent Note IRI
+	Published    string            `json:"published"` // ISO 8601
+	Updated      string            `json:"updated,omitempty"`
+	URL          string            `json:"url"`
+	Sensitive    bool              `json:"sensitive"`
+	Summary      *string           `json:"summary"` // content warning; null if none
+	Tag          []Tag             `json:"tag,omitempty"`
+	Attachment   []Attachment      `json:"attachment,omitempty"`
+	Replies      json.RawMessage   `json:"replies,omitempty"`
 }
 
 // NoteSource preserves the original plain-text or Markdown source.

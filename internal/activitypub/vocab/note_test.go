@@ -472,6 +472,42 @@ func TestBuildAttachments_Empty(t *testing.T) {
 	assert.Nil(t, buildAttachments([]domain.MediaAttachment{}))
 }
 
+// TestNote_RepliesPolymorphic verifies that a Note with replies.first as an
+// inline object (as sent by some servers, e.g. theforkiverse.com) unmarshals
+// without error instead of failing with "cannot unmarshal object into string".
+func TestNote_RepliesPolymorphic(t *testing.T) {
+	t.Parallel()
+
+	raw := `{
+		"id": "https://remote.example/statuses/1",
+		"type": "Note",
+		"attributedTo": "https://remote.example/users/alice",
+		"content": "<p>hello</p>",
+		"to": ["https://www.w3.org/ns/activitystreams#Public"],
+		"published": "2026-03-18T12:00:00Z",
+		"url": "https://remote.example/@alice/1",
+		"sensitive": false,
+		"summary": null,
+		"inReplyTo": null,
+		"replies": {
+			"id": "https://remote.example/statuses/1/replies",
+			"type": "Collection",
+			"first": {
+				"type": "CollectionPage",
+				"next": "https://remote.example/statuses/1/replies?only_other_accounts=true&page=true",
+				"partOf": "https://remote.example/statuses/1/replies",
+				"items": []
+			}
+		}
+	}`
+
+	var note Note
+	err := json.Unmarshal([]byte(raw), &note)
+	require.NoError(t, err)
+	assert.Equal(t, "https://remote.example/statuses/1", note.ID)
+	assert.Equal(t, "<p>hello</p>", note.Content)
+}
+
 func TestNoteToStatusFields(t *testing.T) {
 	t.Parallel()
 
