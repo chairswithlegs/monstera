@@ -25,6 +25,10 @@ type AccountService interface {
 	Create(ctx context.Context, in CreateAccountInput) (*domain.Account, error)
 	CreateOrUpdateRemoteAccount(ctx context.Context, in CreateOrUpdateRemoteInput) (*domain.Account, error)
 	SuspendRemote(ctx context.Context, accountID string) error
+	// SetRemotePins replaces all pinned statuses for a remote account.
+	// Clears existing pins then creates one pin per statusID.
+	// Returns ErrForbidden if accountID refers to a local account.
+	SetRemotePins(ctx context.Context, accountID string, statusIDs []string) error
 	CountFollowers(ctx context.Context, accountID string) (int64, error)
 	CountFollowing(ctx context.Context, accountID string) (int64, error)
 	GetRelationship(ctx context.Context, accountID, targetID string) (*domain.Relationship, error)
@@ -263,6 +267,7 @@ type CreateOrUpdateRemoteInput struct {
 	SharedInboxURL string
 	AvatarURL      string
 	HeaderURL      string
+	FeaturedURL    string
 	URL            string
 	Fields         json.RawMessage
 	Bot            bool
@@ -307,7 +312,7 @@ func (svc *accountService) CreateOrUpdateRemoteAccount(ctx context.Context, in C
 				return nil, fmt.Errorf("CreateOrUpdateRemoteAccount UpdateAccountKeys: %w", err)
 			}
 		}
-		if err := svc.store.UpdateRemoteAccountMeta(ctx, existing.ID, in.AvatarURL, in.HeaderURL, in.FollowersCount, in.FollowingCount, in.StatusesCount); err != nil {
+		if err := svc.store.UpdateRemoteAccountMeta(ctx, existing.ID, in.AvatarURL, in.HeaderURL, in.FollowersCount, in.FollowingCount, in.StatusesCount, in.FeaturedURL); err != nil {
 			return nil, fmt.Errorf("CreateOrUpdateRemoteAccount UpdateRemoteAccountMeta: %w", err)
 		}
 		acc, getErr := svc.store.GetAccountByAPID(ctx, in.APID)
@@ -347,6 +352,7 @@ func (svc *accountService) CreateOrUpdateRemoteAccount(ctx context.Context, in C
 		URL:            urlPtr,
 		AvatarURL:      in.AvatarURL,
 		HeaderURL:      in.HeaderURL,
+		FeaturedURL:    in.FeaturedURL,
 		FollowersCount: in.FollowersCount,
 		FollowingCount: in.FollowingCount,
 		StatusesCount:  in.StatusesCount,
@@ -370,6 +376,22 @@ func (svc *accountService) SuspendRemote(ctx context.Context, accountID string) 
 	}
 	if err := svc.store.SuspendAccount(ctx, accountID); err != nil {
 		return fmt.Errorf("SuspendRemote(%s): %w", accountID, err)
+	}
+	return nil
+}
+
+// SetRemotePins replaces all pinned statuses for a remote account.
+// Returns ErrForbidden if accountID refers to a local account.
+func (svc *accountService) SetRemotePins(ctx context.Context, accountID string, statusIDs []string) error {
+	acc, err := svc.store.GetAccountByID(ctx, accountID)
+	if err != nil {
+		return fmt.Errorf("SetRemotePins(%s): %w", accountID, err)
+	}
+	if acc.Domain == nil {
+		return fmt.Errorf("SetRemotePins(%s): %w", accountID, domain.ErrForbidden)
+	}
+	if err := svc.store.ReplaceAccountPins(ctx, accountID, statusIDs); err != nil {
+		return fmt.Errorf("SetRemotePins(%s): %w", accountID, err)
 	}
 	return nil
 }

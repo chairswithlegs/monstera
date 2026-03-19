@@ -127,6 +127,7 @@ type RemoteActorFields struct {
 	Bot            bool
 	Locked         bool
 	URL            string // Human-readable profile page URL (Actor.URL)
+	FeaturedURL    string // ActivityPub featured collection URL (Actor.Featured)
 	// Fields holds profile metadata parsed from Actor.Attachment PropertyValue
 	// entries. Stored as JSON array of {"name":"...","value":"..."}. The
 	// verified_at field is not included because it is not present in the
@@ -162,6 +163,7 @@ func ActorToRemoteFields(actor *Actor) RemoteActorFields {
 		f.HeaderURL = actor.Image.URL
 	}
 	f.URL = actor.URL
+	f.FeaturedURL = actor.Featured
 	f.Fields = propertyValuesToFields(actor.Attachment)
 	return f
 }

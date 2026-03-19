@@ -3,6 +3,8 @@ package activitypub
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -47,6 +49,7 @@ func newTestBackfillWorker(fs *testutil.FakeStore, remoteStatuses service.Remote
 		statuses:       statusSvc,
 		instanceDomain: "local.example",
 		maxPages:       2,
+		cooldown:       time.Hour,
 	}
 }
 
@@ -245,6 +248,30 @@ func TestBackfillWorker_processBackfill_UpdatesLastBackfilledAt(t *testing.T) {
 	assert.NotNil(t, updated.LastBackfilledAt, "last_backfilled_at should be set after backfill")
 }
 
+func TestBackfillWorker_processBackfill_SkipsIfRecentlyBackfilled(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	fs := testutil.NewFakeStore()
+	account := createTestRemoteAccount(t, ctx, fs)
+
+	// Simulate a prior job that finished recently by setting last_backfilled_at.
+	recent := time.Now().Add(-5 * time.Minute)
+	err := fs.UpdateAccountLastBackfilledAt(ctx, account.ID, recent)
+	require.NoError(t, err)
+
+	remoteWrites := &fakeRemoteStatusWriteService{}
+	w := newTestBackfillWorker(fs, remoteWrites, &fakeStatusService{statuses: map[string]*domain.Status{}})
+
+	w.processBackfill(ctx, account.ID)
+
+	// The second job must not have updated last_backfilled_at again (it was skipped).
+	updated, err := fs.GetAccountByID(ctx, account.ID)
+	require.NoError(t, err)
+	assert.WithinDuration(t, recent, *updated.LastBackfilledAt, time.Second,
+		"last_backfilled_at should not be updated when cooldown has not elapsed")
+}
+
 func createTestRemoteAccount(t *testing.T, ctx context.Context, s *testutil.FakeStore) *domain.Account {
 	t.Helper()
 	id := uid.New()
@@ -261,4 +288,100 @@ func createTestRemoteAccount(t *testing.T, ctx context.Context, s *testutil.Fake
 	})
 	require.NoError(t, err)
 	return acc
+}
+
+func TestBackfillWorker_fetchAndProcessFeatured_HappyPath(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	fs := testutil.NewFakeStore()
+	account := createTestRemoteAccount(t, ctx, fs)
+
+	// knownIRI is in the local DB; unknownIRI is not.
+	knownIRI := "https://remote.example/notes/pinned1"
+	unknownIRI := "https://remote.example/notes/unknown"
+	localStatusID := uid.New()
+	statusSvc := &fakeStatusService{
+		statuses: map[string]*domain.Status{
+			knownIRI: {ID: localStatusID, APID: knownIRI},
+		},
+	}
+
+	items := makeFeaturedItems(t, knownIRI, unknownIRI)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/activity+json")
+		coll := vocab.NewOrderedCollectionWithItems("https://remote.example/featured", items)
+		_ = json.NewEncoder(w).Encode(coll)
+	}))
+	defer ts.Close()
+
+	worker := newTestBackfillWorker(fs, &fakeRemoteStatusWriteService{}, statusSvc)
+	worker.remoteResolver = &RemoteAccountResolver{httpClient: ts.Client()}
+
+	ids, ok := worker.fetchAndProcessFeatured(ctx, &domain.Account{
+		ID:          account.ID,
+		FeaturedURL: ts.URL,
+	})
+
+	require.True(t, ok, "successful fetch should allow pin update")
+	require.Len(t, ids, 1, "only the locally known IRI should be returned")
+	assert.Equal(t, localStatusID, ids[0])
+}
+
+func TestBackfillWorker_fetchAndProcessFeatured_FetchError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	fs := testutil.NewFakeStore()
+	account := createTestRemoteAccount(t, ctx, fs)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	worker := newTestBackfillWorker(fs, &fakeRemoteStatusWriteService{}, &fakeStatusService{statuses: map[string]*domain.Status{}})
+	worker.remoteResolver = &RemoteAccountResolver{httpClient: ts.Client()}
+
+	ids, ok := worker.fetchAndProcessFeatured(ctx, &domain.Account{
+		ID:          account.ID,
+		FeaturedURL: ts.URL,
+	})
+
+	assert.False(t, ok, "fetch error should prevent pin update to avoid wiping existing pins")
+	assert.Nil(t, ids)
+}
+
+func TestExtractIRI(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		raw     string
+		wantIRI string
+	}{
+		{"string IRI", `"https://remote.example/notes/1"`, "https://remote.example/notes/1"},
+		{"Note object", `{"id":"https://remote.example/notes/2","type":"Note"}`, "https://remote.example/notes/2"},
+		{"empty object", `{}`, ""},
+		{"invalid", `not-json`, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := extractIRI(json.RawMessage(tc.raw))
+			assert.Equal(t, tc.wantIRI, got)
+		})
+	}
+}
+
+// makeFeaturedItems returns a slice of RawMessage items for a featured collection.
+func makeFeaturedItems(t *testing.T, iris ...string) []json.RawMessage {
+	t.Helper()
+	items := make([]json.RawMessage, 0, len(iris))
+	for _, iri := range iris {
+		b, err := json.Marshal(iri)
+		require.NoError(t, err)
+		items = append(items, b)
+	}
+	return items
 }

@@ -328,7 +328,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 	})
 
 	backfillWorker := ap.NewBackfillWorker(i.nats.JS, s.account, s.backfill, s.remoteResolver,
-		s.remoteStatusWrite, s.statusRead, cfg.MonsteraInstanceDomain, cfg.BackfillMaxPages)
+		s.remoteStatusWrite, s.statusRead, cfg.MonsteraInstanceDomain, cfg.BackfillMaxPages, cfg.BackfillCooldown)
 
 	workers := []namedWorker{
 		{"event-poller", i.eventPoller},

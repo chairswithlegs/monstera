@@ -29,6 +29,8 @@ type BackfillWorker struct {
 	statuses       service.StatusService
 	instanceDomain string
 	maxPages       int
+	// cooldown is the minimum time between backfill runs for the same account.
+	cooldown time.Duration
 }
 
 // NewBackfillWorker creates a new BackfillWorker.
@@ -41,6 +43,7 @@ func NewBackfillWorker(
 	statuses service.StatusService,
 	instanceDomain string,
 	maxPages int,
+	cooldown time.Duration,
 ) *BackfillWorker {
 	return &BackfillWorker{
 		js:             js,
@@ -51,6 +54,7 @@ func NewBackfillWorker(
 		statuses:       statuses,
 		instanceDomain: instanceDomain,
 		maxPages:       maxPages,
+		cooldown:       cooldown,
 	}
 }
 
@@ -96,14 +100,79 @@ func (w *BackfillWorker) processBackfill(ctx context.Context, accountID string) 
 		return
 	}
 
+	// Skip if another backfill job already ran for this account within the cooldown window.
+	if account.LastBackfilledAt != nil && time.Since(*account.LastBackfilledAt) < w.cooldown {
+		slog.DebugContext(ctx, "backfill: skipping, recently backfilled", slog.String("account_id", accountID))
+		return
+	}
+
 	slog.InfoContext(ctx, "backfill: starting", slog.String("account_id", accountID), slog.String("outbox", account.OutboxURL))
 
 	w.fetchAndProcessOutbox(ctx, account)
+
+	pinnedIDs, shouldUpdate := w.fetchAndProcessFeatured(ctx, account)
+	if shouldUpdate {
+		if err := w.accounts.SetRemotePins(ctx, accountID, pinnedIDs); err != nil {
+			slog.ErrorContext(ctx, "backfill: set remote pins failed", slog.String("account_id", accountID), slog.Any("error", err))
+		}
+	}
 
 	// Always mark backfilled, even on partial failure.
 	if err := w.backfill.MarkBackfilled(ctx, accountID); err != nil {
 		slog.ErrorContext(ctx, "backfill: mark backfilled failed", slog.String("account_id", accountID), slog.Any("error", err))
 	}
+}
+
+// fetchAndProcessFeatured fetches the remote account's AP featured collection and returns
+// the local status IDs of any pinned notes that are already stored locally, along with a
+// boolean indicating whether the caller should proceed to update pins.
+// Returns (nil, true) if the account has no featured URL (safe to clear stale pins).
+// Returns (nil, false) if the fetch fails (preserve existing pins rather than wiping them).
+// Unknown Note IRIs (not yet in the local DB) are skipped gracefully.
+func (w *BackfillWorker) fetchAndProcessFeatured(ctx context.Context, account *domain.Account) (statusIDs []string, shouldUpdate bool) {
+	if account.FeaturedURL == "" {
+		return nil, true
+	}
+	if w.remoteResolver == nil {
+		return nil, false
+	}
+
+	var coll vocab.OrderedCollection
+	if err := w.remoteResolver.resolveIRIDocument(ctx, account.FeaturedURL, &coll); err != nil {
+		slog.WarnContext(ctx, "backfill: fetch featured collection failed",
+			slog.String("account_id", account.ID), slog.Any("error", err))
+		return nil, false
+	}
+
+	for _, raw := range coll.OrderedItems {
+		iri := extractIRI(raw)
+		if iri == "" {
+			continue
+		}
+		st, err := w.statuses.GetByAPID(ctx, iri)
+		if err != nil {
+			// Status not yet stored locally — skip.
+			continue
+		}
+		statusIDs = append(statusIDs, st.ID)
+	}
+	return statusIDs, true
+}
+
+// extractIRI returns the IRI from a raw JSON item that is either a bare string
+// or an object with an "id" field.
+func extractIRI(raw json.RawMessage) string {
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	var obj struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		return obj.ID
+	}
+	return ""
 }
 
 func (w *BackfillWorker) fetchAndProcessOutbox(ctx context.Context, account *domain.Account) {

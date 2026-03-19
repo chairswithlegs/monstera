@@ -135,6 +135,7 @@ func ToDomainAccount(a db.Account) domain.Account {
 		FollowingURL:     a.FollowingUrl,
 		APID:             a.ApID,
 		ProfileURL:       ptrToString(a.Url),
+		FeaturedURL:      a.FeaturedUrl,
 		FollowersCount:   int(a.FollowersCount),
 		FollowingCount:   int(a.FollowingCount),
 		StatusesCount:    int(a.StatusesCount),

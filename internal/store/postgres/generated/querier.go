@@ -73,6 +73,7 @@ type Querier interface {
 	DeleteAccount(ctx context.Context, id string) error
 	DeleteAccountConversation(ctx context.Context, arg DeleteAccountConversationParams) error
 	DeleteAccountPin(ctx context.Context, arg DeleteAccountPinParams) error
+	DeleteAccountPinsByAccountID(ctx context.Context, accountID string) error
 	DeleteAuthorizationCode(ctx context.Context, code string) error
 	DeleteBlock(ctx context.Context, arg DeleteBlockParams) error
 	DeleteBookmark(ctx context.Context, arg DeleteBookmarkParams) error

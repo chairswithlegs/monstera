@@ -40,6 +40,7 @@ type Account struct {
 	AvatarUrl        string             `json:"avatar_url"`
 	HeaderUrl        string             `json:"header_url"`
 	LastBackfilledAt pgtype.Timestamptz `json:"last_backfilled_at"`
+	FeaturedUrl      string             `json:"featured_url"`
 }
 
 type AccountConversation struct {

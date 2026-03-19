@@ -287,6 +287,7 @@ func (f *FakeStore) CreateAccount(ctx context.Context, in store.CreateAccountInp
 		ProfileURL:     profileURL,
 		AvatarURL:      in.AvatarURL,
 		HeaderURL:      in.HeaderURL,
+		FeaturedURL:    in.FeaturedURL,
 		FollowersCount: in.FollowersCount,
 		FollowingCount: in.FollowingCount,
 		StatusesCount:  in.StatusesCount,
@@ -2009,6 +2010,31 @@ func (f *FakeStore) DeleteAccountPin(ctx context.Context, accountID, statusID st
 	return nil
 }
 
+func (f *FakeStore) DeleteAccountPinsByAccountID(ctx context.Context, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var newPins []pinEntry
+	for _, p := range f.accountPins {
+		if p.accountID != accountID {
+			newPins = append(newPins, p)
+		}
+	}
+	f.accountPins = newPins
+	return nil
+}
+
+func (f *FakeStore) ReplaceAccountPins(ctx context.Context, accountID string, statusIDs []string) error {
+	if err := f.DeleteAccountPinsByAccountID(ctx, accountID); err != nil {
+		return err
+	}
+	for _, statusID := range statusIDs {
+		if err := f.CreateAccountPin(ctx, accountID, statusID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (f *FakeStore) ListPinnedStatusIDs(ctx context.Context, accountID string) ([]string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -2721,7 +2747,7 @@ func (f *FakeStore) UpdateAccount(ctx context.Context, in store.UpdateAccountInp
 	return nil
 }
 
-func (f *FakeStore) UpdateRemoteAccountMeta(ctx context.Context, id, avatarURL, headerURL string, followersCount, followingCount, statusesCount int) error {
+func (f *FakeStore) UpdateRemoteAccountMeta(ctx context.Context, id, avatarURL, headerURL string, followersCount, followingCount, statusesCount int, featuredURL string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	acc := f.accountsByID[id]
@@ -2733,6 +2759,7 @@ func (f *FakeStore) UpdateRemoteAccountMeta(ctx context.Context, id, avatarURL, 
 	acc.FollowersCount = followersCount
 	acc.FollowingCount = followingCount
 	acc.StatusesCount = statusesCount
+	acc.FeaturedURL = featuredURL
 	return nil
 }
 

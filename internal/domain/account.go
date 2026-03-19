@@ -25,6 +25,7 @@ type Account struct {
 	FollowingURL        string // ActivityPub Following URL.
 	APID                string // ActivityPub IRI for the account.
 	ProfileURL          string // Human-readable profile page URL (from AP Actor "url" field). For remote accounts stored from Actor; for local accounts computed at render time.
+	FeaturedURL         string // ActivityPub featured collection URL. Remote accounts only.
 	FollowersCount      int
 	FollowingCount      int
 	StatusesCount       int

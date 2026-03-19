@@ -26,6 +26,7 @@ type CreateAccountInput struct {
 	URL            *string
 	AvatarURL      string
 	HeaderURL      string
+	FeaturedURL    string
 	FollowersCount int
 	FollowingCount int
 	StatusesCount  int

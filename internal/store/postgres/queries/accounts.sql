@@ -20,14 +20,16 @@ INSERT INTO accounts (
     inbox_url, outbox_url, followers_url, following_url,
     ap_id, bot, locked, url,
     avatar_url, header_url,
-    followers_count, following_count, statuses_count
+    followers_count, following_count, statuses_count,
+    featured_url
 ) VALUES (
     $1, $2, $3, $4, $5,
     $6, $7,
     $8, $9, $10, $11,
     $12, $13, $14, $15,
     $16, $17,
-    $18, $19, $20
+    $18, $19, $20,
+    $21
 ) RETURNING *;
 
 -- name: UpdateAccount :one
@@ -120,6 +122,7 @@ UPDATE accounts SET
     followers_count = $4,
     following_count = $5,
     statuses_count  = $6,
+    featured_url    = $7,
     updated_at      = NOW()
 WHERE id = $1;
 
