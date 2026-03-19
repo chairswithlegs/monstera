@@ -86,7 +86,11 @@ func requireRemote(local bool, method string) error {
 
 func (svc *remoteStatusWriteService) CreateRemote(ctx context.Context, in CreateRemoteStatusInput) (*domain.Status, error) {
 	// Pre-generate the ID so it's available to best-effort operations after the transaction.
+	// Use the original publish time for the ULID so backfilled statuses sort chronologically.
 	statusID := uid.New()
+	if in.PublishedAt != nil {
+		statusID = uid.NewWithTime(*in.PublishedAt)
+	}
 	var st *domain.Status
 	err := svc.store.WithTx(ctx, func(tx store.Store) error {
 		var txErr error
