@@ -10,6 +10,7 @@ import (
 	"github.com/chairswithlegs/monstera/internal/activitypub/vocab"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
+
 	"github.com/microcosm-cc/bluemonday"
 )
 
@@ -270,39 +271,7 @@ func (p *inbox) handleUpdate(ctx context.Context, activity *vocab.Activity) erro
 }
 
 func (p *inbox) buildCreateStatusInput(ctx context.Context, note *vocab.Note, author *domain.Account, visibility string) service.CreateRemoteStatusInput {
-	var inReplyToID *string
-	if note.InReplyTo != nil && *note.InReplyTo != "" {
-		if parent, err := p.statuses.GetByAPID(ctx, *note.InReplyTo); err == nil {
-			inReplyToID = &parent.ID
-		}
-	}
-	mediaIDs := p.storeRemoteMedia(ctx, note.Attachment, author.ID)
-	var contentWarning *string
-	if note.Summary != nil && *note.Summary != "" {
-		cw := bluemonday.StrictPolicy().Sanitize(*note.Summary)
-		contentWarning = &cw
-	}
-
-	content := bluemonday.UGCPolicy().Sanitize(note.Content)
-	text := noteSourceText(note, content)
-	hashtagNames, mentionIRIs := extractTagsFromNote(note)
-
-	fields := vocab.NoteToStatusFields(note)
-	return service.CreateRemoteStatusInput{
-		AccountID:      author.ID,
-		URI:            fields.URI,
-		Text:           &text,
-		Content:        &content,
-		ContentWarning: contentWarning,
-		Visibility:     visibility,
-		Language:       fields.Language,
-		InReplyToID:    inReplyToID,
-		MediaIDs:       mediaIDs,
-		APID:           fields.APID,
-		Sensitive:      fields.Sensitive,
-		HashtagNames:   hashtagNames,
-		MentionIRIs:    mentionIRIs,
-	}
+	return buildCreateStatusInput(ctx, note, author, visibility, p.statuses)
 }
 
 func extractTagsFromNote(note *vocab.Note) (hashtagNames, mentionIRIs []string) {
@@ -330,32 +299,4 @@ func noteSourceText(note *vocab.Note, sanitizedContent string) string {
 		return note.Source.Content
 	}
 	return sanitizedContent
-}
-
-func (p *inbox) storeRemoteMedia(ctx context.Context, attachments []vocab.Attachment, accountID string) []string {
-	var ids []string
-	for _, att := range attachments {
-		if att.URL == "" {
-			continue
-		}
-		in := service.CreateRemoteMediaInput{
-			AccountID: accountID,
-			RemoteURL: att.URL,
-			MediaType: att.MediaType,
-			Width:     att.Width,
-			Height:    att.Height,
-		}
-		if att.Name != "" {
-			in.Description = &att.Name
-		}
-		if att.Blurhash != "" {
-			in.Blurhash = &att.Blurhash
-		}
-		m, err := p.media.CreateRemote(ctx, in)
-		if err != nil {
-			continue
-		}
-		ids = append(ids, m.ID)
-	}
-	return ids
 }

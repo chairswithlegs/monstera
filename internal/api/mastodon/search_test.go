@@ -19,7 +19,7 @@ func TestSearchHandler_GETSearch(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	searchSvc := service.NewSearchService(st, nil)
+	searchSvc := service.NewSearchService(st, nil, nil)
 	handler := NewSearchHandler(searchSvc, "example.com")
 
 	t.Run("missing q returns 422", func(t *testing.T) {

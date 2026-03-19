@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/events"
@@ -23,11 +24,12 @@ type CreateRemoteStatusInput struct {
 	Visibility     string
 	Language       *string
 	InReplyToID    *string
-	MediaIDs       []string // optional; attached after status is created (max 4)
+	Attachments    []CreateRemoteMediaInput // optional; created and attached after status is created (max 4)
 	APID           string
 	Sensitive      bool
-	HashtagNames   []string // hashtag names (without '#') from inbound Note tags
-	MentionIRIs    []string // actor IRIs of mentioned accounts from inbound Note tags
+	HashtagNames   []string   // hashtag names (without '#') from inbound Note tags
+	MentionIRIs    []string   // actor IRIs of mentioned accounts from inbound Note tags
+	PublishedAt    *time.Time // original publish time from AP Note; nil falls back to NOW()
 }
 
 // CreateRemoteReblogInput is the input for creating a remote reblog (e.g. from federation Announce).
@@ -60,15 +62,17 @@ type RemoteStatusWriteService interface {
 type remoteStatusWriteService struct {
 	store           store.Store
 	conversationSvc ConversationService
+	media           MediaService
 	instanceBaseURL string
 }
 
 // NewRemoteStatusWriteService returns a RemoteStatusWriteService.
-func NewRemoteStatusWriteService(s store.Store, c ConversationService, instanceBaseURL string) RemoteStatusWriteService {
+func NewRemoteStatusWriteService(s store.Store, c ConversationService, m MediaService, instanceBaseURL string) RemoteStatusWriteService {
 	base := strings.TrimSuffix(instanceBaseURL, "/")
 	return &remoteStatusWriteService{
 		store:           s,
 		conversationSvc: c,
+		media:           m,
 		instanceBaseURL: base,
 	}
 }
@@ -81,56 +85,81 @@ func requireRemote(local bool, method string) error {
 }
 
 func (svc *remoteStatusWriteService) CreateRemote(ctx context.Context, in CreateRemoteStatusInput) (*domain.Status, error) {
-	st, err := svc.store.CreateStatus(ctx, store.CreateStatusInput{
-		ID:                  uid.New(),
-		URI:                 in.URI,
-		AccountID:           in.AccountID,
-		Text:                in.Text,
-		Content:             in.Content,
-		ContentWarning:      in.ContentWarning,
-		Visibility:          in.Visibility,
-		Language:            in.Language,
-		InReplyToID:         in.InReplyToID,
-		APID:                in.APID,
-		Sensitive:           in.Sensitive,
-		Local:               false,
-		QuoteApprovalPolicy: domain.QuotePolicyPublic,
+	// Pre-generate the ID so it's available to best-effort operations after the transaction.
+	statusID := uid.New()
+	var st *domain.Status
+	err := svc.store.WithTx(ctx, func(tx store.Store) error {
+		var txErr error
+		st, txErr = tx.CreateStatus(ctx, store.CreateStatusInput{
+			ID:                  statusID,
+			URI:                 in.URI,
+			AccountID:           in.AccountID,
+			Text:                in.Text,
+			Content:             in.Content,
+			ContentWarning:      in.ContentWarning,
+			Visibility:          in.Visibility,
+			Language:            in.Language,
+			InReplyToID:         in.InReplyToID,
+			APID:                in.APID,
+			Sensitive:           in.Sensitive,
+			Local:               false,
+			QuoteApprovalPolicy: domain.QuotePolicyPublic,
+			CreatedAt:           in.PublishedAt,
+		})
+		if txErr != nil {
+			return fmt.Errorf("CreateStatus: %w", txErr)
+		}
+		author, txErr := tx.GetAccountByID(ctx, in.AccountID)
+		if txErr != nil {
+			return fmt.Errorf("GetAccountByID: %w", txErr)
+		}
+		return events.EmitEvent(ctx, tx, domain.EventStatusCreatedRemote, "status", st.ID, domain.StatusCreatedPayload{
+			Status: st,
+			Author: author,
+		})
 	})
 	if err != nil {
 		return nil, fmt.Errorf("CreateRemote: %w", err)
 	}
-	mediaIDs := in.MediaIDs
-	if len(mediaIDs) > 4 {
-		mediaIDs = mediaIDs[:4]
+	// Best-effort post-commit operations: partial failures leave the status intact.
+
+	// Create attachments
+	attachments := in.Attachments
+	if len(attachments) > 4 {
+		attachments = attachments[:4]
 	}
-	for _, mediaID := range mediaIDs {
-		if attErr := svc.store.AttachMediaToStatus(ctx, mediaID, st.ID, in.AccountID); attErr != nil {
-			slog.WarnContext(ctx, "CreateRemote: attach media failed", slog.String("media_id", mediaID), slog.Any("error", attErr))
+	for _, att := range attachments {
+		m, mediaErr := svc.media.CreateRemote(ctx, att)
+		if mediaErr != nil {
+			slog.WarnContext(ctx, "CreateRemote: create media failed", slog.String("url", att.RemoteURL), slog.Any("error", mediaErr))
+			continue
+		}
+		if attErr := svc.store.AttachMediaToStatus(ctx, m.ID, st.ID, in.AccountID); attErr != nil {
+			slog.WarnContext(ctx, "CreateRemote: attach media failed", slog.String("media_id", m.ID), slog.Any("error", attErr))
 		}
 	}
+
+	// Increment replies count
 	if in.InReplyToID != nil && *in.InReplyToID != "" {
 		if incErr := svc.store.IncrementRepliesCount(ctx, *in.InReplyToID); incErr != nil {
 			slog.WarnContext(ctx, "CreateRemote: increment replies count failed", slog.String("parent_id", *in.InReplyToID), slog.Any("error", incErr))
 		}
 	}
+
+	// Store hashtags and mentions
 	svc.storeRemoteHashtags(ctx, st.ID, in.HashtagNames)
 	svc.storeRemoteMentions(ctx, st.ID, in.MentionIRIs)
+
+	// Update conversation for direct statuses
 	if in.Visibility == domain.VisibilityDirect {
-		mentionedIDs, _ := svc.store.GetStatusMentionAccountIDs(ctx, st.ID)
-		if updErr := svc.conversationSvc.UpdateForDirectStatus(ctx, st, st.AccountID, mentionedIDs); updErr != nil {
-			slog.WarnContext(ctx, "conversation update failed after direct status from inbox", slog.Any("error", updErr), slog.String("status_id", st.ID))
+		mentionedIDs, err := svc.store.GetStatusMentionAccountIDs(ctx, st.ID)
+		if err != nil {
+			slog.WarnContext(ctx, "CreateRemote: GetStatusMentionAccountIDs failed", slog.String("status_id", st.ID), slog.Any("error", err))
 		}
-	}
-	author, err := svc.store.GetAccountByID(ctx, in.AccountID)
-	if err != nil {
-		slog.WarnContext(ctx, "CreateRemote: GetAccountByID for event emission", slog.String("account_id", in.AccountID), slog.Any("error", err))
-		return st, nil
-	}
-	if emitErr := events.EmitEvent(ctx, svc.store, domain.EventStatusCreatedRemote, "status", st.ID, domain.StatusCreatedPayload{
-		Status: st,
-		Author: author,
-	}); emitErr != nil {
-		return st, fmt.Errorf("CreateRemote emit event: %w", emitErr)
+		err = svc.conversationSvc.UpdateForDirectStatus(ctx, st, st.AccountID, mentionedIDs)
+		if err != nil {
+			slog.WarnContext(ctx, "CreateRemote: conversation update failed after direct status from inbox", slog.String("status_id", st.ID), slog.Any("error", err))
+		}
 	}
 	return st, nil
 }

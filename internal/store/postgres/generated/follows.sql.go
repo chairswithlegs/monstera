@@ -228,7 +228,7 @@ func (q *Queries) GetFollowerInboxURLs(ctx context.Context, targetID string) ([]
 }
 
 const getFollowers = `-- name: GetFollowers :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at
 FROM accounts a
 INNER JOIN follows f ON f.account_id = a.id
 WHERE f.target_id = $1
@@ -286,6 +286,7 @@ func (q *Queries) GetFollowers(ctx context.Context, arg GetFollowersParams) ([]G
 			&i.Account.Url,
 			&i.Account.AvatarUrl,
 			&i.Account.HeaderUrl,
+			&i.Account.LastBackfilledAt,
 		); err != nil {
 			return nil, err
 		}
@@ -298,7 +299,7 @@ func (q *Queries) GetFollowers(ctx context.Context, arg GetFollowersParams) ([]G
 }
 
 const getFollowing = `-- name: GetFollowing :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at
 FROM accounts a
 INNER JOIN follows f ON f.target_id = a.id
 WHERE f.account_id = $1
@@ -356,6 +357,7 @@ func (q *Queries) GetFollowing(ctx context.Context, arg GetFollowingParams) ([]G
 			&i.Account.Url,
 			&i.Account.AvatarUrl,
 			&i.Account.HeaderUrl,
+			&i.Account.LastBackfilledAt,
 		); err != nil {
 			return nil, err
 		}
@@ -446,7 +448,7 @@ func (q *Queries) GetPendingFollowRequests(ctx context.Context, targetID string)
 }
 
 const getPendingFollowRequestsPaginated = `-- name: GetPendingFollowRequestsPaginated :many
-SELECT f.id AS cursor, a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url
+SELECT f.id AS cursor, a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at
 FROM follows f
 INNER JOIN accounts a ON a.id = f.account_id
 WHERE f.target_id = $1 AND f.state = 'pending'
@@ -505,6 +507,7 @@ func (q *Queries) GetPendingFollowRequestsPaginated(ctx context.Context, arg Get
 			&i.Account.Url,
 			&i.Account.AvatarUrl,
 			&i.Account.HeaderUrl,
+			&i.Account.LastBackfilledAt,
 		); err != nil {
 			return nil, err
 		}

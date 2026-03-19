@@ -253,6 +253,7 @@ type Querier interface {
 	UnsuspendAccount(ctx context.Context, id string) error
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
 	UpdateAccountKeys(ctx context.Context, arg UpdateAccountKeysParams) error
+	UpdateAccountLastBackfilledAt(ctx context.Context, arg UpdateAccountLastBackfilledAtParams) error
 	UpdateAccountLastStatusAt(ctx context.Context, id string) error
 	UpdateAccountURLs(ctx context.Context, arg UpdateAccountURLsParams) error
 	UpdateAnnouncement(ctx context.Context, arg UpdateAnnouncementParams) error

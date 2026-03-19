@@ -14,7 +14,7 @@ func TestSearchService_Search(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
-	svc := NewSearchService(st, nil)
+	svc := NewSearchService(st, nil, nil)
 
 	t.Run("empty q returns empty result", func(t *testing.T) {
 		res, err := svc.Search(ctx, nil, "   ", SearchTypeAll, false, 5)

@@ -85,6 +85,7 @@ type svcs struct {
 	serverFilter      service.ServerFilterService
 	announcement      service.AnnouncementService
 	pushSubscription  service.PushSubscriptionService
+	backfill          service.BackfillService
 
 	oauthServer      *oauth.Server
 	remoteResolver   *ap.RemoteAccountResolver
@@ -230,12 +231,13 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 	mediaSvc := service.NewMediaService(i.store, i.mediaStore, cfg.MediaMaxBytes)
 
 	mailer := service.NewRegistrationEmailSender(i.emailSender, i.emailTemplates, cfg.EmailFrom, cfg.EmailFromName)
+	backfillSvc := service.NewBackfillService(i.store, i.nats.JS, cfg.BackfillCooldown)
 	remoteResolver := ap.NewRemoteAccountResolver(accountSvc, cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.MonsteraInstanceDomain)
 	signatureService := ap.NewHTTPSignatureService(cfg.FederationInsecureSkipTLS, instanceBaseURL, i.sharedCache, i.cache, accountSvc)
 
 	statusWriteSvc := service.NewStatusWriteService(i.store, statusSvc, conversationSvc, instanceBaseURL, cfg.MonsteraInstanceDomain, cfg.MaxStatusChars)
 	interactionSvc := service.NewStatusInteractionService(i.store, statusSvc, instanceBaseURL)
-	remoteStatusWriteSvc := service.NewRemoteStatusWriteService(i.store, conversationSvc, instanceBaseURL)
+	remoteStatusWriteSvc := service.NewRemoteStatusWriteService(i.store, conversationSvc, mediaSvc, instanceBaseURL)
 	scheduledSvc := service.NewScheduledStatusService(i.store, statusWriteSvc)
 
 	return &svcs{
@@ -253,7 +255,8 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 		tagFollow:         tagFollowSvc,
 		notification:      service.NewNotificationService(i.store),
 		media:             mediaSvc,
-		search:            service.NewSearchService(i.store, remoteResolver),
+		search:            service.NewSearchService(i.store, remoteResolver, backfillSvc),
+		backfill:          backfillSvc,
 		trends:            service.NewTrendsService(i.store, statusSvc),
 		card:              service.NewCardService(i.store),
 		auth:              service.NewAuthService(i.store, monsteraUIHost, oauth.MONSTERA_UI_APPLICATION_ID),
@@ -324,6 +327,9 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 		Conversations: s.statusRead,
 	})
 
+	backfillWorker := ap.NewBackfillWorker(i.nats.JS, s.account, s.backfill, s.remoteResolver,
+		s.remoteStatusWrite, s.statusRead, cfg.MonsteraInstanceDomain, cfg.BackfillMaxPages)
+
 	workers := []namedWorker{
 		{"event-poller", i.eventPoller},
 		{"federation-subscriber", fedSub},
@@ -331,6 +337,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 		{"sse-hub", hub},
 		{"notification-subscriber", notifSub},
 		{"scheduler", sched},
+		{"backfill-worker", backfillWorker},
 	}
 
 	if cfg.VAPIDPrivateKey != "" && cfg.VAPIDPublicKey != "" {
@@ -382,7 +389,7 @@ func createRouter(cfg *config.Config, s *svcs, i *infra, sseHub *sse.Hub) http.H
 		MediaFileServer:        i.mediaFileServer,
 		OAuthHandler:           oauthhandlers.NewHandler(s.oauthServer, s.auth, cfg.MonsteraUIURL),
 		OAuthServer:            s.oauthServer,
-		Accounts:               mastodon.NewAccountsHandler(s.account, s.follow, s.tagFollow, s.timeline, s.monsteraSettings, s.media, cfg.MediaMaxBytes, cfg.MonsteraInstanceDomain),
+		Accounts:               mastodon.NewAccountsHandler(s.account, s.follow, s.tagFollow, s.timeline, s.statusRead, s.monsteraSettings, s.media, s.backfill, cfg.MediaMaxBytes, cfg.MonsteraInstanceDomain),
 		Statuses:               mastodon.NewStatusesHandler(s.account, s.statusRead, s.statusWrite, s.statusInteraction, s.scheduled, s.conversation, cfg.MonsteraInstanceDomain, i.sharedCache, nil),
 		ScheduledStatuses:      mastodon.NewScheduledStatusesHandler(s.statusRead, s.scheduled),
 		Polls:                  mastodon.NewPollsHandler(s.statusRead, s.statusInteraction),

@@ -76,6 +76,7 @@ func toDbCreateStatusParams(in store.CreateStatusInput) db.CreateStatusParams {
 		ApID:                in.APID,
 		Sensitive:           in.Sensitive,
 		Local:               in.Local,
+		CreatedAt:           in.CreatedAt,
 	}
 }
 
@@ -213,6 +214,10 @@ func (s *PostgresStore) CreateUser(ctx context.Context, in store.CreateUserInput
 func (s *PostgresStore) CreateStatus(ctx context.Context, in store.CreateStatusInput) (*domain.Status, error) {
 	dbSt, err := s.q.CreateStatus(ctx, toDbCreateStatusParams(in))
 	if err != nil {
+		// ON CONFLICT (ap_id) DO NOTHING returns no rows on a duplicate; treat as conflict.
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrConflict
+		}
 		return nil, mapErr(err)
 	}
 	st := ToDomainStatus(dbSt)
@@ -293,6 +298,13 @@ func (s *PostgresStore) IncrementStatusesCount(ctx context.Context, accountID st
 
 func (s *PostgresStore) UpdateAccountLastStatusAt(ctx context.Context, accountID string) error {
 	return mapErr(s.q.UpdateAccountLastStatusAt(ctx, accountID))
+}
+
+func (s *PostgresStore) UpdateAccountLastBackfilledAt(ctx context.Context, id string, at time.Time) error {
+	return mapErr(s.q.UpdateAccountLastBackfilledAt(ctx, db.UpdateAccountLastBackfilledAtParams{
+		ID:               id,
+		LastBackfilledAt: pgtype.Timestamptz{Time: at, Valid: true},
+	}))
 }
 
 func (s *PostgresStore) DecrementStatusesCount(ctx context.Context, accountID string) error {

@@ -280,19 +280,26 @@ func NoteLanguage(note *Note) *string {
 // trust boundary before building service.CreateRemoteStatusInput.
 // InReplyToID and MediaIDs require I/O and are filled in by the caller.
 type NoteStatusFields struct {
-	URI       string
-	APID      string
-	Sensitive bool
-	Language  *string
+	URI         string
+	APID        string
+	Sensitive   bool
+	Language    *string
+	PublishedAt *time.Time
 }
 
 // NoteToStatusFields extracts the pure (non-sanitized, non-I/O) fields from
 // an inbound Note. Callers supply visibility (from NoteVisibility).
 func NoteToStatusFields(note *Note) NoteStatusFields {
-	return NoteStatusFields{
+	fields := NoteStatusFields{
 		URI:       note.ID,
 		APID:      note.ID,
 		Sensitive: note.Sensitive,
 		Language:  NoteLanguage(note),
 	}
+	if note.Published != "" {
+		if t, err := time.Parse(time.RFC3339, note.Published); err == nil {
+			fields.PublishedAt = &t
+		}
+	}
+	return fields
 }

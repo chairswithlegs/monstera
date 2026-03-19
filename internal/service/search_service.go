@@ -43,10 +43,11 @@ type SearchService interface {
 type searchService struct {
 	store    store.Store
 	resolver WebFingerResolver
+	backfill BackfillService
 }
 
-func NewSearchService(s store.Store, resolver WebFingerResolver) SearchService {
-	return &searchService{store: s, resolver: resolver}
+func NewSearchService(s store.Store, resolver WebFingerResolver, backfill BackfillService) SearchService {
+	return &searchService{store: s, resolver: resolver, backfill: backfill}
 }
 
 // acctPattern matches user@domain (username and domain non-empty).
@@ -84,6 +85,11 @@ func (svc *searchService) Search(ctx context.Context, viewer *domain.Account, q 
 			if err != nil {
 				slog.DebugContext(ctx, "search resolve failed", slog.String("acct", q), slog.Any("error", err))
 			} else {
+				if svc.backfill != nil {
+					if bfErr := svc.backfill.RequestBackfill(ctx, remote.ID); bfErr != nil {
+						slog.WarnContext(ctx, "backfill request failed", slog.String("account_id", remote.ID), slog.Any("error", bfErr))
+					}
+				}
 				seen := make(map[string]bool)
 				for _, a := range out.Accounts {
 					seen[a.ID] = true

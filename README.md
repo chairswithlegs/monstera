@@ -121,6 +121,8 @@ All configuration is via environment variables (12-factor).
 |----------|-------------|---------|
 | `FEDERATION_WORKER_CONCURRENCY` | Number of parallel federation delivery workers | `5` |
 | `FEDERATION_INSECURE_SKIP_TLS_VERIFY` | Skip TLS verification for outbound federation requests | dev: `true`, prod: `false` |
+| `BACKFILL_MAX_PAGES` | Max outbox pages to fetch per remote account backfill | `2` |
+| `BACKFILL_COOLDOWN_HOURS` | Minimum hours between backfills for the same account | `24` |
 
 ### Push notifications
 

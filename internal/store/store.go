@@ -63,6 +63,7 @@ type AccountStore interface {
 	CountAccountPins(ctx context.Context, accountID string) (int64, error)
 	IncrementStatusesCount(ctx context.Context, accountID string) error
 	DecrementStatusesCount(ctx context.Context, accountID string) error
+	UpdateAccountLastBackfilledAt(ctx context.Context, id string, at time.Time) error
 }
 
 // UserStore handles user persistence and authentication.

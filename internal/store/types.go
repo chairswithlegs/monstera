@@ -59,6 +59,7 @@ type CreateStatusInput struct {
 	APID                string
 	Sensitive           bool
 	Local               bool
+	CreatedAt           *time.Time // optional; defaults to NOW() in the database
 }
 
 // CreateApplicationInput is the input for creating an OAuth application.

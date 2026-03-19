@@ -33,8 +33,9 @@ type Account struct {
 	Locked              bool
 	Suspended           bool
 	Silenced            bool
-	SuspensionOrigin    *string
-	DeletionRequestedAt *time.Time
+	SuspensionOrigin    *string    // Origin of the suspension. Remote accounts only.
+	LastBackfilledAt    *time.Time // Last time the account was backfilled. Remote accounts only.
+	DeletionRequestedAt *time.Time // Time the account was requested to be deleted. Remote accounts only.
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }

@@ -71,6 +71,9 @@ type Config struct {
 	RateLimitAuthWindow      time.Duration
 	RateLimitPublicPerWindow int
 	RateLimitPublicWindow    time.Duration
+
+	BackfillMaxPages int
+	BackfillCooldown time.Duration
 }
 
 func Load() (*Config, error) {
@@ -132,6 +135,9 @@ func Load() (*Config, error) {
 		RateLimitPublicPerWindow: envInt("RATE_LIMIT_PUBLIC_PER_WINDOW", 300),
 		RateLimitPublicWindow:    time.Duration(envInt("RATE_LIMIT_PUBLIC_WINDOW_SECONDS", 300)) * time.Second,
 		Version:                  envString("VERSION", "0.0.0-dev"),
+
+		BackfillMaxPages: envInt("BACKFILL_MAX_PAGES", 2),
+		BackfillCooldown: time.Duration(envInt("BACKFILL_COOLDOWN_HOURS", 24)) * time.Hour,
 	}
 
 	if cfg.MonsteraServerURL == nil && cfg.MonsteraInstanceDomain != "" {
