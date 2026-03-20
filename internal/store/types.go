@@ -26,6 +26,7 @@ type CreateAccountInput struct {
 	URL            *string
 	AvatarURL      string
 	HeaderURL      string
+	FeaturedURL    string
 	FollowersCount int
 	FollowingCount int
 	StatusesCount  int
@@ -59,6 +60,7 @@ type CreateStatusInput struct {
 	APID                string
 	Sensitive           bool
 	Local               bool
+	CreatedAt           *time.Time // optional; defaults to NOW() in the database
 }
 
 // CreateApplicationInput is the input for creating an OAuth application.

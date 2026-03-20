@@ -23,3 +23,11 @@ func New() string {
 	defer mu.Unlock()
 	return ulid.MustNew(ulid.Timestamp(time.Now()), entropy).String()
 }
+
+// NewWithTime returns a new ULID string with the given timestamp encoded in its time component.
+// This is useful for backfilled entities that should sort by their original creation time.
+func NewWithTime(t time.Time) string {
+	mu.Lock()
+	defer mu.Unlock()
+	return ulid.MustNew(ulid.Timestamp(t), entropy).String()
+}

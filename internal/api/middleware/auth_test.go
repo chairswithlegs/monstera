@@ -316,3 +316,7 @@ func (f *fakeAccountService) ChangeEmail(context.Context, string, string) (*doma
 func (f *fakeAccountService) ChangePassword(context.Context, string, string, string) error {
 	panic("unused")
 }
+
+func (f *fakeAccountService) SetRemotePins(context.Context, string, []string) error {
+	panic("unused")
+}

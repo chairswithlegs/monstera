@@ -48,7 +48,7 @@ type AccountStore interface {
 	UpdateAccount(ctx context.Context, in UpdateAccountInput) error
 	UpdateAccountKeys(ctx context.Context, id, publicKey string) error
 	UpdateAccountURLs(ctx context.Context, id, inboxURL, outboxURL, followersURL, followingURL string) error
-	UpdateRemoteAccountMeta(ctx context.Context, id, avatarURL, headerURL string, followersCount, followingCount, statusesCount int) error
+	UpdateRemoteAccountMeta(ctx context.Context, id, avatarURL, headerURL string, followersCount, followingCount, statusesCount int, featuredURL string) error
 	SuspendAccount(ctx context.Context, id string) error
 	UnsuspendAccount(ctx context.Context, id string) error
 	SilenceAccount(ctx context.Context, id string) error
@@ -59,10 +59,13 @@ type AccountStore interface {
 	UpdateAccountLastStatusAt(ctx context.Context, accountID string) error
 	CreateAccountPin(ctx context.Context, accountID, statusID string) error
 	DeleteAccountPin(ctx context.Context, accountID, statusID string) error
+	DeleteAccountPinsByAccountID(ctx context.Context, accountID string) error
+	ReplaceAccountPins(ctx context.Context, accountID string, statusIDs []string) error
 	ListPinnedStatusIDs(ctx context.Context, accountID string) ([]string, error)
 	CountAccountPins(ctx context.Context, accountID string) (int64, error)
 	IncrementStatusesCount(ctx context.Context, accountID string) error
 	DecrementStatusesCount(ctx context.Context, accountID string) error
+	UpdateAccountLastBackfilledAt(ctx context.Context, id string, at time.Time) error
 }
 
 // UserStore handles user persistence and authentication.

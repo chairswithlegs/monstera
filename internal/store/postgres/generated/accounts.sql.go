@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const countLocalAccounts = `-- name: CountLocalAccounts :one
@@ -38,15 +40,17 @@ INSERT INTO accounts (
     inbox_url, outbox_url, followers_url, following_url,
     ap_id, bot, locked, url,
     avatar_url, header_url,
-    followers_count, following_count, statuses_count
+    followers_count, following_count, statuses_count,
+    featured_url
 ) VALUES (
     $1, $2, $3, $4, $5,
     $6, $7,
     $8, $9, $10, $11,
     $12, $13, $14, $15,
     $16, $17,
-    $18, $19, $20
-) RETURNING id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url
+    $18, $19, $20,
+    $21
+) RETURNING id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url, last_backfilled_at, featured_url
 `
 
 type CreateAccountParams struct {
@@ -70,6 +74,7 @@ type CreateAccountParams struct {
 	FollowersCount int32   `json:"followers_count"`
 	FollowingCount int32   `json:"following_count"`
 	StatusesCount  int32   `json:"statuses_count"`
+	FeaturedUrl    string  `json:"featured_url"`
 }
 
 func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error) {
@@ -94,6 +99,7 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		arg.FollowersCount,
 		arg.FollowingCount,
 		arg.StatusesCount,
+		arg.FeaturedUrl,
 	)
 	var i Account
 	err := row.Scan(
@@ -125,6 +131,8 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.Url,
 		&i.AvatarUrl,
 		&i.HeaderUrl,
+		&i.LastBackfilledAt,
+		&i.FeaturedUrl,
 	)
 	return i, err
 }
@@ -166,7 +174,7 @@ func (q *Queries) DeleteAccount(ctx context.Context, id string) error {
 }
 
 const getAccountByAPID = `-- name: GetAccountByAPID :one
-SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url FROM accounts WHERE ap_id = $1
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url, last_backfilled_at, featured_url FROM accounts WHERE ap_id = $1
 `
 
 func (q *Queries) GetAccountByAPID(ctx context.Context, apID string) (Account, error) {
@@ -201,12 +209,14 @@ func (q *Queries) GetAccountByAPID(ctx context.Context, apID string) (Account, e
 		&i.Url,
 		&i.AvatarUrl,
 		&i.HeaderUrl,
+		&i.LastBackfilledAt,
+		&i.FeaturedUrl,
 	)
 	return i, err
 }
 
 const getAccountByID = `-- name: GetAccountByID :one
-SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url FROM accounts WHERE id = $1
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url, last_backfilled_at, featured_url FROM accounts WHERE id = $1
 `
 
 func (q *Queries) GetAccountByID(ctx context.Context, id string) (Account, error) {
@@ -241,12 +251,14 @@ func (q *Queries) GetAccountByID(ctx context.Context, id string) (Account, error
 		&i.Url,
 		&i.AvatarUrl,
 		&i.HeaderUrl,
+		&i.LastBackfilledAt,
+		&i.FeaturedUrl,
 	)
 	return i, err
 }
 
 const getAccountsByIDs = `-- name: GetAccountsByIDs :many
-SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url FROM accounts WHERE id = ANY($1::text[])
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url, last_backfilled_at, featured_url FROM accounts WHERE id = ANY($1::text[])
 `
 
 func (q *Queries) GetAccountsByIDs(ctx context.Context, dollar_1 []string) ([]Account, error) {
@@ -287,6 +299,8 @@ func (q *Queries) GetAccountsByIDs(ctx context.Context, dollar_1 []string) ([]Ac
 			&i.Url,
 			&i.AvatarUrl,
 			&i.HeaderUrl,
+			&i.LastBackfilledAt,
+			&i.FeaturedUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -299,7 +313,7 @@ func (q *Queries) GetAccountsByIDs(ctx context.Context, dollar_1 []string) ([]Ac
 }
 
 const getLocalAccountByUsername = `-- name: GetLocalAccountByUsername :one
-SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url FROM accounts WHERE username = $1 AND domain IS NULL
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url, last_backfilled_at, featured_url FROM accounts WHERE username = $1 AND domain IS NULL
 `
 
 func (q *Queries) GetLocalAccountByUsername(ctx context.Context, username string) (Account, error) {
@@ -334,12 +348,14 @@ func (q *Queries) GetLocalAccountByUsername(ctx context.Context, username string
 		&i.Url,
 		&i.AvatarUrl,
 		&i.HeaderUrl,
+		&i.LastBackfilledAt,
+		&i.FeaturedUrl,
 	)
 	return i, err
 }
 
 const getRemoteAccountByUsername = `-- name: GetRemoteAccountByUsername :one
-SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url FROM accounts WHERE username = $1 AND domain = $2
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url, last_backfilled_at, featured_url FROM accounts WHERE username = $1 AND domain = $2
 `
 
 type GetRemoteAccountByUsernameParams struct {
@@ -379,6 +395,8 @@ func (q *Queries) GetRemoteAccountByUsername(ctx context.Context, arg GetRemoteA
 		&i.Url,
 		&i.AvatarUrl,
 		&i.HeaderUrl,
+		&i.LastBackfilledAt,
+		&i.FeaturedUrl,
 	)
 	return i, err
 }
@@ -411,7 +429,7 @@ func (q *Queries) IncrementStatusesCount(ctx context.Context, id string) error {
 }
 
 const listDirectoryAccounts = `-- name: ListDirectoryAccounts :many
-SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url FROM accounts
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url, last_backfilled_at, featured_url FROM accounts
 WHERE (NOT $1 OR domain IS NULL)
   AND suspended = FALSE
 ORDER BY
@@ -470,6 +488,8 @@ func (q *Queries) ListDirectoryAccounts(ctx context.Context, arg ListDirectoryAc
 			&i.Url,
 			&i.AvatarUrl,
 			&i.HeaderUrl,
+			&i.LastBackfilledAt,
+			&i.FeaturedUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -482,7 +502,7 @@ func (q *Queries) ListDirectoryAccounts(ctx context.Context, arg ListDirectoryAc
 }
 
 const listLocalAccounts = `-- name: ListLocalAccounts :many
-SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url FROM accounts WHERE domain IS NULL ORDER BY id DESC LIMIT $1 OFFSET $2
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url, last_backfilled_at, featured_url FROM accounts WHERE domain IS NULL ORDER BY id DESC LIMIT $1 OFFSET $2
 `
 
 type ListLocalAccountsParams struct {
@@ -528,6 +548,8 @@ func (q *Queries) ListLocalAccounts(ctx context.Context, arg ListLocalAccountsPa
 			&i.Url,
 			&i.AvatarUrl,
 			&i.HeaderUrl,
+			&i.LastBackfilledAt,
+			&i.FeaturedUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -540,7 +562,7 @@ func (q *Queries) ListLocalAccounts(ctx context.Context, arg ListLocalAccountsPa
 }
 
 const searchAccounts = `-- name: SearchAccounts :many
-SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url FROM accounts
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url, last_backfilled_at, featured_url FROM accounts
 WHERE suspended = FALSE
   AND (
     LOWER(username) LIKE LOWER($1) || '%'
@@ -593,6 +615,8 @@ func (q *Queries) SearchAccounts(ctx context.Context, arg SearchAccountsParams) 
 			&i.Url,
 			&i.AvatarUrl,
 			&i.HeaderUrl,
+			&i.LastBackfilledAt,
+			&i.FeaturedUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -654,7 +678,7 @@ UPDATE accounts SET
     header_url      = COALESCE($11, header_url),
     updated_at      = NOW()
 WHERE id = $1
-RETURNING id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url
+RETURNING id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url, last_backfilled_at, featured_url
 `
 
 type UpdateAccountParams struct {
@@ -715,6 +739,8 @@ func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (A
 		&i.Url,
 		&i.AvatarUrl,
 		&i.HeaderUrl,
+		&i.LastBackfilledAt,
+		&i.FeaturedUrl,
 	)
 	return i, err
 }
@@ -730,6 +756,20 @@ type UpdateAccountKeysParams struct {
 
 func (q *Queries) UpdateAccountKeys(ctx context.Context, arg UpdateAccountKeysParams) error {
 	_, err := q.db.Exec(ctx, updateAccountKeys, arg.ID, arg.PublicKey)
+	return err
+}
+
+const updateAccountLastBackfilledAt = `-- name: UpdateAccountLastBackfilledAt :exec
+UPDATE accounts SET last_backfilled_at = $1 WHERE id = $2
+`
+
+type UpdateAccountLastBackfilledAtParams struct {
+	LastBackfilledAt pgtype.Timestamptz `json:"last_backfilled_at"`
+	ID               string             `json:"id"`
+}
+
+func (q *Queries) UpdateAccountLastBackfilledAt(ctx context.Context, arg UpdateAccountLastBackfilledAtParams) error {
+	_, err := q.db.Exec(ctx, updateAccountLastBackfilledAt, arg.LastBackfilledAt, arg.ID)
 	return err
 }
 
@@ -772,6 +812,7 @@ UPDATE accounts SET
     followers_count = $4,
     following_count = $5,
     statuses_count  = $6,
+    featured_url    = $7,
     updated_at      = NOW()
 WHERE id = $1
 `
@@ -783,6 +824,7 @@ type UpdateRemoteAccountMetaParams struct {
 	FollowersCount int32  `json:"followers_count"`
 	FollowingCount int32  `json:"following_count"`
 	StatusesCount  int32  `json:"statuses_count"`
+	FeaturedUrl    string `json:"featured_url"`
 }
 
 func (q *Queries) UpdateRemoteAccountMeta(ctx context.Context, arg UpdateRemoteAccountMetaParams) error {
@@ -793,6 +835,7 @@ func (q *Queries) UpdateRemoteAccountMeta(ctx context.Context, arg UpdateRemoteA
 		arg.FollowersCount,
 		arg.FollowingCount,
 		arg.StatusesCount,
+		arg.FeaturedUrl,
 	)
 	return err
 }

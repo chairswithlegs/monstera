@@ -41,6 +41,7 @@ func toDbCreateAccountParams(in store.CreateAccountInput) db.CreateAccountParams
 		Url:            in.URL,
 		AvatarUrl:      in.AvatarURL,
 		HeaderUrl:      in.HeaderURL,
+		FeaturedUrl:    in.FeaturedURL,
 		FollowersCount: int32(in.FollowersCount), //nolint:gosec // count values from AP collections
 		FollowingCount: int32(in.FollowingCount), //nolint:gosec // count values from AP collections
 		StatusesCount:  int32(in.StatusesCount),  //nolint:gosec // count values from AP collections
@@ -76,6 +77,7 @@ func toDbCreateStatusParams(in store.CreateStatusInput) db.CreateStatusParams {
 		ApID:                in.APID,
 		Sensitive:           in.Sensitive,
 		Local:               in.Local,
+		CreatedAt:           in.CreatedAt,
 	}
 }
 
@@ -213,6 +215,10 @@ func (s *PostgresStore) CreateUser(ctx context.Context, in store.CreateUserInput
 func (s *PostgresStore) CreateStatus(ctx context.Context, in store.CreateStatusInput) (*domain.Status, error) {
 	dbSt, err := s.q.CreateStatus(ctx, toDbCreateStatusParams(in))
 	if err != nil {
+		// ON CONFLICT (ap_id) DO NOTHING returns no rows on a duplicate; treat as conflict.
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrConflict
+		}
 		return nil, mapErr(err)
 	}
 	st := ToDomainStatus(dbSt)
@@ -293,6 +299,13 @@ func (s *PostgresStore) IncrementStatusesCount(ctx context.Context, accountID st
 
 func (s *PostgresStore) UpdateAccountLastStatusAt(ctx context.Context, accountID string) error {
 	return mapErr(s.q.UpdateAccountLastStatusAt(ctx, accountID))
+}
+
+func (s *PostgresStore) UpdateAccountLastBackfilledAt(ctx context.Context, id string, at time.Time) error {
+	return mapErr(s.q.UpdateAccountLastBackfilledAt(ctx, db.UpdateAccountLastBackfilledAtParams{
+		ID:               id,
+		LastBackfilledAt: pgtype.Timestamptz{Time: at, Valid: true},
+	}))
 }
 
 func (s *PostgresStore) DecrementStatusesCount(ctx context.Context, accountID string) error {
@@ -1601,7 +1614,7 @@ func (s *PostgresStore) UpdateAccountURLs(ctx context.Context, id, inboxURL, out
 	}))
 }
 
-func (s *PostgresStore) UpdateRemoteAccountMeta(ctx context.Context, id, avatarURL, headerURL string, followersCount, followingCount, statusesCount int) error {
+func (s *PostgresStore) UpdateRemoteAccountMeta(ctx context.Context, id, avatarURL, headerURL string, followersCount, followingCount, statusesCount int, featuredURL string) error {
 	return mapErr(s.q.UpdateRemoteAccountMeta(ctx, db.UpdateRemoteAccountMetaParams{
 		ID:             id,
 		AvatarUrl:      avatarURL,
@@ -1609,7 +1622,26 @@ func (s *PostgresStore) UpdateRemoteAccountMeta(ctx context.Context, id, avatarU
 		FollowersCount: int32(followersCount), //nolint:gosec // values from remote AP collection
 		FollowingCount: int32(followingCount), //nolint:gosec // values from remote AP collection
 		StatusesCount:  int32(statusesCount),  //nolint:gosec // values from remote AP collection
+		FeaturedUrl:    featuredURL,
 	}))
+}
+
+func (s *PostgresStore) DeleteAccountPinsByAccountID(ctx context.Context, accountID string) error {
+	return mapErr(s.q.DeleteAccountPinsByAccountID(ctx, accountID))
+}
+
+func (s *PostgresStore) ReplaceAccountPins(ctx context.Context, accountID string, statusIDs []string) error {
+	return s.WithTx(ctx, func(tx store.Store) error {
+		if err := tx.DeleteAccountPinsByAccountID(ctx, accountID); err != nil {
+			return fmt.Errorf("ReplaceAccountPins(%s): delete: %w", accountID, err)
+		}
+		for _, statusID := range statusIDs {
+			if err := tx.CreateAccountPin(ctx, accountID, statusID); err != nil {
+				return fmt.Errorf("ReplaceAccountPins(%s): create pin %s: %w", accountID, statusID, err)
+			}
+		}
+		return nil
+	})
 }
 
 func (s *PostgresStore) AttachMediaToStatus(ctx context.Context, mediaID, statusID, accountID string) error {

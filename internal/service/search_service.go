@@ -43,10 +43,11 @@ type SearchService interface {
 type searchService struct {
 	store    store.Store
 	resolver WebFingerResolver
+	backfill BackfillService
 }
 
-func NewSearchService(s store.Store, resolver WebFingerResolver) SearchService {
-	return &searchService{store: s, resolver: resolver}
+func NewSearchService(s store.Store, resolver WebFingerResolver, backfill BackfillService) SearchService {
+	return &searchService{store: s, resolver: resolver, backfill: backfill}
 }
 
 // acctPattern matches user@domain (username and domain non-empty).
@@ -64,48 +65,95 @@ func (svc *searchService) Search(ctx context.Context, viewer *domain.Account, q 
 			Hashtags: []domain.Hashtag{},
 		}, nil
 	}
+
 	limit = ClampLimit(limit, 5, 40)
 	out := &SearchResult{
 		Accounts: []*domain.Account{},
 		Statuses: []*domain.Status{}, // Phase 1: always empty
 		Hashtags: []domain.Hashtag{},
 	}
-	searchAccounts := filter == SearchTypeAccounts || filter == SearchTypeAll
-	searchHashtags := filter == SearchTypeHashtags || filter == SearchTypeAll
-	if searchAccounts {
-		accounts, err := svc.store.SearchAccounts(ctx, q, limit)
+
+	wantAccounts := filter == SearchTypeAccounts || filter == SearchTypeAll
+	wantHashtags := filter == SearchTypeHashtags || filter == SearchTypeAll
+
+	if wantAccounts {
+		accounts, err := svc.searchAccounts(ctx, q, limit)
 		if err != nil {
-			return nil, fmt.Errorf("SearchAccounts: %w", err)
+			return nil, err
 		}
 		out.Accounts = accounts
-		// If the account is remote, resolve it (only when resolver is configured).
-		if resolve && svc.resolver != nil && acctPattern.MatchString(q) {
-			remote, err := svc.resolver.ResolveRemoteAccount(ctx, q)
-			if err != nil {
-				slog.DebugContext(ctx, "search resolve failed", slog.String("acct", q), slog.Any("error", err))
-			} else {
-				seen := make(map[string]bool)
-				for _, a := range out.Accounts {
-					seen[a.ID] = true
-				}
-				if !seen[remote.ID] {
-					out.Accounts = append(out.Accounts, remote)
-					if len(out.Accounts) > limit {
-						out.Accounts = out.Accounts[:limit]
-					}
-				}
-			}
+
+		if resolve && acctPattern.MatchString(q) {
+			out.Accounts = svc.resolveAndMergeAccount(ctx, q, out.Accounts, limit)
 		}
 	}
-	if searchHashtags {
-		prefix := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(q), "#"))
-		if prefix != "" {
-			hashtags, err := svc.store.SearchHashtagsByPrefix(ctx, prefix, limit)
-			if err != nil {
-				return nil, fmt.Errorf("SearchHashtagsByPrefix: %w", err)
-			}
-			out.Hashtags = hashtags
+
+	if wantHashtags {
+		hashtags, err := svc.searchHashtags(ctx, q, limit)
+		if err != nil {
+			return nil, err
 		}
+		out.Hashtags = hashtags
 	}
+
 	return out, nil
+}
+
+// searchAccounts queries the store for accounts matching q.
+func (svc *searchService) searchAccounts(ctx context.Context, q string, limit int) ([]*domain.Account, error) {
+	accounts, err := svc.store.SearchAccounts(ctx, q, limit)
+	if err != nil {
+		return nil, fmt.Errorf("SearchAccounts: %w", err)
+	}
+	return accounts, nil
+}
+
+// resolveAndMergeAccount resolves a remote account by acct URI, triggers a backfill,
+// deduplicates against existing accounts, and trims to limit.
+func (svc *searchService) resolveAndMergeAccount(ctx context.Context, acct string, accounts []*domain.Account, limit int) []*domain.Account {
+	if svc.resolver == nil {
+		return accounts
+	}
+
+	remote, err := svc.resolver.ResolveRemoteAccount(ctx, acct)
+	if err != nil {
+		slog.DebugContext(ctx, "search resolve failed", slog.String("acct", acct), slog.Any("error", err))
+		return accounts
+	}
+
+	// Always request a backfill when we resolve a remote account, even if it's
+	// already in the result set. The account may not have been backfilled yet, and
+	// the worker's cooldown check prevents redundant execution.
+	if svc.backfill != nil {
+		if bfErr := svc.backfill.RequestBackfill(ctx, remote.ID); bfErr != nil {
+			slog.WarnContext(ctx, "backfill request failed", slog.String("account_id", remote.ID), slog.Any("error", bfErr))
+		}
+	}
+
+	// Already in the result set — no need to append.
+	for _, a := range accounts {
+		if a.ID == remote.ID {
+			return accounts
+		}
+	}
+
+	accounts = append(accounts, remote)
+	if len(accounts) > limit {
+		accounts = accounts[:limit]
+	}
+	return accounts
+}
+
+// searchHashtags queries the store for hashtags matching q (with optional # prefix stripped).
+func (svc *searchService) searchHashtags(ctx context.Context, q string, limit int) ([]domain.Hashtag, error) {
+	prefix := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(q), "#"))
+	if prefix == "" {
+		return nil, nil
+	}
+
+	hashtags, err := svc.store.SearchHashtagsByPrefix(ctx, prefix, limit)
+	if err != nil {
+		return nil, fmt.Errorf("SearchHashtagsByPrefix: %w", err)
+	}
+	return hashtags, nil
 }

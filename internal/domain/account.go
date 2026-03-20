@@ -25,6 +25,7 @@ type Account struct {
 	FollowingURL        string // ActivityPub Following URL.
 	APID                string // ActivityPub IRI for the account.
 	ProfileURL          string // Human-readable profile page URL (from AP Actor "url" field). For remote accounts stored from Actor; for local accounts computed at render time.
+	FeaturedURL         string // ActivityPub featured collection URL. Remote accounts only.
 	FollowersCount      int
 	FollowingCount      int
 	StatusesCount       int
@@ -33,8 +34,9 @@ type Account struct {
 	Locked              bool
 	Suspended           bool
 	Silenced            bool
-	SuspensionOrigin    *string
-	DeletionRequestedAt *time.Time
+	SuspensionOrigin    *string    // Origin of the suspension. Remote accounts only.
+	LastBackfilledAt    *time.Time // Last time the account was backfilled. Remote accounts only.
+	DeletionRequestedAt *time.Time // Time the account was requested to be deleted. Remote accounts only.
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }

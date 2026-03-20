@@ -506,3 +506,39 @@ func TestAccountService_CreateOrUpdateRemoteAccount_update_refreshes_avatar_head
 	assert.Equal(t, 20, fetched.FollowingCount)
 	assert.Equal(t, 100, fetched.StatusesCount)
 }
+
+func TestAccountService_SetRemotePins_replaces_pins(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+
+	remoteDomain := testRemoteDomain
+	acc, err := fake.CreateAccount(ctx, store.CreateAccountInput{
+		ID: "01remote", Username: "bob", Domain: &remoteDomain,
+	})
+	require.NoError(t, err)
+
+	// Seed an existing pin that should be replaced.
+	require.NoError(t, fake.CreateAccountPin(ctx, acc.ID, "old-status"))
+
+	err = svc.SetRemotePins(ctx, acc.ID, []string{"new-status-1", "new-status-2"})
+	require.NoError(t, err)
+
+	pins, err := fake.ListPinnedStatusIDs(ctx, acc.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"new-status-1", "new-status-2"}, pins)
+}
+
+func TestAccountService_SetRemotePins_local_account_returns_forbidden(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+
+	acc, err := svc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+
+	err = svc.SetRemotePins(ctx, acc.ID, []string{"status-1"})
+	assert.ErrorIs(t, err, domain.ErrForbidden)
+}

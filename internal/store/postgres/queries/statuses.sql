@@ -9,13 +9,13 @@ INSERT INTO statuses (
     id, uri, account_id, text, content, content_warning,
     visibility, language, in_reply_to_id, in_reply_to_account_id, reblog_of_id,
     quoted_status_id, quote_approval_policy, quotes_count,
-    ap_id, sensitive, local
+    ap_id, sensitive, local, created_at
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
     $7, $8, $9, $10, $11,
     $12, $13, 0,
-    $14, $15, $16
-) RETURNING *;
+    $14, $15, $16, COALESCE(@created_at, NOW())
+) ON CONFLICT (ap_id) DO NOTHING RETURNING *;
 
 -- name: UpdateStatus :one
 UPDATE statuses SET

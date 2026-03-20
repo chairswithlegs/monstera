@@ -11,7 +11,7 @@ import (
 
 func TestStreamConfigs_Count(t *testing.T) {
 	t.Parallel()
-	require.Len(t, StreamConfigs, 4, "expected delivery, delivery-DLQ, fanout, fanout-DLQ streams")
+	require.Len(t, StreamConfigs, 5, "expected delivery, delivery-DLQ, fanout, fanout-DLQ, backfill streams")
 }
 
 func TestStreamConfigs_NoDuplicateStreamNames(t *testing.T) {
@@ -135,6 +135,23 @@ func TestSubjectPrefixes_NonEmpty(t *testing.T) {
 	}
 }
 
+func TestStreamConfigs_BackfillStream(t *testing.T) {
+	t.Parallel()
+	sc := StreamConfigs[4]
+
+	assert.Equal(t, StreamBackfill, sc.Stream.Name)
+	assert.Equal(t, jetstream.WorkQueuePolicy, sc.Stream.Retention)
+	assert.Equal(t, jetstream.DiscardOld, sc.Stream.Discard)
+	assert.Greater(t, sc.Stream.Duplicates, time.Duration(0), "Duplicates window must be positive")
+
+	require.Len(t, sc.Consumers, 1)
+	c := sc.Consumers[0]
+	assert.Equal(t, ConsumerBackfill, c.Durable)
+	assert.Equal(t, len(backfillRetries), c.MaxDeliver)
+	assert.Equal(t, backfillRetries, c.BackOff)
+	assert.Equal(t, 3, c.MaxAckPending)
+}
+
 func TestStreamConstants_Unique(t *testing.T) {
 	t.Parallel()
 	names := []string{
@@ -142,6 +159,7 @@ func TestStreamConstants_Unique(t *testing.T) {
 		StreamOutboxDeliveryDLQ,
 		StreamOutboxFanout,
 		StreamOutboxFanoutDLQ,
+		StreamBackfill,
 	}
 	seen := make(map[string]bool, len(names))
 	for _, n := range names {
@@ -160,5 +178,9 @@ func TestRetryDurations_Positive(t *testing.T) {
 	require.NotEmpty(t, fanoutRetries)
 	for i, d := range fanoutRetries {
 		assert.Greater(t, d, time.Duration(0), "fanoutRetries[%d] must be positive", i)
+	}
+	require.NotEmpty(t, backfillRetries)
+	for i, d := range backfillRetries {
+		assert.Greater(t, d, time.Duration(0), "backfillRetries[%d] must be positive", i)
 	}
 }

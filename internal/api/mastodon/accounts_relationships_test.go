@@ -20,7 +20,7 @@ func newAccountsRelHandler(st *testutil.FakeStore) (*AccountsHandler, service.Ac
 	remoteFollowSvc := service.NewRemoteFollowService(st)
 	followSvc := service.NewFollowService(st, accountSvc, remoteFollowSvc)
 	tagFollowSvc := service.NewTagFollowService(st)
-	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, 0, "example.com")
 	return handler, accountSvc
 }
 
