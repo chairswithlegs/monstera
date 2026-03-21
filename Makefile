@@ -52,7 +52,7 @@ test-integration:
 	make migrate-up
 
 	# Run the tests
-	go test -race -count=1 -tags=integration ./...; \
+	go test -race -count=1 -tags=integration ./... -coverprofile=cover.out; \
 	EXIT=$$?; \
 	docker compose -f docker-compose.yaml --profile dependencies down; \
 	exit $$EXIT
@@ -73,6 +73,7 @@ loadtest:
 	docker compose -f docker-compose.yaml --profile app up --build -d --wait
 	sleep 5
 	$(MAKE) migrate-down
+	$(MAKE) migrate-up
 	$(MAKE) seed
 
 	# 2. Build static Linux binary and deploy into the server container
