@@ -42,24 +42,7 @@ func (h *TimelinesHandler) GETHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := make([]apimodel.Status, 0, len(enriched))
-	for i := range enriched {
-		e := &enriched[i]
-		authorAcc := apimodel.ToAccount(e.Author, h.instanceDomain)
-		mentionsResp := make([]apimodel.Mention, 0, len(e.Mentions))
-		for _, a := range e.Mentions {
-			mentionsResp = append(mentionsResp, apimodel.MentionFromAccount(a, h.instanceDomain))
-		}
-		tagsResp := make([]apimodel.Tag, 0, len(e.Tags))
-		for _, t := range e.Tags {
-			tagsResp = append(tagsResp, apimodel.TagFromName(t.Name, h.instanceDomain))
-		}
-		mediaResp := make([]apimodel.MediaAttachment, 0, len(e.Media))
-		for j := range e.Media {
-			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
-		}
-		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, e.Card, h.instanceDomain))
-	}
+	out := enrichedStatusesToAPIModels(enriched, h.instanceDomain)
 
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
 	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
@@ -82,24 +65,7 @@ func (h *TimelinesHandler) GETPublic(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	out := make([]apimodel.Status, 0, len(enriched))
-	for i := range enriched {
-		e := &enriched[i]
-		authorAcc := apimodel.ToAccount(e.Author, h.instanceDomain)
-		mentionsResp := make([]apimodel.Mention, 0, len(e.Mentions))
-		for _, a := range e.Mentions {
-			mentionsResp = append(mentionsResp, apimodel.MentionFromAccount(a, h.instanceDomain))
-		}
-		tagsResp := make([]apimodel.Tag, 0, len(e.Tags))
-		for _, t := range e.Tags {
-			tagsResp = append(tagsResp, apimodel.TagFromName(t.Name, h.instanceDomain))
-		}
-		mediaResp := make([]apimodel.MediaAttachment, 0, len(e.Media))
-		for j := range e.Media {
-			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
-		}
-		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, e.Card, h.instanceDomain))
-	}
+	out := enrichedStatusesToAPIModels(enriched, h.instanceDomain)
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
 	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
 		w.Header().Set("Link", link)
@@ -124,25 +90,9 @@ func (h *TimelinesHandler) GETFavourites(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	out := make([]apimodel.Status, 0, len(enriched))
-	for i := range enriched {
-		e := &enriched[i]
-		authorAcc := apimodel.ToAccount(e.Author, h.instanceDomain)
-		mentionsResp := make([]apimodel.Mention, 0, len(e.Mentions))
-		for _, a := range e.Mentions {
-			mentionsResp = append(mentionsResp, apimodel.MentionFromAccount(a, h.instanceDomain))
-		}
-		tagsResp := make([]apimodel.Tag, 0, len(e.Tags))
-		for _, t := range e.Tags {
-			tagsResp = append(tagsResp, apimodel.TagFromName(t.Name, h.instanceDomain))
-		}
-		mediaResp := make([]apimodel.MediaAttachment, 0, len(e.Media))
-		for j := range e.Media {
-			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
-		}
-		st := apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, e.Card, h.instanceDomain)
-		st.Favourited = true
-		out = append(out, st)
+	out := enrichedStatusesToAPIModels(enriched, h.instanceDomain)
+	for i := range out {
+		out[i].Favourited = true
 	}
 
 	if len(enriched) > 0 {
@@ -171,25 +121,9 @@ func (h *TimelinesHandler) GETBookmarks(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	out := make([]apimodel.Status, 0, len(enriched))
-	for i := range enriched {
-		e := &enriched[i]
-		authorAcc := apimodel.ToAccount(e.Author, h.instanceDomain)
-		mentionsResp := make([]apimodel.Mention, 0, len(e.Mentions))
-		for _, a := range e.Mentions {
-			mentionsResp = append(mentionsResp, apimodel.MentionFromAccount(a, h.instanceDomain))
-		}
-		tagsResp := make([]apimodel.Tag, 0, len(e.Tags))
-		for _, t := range e.Tags {
-			tagsResp = append(tagsResp, apimodel.TagFromName(t.Name, h.instanceDomain))
-		}
-		mediaResp := make([]apimodel.MediaAttachment, 0, len(e.Media))
-		for j := range e.Media {
-			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
-		}
-		st := apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, e.Card, h.instanceDomain)
-		st.Bookmarked = true
-		out = append(out, st)
+	out := enrichedStatusesToAPIModels(enriched, h.instanceDomain)
+	for i := range out {
+		out[i].Bookmarked = true
 	}
 
 	if len(enriched) > 0 {
@@ -228,24 +162,7 @@ func (h *TimelinesHandler) GETListTimeline(w http.ResponseWriter, r *http.Reques
 		api.HandleError(w, r, err)
 		return
 	}
-	out := make([]apimodel.Status, 0, len(enriched))
-	for i := range enriched {
-		e := &enriched[i]
-		authorAcc := apimodel.ToAccount(e.Author, h.instanceDomain)
-		mentionsResp := make([]apimodel.Mention, 0, len(e.Mentions))
-		for _, a := range e.Mentions {
-			mentionsResp = append(mentionsResp, apimodel.MentionFromAccount(a, h.instanceDomain))
-		}
-		tagsResp := make([]apimodel.Tag, 0, len(e.Tags))
-		for _, t := range e.Tags {
-			tagsResp = append(tagsResp, apimodel.TagFromName(t.Name, h.instanceDomain))
-		}
-		mediaResp := make([]apimodel.MediaAttachment, 0, len(e.Media))
-		for j := range e.Media {
-			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
-		}
-		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, e.Card, h.instanceDomain))
-	}
+	out := enrichedStatusesToAPIModels(enriched, h.instanceDomain)
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
 	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
 		w.Header().Set("Link", link)
@@ -271,29 +188,21 @@ func (h *TimelinesHandler) GETTag(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	out := make([]apimodel.Status, 0, len(enriched))
-	for i := range enriched {
-		e := &enriched[i]
-		authorAcc := apimodel.ToAccount(e.Author, h.instanceDomain)
-		mentionsResp := make([]apimodel.Mention, 0, len(e.Mentions))
-		for _, a := range e.Mentions {
-			mentionsResp = append(mentionsResp, apimodel.MentionFromAccount(a, h.instanceDomain))
-		}
-		tagsResp := make([]apimodel.Tag, 0, len(e.Tags))
-		for _, t := range e.Tags {
-			tagsResp = append(tagsResp, apimodel.TagFromName(t.Name, h.instanceDomain))
-		}
-		mediaResp := make([]apimodel.MediaAttachment, 0, len(e.Media))
-		for j := range e.Media {
-			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
-		}
-		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, e.Card, h.instanceDomain))
-	}
+	out := enrichedStatusesToAPIModels(enriched, h.instanceDomain)
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
 	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
 		w.Header().Set("Link", link)
 	}
 	api.WriteJSON(w, http.StatusOK, out)
+}
+
+// enrichedStatusesToAPIModels converts a slice of EnrichedStatus to API models.
+func enrichedStatusesToAPIModels(enriched []service.EnrichedStatus, instanceDomain string) []apimodel.Status {
+	out := make([]apimodel.Status, 0, len(enriched))
+	for i := range enriched {
+		out = append(out, enrichedStatusToAPIModel(enriched[i], instanceDomain))
+	}
+	return out
 }
 
 // firstLastIDsFromEnriched returns the first and last status IDs for Link header pagination.

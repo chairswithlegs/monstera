@@ -33,14 +33,10 @@ func (h *StatusesHandler) POSTReblog(w http.ResponseWriter, r *http.Request) {
 			api.HandleError(w, r, api.ErrForbidden)
 			return
 		}
-		if errors.Is(err, domain.ErrConflict) {
-			api.HandleError(w, r, api.NewUnprocessableError("already reblogged"))
-			return
-		}
 		api.HandleError(w, r, err)
 		return
 	}
-	out := enrichedStatusToAPIModelWithReblog(r.Context(), result, id, &account.ID, h)
+	out := enrichedStatusToAPIModel(result, h.instanceDomain)
 	api.WriteJSON(w, http.StatusOK, out)
 }
 

@@ -113,6 +113,11 @@ func (s *Subscriber) handleStatusCreated(ctx context.Context, event domain.Domai
 		media = append(media, apimodel.MediaFromDomain(&payload.Media[i]))
 	}
 	apiStatus := apimodel.ToStatus(payload.Status, author, mentions, tags, media, nil, s.instanceDomain)
+	if payload.Status.ReblogOfID != nil {
+		if orig := s.buildStatusAPIModel(ctx, *payload.Status.ReblogOfID); orig != nil {
+			apiStatus.Reblog = orig
+		}
+	}
 	statusJSON, err := json.Marshal(apiStatus)
 	if err != nil {
 		slog.ErrorContext(ctx, "sse subscriber: marshal status", slog.Any("error", err))
@@ -125,6 +130,38 @@ func (s *Subscriber) handleStatusCreated(ctx context.Context, event domain.Domai
 	}
 
 	s.routeStatusCreated(ctx, payload.Status.AccountID, payload.Status.Visibility, payload.Status.Local, statusJSON, hashtagNames, payload.MentionedAccountIDs)
+}
+
+// buildStatusAPIModel fetches a status and its related data from the store and
+// returns the Mastodon API model. Returns nil if the status cannot be loaded.
+func (s *Subscriber) buildStatusAPIModel(ctx context.Context, statusID string) *apimodel.Status {
+	st, err := s.store.GetStatusByID(ctx, statusID)
+	if err != nil || st.DeletedAt != nil {
+		return nil
+	}
+	author, err := s.store.GetAccountByID(ctx, st.AccountID)
+	if err != nil {
+		return nil
+	}
+	mentionAccounts, _ := s.store.GetStatusMentions(ctx, st.ID)
+	mentions := make([]apimodel.Mention, 0, len(mentionAccounts))
+	for _, m := range mentionAccounts {
+		if m != nil {
+			mentions = append(mentions, apimodel.MentionFromAccount(m, s.instanceDomain))
+		}
+	}
+	hashtags, _ := s.store.GetStatusHashtags(ctx, st.ID)
+	tags := make([]apimodel.Tag, 0, len(hashtags))
+	for _, t := range hashtags {
+		tags = append(tags, apimodel.TagFromName(t.Name, s.instanceDomain))
+	}
+	attachments, _ := s.store.GetStatusAttachments(ctx, st.ID)
+	media := make([]apimodel.MediaAttachment, 0, len(attachments))
+	for i := range attachments {
+		media = append(media, apimodel.MediaFromDomain(&attachments[i]))
+	}
+	out := apimodel.ToStatus(st, apimodel.ToAccount(author, s.instanceDomain), mentions, tags, media, nil, s.instanceDomain)
+	return &out
 }
 
 func (s *Subscriber) routeStatusCreated(ctx context.Context, accountID, visibility string, local bool, statusJSON []byte, hashtagNames, mentionedAccountIDs []string) {

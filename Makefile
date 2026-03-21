@@ -52,7 +52,7 @@ test-integration:
 	make migrate-up
 
 	# Run the tests
-	go test -race -count=1 -tags=integration ./... -coverprofile=cover.out; \
+	go test -race -count=1 -tags=integration ./...; \
 	EXIT=$$?; \
 	docker compose -f docker-compose.yaml --profile dependencies down; \
 	exit $$EXIT

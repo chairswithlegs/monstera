@@ -65,7 +65,11 @@ func (svc *statusInteractionService) CreateReblog(ctx context.Context, accountID
 	}
 	existing, _ := svc.store.GetReblogByAccountAndTarget(ctx, accountID, statusID)
 	if existing != nil {
-		return EnrichedStatus{}, fmt.Errorf("CreateReblog: %w", domain.ErrConflict)
+		out, err := svc.statusSvc.GetByIDEnriched(ctx, existing.ID, &accountID)
+		if err != nil {
+			return EnrichedStatus{}, fmt.Errorf("CreateReblog: %w", err)
+		}
+		return out, nil
 	}
 	reblogID := uid.New()
 	reblogURI := fmt.Sprintf("%s/users/%s/statuses/%s", svc.instanceBaseURL, username, reblogID)

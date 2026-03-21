@@ -377,6 +377,18 @@ func (svc *remoteStatusWriteService) DeleteRemoteReblog(ctx context.Context, acc
 	if reblog == nil {
 		return nil
 	}
+	orig, _ := svc.store.GetStatusByID(ctx, statusID)
+	var originalAuthorID, originalStatusAPID string
+	if orig != nil {
+		originalAuthorID = orig.AccountID
+		originalStatusAPID = orig.APID
+		if originalStatusAPID == "" {
+			originalStatusAPID = orig.URI
+		}
+		if originalStatusAPID == "" {
+			originalStatusAPID = fmt.Sprintf("%s/statuses/%s", svc.instanceBaseURL, orig.ID)
+		}
+	}
 	if err := svc.store.WithTx(ctx, func(tx store.Store) error {
 		if err := tx.SoftDeleteStatus(ctx, reblog.ID); err != nil {
 			return fmt.Errorf("DeleteRemoteReblog SoftDeleteStatus: %w", err)
@@ -384,7 +396,15 @@ func (svc *remoteStatusWriteService) DeleteRemoteReblog(ctx context.Context, acc
 		if err := tx.DecrementReblogsCount(ctx, statusID); err != nil {
 			return fmt.Errorf("DeleteRemoteReblog DecrementReblogsCount: %w", err)
 		}
-		return nil
+		fromAccount, _ := tx.GetAccountByID(ctx, accountID)
+		return events.EmitEvent(ctx, tx, domain.EventReblogRemoved, "status", reblog.ID, domain.ReblogRemovedPayload{
+			AccountID:          accountID,
+			ReblogStatusID:     reblog.ID,
+			OriginalStatusID:   statusID,
+			OriginalAuthorID:   originalAuthorID,
+			FromAccount:        fromAccount,
+			OriginalStatusAPID: originalStatusAPID,
+		})
 	}); err != nil {
 		return fmt.Errorf("DeleteRemoteReblog: %w", err)
 	}
@@ -392,11 +412,40 @@ func (svc *remoteStatusWriteService) DeleteRemoteReblog(ctx context.Context, acc
 }
 
 func (svc *remoteStatusWriteService) DeleteRemoteFavourite(ctx context.Context, accountID, statusID string) error {
-	if err := svc.store.DeleteFavourite(ctx, accountID, statusID); err != nil {
-		return fmt.Errorf("DeleteRemoteFavourite: %w", err)
+	st, _ := svc.store.GetStatusByID(ctx, statusID)
+	var statusAuthorID, statusAPID string
+	if st != nil {
+		statusAuthorID = st.AccountID
+		statusAPID = st.APID
+		if statusAPID == "" {
+			statusAPID = st.URI
+		}
+		if statusAPID == "" {
+			statusAPID = fmt.Sprintf("%s/statuses/%s", svc.instanceBaseURL, st.ID)
+		}
 	}
-	if err := svc.store.DecrementFavouritesCount(ctx, statusID); err != nil {
-		return fmt.Errorf("DeleteRemoteFavourite DecrementFavouritesCount: %w", err)
+	if err := svc.store.WithTx(ctx, func(tx store.Store) error {
+		if err := tx.DeleteFavourite(ctx, accountID, statusID); err != nil {
+			return fmt.Errorf("DeleteRemoteFavourite: %w", err)
+		}
+		if err := tx.DecrementFavouritesCount(ctx, statusID); err != nil {
+			return fmt.Errorf("DeleteRemoteFavourite DecrementFavouritesCount: %w", err)
+		}
+		fromAccount, _ := tx.GetAccountByID(ctx, accountID)
+		var statusAuthor *domain.Account
+		if statusAuthorID != "" {
+			statusAuthor, _ = tx.GetAccountByID(ctx, statusAuthorID)
+		}
+		return events.EmitEvent(ctx, tx, domain.EventFavouriteRemoved, "favourite", statusID, domain.FavouriteRemovedPayload{
+			AccountID:      accountID,
+			StatusID:       statusID,
+			StatusAuthorID: statusAuthorID,
+			FromAccount:    fromAccount,
+			StatusAuthor:   statusAuthor,
+			StatusAPID:     statusAPID,
+		})
+	}); err != nil {
+		return fmt.Errorf("DeleteRemoteFavourite: %w", err)
 	}
 	return nil
 }

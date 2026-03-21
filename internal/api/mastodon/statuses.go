@@ -435,19 +435,6 @@ func firstLastAccountIDs(list []*domain.Account) (firstID, lastID string) {
 	return list[0].ID, list[len(list)-1].ID
 }
 
-// enrichedStatusToAPIModelWithReblog returns the reblog status with nested original status.
-func enrichedStatusToAPIModelWithReblog(ctx context.Context, result service.EnrichedStatus, originalID string, viewerID *string, h *StatusesHandler) apimodel.Status {
-	reblog := enrichedStatusToAPIModel(result, h.instanceDomain)
-	if result.Status.ReblogOfID != nil && *result.Status.ReblogOfID == originalID {
-		origResult, err := h.statuses.GetByIDEnriched(ctx, *result.Status.ReblogOfID, viewerID)
-		if err == nil {
-			reblogAPI := enrichedStatusToAPIModel(origResult, h.instanceDomain)
-			reblog.Reblog = &reblogAPI
-		}
-	}
-	return reblog
-}
-
 // setQuoteApprovalOnStatus populates out.QuoteApproval when the status is a quote (has QuotedStatusID).
 func (h *StatusesHandler) setQuoteApprovalOnStatus(ctx context.Context, result service.EnrichedStatus, out *apimodel.Status, viewerID *string) {
 	if result.Status.QuotedStatusID == nil || *result.Status.QuotedStatusID == "" {
@@ -493,9 +480,15 @@ func enrichedStatusToAPIModel(result service.EnrichedStatus, instanceDomain stri
 		p := enrichedPollToAPIModel(result.Poll)
 		out.Poll = &p
 	}
+	out.Favourited = result.Favourited
+	out.Reblogged = result.Reblogged
 	out.Bookmarked = result.Bookmarked
 	out.Pinned = result.Pinned
 	out.Muted = result.Muted
+	if result.ReblogOf != nil {
+		reblogAPI := enrichedStatusToAPIModel(*result.ReblogOf, instanceDomain)
+		out.Reblog = &reblogAPI
+	}
 	return out
 }
 
