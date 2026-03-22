@@ -174,7 +174,7 @@ func TestGETStreamingWS_UnauthenticatedSubscribePublic_ReceivesEvents(t *testing
 
 	conn := wsConnect(t, wsURL(srv, "/streaming"))
 	wsSend(t, conn, wsClientMsg{Type: "subscribe", Stream: "public"})
-	time.Sleep(20 * time.Millisecond) // let subscription register
+	require.Eventually(t, func() bool { return nc.subCount() == 1 }, time.Second, time.Millisecond)
 
 	ev := sse.SSEEvent{Stream: "public", Event: sse.EventUpdate, Data: `{"id":"1"}`}
 	nc.Deliver(sse.SubjectPrefixPublic, ev)
@@ -203,7 +203,7 @@ func TestGETStreamingWS_AuthenticatedSubscribeUser_ReceivesEvents(t *testing.T) 
 
 	conn := wsConnect(t, wsURL(srv, "/streaming"))
 	wsSend(t, conn, wsClientMsg{Type: "subscribe", Stream: "user"})
-	time.Sleep(20 * time.Millisecond)
+	require.Eventually(t, func() bool { return nc.subCount() == 1 }, time.Second, time.Millisecond)
 
 	ev := sse.SSEEvent{Stream: "user", Event: sse.EventUpdate, Data: `{"id":"2"}`}
 	nc.Deliver(sse.SubjectPrefixUser+acc.ID, ev)
@@ -221,15 +221,13 @@ func TestGETStreamingWS_UnauthenticatedSubscribeUser_SubscriptionDropped(t *test
 
 	conn := wsConnect(t, wsURL(srv, "/streaming"))
 	wsSend(t, conn, wsClientMsg{Type: "subscribe", Stream: "user"})
-	time.Sleep(20 * time.Millisecond)
 
-	// User subscription requires auth; it should have been silently dropped.
-	assert.Equal(t, 0, nc.subCount(), "unauthenticated user subscription should not create a NATS subscription")
-
-	// Public subscription should still work.
+	// Send a public subscribe after the unauthenticated user subscribe. Messages are
+	// processed in order, so once the public subscription is registered we know the
+	// user subscribe was already processed (and silently dropped).
 	wsSend(t, conn, wsClientMsg{Type: "subscribe", Stream: "public"})
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, 1, nc.subCount(), "public subscription should create a NATS subscription")
+	require.Eventually(t, func() bool { return nc.subCount() == 1 }, time.Second, time.Millisecond, "public subscription should create a NATS subscription")
+	assert.Equal(t, 1, nc.subCount(), "unauthenticated user subscription should not have created a NATS subscription")
 }
 
 func TestGETStreamingWS_SubscribeThenUnsubscribe_ReleasesSubscription(t *testing.T) {
@@ -240,12 +238,10 @@ func TestGETStreamingWS_SubscribeThenUnsubscribe_ReleasesSubscription(t *testing
 
 	conn := wsConnect(t, wsURL(srv, "/streaming"))
 	wsSend(t, conn, wsClientMsg{Type: "subscribe", Stream: "public"})
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, 1, nc.subCount(), "subscribe should create a NATS subscription")
+	require.Eventually(t, func() bool { return nc.subCount() == 1 }, time.Second, time.Millisecond, "subscribe should create a NATS subscription")
 
 	wsSend(t, conn, wsClientMsg{Type: "unsubscribe", Stream: "public"})
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, 0, nc.subCount(), "unsubscribe should release the NATS subscription")
+	require.Eventually(t, func() bool { return nc.subCount() == 0 }, time.Second, time.Millisecond, "unsubscribe should release the NATS subscription")
 }
 
 func TestGETStreamingWS_MultiStream_BothReceive(t *testing.T) {
@@ -256,7 +252,7 @@ func TestGETStreamingWS_MultiStream_BothReceive(t *testing.T) {
 	conn := wsConnect(t, wsURL(srv, "/streaming"))
 	wsSend(t, conn, wsClientMsg{Type: "subscribe", Stream: "public"})
 	wsSend(t, conn, wsClientMsg{Type: "subscribe", Stream: "hashtag", Tag: "golang"})
-	time.Sleep(20 * time.Millisecond)
+	require.Eventually(t, func() bool { return nc.subCount() == 2 }, time.Second, time.Millisecond)
 
 	nc.Deliver(sse.SubjectPrefixPublic, sse.SSEEvent{Stream: "public", Event: sse.EventUpdate, Data: `{"id":"pub"}`})
 	nc.Deliver(sse.SubjectPrefixHashtag+"golang", sse.SSEEvent{Stream: "hashtag:golang", Event: sse.EventUpdate, Data: `{"id":"tag"}`})
@@ -277,7 +273,7 @@ func TestGETStreamingWS_InitialStreamParam_Subscribes(t *testing.T) {
 
 	// Pass ?stream=public in the URL — no explicit subscribe message needed.
 	conn := wsConnect(t, wsURL(srv, "/streaming?stream=public"))
-	time.Sleep(20 * time.Millisecond)
+	require.Eventually(t, func() bool { return nc.subCount() == 1 }, time.Second, time.Millisecond)
 
 	nc.Deliver(sse.SubjectPrefixPublic, sse.SSEEvent{Stream: "public", Event: sse.EventUpdate, Data: `{"id":"5"}`})
 	msg := wsRecv(t, conn)
@@ -315,13 +311,11 @@ func TestGETStreamingWS_MaxSubscriptions_ExtraSubscribeIgnored(t *testing.T) {
 	for _, id := range listIDs {
 		wsSend(t, conn, wsClientMsg{Type: "subscribe", Stream: "list", List: id})
 	}
-	time.Sleep(30 * time.Millisecond)
-	assert.Equal(t, wsMaxSubscriptions, nc.subCount(), "should have exactly wsMaxSubscriptions NATS subscriptions")
+	require.Eventually(t, func() bool { return nc.subCount() == wsMaxSubscriptions }, time.Second, time.Millisecond, "should have exactly wsMaxSubscriptions NATS subscriptions")
 
 	// One more subscribe (public) should be silently ignored.
 	wsSend(t, conn, wsClientMsg{Type: "subscribe", Stream: "public"})
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, wsMaxSubscriptions, nc.subCount(), "extra subscribe beyond max should be ignored")
+	assert.Never(t, func() bool { return nc.subCount() > wsMaxSubscriptions }, 100*time.Millisecond, time.Millisecond, "extra subscribe beyond max should be ignored")
 }
 
 func TestGETStreamingWS_ConnectionClose_CleansUpSubscriptions(t *testing.T) {
@@ -332,12 +326,9 @@ func TestGETStreamingWS_ConnectionClose_CleansUpSubscriptions(t *testing.T) {
 
 	conn := wsConnect(t, wsURL(srv, "/streaming"))
 	wsSend(t, conn, wsClientMsg{Type: "subscribe", Stream: "public"})
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, 1, nc.subCount(), "subscribe should create a NATS subscription")
+	require.Eventually(t, func() bool { return nc.subCount() == 1 }, time.Second, time.Millisecond, "subscribe should create a NATS subscription")
 
 	// Close the connection from the client side.
 	require.NoError(t, conn.Close(websocket.StatusNormalClosure, "bye"))
-	time.Sleep(50 * time.Millisecond) // let server goroutines clean up
-
-	assert.Equal(t, 0, nc.subCount(), "NATS subscriptions should be released after connection close")
+	require.Eventually(t, func() bool { return nc.subCount() == 0 }, time.Second, time.Millisecond, "NATS subscriptions should be released after connection close")
 }

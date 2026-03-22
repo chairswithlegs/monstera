@@ -318,7 +318,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 	instanceBaseURL := cfg.InstanceBaseURL()
 
 	hub := sse.NewHub(natsutil.NewConnSubscriber(i.nats.Conn), metrics)
-	sseSub := sse.NewSubscriber(i.nats.JS, i.nats.Conn, i.store, cfg.MonsteraInstanceDomain)
+	sseSub := sse.NewSubscriber(i.nats.JS, i.nats.Conn, i.store, s.statusRead, cfg.MonsteraInstanceDomain)
 	fedSub := ap.NewFederationSubscriber(i.nats.JS, s.remoteFollow, i.blocklist, s.signatureService,
 		instanceBaseURL, cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.FederationWorkerConcurrency)
 	notifSub := events.NewNotificationSubscriber(i.nats.JS, events.NotificationDeps{

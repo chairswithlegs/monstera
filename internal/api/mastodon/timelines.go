@@ -200,7 +200,7 @@ func (h *TimelinesHandler) GETTag(w http.ResponseWriter, r *http.Request) {
 func enrichedStatusesToAPIModels(enriched []service.EnrichedStatus, instanceDomain string) []apimodel.Status {
 	out := make([]apimodel.Status, 0, len(enriched))
 	for i := range enriched {
-		out = append(out, enrichedStatusToAPIModel(enriched[i], instanceDomain))
+		out = append(out, apimodel.StatusFromEnriched(enriched[i], instanceDomain))
 	}
 	return out
 }

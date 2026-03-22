@@ -177,7 +177,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	out := apimodel.StatusFromEnriched(result, h.instanceDomain)
 	h.setQuoteApprovalOnStatus(ctx, result, &out, &account.ID)
 	if idemKey != "" && h.cache != nil {
 		cacheKey := "idempotency:" + account.ID + ":" + idemKey
@@ -204,7 +204,7 @@ func (h *StatusesHandler) GETStatuses(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	out := apimodel.StatusFromEnriched(result, h.instanceDomain)
 	h.setQuoteApprovalOnStatus(r.Context(), result, &out, viewerID)
 	api.WriteJSON(w, http.StatusOK, out)
 }
@@ -267,7 +267,7 @@ func (h *StatusesHandler) POSTPin(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	out := apimodel.StatusFromEnriched(result, h.instanceDomain)
 	out.Pinned = true
 	api.WriteJSON(w, http.StatusOK, out)
 }
@@ -297,7 +297,7 @@ func (h *StatusesHandler) POSTUnpin(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	out := apimodel.StatusFromEnriched(result, h.instanceDomain)
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -346,7 +346,7 @@ func (h *StatusesHandler) PUTStatuses(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	out := apimodel.StatusFromEnriched(result, h.instanceDomain)
 	h.setQuoteApprovalOnStatus(r.Context(), result, &out, &account.ID)
 	pinnedIDs, _ := h.statuses.ListPinnedStatusIDs(r.Context(), account.ID)
 	for _, pid := range pinnedIDs {
@@ -398,7 +398,7 @@ func (h *StatusesHandler) PUTInteractionPolicy(w http.ResponseWriter, r *http.Re
 		api.HandleError(w, r, err)
 		return
 	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	out := apimodel.StatusFromEnriched(result, h.instanceDomain)
 	h.setQuoteApprovalOnStatus(r.Context(), result, &out, &account.ID)
 	api.WriteJSON(w, http.StatusOK, out)
 }
@@ -424,7 +424,7 @@ func (h *StatusesHandler) DELETEStatuses(w http.ResponseWriter, r *http.Request)
 		api.HandleError(w, r, err)
 		return
 	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	out := apimodel.StatusFromEnriched(result, h.instanceDomain)
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -452,70 +452,10 @@ func (h *StatusesHandler) setQuoteApprovalOnStatus(ctx context.Context, result s
 	if state == "accepted" {
 		quotedEnriched, err := h.statuses.GetByIDEnriched(ctx, *result.Status.QuotedStatusID, viewerID)
 		if err == nil {
-			q := enrichedStatusToAPIModel(quotedEnriched, h.instanceDomain)
+			q := apimodel.StatusFromEnriched(quotedEnriched, h.instanceDomain)
 			q.QuoteApproval = nil
 			quoted = &q
 		}
 	}
 	out.QuoteApproval = &apimodel.QuoteApproval{State: state, QuotedStatus: quoted}
-}
-
-// enrichedStatusToAPIModel maps service.EnrichedStatus to apimodel.Status.
-func enrichedStatusToAPIModel(result service.EnrichedStatus, instanceDomain string) apimodel.Status {
-	authorAcc := apimodel.ToAccount(result.Author, instanceDomain)
-	mentionsResp := make([]apimodel.Mention, 0, len(result.Mentions))
-	for _, a := range result.Mentions {
-		mentionsResp = append(mentionsResp, apimodel.MentionFromAccount(a, instanceDomain))
-	}
-	tagsResp := make([]apimodel.Tag, 0, len(result.Tags))
-	for _, t := range result.Tags {
-		tagsResp = append(tagsResp, apimodel.TagFromName(t.Name, instanceDomain))
-	}
-	mediaResp := make([]apimodel.MediaAttachment, 0, len(result.Media))
-	for i := range result.Media {
-		mediaResp = append(mediaResp, apimodel.MediaFromDomain(&result.Media[i]))
-	}
-	out := apimodel.ToStatus(result.Status, authorAcc, mentionsResp, tagsResp, mediaResp, result.Card, instanceDomain)
-	if result.Poll != nil {
-		p := enrichedPollToAPIModel(result.Poll)
-		out.Poll = &p
-	}
-	out.Favourited = result.Favourited
-	out.Reblogged = result.Reblogged
-	out.Bookmarked = result.Bookmarked
-	out.Pinned = result.Pinned
-	out.Muted = result.Muted
-	if result.ReblogOf != nil {
-		reblogAPI := enrichedStatusToAPIModel(*result.ReblogOf, instanceDomain)
-		out.Reblog = &reblogAPI
-	}
-	return out
-}
-
-// enrichedPollToAPIModel maps service.EnrichedPoll to apimodel.Poll.
-func enrichedPollToAPIModel(p *service.EnrichedPoll) apimodel.Poll {
-	var expiresAt *string
-	if p.Poll.ExpiresAt != nil {
-		s := p.Poll.ExpiresAt.UTC().Format(time.RFC3339)
-		expiresAt = &s
-	}
-	expired := p.Poll.ExpiresAt != nil && p.Poll.ExpiresAt.Before(time.Now())
-	options := make([]apimodel.PollOption, 0, len(p.Options))
-	var votesCount int
-	for _, o := range p.Options {
-		votesCount += o.VotesCount
-		options = append(options, apimodel.PollOption{Title: o.Title, VotesCount: o.VotesCount})
-	}
-	return apimodel.Poll{
-		ID:          p.Poll.ID,
-		ExpiresAt:   expiresAt,
-		Expired:     expired,
-		Multiple:    p.Poll.Multiple,
-		VotesCount:  votesCount,
-		VotersCount: nil,
-		Voted:       p.Voted,
-		OwnVotes:    p.OwnVotes,
-		Options:     options,
-		Emojis:      []any{},
-	}
 }

@@ -13,20 +13,22 @@ import (
 	"github.com/chairswithlegs/monstera/internal/events"
 	"github.com/chairswithlegs/monstera/internal/natsutil"
 	"github.com/chairswithlegs/monstera/internal/observability"
+	"github.com/chairswithlegs/monstera/internal/service"
 )
 
 const streamNameUser = "user"
 
 // SubscriberStore is the minimal store interface the SSE subscriber needs for
-// enriching notification events with status data.
+// routing events to the correct streams.
 type SubscriberStore interface {
 	GetLocalFollowerAccountIDs(ctx context.Context, targetID string) ([]string, error)
 	GetListIDsByMemberAccountID(ctx context.Context, accountID string) ([]string, error)
-	GetStatusByID(ctx context.Context, id string) (*domain.Status, error)
-	GetAccountByID(ctx context.Context, id string) (*domain.Account, error)
-	GetStatusMentions(ctx context.Context, statusID string) ([]*domain.Account, error)
-	GetStatusHashtags(ctx context.Context, statusID string) ([]domain.Hashtag, error)
-	GetStatusAttachments(ctx context.Context, statusID string) ([]domain.MediaAttachment, error)
+}
+
+// subscriberStatusService is the minimal StatusService interface the SSE subscriber
+// needs to enrich statuses for streamed events.
+type subscriberStatusService interface {
+	GetByIDEnriched(ctx context.Context, id string, viewerAccountID *string) (service.EnrichedStatus, error)
 }
 
 // Subscriber consumes domain events from the DOMAIN_EVENTS stream and
@@ -35,6 +37,7 @@ type Subscriber struct {
 	js             jetstream.JetStream
 	nc             natsutil.Publisher
 	store          SubscriberStore
+	statusSvc      subscriberStatusService
 	instanceDomain string
 }
 
@@ -43,12 +46,14 @@ func NewSubscriber(
 	js jetstream.JetStream,
 	nc natsutil.Publisher,
 	store SubscriberStore,
+	statusSvc subscriberStatusService,
 	instanceDomain string,
 ) *Subscriber {
 	return &Subscriber{
 		js:             js,
 		nc:             nc,
 		store:          store,
+		statusSvc:      statusSvc,
 		instanceDomain: instanceDomain,
 	}
 }
@@ -114,8 +119,9 @@ func (s *Subscriber) handleStatusCreated(ctx context.Context, event domain.Domai
 	}
 	apiStatus := apimodel.ToStatus(payload.Status, author, mentions, tags, media, nil, s.instanceDomain)
 	if payload.Status.ReblogOfID != nil {
-		if orig := s.buildStatusAPIModel(ctx, *payload.Status.ReblogOfID); orig != nil {
-			apiStatus.Reblog = orig
+		if enriched, err := s.statusSvc.GetByIDEnriched(ctx, *payload.Status.ReblogOfID, nil); err == nil {
+			orig := apimodel.StatusFromEnriched(enriched, s.instanceDomain)
+			apiStatus.Reblog = &orig
 		}
 	}
 	statusJSON, err := json.Marshal(apiStatus)
@@ -130,38 +136,6 @@ func (s *Subscriber) handleStatusCreated(ctx context.Context, event domain.Domai
 	}
 
 	s.routeStatusCreated(ctx, payload.Status.AccountID, payload.Status.Visibility, payload.Status.Local, statusJSON, hashtagNames, payload.MentionedAccountIDs)
-}
-
-// buildStatusAPIModel fetches a status and its related data from the store and
-// returns the Mastodon API model. Returns nil if the status cannot be loaded.
-func (s *Subscriber) buildStatusAPIModel(ctx context.Context, statusID string) *apimodel.Status {
-	st, err := s.store.GetStatusByID(ctx, statusID)
-	if err != nil || st.DeletedAt != nil {
-		return nil
-	}
-	author, err := s.store.GetAccountByID(ctx, st.AccountID)
-	if err != nil {
-		return nil
-	}
-	mentionAccounts, _ := s.store.GetStatusMentions(ctx, st.ID)
-	mentions := make([]apimodel.Mention, 0, len(mentionAccounts))
-	for _, m := range mentionAccounts {
-		if m != nil {
-			mentions = append(mentions, apimodel.MentionFromAccount(m, s.instanceDomain))
-		}
-	}
-	hashtags, _ := s.store.GetStatusHashtags(ctx, st.ID)
-	tags := make([]apimodel.Tag, 0, len(hashtags))
-	for _, t := range hashtags {
-		tags = append(tags, apimodel.TagFromName(t.Name, s.instanceDomain))
-	}
-	attachments, _ := s.store.GetStatusAttachments(ctx, st.ID)
-	media := make([]apimodel.MediaAttachment, 0, len(attachments))
-	for i := range attachments {
-		media = append(media, apimodel.MediaFromDomain(&attachments[i]))
-	}
-	out := apimodel.ToStatus(st, apimodel.ToAccount(author, s.instanceDomain), mentions, tags, media, nil, s.instanceDomain)
-	return &out
 }
 
 func (s *Subscriber) routeStatusCreated(ctx context.Context, accountID, visibility string, local bool, statusJSON []byte, hashtagNames, mentionedAccountIDs []string) {
@@ -327,31 +301,9 @@ func (s *Subscriber) handleNotificationCreated(ctx context.Context, event domain
 
 	var status *apimodel.Status
 	if payload.StatusID != nil && *payload.StatusID != "" {
-		st, err := s.store.GetStatusByID(ctx, *payload.StatusID)
-		if err == nil && st != nil && st.DeletedAt == nil {
-			author, _ := s.store.GetAccountByID(ctx, st.AccountID)
-			var authorAcc apimodel.Account
-			if author != nil {
-				authorAcc = apimodel.ToAccount(author, s.instanceDomain)
-			}
-			mentions, _ := s.store.GetStatusMentions(ctx, st.ID)
-			mentionList := make([]apimodel.Mention, 0, len(mentions))
-			for _, m := range mentions {
-				if m != nil {
-					mentionList = append(mentionList, apimodel.MentionFromAccount(m, s.instanceDomain))
-				}
-			}
-			tags, _ := s.store.GetStatusHashtags(ctx, st.ID)
-			tagList := make([]apimodel.Tag, 0, len(tags))
-			for _, t := range tags {
-				tagList = append(tagList, apimodel.TagFromName(t.Name, s.instanceDomain))
-			}
-			media, _ := s.store.GetStatusAttachments(ctx, st.ID)
-			mediaList := make([]apimodel.MediaAttachment, 0, len(media))
-			for i := range media {
-				mediaList = append(mediaList, apimodel.MediaFromDomain(&media[i]))
-			}
-			apiSt := apimodel.ToStatus(st, authorAcc, mentionList, tagList, mediaList, nil, s.instanceDomain)
+		viewerID := &payload.RecipientAccountID
+		if enriched, err := s.statusSvc.GetByIDEnriched(ctx, *payload.StatusID, viewerID); err == nil {
+			apiSt := apimodel.StatusFromEnriched(enriched, s.instanceDomain)
 			status = &apiSt
 		}
 	}

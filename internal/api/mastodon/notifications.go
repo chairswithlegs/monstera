@@ -57,7 +57,7 @@ func (h *NotificationsHandler) GETNotifications(w http.ResponseWriter, r *http.R
 		var statusAPI *apimodel.Status
 		if h.statuses != nil && n.StatusID != nil && *n.StatusID != "" && notificationStatusType(n.Type) {
 			if enriched, err := h.statuses.GetByIDEnriched(r.Context(), *n.StatusID, &account.ID); err == nil {
-				s := enrichedStatusToAPIModel(enriched, h.instanceDomain)
+				s := apimodel.StatusFromEnriched(enriched, h.instanceDomain)
 				statusAPI = &s
 			}
 		}
@@ -102,7 +102,7 @@ func (h *NotificationsHandler) GETNotification(w http.ResponseWriter, r *http.Re
 	var statusAPI *apimodel.Status
 	if h.statuses != nil && n.StatusID != nil && *n.StatusID != "" && notificationStatusType(n.Type) {
 		if enriched, err := h.statuses.GetByIDEnriched(r.Context(), *n.StatusID, &account.ID); err == nil {
-			s := enrichedStatusToAPIModel(enriched, h.instanceDomain)
+			s := apimodel.StatusFromEnriched(enriched, h.instanceDomain)
 			statusAPI = &s
 		}
 	}

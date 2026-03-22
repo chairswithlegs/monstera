@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/chairswithlegs/monstera/internal/api"
+	"github.com/chairswithlegs/monstera/internal/api/mastodon/apimodel"
 	"github.com/chairswithlegs/monstera/internal/api/middleware"
 	"github.com/chairswithlegs/monstera/internal/domain"
 )
@@ -36,7 +37,7 @@ func (h *StatusesHandler) POSTReblog(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	out := apimodel.StatusFromEnriched(result, h.instanceDomain)
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -61,7 +62,7 @@ func (h *StatusesHandler) POSTUnreblog(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	api.WriteJSON(w, http.StatusOK, enrichedStatusToAPIModel(result, h.instanceDomain))
+	api.WriteJSON(w, http.StatusOK, apimodel.StatusFromEnriched(result, h.instanceDomain))
 }
 
 // POSTFavourite handles POST /api/v1/statuses/:id/favourite.
@@ -85,7 +86,7 @@ func (h *StatusesHandler) POSTFavourite(w http.ResponseWriter, r *http.Request) 
 		api.HandleError(w, r, err)
 		return
 	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	out := apimodel.StatusFromEnriched(result, h.instanceDomain)
 	out.Favourited = true
 	api.WriteJSON(w, http.StatusOK, out)
 }
@@ -107,7 +108,7 @@ func (h *StatusesHandler) POSTUnfavourite(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, err)
 		return
 	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	out := apimodel.StatusFromEnriched(result, h.instanceDomain)
 	out.Favourited = false
 	api.WriteJSON(w, http.StatusOK, out)
 }
@@ -133,7 +134,7 @@ func (h *StatusesHandler) POSTBookmark(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	out := apimodel.StatusFromEnriched(result, h.instanceDomain)
 	out.Bookmarked = true
 	api.WriteJSON(w, http.StatusOK, out)
 }
@@ -159,7 +160,7 @@ func (h *StatusesHandler) POSTUnbookmark(w http.ResponseWriter, r *http.Request)
 		api.HandleError(w, r, err)
 		return
 	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	out := apimodel.StatusFromEnriched(result, h.instanceDomain)
 	out.Bookmarked = false
 	api.WriteJSON(w, http.StatusOK, out)
 }
@@ -190,7 +191,7 @@ func (h *StatusesHandler) POSTMuteConversation(w http.ResponseWriter, r *http.Re
 		api.HandleError(w, r, err)
 		return
 	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	out := apimodel.StatusFromEnriched(result, h.instanceDomain)
 	out.Muted = true
 	api.WriteJSON(w, http.StatusOK, out)
 }
@@ -221,7 +222,7 @@ func (h *StatusesHandler) POSTUnmuteConversation(w http.ResponseWriter, r *http.
 		api.HandleError(w, r, err)
 		return
 	}
-	out := enrichedStatusToAPIModel(result, h.instanceDomain)
+	out := apimodel.StatusFromEnriched(result, h.instanceDomain)
 	out.Muted = false
 	api.WriteJSON(w, http.StatusOK, out)
 }

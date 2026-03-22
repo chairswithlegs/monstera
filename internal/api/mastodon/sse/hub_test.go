@@ -47,7 +47,6 @@ func TestHub_Subscribe_OnDemand_DeliversToChannel(t *testing.T) {
 	ctx, cancelCtx := context.WithCancel(context.Background())
 	defer cancelCtx()
 	go func() { _ = hub.Start(ctx) }()
-	time.Sleep(10 * time.Millisecond)
 
 	ch, cancel := hub.Subscribe(StreamUserPrefix + "acc1")
 	defer cancel()
@@ -78,7 +77,6 @@ func TestHub_Subscribe_TwoClientsSameStream_BothReceive(t *testing.T) {
 	ctx, cancelCtx := context.WithCancel(context.Background())
 	defer cancelCtx()
 	go func() { _ = hub.Start(ctx) }()
-	time.Sleep(10 * time.Millisecond)
 
 	ch1, cancel1 := hub.Subscribe(StreamUserPrefix + "acc1")
 	defer cancel1()
@@ -113,7 +111,6 @@ func TestHub_Start_UnsubscribesOnContextCancel(t *testing.T) {
 		_ = hub.Start(ctx)
 		close(done)
 	}()
-	time.Sleep(10 * time.Millisecond)
 
 	ch, cancelSub := hub.Subscribe(StreamUserPrefix + "acc1")
 	cancelSub()
