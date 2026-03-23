@@ -25,6 +25,12 @@ type ScheduledStatusParams struct {
 	MediaIDs    []string `json:"media_ids"`
 }
 
+// IsLocal reports whether the status was created on this instance.
+func (s *Status) IsLocal() bool { return s.Local }
+
+// IsRemote reports whether the status was created on a remote instance.
+func (s *Status) IsRemote() bool { return !s.Local }
+
 // Status is a post, reblog, or reply in the federated timeline.
 type Status struct {
 	ID                  string

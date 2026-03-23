@@ -96,13 +96,6 @@ func NewStatusWriteService(
 	}
 }
 
-func requireLocal(local bool, method string) error {
-	if !local {
-		return fmt.Errorf("%s: %w", method, domain.ErrForbidden)
-	}
-	return nil
-}
-
 func (svc *statusWriteService) buildMentionResolver(ctx context.Context) mentionResolver {
 	return func(username string, domain *string) *domain.Account {
 		if domain == nil || *domain == "" {
@@ -428,6 +421,7 @@ func (svc *statusWriteService) Create(ctx context.Context, in CreateStatusInput)
 			Media:               media,
 			MentionedAccountIDs: mentionedAccountIDs,
 			ParentAPID:          parentAPID,
+			Local:               created.IsLocal(),
 		})
 	})
 	if err != nil {
@@ -627,6 +621,7 @@ func (svc *statusWriteService) Update(ctx context.Context, in UpdateStatusInput)
 			Tags:       updTags,
 			Media:      updMedia,
 			ParentAPID: updParentAPID,
+			Local:      updated.IsLocal(),
 		})
 	})
 	if err != nil {
