@@ -103,6 +103,21 @@ func TestCardService_extractFirstURL(t *testing.T) {
 			html:     `<p><a href="http://example.com">old school</a></p>`,
 			expected: "http://example.com",
 		},
+		{
+			name:     "remote mention link with rel=mention skipped",
+			html:     `<p><a rel="mention" href="https://other.social/@user">@user@other.social</a></p>`,
+			expected: "",
+		},
+		{
+			name:     "remote hashtag link with rel=tag skipped",
+			html:     `<p><a rel="tag" href="https://other.social/tags/go">#go</a></p>`,
+			expected: "",
+		},
+		{
+			name:     "remote mention before external link",
+			html:     `<p><a rel="mention" href="https://other.social/@user">@user</a> check <a href="https://example.com">this</a></p>`,
+			expected: "https://example.com",
+		},
 	}
 
 	for _, tc := range tests {
@@ -157,6 +172,27 @@ func TestCardService_ProcessPendingCards_httpFetch(t *testing.T) {
 	assert.Equal(t, "OG Description", card.Description)
 	assert.Equal(t, "https://example.com/image.png", card.ImageURL)
 	assert.Equal(t, srv.URL, card.URL)
+}
+
+func TestCardService_ProcessPendingCards_mentionOnlyStatus(t *testing.T) {
+	t.Parallel()
+	fs := testutil.NewFakeStore()
+	// Status with only a rel="mention" anchor (remote server style) — no card URL should be found.
+	content := `<p><a rel="mention" href="https://mastodon.social/@user">@user@mastodon.social</a></p>`
+	fs.SeedStatus(&domain.Status{
+		ID:        "status1",
+		AccountID: "acct1",
+		Content:   &content,
+	})
+
+	svc := NewCardService(fs)
+	processed, err := svc.ProcessPendingCards(context.Background(), 50)
+	require.NoError(t, err)
+
+	card, ok := fs.StatusCards["status1"]
+	require.True(t, ok, "card row should have been written")
+	assert.Equal(t, 1, processed)
+	assert.Equal(t, domain.CardStateNoURL, card.ProcessingState)
 }
 
 func TestCardService_ProcessPendingCards_fetchFailed(t *testing.T) {
