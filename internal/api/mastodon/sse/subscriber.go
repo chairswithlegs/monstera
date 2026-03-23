@@ -122,6 +122,8 @@ func (s *Subscriber) handleStatusCreated(ctx context.Context, event domain.Domai
 		if enriched, err := s.statusSvc.GetByIDEnriched(ctx, *payload.Status.ReblogOfID, nil); err == nil {
 			orig := apimodel.StatusFromEnriched(enriched, s.instanceDomain)
 			apiStatus.Reblog = &orig
+		} else {
+			slog.WarnContext(ctx, "sse subscriber: get reblog original", slog.Any("error", err), slog.String("reblog_of_id", *payload.Status.ReblogOfID))
 		}
 	}
 	statusJSON, err := json.Marshal(apiStatus)
@@ -305,6 +307,8 @@ func (s *Subscriber) handleNotificationCreated(ctx context.Context, event domain
 		if enriched, err := s.statusSvc.GetByIDEnriched(ctx, *payload.StatusID, viewerID); err == nil {
 			apiSt := apimodel.StatusFromEnriched(enriched, s.instanceDomain)
 			status = &apiSt
+		} else {
+			slog.WarnContext(ctx, "sse subscriber: get notification status", slog.Any("error", err), slog.String("status_id", *payload.StatusID))
 		}
 	}
 

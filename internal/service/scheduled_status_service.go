@@ -106,7 +106,12 @@ func (svc *scheduledStatusService) publishScheduled(ctx context.Context, schedul
 	if err != nil {
 		return fmt.Errorf("PublishScheduled GetAccountByID: %w", err)
 	}
-	user, _ := svc.store.GetUserByAccountID(ctx, s.AccountID)
+	// Best-effort: user lookup provides default visibility. If it fails, we
+	// fall back to empty string which the create path handles.
+	user, err := svc.store.GetUserByAccountID(ctx, s.AccountID)
+	if err != nil {
+		slog.WarnContext(ctx, "publishScheduled: get user for default visibility", slog.Any("error", err), slog.String("account_id", s.AccountID))
+	}
 	defaultVisibility := ""
 	if user != nil {
 		defaultVisibility = user.DefaultPrivacy

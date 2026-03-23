@@ -24,12 +24,20 @@ const (
 	wsMaxSubscriptions = 10
 )
 
+// WSClientMessageType is the type of a client-to-server WebSocket message.
+type WSClientMessageType string
+
+const (
+	wsClientMsgSubscribe   WSClientMessageType = "subscribe"
+	wsClientMsgUnsubscribe WSClientMessageType = "unsubscribe"
+)
+
 // wsClientMsg is a message sent from the WebSocket client to the server.
 type wsClientMsg struct {
-	Type   string `json:"type"`           // "subscribe" | "unsubscribe"
-	Stream string `json:"stream"`         // e.g. "user", "public", "hashtag", "list", "public:local", "direct"
-	Tag    string `json:"tag,omitempty"`  // required when Stream == "hashtag"
-	List   string `json:"list,omitempty"` // required when Stream == "list"
+	Type   WSClientMessageType `json:"type"`           // "subscribe" | "unsubscribe"
+	Stream string              `json:"stream"`         // e.g. "user", "public", "hashtag", "list", "public:local", "direct"
+	Tag    string              `json:"tag,omitempty"`  // required when Stream == "hashtag"
+	List   string              `json:"list,omitempty"` // required when Stream == "list"
 }
 
 // wsServerMsg is the Mastodon wire format for WebSocket server-to-client messages.
@@ -61,7 +69,7 @@ func (h *StreamingHandler) GETStreamingWS(w http.ResponseWriter, r *http.Request
 	var initial []wsClientMsg
 	if streamParam := r.URL.Query().Get("stream"); streamParam != "" {
 		initial = append(initial, wsClientMsg{
-			Type:   "subscribe",
+			Type:   wsClientMsgSubscribe,
 			Stream: streamParam,
 			Tag:    r.URL.Query().Get("tag"),
 			List:   r.URL.Query().Get("list"),
@@ -127,11 +135,12 @@ func (h *StreamingHandler) wsReadLoop(
 		}
 
 		switch msg.Type {
-		case "subscribe":
+		case wsClientMsgSubscribe:
 			h.wsHandleSubscribe(ctx, msg, account, subscriptions, outbox)
-		case "unsubscribe":
+		case wsClientMsgUnsubscribe:
 			streamKey, _, err := h.resolveWSStreamKey(ctx, msg, account)
 			if err != nil {
+				slog.DebugContext(ctx, "ws: invalid unsubscribe", slog.String("stream", msg.Stream), slog.Any("error", err))
 				continue
 			}
 			if cancelSub, ok := subscriptions[streamKey]; ok {

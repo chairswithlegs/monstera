@@ -384,6 +384,15 @@ func StatusFromEnriched(result service.EnrichedStatus, instanceDomain string) St
 	return out
 }
 
+// StatusesFromEnriched converts a slice of EnrichedStatus to API Status models.
+func StatusesFromEnriched(enriched []service.EnrichedStatus, instanceDomain string) []Status {
+	out := make([]Status, 0, len(enriched))
+	for i := range enriched {
+		out = append(out, StatusFromEnriched(enriched[i], instanceDomain))
+	}
+	return out
+}
+
 // PollFromEnriched converts a service.EnrichedPoll to the Mastodon API Poll model.
 func PollFromEnriched(p *service.EnrichedPoll) Poll {
 	var expiresAt *string

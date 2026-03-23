@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 
@@ -288,12 +289,18 @@ func (svc *statusService) EnrichStatuses(ctx context.Context, statuses []*domain
 		if opts.ViewerID != nil {
 			if _, err := svc.store.GetFavouriteByAccountAndStatus(ctx, *opts.ViewerID, st.ID); err == nil {
 				e.Favourited = true
+			} else if !errors.Is(err, domain.ErrNotFound) {
+				slog.WarnContext(ctx, "enrich status: get favourite", slog.Any("error", err))
 			}
 			if _, err := svc.store.GetReblogByAccountAndTarget(ctx, *opts.ViewerID, st.ID); err == nil {
 				e.Reblogged = true
+			} else if !errors.Is(err, domain.ErrNotFound) {
+				slog.WarnContext(ctx, "enrich status: get reblog", slog.Any("error", err))
 			}
 			if ok, err := svc.store.IsBookmarked(ctx, *opts.ViewerID, st.ID); err == nil {
 				e.Bookmarked = ok
+			} else if !errors.Is(err, domain.ErrNotFound) {
+				slog.WarnContext(ctx, "enrich status: check bookmark", slog.Any("error", err))
 			}
 			if st.AccountID == *opts.ViewerID {
 				pinnedIDs, err := svc.store.ListPinnedStatusIDs(ctx, *opts.ViewerID)

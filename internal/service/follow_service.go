@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/events"
@@ -76,7 +77,10 @@ func (svc *followService) Follow(ctx context.Context, actorAccountID, targetAcco
 		state = domain.FollowStatePending
 	}
 
-	existing, _ := svc.store.GetFollow(ctx, actorAccountID, targetAccountID)
+	existing, err := svc.store.GetFollow(ctx, actorAccountID, targetAccountID)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		slog.WarnContext(ctx, "Follow: check existing follow", slog.Any("error", err))
+	}
 	if existing != nil {
 		if existing.State == domain.FollowStateAccepted || existing.State == domain.FollowStatePending {
 			rel, err := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
@@ -129,7 +133,11 @@ func (svc *followService) Follow(ctx context.Context, actorAccountID, targetAcco
 func (svc *followService) Unfollow(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error) {
 	follow, err := svc.store.GetFollow(ctx, actorAccountID, targetAccountID)
 	if err != nil {
-		rel, _ := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
+		// Follow not found — return the current relationship (unfollow is idempotent).
+		rel, relErr := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
+		if relErr != nil {
+			slog.WarnContext(ctx, "Unfollow: get relationship fallback", slog.Any("error", relErr))
+		}
 		if rel != nil {
 			return rel, nil
 		}
@@ -193,21 +201,38 @@ func (svc *followService) Block(ctx context.Context, actorAccountID, targetAccou
 	}
 
 	err = svc.store.WithTx(ctx, func(tx store.Store) error {
-		if fw, _ := tx.GetFollow(ctx, actorAccountID, targetAccountID); fw != nil {
+		// Best-effort follow/mute cleanup: the block is the critical operation. If
+		// follow lookups or count decrements fail, we log and continue rather than
+		// aborting the block.
+		if fw, fwErr := tx.GetFollow(ctx, actorAccountID, targetAccountID); fwErr != nil && !errors.Is(fwErr, domain.ErrNotFound) {
+			slog.WarnContext(ctx, "Block: check forward follow", slog.Any("error", fwErr))
+		} else if fw != nil {
 			if err := tx.DeleteFollow(ctx, actorAccountID, targetAccountID); err != nil {
 				return fmt.Errorf("DeleteFollow: %w", err)
 			}
-			_ = tx.DecrementFollowingCount(ctx, actorAccountID)
-			_ = tx.DecrementFollowersCount(ctx, targetAccountID)
+			if err := tx.DecrementFollowingCount(ctx, actorAccountID); err != nil {
+				slog.WarnContext(ctx, "Block: decrement following count", slog.Any("error", err))
+			}
+			if err := tx.DecrementFollowersCount(ctx, targetAccountID); err != nil {
+				slog.WarnContext(ctx, "Block: decrement followers count", slog.Any("error", err))
+			}
 		}
-		if bw, _ := tx.GetFollow(ctx, targetAccountID, actorAccountID); bw != nil {
+		if bw, bwErr := tx.GetFollow(ctx, targetAccountID, actorAccountID); bwErr != nil && !errors.Is(bwErr, domain.ErrNotFound) {
+			slog.WarnContext(ctx, "Block: check reverse follow", slog.Any("error", bwErr))
+		} else if bw != nil {
 			if err := tx.DeleteFollow(ctx, targetAccountID, actorAccountID); err != nil {
 				return fmt.Errorf("DeleteFollow reverse: %w", err)
 			}
-			_ = tx.DecrementFollowingCount(ctx, targetAccountID)
-			_ = tx.DecrementFollowersCount(ctx, actorAccountID)
+			if err := tx.DecrementFollowingCount(ctx, targetAccountID); err != nil {
+				slog.WarnContext(ctx, "Block: decrement following count (reverse)", slog.Any("error", err))
+			}
+			if err := tx.DecrementFollowersCount(ctx, actorAccountID); err != nil {
+				slog.WarnContext(ctx, "Block: decrement followers count (reverse)", slog.Any("error", err))
+			}
 		}
-		_ = tx.DeleteMute(ctx, actorAccountID, targetAccountID)
+		if err := tx.DeleteMute(ctx, actorAccountID, targetAccountID); err != nil && !errors.Is(err, domain.ErrNotFound) {
+			slog.WarnContext(ctx, "Block: delete mute", slog.Any("error", err))
+		}
 		if txErr := tx.CreateBlock(ctx, store.CreateBlockInput{
 			ID:        uid.New(),
 			AccountID: actorAccountID,
@@ -288,7 +313,9 @@ func (svc *followService) Mute(ctx context.Context, actorAccountID, targetAccoun
 
 // Unmute removes the mute from actor to target. Returns the relationship.
 func (svc *followService) Unmute(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Relationship, error) {
-	_ = svc.store.DeleteMute(ctx, actorAccountID, targetAccountID)
+	if err := svc.store.DeleteMute(ctx, actorAccountID, targetAccountID); err != nil && !errors.Is(err, domain.ErrNotFound) {
+		slog.WarnContext(ctx, "Unmute: delete mute", slog.Any("error", err))
+	}
 	rel, err := svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("Unmute GetRelationship: %w", err)

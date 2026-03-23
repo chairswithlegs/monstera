@@ -42,7 +42,7 @@ func (h *TimelinesHandler) GETHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := enrichedStatusesToAPIModels(enriched, h.instanceDomain)
+	out := apimodel.StatusesFromEnriched(enriched, h.instanceDomain)
 
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
 	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
@@ -65,7 +65,7 @@ func (h *TimelinesHandler) GETPublic(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	out := enrichedStatusesToAPIModels(enriched, h.instanceDomain)
+	out := apimodel.StatusesFromEnriched(enriched, h.instanceDomain)
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
 	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
 		w.Header().Set("Link", link)
@@ -90,7 +90,7 @@ func (h *TimelinesHandler) GETFavourites(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	out := enrichedStatusesToAPIModels(enriched, h.instanceDomain)
+	out := apimodel.StatusesFromEnriched(enriched, h.instanceDomain)
 	for i := range out {
 		out[i].Favourited = true
 	}
@@ -121,7 +121,7 @@ func (h *TimelinesHandler) GETBookmarks(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	out := enrichedStatusesToAPIModels(enriched, h.instanceDomain)
+	out := apimodel.StatusesFromEnriched(enriched, h.instanceDomain)
 	for i := range out {
 		out[i].Bookmarked = true
 	}
@@ -162,7 +162,7 @@ func (h *TimelinesHandler) GETListTimeline(w http.ResponseWriter, r *http.Reques
 		api.HandleError(w, r, err)
 		return
 	}
-	out := enrichedStatusesToAPIModels(enriched, h.instanceDomain)
+	out := apimodel.StatusesFromEnriched(enriched, h.instanceDomain)
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
 	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
 		w.Header().Set("Link", link)
@@ -188,21 +188,12 @@ func (h *TimelinesHandler) GETTag(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	out := enrichedStatusesToAPIModels(enriched, h.instanceDomain)
+	out := apimodel.StatusesFromEnriched(enriched, h.instanceDomain)
 	firstID, lastID := firstLastIDsFromEnriched(enriched)
 	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
 		w.Header().Set("Link", link)
 	}
 	api.WriteJSON(w, http.StatusOK, out)
-}
-
-// enrichedStatusesToAPIModels converts a slice of EnrichedStatus to API models.
-func enrichedStatusesToAPIModels(enriched []service.EnrichedStatus, instanceDomain string) []apimodel.Status {
-	out := make([]apimodel.Status, 0, len(enriched))
-	for i := range enriched {
-		out = append(out, apimodel.StatusFromEnriched(enriched[i], instanceDomain))
-	}
-	return out
 }
 
 // firstLastIDsFromEnriched returns the first and last status IDs for Link header pagination.
