@@ -466,16 +466,27 @@ func (svc *statusWriteService) Delete(ctx context.Context, id, accountID string)
 	if err := requireLocal(st.Local, "Delete"); err != nil {
 		return err
 	}
+	// Best-effort enrichment: hashtag names, mention IDs, and author enrich the delete
+	// event payload. The delete still proceeds if these lookups fail.
 	var hashtagNames []string
-	tags, _ := svc.store.GetStatusHashtags(ctx, id)
+	tags, err := svc.store.GetStatusHashtags(ctx, id)
+	if err != nil {
+		slog.WarnContext(ctx, "Delete: get hashtags for event", slog.Any("error", err), slog.String("status_id", id))
+	}
 	for _, t := range tags {
 		hashtagNames = append(hashtagNames, t.Name)
 	}
 	var mentionedAccountIDs []string
 	if st.Visibility == domain.VisibilityDirect {
-		mentionedAccountIDs, _ = svc.store.GetStatusMentionAccountIDs(ctx, id)
+		mentionedAccountIDs, err = svc.store.GetStatusMentionAccountIDs(ctx, id)
+		if err != nil {
+			slog.WarnContext(ctx, "Delete: get mention account IDs for event", slog.Any("error", err), slog.String("status_id", id))
+		}
 	}
-	author, _ := svc.store.GetAccountByID(ctx, st.AccountID)
+	author, err := svc.store.GetAccountByID(ctx, st.AccountID)
+	if err != nil {
+		slog.WarnContext(ctx, "Delete: get author for event", slog.Any("error", err), slog.String("account_id", st.AccountID))
+	}
 	err = svc.store.WithTx(ctx, func(tx store.Store) error {
 		if err := tx.SoftDeleteStatus(ctx, id); err != nil {
 			return fmt.Errorf("SoftDeleteStatus: %w", err)
@@ -621,21 +632,25 @@ func (svc *statusWriteService) Update(ctx context.Context, in UpdateStatusInput)
 	if err != nil {
 		return EnrichedStatus{}, fmt.Errorf("Update: %w", err)
 	}
+	// Best-effort: notify authors who quoted this status that the original was updated.
 	quotes, err := svc.store.ListQuotesOfStatus(ctx, statusID, nil, 500)
-	if err == nil {
-		for i := range quotes {
-			quotingAuthorID := quotes[i].AccountID
-			if quotingAuthorID == accountID {
-				continue
-			}
-			quotingStatusID := quotes[i].ID
-			_, _ = svc.store.CreateNotification(ctx, store.CreateNotificationInput{
-				ID:        uid.New(),
-				AccountID: quotingAuthorID,
-				FromID:    accountID,
-				Type:      domain.NotificationTypeQuotedUpdate,
-				StatusID:  &quotingStatusID,
-			})
+	if err != nil {
+		slog.WarnContext(ctx, "Update: list quotes for notification", slog.Any("error", err), slog.String("status_id", statusID))
+	}
+	for i := range quotes {
+		quotingAuthorID := quotes[i].AccountID
+		if quotingAuthorID == accountID {
+			continue
+		}
+		quotingStatusID := quotes[i].ID
+		if _, notifErr := svc.store.CreateNotification(ctx, store.CreateNotificationInput{
+			ID:        uid.New(),
+			AccountID: quotingAuthorID,
+			FromID:    accountID,
+			Type:      domain.NotificationTypeQuotedUpdate,
+			StatusID:  &quotingStatusID,
+		}); notifErr != nil {
+			slog.WarnContext(ctx, "Update: create quote update notification", slog.Any("error", notifErr))
 		}
 	}
 	out, err := svc.statusSvc.GetByIDEnriched(ctx, statusID, &accountID)

@@ -211,14 +211,22 @@ func (svc *remoteStatusWriteService) DeleteRemote(ctx context.Context, statusID 
 	if err := requireRemote(st.Local, "DeleteRemote"); err != nil {
 		return err
 	}
+	// Best-effort enrichment: hashtag names and mention IDs enrich the delete event payload.
+	// The delete still proceeds if these lookups fail — the status is removed regardless.
 	var hashtagNames []string
-	tags, _ := svc.store.GetStatusHashtags(ctx, statusID)
+	tags, err := svc.store.GetStatusHashtags(ctx, statusID)
+	if err != nil {
+		slog.WarnContext(ctx, "DeleteRemote: get hashtags for event", slog.Any("error", err), slog.String("status_id", statusID))
+	}
 	for _, t := range tags {
 		hashtagNames = append(hashtagNames, t.Name)
 	}
 	var mentionedAccountIDs []string
 	if st.Visibility == domain.VisibilityDirect {
-		mentionedAccountIDs, _ = svc.store.GetStatusMentionAccountIDs(ctx, statusID)
+		mentionedAccountIDs, err = svc.store.GetStatusMentionAccountIDs(ctx, statusID)
+		if err != nil {
+			slog.WarnContext(ctx, "DeleteRemote: get mention account IDs for event", slog.Any("error", err), slog.String("status_id", statusID))
+		}
 	}
 	err = svc.store.WithTx(ctx, func(tx store.Store) error {
 		if err := tx.SoftDeleteStatus(ctx, statusID); err != nil {
@@ -248,24 +256,6 @@ func (svc *remoteStatusWriteService) CreateRemoteReblog(ctx context.Context, in 
 	}
 	reblogOfID := original.ID
 	reblogID := uid.New()
-	st, err := svc.store.CreateStatus(ctx, store.CreateStatusInput{
-		ID:                  reblogID,
-		URI:                 in.ActivityAPID,
-		AccountID:           in.AccountID,
-		Visibility:          domain.VisibilityPublic,
-		ReblogOfID:          &reblogOfID,
-		APID:                in.ActivityAPID,
-		Local:               false,
-		QuoteApprovalPolicy: domain.QuotePolicyPublic,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("CreateRemoteReblog CreateStatus: %w", err)
-	}
-	if err := svc.store.IncrementReblogsCount(ctx, original.ID); err != nil {
-		return nil, fmt.Errorf("CreateRemoteReblog IncrementReblogsCount: %w", err)
-	}
-	fromAccount, _ := svc.store.GetAccountByID(ctx, in.AccountID)
-	originalAuthor, _ := svc.store.GetAccountByID(ctx, original.AccountID)
 	originalStatusAPID := original.APID
 	if originalStatusAPID == "" {
 		originalStatusAPID = original.URI
@@ -273,16 +263,47 @@ func (svc *remoteStatusWriteService) CreateRemoteReblog(ctx context.Context, in 
 	if originalStatusAPID == "" {
 		originalStatusAPID = fmt.Sprintf("%s/statuses/%s", svc.instanceBaseURL, original.ID)
 	}
-	if err := events.EmitEvent(ctx, svc.store, domain.EventReblogCreated, "status", reblogID, domain.ReblogCreatedPayload{
-		AccountID:          in.AccountID,
-		ReblogStatusID:     reblogID,
-		OriginalStatusID:   original.ID,
-		OriginalAuthorID:   original.AccountID,
-		FromAccount:        fromAccount,
-		OriginalAuthor:     originalAuthor,
-		OriginalStatusAPID: originalStatusAPID,
+	var st *domain.Status
+	if err := svc.store.WithTx(ctx, func(tx store.Store) error {
+		var txErr error
+		st, txErr = tx.CreateStatus(ctx, store.CreateStatusInput{
+			ID:                  reblogID,
+			URI:                 in.ActivityAPID,
+			AccountID:           in.AccountID,
+			Visibility:          domain.VisibilityPublic,
+			ReblogOfID:          &reblogOfID,
+			APID:                in.ActivityAPID,
+			Local:               false,
+			QuoteApprovalPolicy: domain.QuotePolicyPublic,
+		})
+		if txErr != nil {
+			return fmt.Errorf("CreateRemoteReblog CreateStatus: %w", txErr)
+		}
+		if txErr = tx.IncrementReblogsCount(ctx, original.ID); txErr != nil {
+			return fmt.Errorf("CreateRemoteReblog IncrementReblogsCount: %w", txErr)
+		}
+		// Best-effort enrichment: these accounts are known to exist (we just used their IDs
+		// above), so a failure here indicates a transient DB issue rather than missing data.
+		// We log and continue rather than failing the TX over event payload enrichment.
+		fromAccount, txErr := tx.GetAccountByID(ctx, in.AccountID)
+		if txErr != nil {
+			slog.WarnContext(ctx, "CreateRemoteReblog: get account for event", slog.Any("error", txErr), slog.String("account_id", in.AccountID))
+		}
+		originalAuthor, txErr := tx.GetAccountByID(ctx, original.AccountID)
+		if txErr != nil {
+			slog.WarnContext(ctx, "CreateRemoteReblog: get original author for event", slog.Any("error", txErr), slog.String("account_id", original.AccountID))
+		}
+		return events.EmitEvent(ctx, tx, domain.EventReblogCreated, "status", reblogID, domain.ReblogCreatedPayload{
+			AccountID:          in.AccountID,
+			ReblogStatusID:     reblogID,
+			OriginalStatusID:   original.ID,
+			OriginalAuthorID:   original.AccountID,
+			FromAccount:        fromAccount,
+			OriginalAuthor:     originalAuthor,
+			OriginalStatusAPID: originalStatusAPID,
+		})
 	}); err != nil {
-		return st, fmt.Errorf("CreateRemoteReblog emit event: %w", err)
+		return nil, fmt.Errorf("CreateRemoteReblog: %w", err)
 	}
 	return st, nil
 }
@@ -331,37 +352,61 @@ func (svc *remoteStatusWriteService) UpdateRemote(ctx context.Context, statusID 
 }
 
 func (svc *remoteStatusWriteService) CreateRemoteFavourite(ctx context.Context, accountID, statusID string, apID *string) (*domain.Favourite, error) {
-	fav, err := svc.store.CreateFavourite(ctx, store.CreateFavouriteInput{
-		ID:        uid.New(),
-		AccountID: accountID,
-		StatusID:  statusID,
-		APID:      apID,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("CreateRemoteFavourite: %w", err)
-	}
-	if err := svc.store.IncrementFavouritesCount(ctx, statusID); err != nil {
-		return nil, fmt.Errorf("CreateRemoteFavourite IncrementFavouritesCount: %w", err)
-	}
-	st, _ := svc.store.GetStatusByID(ctx, statusID)
-	if st != nil {
-		fromAccount, _ := svc.store.GetAccountByID(ctx, accountID)
-		statusAuthor, _ := svc.store.GetAccountByID(ctx, st.AccountID)
-		statusAPID := st.APID
-		if statusAPID == "" {
-			statusAPID = st.URI
+	var fav *domain.Favourite
+	if err := svc.store.WithTx(ctx, func(tx store.Store) error {
+		var txErr error
+		fav, txErr = tx.CreateFavourite(ctx, store.CreateFavouriteInput{
+			ID:        uid.New(),
+			AccountID: accountID,
+			StatusID:  statusID,
+			APID:      apID,
+		})
+		if txErr != nil {
+			return fmt.Errorf("CreateRemoteFavourite: %w", txErr)
 		}
-		if statusAPID == "" {
-			statusAPID = fmt.Sprintf("%s/statuses/%s", svc.instanceBaseURL, st.ID)
+		if txErr = tx.IncrementFavouritesCount(ctx, statusID); txErr != nil {
+			return fmt.Errorf("CreateRemoteFavourite IncrementFavouritesCount: %w", txErr)
 		}
-		_ = events.EmitEvent(ctx, svc.store, domain.EventFavouriteCreated, "favourite", statusID, domain.FavouriteCreatedPayload{
+		// Best-effort enrichment: the status and accounts are known to exist (the inbox
+		// resolved them before calling us), so failures indicate a transient DB issue
+		// rather than missing data. We log and continue rather than failing the TX over
+		// event payload enrichment.
+		st, txErr := tx.GetStatusByID(ctx, statusID)
+		if txErr != nil {
+			slog.WarnContext(ctx, "CreateRemoteFavourite: get status for event", slog.Any("error", txErr), slog.String("status_id", statusID))
+		}
+		var statusAuthorID, statusAPID string
+		if st != nil {
+			statusAuthorID = st.AccountID
+			statusAPID = st.APID
+			if statusAPID == "" {
+				statusAPID = st.URI
+			}
+			if statusAPID == "" {
+				statusAPID = fmt.Sprintf("%s/statuses/%s", svc.instanceBaseURL, st.ID)
+			}
+		}
+		fromAccount, txErr := tx.GetAccountByID(ctx, accountID)
+		if txErr != nil {
+			slog.WarnContext(ctx, "CreateRemoteFavourite: get account for event", slog.Any("error", txErr), slog.String("account_id", accountID))
+		}
+		var statusAuthor *domain.Account
+		if statusAuthorID != "" {
+			statusAuthor, txErr = tx.GetAccountByID(ctx, statusAuthorID)
+			if txErr != nil {
+				slog.WarnContext(ctx, "CreateRemoteFavourite: get status author for event", slog.Any("error", txErr), slog.String("account_id", statusAuthorID))
+			}
+		}
+		return events.EmitEvent(ctx, tx, domain.EventFavouriteCreated, "favourite", statusID, domain.FavouriteCreatedPayload{
 			AccountID:      accountID,
 			StatusID:       statusID,
-			StatusAuthorID: st.AccountID,
+			StatusAuthorID: statusAuthorID,
 			FromAccount:    fromAccount,
 			StatusAuthor:   statusAuthor,
 			StatusAPID:     statusAPID,
 		})
+	}); err != nil {
+		return nil, fmt.Errorf("CreateRemoteFavourite: %w", err)
 	}
 	return fav, nil
 }
@@ -377,6 +422,21 @@ func (svc *remoteStatusWriteService) DeleteRemoteReblog(ctx context.Context, acc
 	if reblog == nil {
 		return nil
 	}
+	orig, err := svc.store.GetStatusByID(ctx, statusID)
+	if err != nil {
+		slog.WarnContext(ctx, "DeleteRemoteReblog: get original status", slog.Any("error", err), slog.String("status_id", statusID))
+	}
+	var originalAuthorID, originalStatusAPID string
+	if orig != nil {
+		originalAuthorID = orig.AccountID
+		originalStatusAPID = orig.APID
+		if originalStatusAPID == "" {
+			originalStatusAPID = orig.URI
+		}
+		if originalStatusAPID == "" {
+			originalStatusAPID = fmt.Sprintf("%s/statuses/%s", svc.instanceBaseURL, orig.ID)
+		}
+	}
 	if err := svc.store.WithTx(ctx, func(tx store.Store) error {
 		if err := tx.SoftDeleteStatus(ctx, reblog.ID); err != nil {
 			return fmt.Errorf("DeleteRemoteReblog SoftDeleteStatus: %w", err)
@@ -384,7 +444,18 @@ func (svc *remoteStatusWriteService) DeleteRemoteReblog(ctx context.Context, acc
 		if err := tx.DecrementReblogsCount(ctx, statusID); err != nil {
 			return fmt.Errorf("DeleteRemoteReblog DecrementReblogsCount: %w", err)
 		}
-		return nil
+		fromAccount, err := tx.GetAccountByID(ctx, accountID)
+		if err != nil {
+			slog.WarnContext(ctx, "DeleteRemoteReblog: get account", slog.Any("error", err), slog.String("account_id", accountID))
+		}
+		return events.EmitEvent(ctx, tx, domain.EventReblogRemoved, "status", reblog.ID, domain.ReblogRemovedPayload{
+			AccountID:          accountID,
+			ReblogStatusID:     reblog.ID,
+			OriginalStatusID:   statusID,
+			OriginalAuthorID:   originalAuthorID,
+			FromAccount:        fromAccount,
+			OriginalStatusAPID: originalStatusAPID,
+		})
 	}); err != nil {
 		return fmt.Errorf("DeleteRemoteReblog: %w", err)
 	}
@@ -392,11 +463,52 @@ func (svc *remoteStatusWriteService) DeleteRemoteReblog(ctx context.Context, acc
 }
 
 func (svc *remoteStatusWriteService) DeleteRemoteFavourite(ctx context.Context, accountID, statusID string) error {
-	if err := svc.store.DeleteFavourite(ctx, accountID, statusID); err != nil {
-		return fmt.Errorf("DeleteRemoteFavourite: %w", err)
+	st, err := svc.store.GetStatusByID(ctx, statusID)
+	if err != nil {
+		slog.WarnContext(ctx, "DeleteRemoteFavourite: get status", slog.Any("error", err), slog.String("status_id", statusID))
 	}
-	if err := svc.store.DecrementFavouritesCount(ctx, statusID); err != nil {
-		return fmt.Errorf("DeleteRemoteFavourite DecrementFavouritesCount: %w", err)
+	var statusAuthorID, statusAPID string
+	if st != nil {
+		statusAuthorID = st.AccountID
+		statusAPID = st.APID
+		if statusAPID == "" {
+			statusAPID = st.URI
+		}
+		if statusAPID == "" {
+			statusAPID = fmt.Sprintf("%s/statuses/%s", svc.instanceBaseURL, st.ID)
+		}
+	}
+	if err := svc.store.WithTx(ctx, func(tx store.Store) error {
+		if err := tx.DeleteFavourite(ctx, accountID, statusID); err != nil {
+			return fmt.Errorf("DeleteRemoteFavourite: %w", err)
+		}
+		if err := tx.DecrementFavouritesCount(ctx, statusID); err != nil {
+			return fmt.Errorf("DeleteRemoteFavourite DecrementFavouritesCount: %w", err)
+		}
+		// Best-effort enrichment: these accounts are known to exist, so failures indicate
+		// a transient DB issue. We log and continue rather than failing the TX over
+		// event payload enrichment.
+		fromAccount, txErr := tx.GetAccountByID(ctx, accountID)
+		if txErr != nil {
+			slog.WarnContext(ctx, "DeleteRemoteFavourite: get account for event", slog.Any("error", txErr), slog.String("account_id", accountID))
+		}
+		var statusAuthor *domain.Account
+		if statusAuthorID != "" {
+			statusAuthor, txErr = tx.GetAccountByID(ctx, statusAuthorID)
+			if txErr != nil {
+				slog.WarnContext(ctx, "DeleteRemoteFavourite: get status author for event", slog.Any("error", txErr), slog.String("account_id", statusAuthorID))
+			}
+		}
+		return events.EmitEvent(ctx, tx, domain.EventFavouriteRemoved, "favourite", statusID, domain.FavouriteRemovedPayload{
+			AccountID:      accountID,
+			StatusID:       statusID,
+			StatusAuthorID: statusAuthorID,
+			FromAccount:    fromAccount,
+			StatusAuthor:   statusAuthor,
+			StatusAPID:     statusAPID,
+		})
+	}); err != nil {
+		return fmt.Errorf("DeleteRemoteFavourite: %w", err)
 	}
 	return nil
 }

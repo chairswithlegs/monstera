@@ -73,6 +73,7 @@ loadtest:
 	docker compose -f docker-compose.yaml --profile app up --build -d --wait
 	sleep 5
 	$(MAKE) migrate-down
+	$(MAKE) migrate-up
 	$(MAKE) seed
 
 	# 2. Build static Linux binary and deploy into the server container

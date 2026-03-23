@@ -350,7 +350,7 @@ func (h *AccountsHandler) GETAccountStatuses(w http.ResponseWriter, r *http.Requ
 		}
 		out := make([]apimodel.Status, 0, len(enriched))
 		for i := range enriched {
-			out = append(out, enrichedStatusToAPIModel(enriched[i], h.instanceDomain))
+			out = append(out, apimodel.StatusFromEnriched(enriched[i], h.instanceDomain))
 		}
 		api.WriteJSON(w, http.StatusOK, out)
 		return
@@ -368,7 +368,7 @@ func (h *AccountsHandler) GETAccountStatuses(w http.ResponseWriter, r *http.Requ
 	}
 	out := make([]apimodel.Status, 0, len(enriched))
 	for i := range enriched {
-		out = append(out, enrichedStatusToAPIModel(enriched[i], h.instanceDomain))
+		out = append(out, apimodel.StatusFromEnriched(enriched[i], h.instanceDomain))
 	}
 	firstID, lastID := firstLastIDsFromAccountStatuses(enriched)
 	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {

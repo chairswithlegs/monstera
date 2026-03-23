@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/service"
 )
 
 // --- fakes ---
@@ -45,22 +46,12 @@ func (f *fakePublisher) published() []publishedMsg {
 type fakeSubscriberStore struct {
 	followers     map[string][]string
 	listsByMember map[string][]string
-	statuses      map[string]*domain.Status
-	accounts      map[string]*domain.Account
-	mentions      map[string][]*domain.Account
-	hashtags      map[string][]domain.Hashtag
-	attachments   map[string][]domain.MediaAttachment
 }
 
 func newFakeSubscriberStore() *fakeSubscriberStore {
 	return &fakeSubscriberStore{
 		followers:     make(map[string][]string),
 		listsByMember: make(map[string][]string),
-		statuses:      make(map[string]*domain.Status),
-		accounts:      make(map[string]*domain.Account),
-		mentions:      make(map[string][]*domain.Account),
-		hashtags:      make(map[string][]domain.Hashtag),
-		attachments:   make(map[string][]domain.MediaAttachment),
 	}
 }
 
@@ -70,26 +61,27 @@ func (f *fakeSubscriberStore) GetLocalFollowerAccountIDs(_ context.Context, targ
 func (f *fakeSubscriberStore) GetListIDsByMemberAccountID(_ context.Context, accountID string) ([]string, error) {
 	return f.listsByMember[accountID], nil
 }
-func (f *fakeSubscriberStore) GetStatusByID(_ context.Context, id string) (*domain.Status, error) {
-	if s, ok := f.statuses[id]; ok {
-		return s, nil
+
+// fakeStatusEnricher implements subscriberStatusService for tests.
+type fakeStatusEnricher struct {
+	statuses map[string]*domain.Status
+	accounts map[string]*domain.Account
+}
+
+func newFakeStatusEnricher() *fakeStatusEnricher {
+	return &fakeStatusEnricher{
+		statuses: make(map[string]*domain.Status),
+		accounts: make(map[string]*domain.Account),
 	}
-	return nil, domain.ErrNotFound
 }
-func (f *fakeSubscriberStore) GetAccountByID(_ context.Context, id string) (*domain.Account, error) {
-	if a, ok := f.accounts[id]; ok {
-		return a, nil
+
+func (f *fakeStatusEnricher) GetByIDEnriched(_ context.Context, id string, _ *string) (service.EnrichedStatus, error) {
+	st, ok := f.statuses[id]
+	if !ok || st.DeletedAt != nil {
+		return service.EnrichedStatus{}, domain.ErrNotFound
 	}
-	return nil, domain.ErrNotFound
-}
-func (f *fakeSubscriberStore) GetStatusMentions(_ context.Context, statusID string) ([]*domain.Account, error) {
-	return f.mentions[statusID], nil
-}
-func (f *fakeSubscriberStore) GetStatusHashtags(_ context.Context, statusID string) ([]domain.Hashtag, error) {
-	return f.hashtags[statusID], nil
-}
-func (f *fakeSubscriberStore) GetStatusAttachments(_ context.Context, statusID string) ([]domain.MediaAttachment, error) {
-	return f.attachments[statusID], nil
+	author := f.accounts[st.AccountID]
+	return service.EnrichedStatus{Status: st, Author: author}, nil
 }
 
 type fakeMsg struct {
@@ -123,16 +115,18 @@ func (m *fakeMsg) DoubleAck(_ context.Context) error         { return nil }
 
 // --- helpers ---
 
-func newTestSubscriber(t *testing.T) (*Subscriber, *fakePublisher, *fakeSubscriberStore) {
+func newTestSubscriber(t *testing.T) (*Subscriber, *fakePublisher, *fakeSubscriberStore, *fakeStatusEnricher) {
 	t.Helper()
 	pub := &fakePublisher{}
 	store := newFakeSubscriberStore()
+	enricher := newFakeStatusEnricher()
 	sub := &Subscriber{
 		nc:             pub,
 		store:          store,
+		statusSvc:      enricher,
 		instanceDomain: "example.com",
 	}
-	return sub, pub, store
+	return sub, pub, store, enricher
 }
 
 func makeDomainEvent(t *testing.T, eventType string, payload any) []byte {
@@ -182,7 +176,7 @@ func makeMinimalAccount(id, username string) *domain.Account {
 
 func TestProcessMessage_InvalidJSON_AcksAndSkips(t *testing.T) {
 	t.Parallel()
-	sub, pub, _ := newTestSubscriber(t)
+	sub, pub, _, _ := newTestSubscriber(t)
 	msg := &fakeMsg{data: []byte("not json")}
 
 	sub.processMessage(context.Background(), msg)
@@ -193,7 +187,7 @@ func TestProcessMessage_InvalidJSON_AcksAndSkips(t *testing.T) {
 
 func TestProcessMessage_UnknownEventType_AcksAndSkips(t *testing.T) {
 	t.Parallel()
-	sub, pub, _ := newTestSubscriber(t)
+	sub, pub, _, _ := newTestSubscriber(t)
 
 	data := makeDomainEvent(t, "unknown.event", map[string]string{"key": "value"})
 	msg := &fakeMsg{data: data}
@@ -206,7 +200,7 @@ func TestProcessMessage_UnknownEventType_AcksAndSkips(t *testing.T) {
 
 func TestProcessMessage_StatusCreated_Public_PublishesToPublicAndFollowers(t *testing.T) {
 	t.Parallel()
-	sub, pub, store := newTestSubscriber(t)
+	sub, pub, store, _ := newTestSubscriber(t)
 
 	store.followers["author-1"] = []string{"follower-1", "follower-2"}
 
@@ -241,7 +235,7 @@ func TestProcessMessage_StatusCreated_Public_PublishesToPublicAndFollowers(t *te
 
 func TestProcessMessage_StatusCreated_Public_Remote_SkipsPublicLocal(t *testing.T) {
 	t.Parallel()
-	sub, pub, store := newTestSubscriber(t)
+	sub, pub, store, _ := newTestSubscriber(t)
 
 	store.followers["author-1"] = []string{"follower-1"}
 
@@ -262,7 +256,7 @@ func TestProcessMessage_StatusCreated_Public_Remote_SkipsPublicLocal(t *testing.
 
 func TestProcessMessage_StatusCreated_Unlisted_PublishesToFollowersAndHashtags(t *testing.T) {
 	t.Parallel()
-	sub, pub, store := newTestSubscriber(t)
+	sub, pub, store, _ := newTestSubscriber(t)
 
 	store.followers["author-1"] = []string{"follower-1"}
 
@@ -289,7 +283,7 @@ func TestProcessMessage_StatusCreated_Unlisted_PublishesToFollowersAndHashtags(t
 
 func TestProcessMessage_StatusCreated_Private_OnlyFollowers(t *testing.T) {
 	t.Parallel()
-	sub, pub, store := newTestSubscriber(t)
+	sub, pub, store, _ := newTestSubscriber(t)
 
 	store.followers["author-1"] = []string{"follower-1"}
 
@@ -309,7 +303,7 @@ func TestProcessMessage_StatusCreated_Private_OnlyFollowers(t *testing.T) {
 
 func TestProcessMessage_StatusCreated_Direct_OnlyMentionedAccounts(t *testing.T) {
 	t.Parallel()
-	sub, pub, store := newTestSubscriber(t)
+	sub, pub, store, _ := newTestSubscriber(t)
 
 	store.followers["author-1"] = []string{"follower-1"}
 
@@ -337,7 +331,7 @@ func TestProcessMessage_StatusCreated_Direct_OnlyMentionedAccounts(t *testing.T)
 
 func TestProcessMessage_StatusCreated_NilStatus_NoPublish(t *testing.T) {
 	t.Parallel()
-	sub, pub, _ := newTestSubscriber(t)
+	sub, pub, _, _ := newTestSubscriber(t)
 
 	payload := domain.StatusCreatedPayload{
 		Status: nil,
@@ -354,7 +348,7 @@ func TestProcessMessage_StatusCreated_NilStatus_NoPublish(t *testing.T) {
 
 func TestProcessMessage_StatusDeleted_Public_PublishesDeleteEvent(t *testing.T) {
 	t.Parallel()
-	sub, pub, store := newTestSubscriber(t)
+	sub, pub, store, _ := newTestSubscriber(t)
 
 	store.followers["author-1"] = []string{"follower-1"}
 
@@ -387,7 +381,7 @@ func TestProcessMessage_StatusDeleted_Public_PublishesDeleteEvent(t *testing.T) 
 
 func TestProcessMessage_StatusDeleted_WithHashtags(t *testing.T) {
 	t.Parallel()
-	sub, pub, _ := newTestSubscriber(t)
+	sub, pub, _, _ := newTestSubscriber(t)
 
 	payload := domain.StatusDeletedPayload{
 		StatusID:     "status-1",
@@ -413,7 +407,7 @@ func TestProcessMessage_StatusDeleted_WithHashtags(t *testing.T) {
 
 func TestProcessMessage_StatusDeleted_Direct_OnlyMentioned(t *testing.T) {
 	t.Parallel()
-	sub, pub, store := newTestSubscriber(t)
+	sub, pub, store, _ := newTestSubscriber(t)
 
 	store.followers["author-1"] = []string{"follower-1"}
 
@@ -440,7 +434,7 @@ func TestProcessMessage_StatusDeleted_Direct_OnlyMentioned(t *testing.T) {
 
 func TestProcessMessage_NotificationCreated_PublishesToRecipient(t *testing.T) {
 	t.Parallel()
-	sub, pub, _ := newTestSubscriber(t)
+	sub, pub, _, _ := newTestSubscriber(t)
 
 	notif := &domain.Notification{
 		ID:        "notif-1",
@@ -473,11 +467,11 @@ func TestProcessMessage_NotificationCreated_PublishesToRecipient(t *testing.T) {
 
 func TestProcessMessage_NotificationCreated_WithStatus(t *testing.T) {
 	t.Parallel()
-	sub, pub, store := newTestSubscriber(t)
+	sub, pub, _, enricher := newTestSubscriber(t)
 
 	statusID := "status-1"
-	store.statuses[statusID] = makeMinimalStatus(statusID, "sender-1", domain.VisibilityPublic, true)
-	store.accounts["sender-1"] = makeMinimalAccount("sender-1", "bob")
+	enricher.statuses[statusID] = makeMinimalStatus(statusID, "sender-1", domain.VisibilityPublic, true)
+	enricher.accounts["sender-1"] = makeMinimalAccount("sender-1", "bob")
 
 	notif := &domain.Notification{
 		ID:        "notif-1",
@@ -512,7 +506,7 @@ func TestProcessMessage_NotificationCreated_WithStatus(t *testing.T) {
 
 func TestProcessMessage_NotificationCreated_NilNotification_NoPublish(t *testing.T) {
 	t.Parallel()
-	sub, pub, _ := newTestSubscriber(t)
+	sub, pub, _, _ := newTestSubscriber(t)
 
 	payload := domain.NotificationCreatedPayload{
 		RecipientAccountID: "recipient-1",
@@ -530,7 +524,7 @@ func TestProcessMessage_NotificationCreated_NilNotification_NoPublish(t *testing
 
 func TestProcessMessage_StatusCreated_PublicWithHashtags(t *testing.T) {
 	t.Parallel()
-	sub, pub, store := newTestSubscriber(t)
+	sub, pub, store, _ := newTestSubscriber(t)
 
 	store.followers["author-1"] = []string{}
 
@@ -558,7 +552,7 @@ func TestProcessMessage_StatusCreated_PublicWithHashtags(t *testing.T) {
 
 func TestProcessMessage_StatusDeletedRemote_IsHandled(t *testing.T) {
 	t.Parallel()
-	sub, pub, store := newTestSubscriber(t)
+	sub, pub, store, _ := newTestSubscriber(t)
 
 	store.followers["author-1"] = []string{"follower-1"}
 
@@ -579,7 +573,7 @@ func TestProcessMessage_StatusDeletedRemote_IsHandled(t *testing.T) {
 
 func TestProcessMessage_StatusCreatedRemote_IsHandled(t *testing.T) {
 	t.Parallel()
-	sub, pub, store := newTestSubscriber(t)
+	sub, pub, store, _ := newTestSubscriber(t)
 
 	store.followers["author-1"] = []string{"follower-1"}
 
@@ -598,7 +592,7 @@ func TestProcessMessage_StatusCreatedRemote_IsHandled(t *testing.T) {
 
 func TestProcessMessage_StatusCreated_Public_PublishesToListStreams(t *testing.T) {
 	t.Parallel()
-	sub, pub, store := newTestSubscriber(t)
+	sub, pub, store, _ := newTestSubscriber(t)
 
 	store.followers["author-1"] = []string{}
 	store.listsByMember["author-1"] = []string{"list-1", "list-2"}
@@ -624,7 +618,7 @@ func TestProcessMessage_StatusCreated_Public_PublishesToListStreams(t *testing.T
 
 func TestProcessMessage_StatusCreated_Private_PublishesToListStreams(t *testing.T) {
 	t.Parallel()
-	sub, pub, store := newTestSubscriber(t)
+	sub, pub, store, _ := newTestSubscriber(t)
 
 	store.followers["author-1"] = []string{"follower-1"}
 	store.listsByMember["author-1"] = []string{"list-1"}
@@ -650,7 +644,7 @@ func TestProcessMessage_StatusCreated_Private_PublishesToListStreams(t *testing.
 
 func TestProcessMessage_StatusCreated_Direct_PublishesToDirectStreams(t *testing.T) {
 	t.Parallel()
-	sub, pub, store := newTestSubscriber(t)
+	sub, pub, store, _ := newTestSubscriber(t)
 
 	store.followers["author-1"] = []string{"follower-1"}
 
@@ -679,7 +673,7 @@ func TestProcessMessage_StatusCreated_Direct_PublishesToDirectStreams(t *testing
 
 func TestProcessMessage_StatusCreated_Direct_NoListStreams(t *testing.T) {
 	t.Parallel()
-	sub, pub, store := newTestSubscriber(t)
+	sub, pub, store, _ := newTestSubscriber(t)
 
 	store.listsByMember["author-1"] = []string{"list-1"}
 

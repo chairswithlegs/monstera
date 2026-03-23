@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 
@@ -286,8 +287,20 @@ func (svc *statusService) EnrichStatuses(ctx context.Context, statuses []*domain
 			}
 		}
 		if opts.ViewerID != nil {
+			if _, err := svc.store.GetFavouriteByAccountAndStatus(ctx, *opts.ViewerID, st.ID); err == nil {
+				e.Favourited = true
+			} else if !errors.Is(err, domain.ErrNotFound) {
+				slog.WarnContext(ctx, "enrich status: get favourite", slog.Any("error", err))
+			}
+			if _, err := svc.store.GetReblogByAccountAndTarget(ctx, *opts.ViewerID, st.ID); err == nil {
+				e.Reblogged = true
+			} else if !errors.Is(err, domain.ErrNotFound) {
+				slog.WarnContext(ctx, "enrich status: get reblog", slog.Any("error", err))
+			}
 			if ok, err := svc.store.IsBookmarked(ctx, *opts.ViewerID, st.ID); err == nil {
 				e.Bookmarked = ok
+			} else if !errors.Is(err, domain.ErrNotFound) {
+				slog.WarnContext(ctx, "enrich status: check bookmark", slog.Any("error", err))
 			}
 			if st.AccountID == *opts.ViewerID {
 				pinnedIDs, err := svc.store.ListPinnedStatusIDs(ctx, *opts.ViewerID)
@@ -302,6 +315,15 @@ func (svc *statusService) EnrichStatuses(ctx context.Context, statuses []*domain
 			}
 			if muted, err := svc.IsConversationMutedForViewer(ctx, *opts.ViewerID, st.ID); err == nil {
 				e.Muted = muted
+			}
+		}
+		if st.ReblogOfID != nil {
+			origSt, origErr := svc.store.GetStatusByID(ctx, *st.ReblogOfID)
+			if origErr == nil && origSt.DeletedAt == nil {
+				origEnriched, origErr := svc.EnrichStatuses(ctx, []*domain.Status{origSt}, opts)
+				if origErr == nil && len(origEnriched) > 0 {
+					e.ReblogOf = &origEnriched[0]
+				}
 			}
 		}
 		out = append(out, e)

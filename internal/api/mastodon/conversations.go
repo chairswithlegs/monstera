@@ -51,7 +51,7 @@ func (h *ConversationsHandler) GETConversations(w http.ResponseWriter, r *http.R
 		}
 		var lastStatus *apimodel.Status
 		if res.LastStatus != nil {
-			s := enrichedStatusToAPIModel(*res.LastStatus, h.instanceDomain)
+			s := apimodel.StatusFromEnriched(*res.LastStatus, h.instanceDomain)
 			lastStatus = &s
 		}
 		out = append(out, apimodel.ToConversation(res.AccountConversation.ConversationID, res.AccountConversation.Unread, accounts, lastStatus))
@@ -112,7 +112,7 @@ func (h *ConversationsHandler) POSTConversationRead(w http.ResponseWriter, r *ht
 	}
 	var lastStatus *apimodel.Status
 	if result.LastStatus != nil {
-		s := enrichedStatusToAPIModel(*result.LastStatus, h.instanceDomain)
+		s := apimodel.StatusFromEnriched(*result.LastStatus, h.instanceDomain)
 		lastStatus = &s
 	}
 	api.WriteJSON(w, http.StatusOK, apimodel.ToConversation(result.AccountConversation.ConversationID, result.AccountConversation.Unread, accounts, lastStatus))

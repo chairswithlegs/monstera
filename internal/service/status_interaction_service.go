@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -63,9 +64,16 @@ func (svc *statusInteractionService) CreateReblog(ctx context.Context, accountID
 	if orig.Visibility != domain.VisibilityPublic && orig.Visibility != domain.VisibilityUnlisted {
 		return EnrichedStatus{}, fmt.Errorf("CreateReblog: %w", domain.ErrForbidden)
 	}
-	existing, _ := svc.store.GetReblogByAccountAndTarget(ctx, accountID, statusID)
+	existing, err := svc.store.GetReblogByAccountAndTarget(ctx, accountID, statusID)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		slog.WarnContext(ctx, "CreateReblog: check existing reblog", slog.Any("error", err))
+	}
 	if existing != nil {
-		return EnrichedStatus{}, fmt.Errorf("CreateReblog: %w", domain.ErrConflict)
+		out, err := svc.statusSvc.GetByIDEnriched(ctx, existing.ID, &accountID)
+		if err != nil {
+			return EnrichedStatus{}, fmt.Errorf("CreateReblog: %w", err)
+		}
+		return out, nil
 	}
 	reblogID := uid.New()
 	reblogURI := fmt.Sprintf("%s/users/%s/statuses/%s", svc.instanceBaseURL, username, reblogID)
@@ -91,8 +99,17 @@ func (svc *statusInteractionService) CreateReblog(ctx context.Context, accountID
 		if err := tx.IncrementReblogsCount(ctx, statusID); err != nil {
 			return fmt.Errorf("IncrementReblogsCount: %w", err)
 		}
-		rebloggerAccount, _ := tx.GetAccountByID(ctx, accountID)
-		originalAuthor, _ := tx.GetAccountByID(ctx, orig.AccountID)
+		// Best-effort enrichment: these accounts are known to exist, so failures
+		// indicate a transient DB issue. We log and continue rather than failing
+		// the TX over event payload enrichment.
+		rebloggerAccount, txErr := tx.GetAccountByID(ctx, accountID)
+		if txErr != nil {
+			slog.WarnContext(ctx, "CreateReblog: get reblogger account for event", slog.Any("error", txErr))
+		}
+		originalAuthor, txErr := tx.GetAccountByID(ctx, orig.AccountID)
+		if txErr != nil {
+			slog.WarnContext(ctx, "CreateReblog: get original author for event", slog.Any("error", txErr))
+		}
 		originalStatusAPID := orig.APID
 		if originalStatusAPID == "" {
 			originalStatusAPID = orig.URI
@@ -132,7 +149,12 @@ func (svc *statusInteractionService) DeleteReblog(ctx context.Context, accountID
 	if reblog == nil {
 		return nil
 	}
-	orig, _ := svc.store.GetStatusByID(ctx, statusID)
+	// Best-effort enrichment: the original status enriches the delete event payload.
+	// The delete still proceeds if this lookup fails.
+	orig, err := svc.store.GetStatusByID(ctx, statusID)
+	if err != nil {
+		slog.WarnContext(ctx, "DeleteReblog: get original status for event", slog.Any("error", err), slog.String("status_id", statusID))
+	}
 	var originalStatusAPID string
 	if orig != nil {
 		originalStatusAPID = orig.APID
@@ -150,7 +172,10 @@ func (svc *statusInteractionService) DeleteReblog(ctx context.Context, accountID
 		if err := tx.DecrementReblogsCount(ctx, statusID); err != nil {
 			return fmt.Errorf("DecrementReblogsCount: %w", err)
 		}
-		fromAccount, _ := tx.GetAccountByID(ctx, accountID)
+		fromAccount, err := tx.GetAccountByID(ctx, accountID)
+		if err != nil {
+			slog.WarnContext(ctx, "DeleteReblog: get account for event", slog.Any("error", err))
+		}
 		var originalAuthorID string
 		if orig != nil {
 			originalAuthorID = orig.AccountID
@@ -203,13 +228,16 @@ func (svc *statusInteractionService) CreateFavourite(ctx context.Context, accoun
 		if txErr = tx.IncrementFavouritesCount(ctx, statusID); txErr != nil {
 			return fmt.Errorf("IncrementFavouritesCount: %w", txErr)
 		}
+		// Best-effort enrichment: these accounts are known to exist, so failures
+		// indicate a transient DB issue. We log and continue rather than failing
+		// the TX over event payload enrichment.
 		favouriterAccount, txErr := tx.GetAccountByID(ctx, accountID)
 		if txErr != nil {
-			return fmt.Errorf("GetAccountByID(favouriter): %w", txErr)
+			slog.WarnContext(ctx, "CreateFavourite: get favouriter account for event", slog.Any("error", txErr))
 		}
 		statusAuthor, txErr := tx.GetAccountByID(ctx, st.AccountID)
 		if txErr != nil {
-			return fmt.Errorf("GetAccountByID(author): %w", txErr)
+			slog.WarnContext(ctx, "CreateFavourite: get status author for event", slog.Any("error", txErr))
 		}
 		return events.EmitEvent(ctx, tx, domain.EventFavouriteCreated, "favourite", statusID, domain.FavouriteCreatedPayload{
 			AccountID:      accountID,
@@ -232,7 +260,12 @@ func (svc *statusInteractionService) CreateFavourite(ctx context.Context, accoun
 
 // DeleteFavourite removes the viewer's favourite. Returns the status with favourited false.
 func (svc *statusInteractionService) DeleteFavourite(ctx context.Context, accountID, statusID string) (EnrichedStatus, error) {
-	st, _ := svc.store.GetStatusByID(ctx, statusID)
+	// Best-effort enrichment: the status enriches the delete event payload.
+	// The unfavourite still proceeds if this lookup fails.
+	st, err := svc.store.GetStatusByID(ctx, statusID)
+	if err != nil {
+		slog.WarnContext(ctx, "DeleteFavourite: get status for event", slog.Any("error", err), slog.String("status_id", statusID))
+	}
 	var statusAPID, statusAuthorID string
 	if st != nil {
 		statusAuthorID = st.AccountID
@@ -244,17 +277,24 @@ func (svc *statusInteractionService) DeleteFavourite(ctx context.Context, accoun
 			statusAPID = fmt.Sprintf("%s/statuses/%s", svc.instanceBaseURL, st.ID)
 		}
 	}
-	err := svc.store.WithTx(ctx, func(tx store.Store) error {
+	err = svc.store.WithTx(ctx, func(tx store.Store) error {
 		if err := tx.DeleteFavourite(ctx, accountID, statusID); err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return fmt.Errorf("DeleteFavourite: %w", err)
 		}
 		if err := tx.DecrementFavouritesCount(ctx, statusID); err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return fmt.Errorf("DecrementFavouritesCount: %w", err)
 		}
-		fromAccount, _ := tx.GetAccountByID(ctx, accountID)
+		// Best-effort enrichment for event payload.
+		fromAccount, txErr := tx.GetAccountByID(ctx, accountID)
+		if txErr != nil {
+			slog.WarnContext(ctx, "DeleteFavourite: get account for event", slog.Any("error", txErr))
+		}
 		var statusAuthor *domain.Account
 		if statusAuthorID != "" {
-			statusAuthor, _ = tx.GetAccountByID(ctx, statusAuthorID)
+			statusAuthor, txErr = tx.GetAccountByID(ctx, statusAuthorID)
+			if txErr != nil {
+				slog.WarnContext(ctx, "DeleteFavourite: get status author for event", slog.Any("error", txErr))
+			}
 		}
 		return events.EmitEvent(ctx, tx, domain.EventFavouriteRemoved, "favourite", statusID, domain.FavouriteRemovedPayload{
 			AccountID:      accountID,
