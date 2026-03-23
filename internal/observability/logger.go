@@ -1,11 +1,14 @@
 package observability
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -123,6 +126,19 @@ type responseRecorder struct {
 func (r *responseRecorder) WriteHeader(code int) {
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
+}
+
+// Hijack implements http.Hijacker so that WebSocket upgrades work through this wrapper.
+func (r *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("responseRecorder: underlying ResponseWriter does not implement http.Hijacker")
+	}
+	conn, rw, err := h.Hijack()
+	if err != nil {
+		return nil, nil, fmt.Errorf("responseRecorder: hijack: %w", err)
+	}
+	return conn, rw, nil
 }
 
 // RequestIDFromContext retrieves the request ID that was added to the context by the RequestIDMiddleware.

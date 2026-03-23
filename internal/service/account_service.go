@@ -282,7 +282,7 @@ func (svc *accountService) CreateOrUpdateRemoteAccount(ctx context.Context, in C
 	// Check if the account already exists.
 	existing, err := svc.store.GetAccountByAPID(ctx, in.APID)
 	if err == nil {
-		if existing.Domain == nil {
+		if existing.IsLocal() {
 			return nil, fmt.Errorf("CreateOrUpdateRemoteAccount: cannot update local account: %w", domain.ErrForbidden)
 		}
 		fields := in.Fields
@@ -371,7 +371,7 @@ func (svc *accountService) SuspendRemote(ctx context.Context, accountID string) 
 	if err != nil {
 		return fmt.Errorf("SuspendRemote(%s): %w", accountID, err)
 	}
-	if acc.Domain == nil {
+	if acc.IsLocal() {
 		return fmt.Errorf("SuspendRemote(%s): %w", accountID, domain.ErrForbidden)
 	}
 	if err := svc.store.SuspendAccount(ctx, accountID); err != nil {
@@ -387,7 +387,7 @@ func (svc *accountService) SetRemotePins(ctx context.Context, accountID string, 
 	if err != nil {
 		return fmt.Errorf("SetRemotePins(%s): %w", accountID, err)
 	}
-	if acc.Domain == nil {
+	if acc.IsLocal() {
 		return fmt.Errorf("SetRemotePins(%s): %w", accountID, domain.ErrForbidden)
 	}
 	if err := svc.store.ReplaceAccountPins(ctx, accountID, statusIDs); err != nil {
@@ -575,6 +575,7 @@ func (svc *accountService) UpdateCredentials(ctx context.Context, in UpdateCrede
 	}
 	_ = events.EmitEvent(ctx, svc.store, domain.EventAccountUpdated, "account", updated.ID, domain.AccountUpdatedPayload{
 		Account: updated,
+		Local:   updated.IsLocal(),
 	})
 	return updated, user, nil
 }

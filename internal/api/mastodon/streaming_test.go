@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -83,11 +84,24 @@ func TestStreamingHandler_GETHashtag_EmptyTagAfterTrim_Returns400(t *testing.T) 
 }
 
 // flusherRecorder wraps ResponseRecorder to implement http.Flusher for SSE tests.
+// flushed is closed the first time Flush is called, allowing tests to synchronize
+// on the handler having written its initial response rather than using time.Sleep.
 type flusherRecorder struct {
 	*httptest.ResponseRecorder
+	once    sync.Once
+	flushed chan struct{}
 }
 
-func (f *flusherRecorder) Flush() {}
+func newFlusherRecorder() *flusherRecorder {
+	return &flusherRecorder{
+		ResponseRecorder: httptest.NewRecorder(),
+		flushed:          make(chan struct{}),
+	}
+}
+
+func (f *flusherRecorder) Flush() {
+	f.once.Do(func() { close(f.flushed) })
+}
 
 func TestStreamingHandler_GETUser_HappyPath_returns200AndSSEHeaders(t *testing.T) {
 	t.Parallel()
@@ -108,13 +122,17 @@ func TestStreamingHandler_GETUser_HappyPath_returns200AndSSEHeaders(t *testing.T
 	ctx, cancel := context.WithCancel(context.Background())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/streaming/user", nil).WithContext(ctx)
 	req = req.WithContext(middleware.WithAccount(req.Context(), acc))
-	rec := &flusherRecorder{ResponseRecorder: httptest.NewRecorder()}
+	rec := newFlusherRecorder()
 	done := make(chan struct{})
 	go func() {
 		h.GETUser(rec, req)
 		close(done)
 	}()
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-rec.flushed:
+	case <-time.After(time.Second):
+		t.Fatal("handler never flushed")
+	}
 	cancel()
 	<-done
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -131,13 +149,17 @@ func TestStreamingHandler_GETPublic_returns200AndSSEHeaders(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/streaming/public", nil).WithContext(ctx)
-	rec := &flusherRecorder{ResponseRecorder: httptest.NewRecorder()}
+	rec := newFlusherRecorder()
 	done := make(chan struct{})
 	go func() {
 		h.GETPublic(rec, req)
 		close(done)
 	}()
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-rec.flushed:
+	case <-time.After(time.Second):
+		t.Fatal("handler never flushed")
+	}
 	cancel()
 	<-done
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -153,13 +175,17 @@ func TestStreamingHandler_GETHashtag_validTag_returns200AndSSEHeaders(t *testing
 
 	ctx, cancel := context.WithCancel(context.Background())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/streaming/hashtag?tag=go", nil).WithContext(ctx)
-	rec := &flusherRecorder{ResponseRecorder: httptest.NewRecorder()}
+	rec := newFlusherRecorder()
 	done := make(chan struct{})
 	go func() {
 		h.GETHashtag(rec, req)
 		close(done)
 	}()
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-rec.flushed:
+	case <-time.After(time.Second):
+		t.Fatal("handler never flushed")
+	}
 	cancel()
 	<-done
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -270,13 +296,17 @@ func TestStreamingHandler_GETList_HappyPath_returns200AndSSEHeaders(t *testing.T
 	ctx, cancel := context.WithCancel(context.Background())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/streaming/list?list="+l.ID, nil).WithContext(ctx)
 	req = req.WithContext(middleware.WithAccount(req.Context(), acc))
-	rec := &flusherRecorder{ResponseRecorder: httptest.NewRecorder()}
+	rec := newFlusherRecorder()
 	done := make(chan struct{})
 	go func() {
 		h.GETList(rec, req)
 		close(done)
 	}()
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-rec.flushed:
+	case <-time.After(time.Second):
+		t.Fatal("handler never flushed")
+	}
 	cancel()
 	<-done
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -317,13 +347,17 @@ func TestStreamingHandler_GETDirect_HappyPath_returns200AndSSEHeaders(t *testing
 	ctx, cancel := context.WithCancel(context.Background())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/streaming/direct", nil).WithContext(ctx)
 	req = req.WithContext(middleware.WithAccount(req.Context(), acc))
-	rec := &flusherRecorder{ResponseRecorder: httptest.NewRecorder()}
+	rec := newFlusherRecorder()
 	done := make(chan struct{})
 	go func() {
 		h.GETDirect(rec, req)
 		close(done)
 	}()
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-rec.flushed:
+	case <-time.After(time.Second):
+		t.Fatal("handler never flushed")
+	}
 	cancel()
 	<-done
 	assert.Equal(t, http.StatusOK, rec.Code)

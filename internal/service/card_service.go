@@ -211,7 +211,9 @@ func extractFirstURL(htmlContent string) string {
 	walk = func(n *html.Node) bool {
 		if n.Type == html.ElementNode && n.Data == "a" {
 			cls := attrVal(n, "class")
-			if strings.Contains(cls, "mention") || strings.Contains(cls, "hashtag") {
+			rel := attrVal(n, "rel")
+			if strings.Contains(cls, "mention") || strings.Contains(cls, "hashtag") ||
+				strings.Contains(rel, "mention") || strings.Contains(rel, "tag") {
 				return false
 			}
 			href := attrVal(n, "href")

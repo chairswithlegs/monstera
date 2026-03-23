@@ -157,6 +157,7 @@ func (h *Hub) Subscribe(streamKey string) (<-chan SSEEvent, func()) {
 		defer h.mu.Unlock()
 
 		subs := h.subscribers[streamKey]
+		found := false
 		for i, s := range subs {
 			if s == sub {
 				subs[i] = subs[len(subs)-1]
@@ -164,8 +165,13 @@ func (h *Hub) Subscribe(streamKey string) (<-chan SSEEvent, func()) {
 				if len(h.subscribers[streamKey]) == 0 {
 					delete(h.subscribers, streamKey)
 				}
+				found = true
 				break
 			}
+		}
+		if !found {
+			// Already removed by teardown; channel is already closed.
+			return
 		}
 		close(sub.ch)
 
