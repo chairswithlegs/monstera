@@ -5,6 +5,12 @@ import (
 	"time"
 )
 
+// IsLocal reports whether the account belongs to this instance.
+func (a *Account) IsLocal() bool { return a.Domain == nil }
+
+// IsRemote reports whether the account belongs to a remote instance.
+func (a *Account) IsRemote() bool { return a.Domain != nil }
+
 // Account is the federated identity exposed via ActivityPub and the Mastodon API.
 type Account struct {
 	ID            string  // Internal ID for the account.

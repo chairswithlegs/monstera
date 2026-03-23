@@ -76,9 +76,9 @@ Follow these rules to prevent local/remote entity conflation bugs:
 
 1. **Guard service mutations** — Methods that only apply to remote entities must call `requireRemote(st.Local, "MethodName")` at the top. Methods that only apply to local entities should call `requireLocal(st.Local, "MethodName")` when the locality is determined by a caller-supplied input; if the method itself explicitly sets locality (e.g. `Local: true` in a create path), the guard is unnecessary.
 2. **`*Remote` naming convention** — Methods like `CreateRemote`, `DeleteRemote`, `CreateRemoteFollow` handle remote-originated operations. Both local and remote methods should emit domain events; it is up to consumers (e.g. the federation subscriber) to decide what actions to take based on locality.
-3. **Federation subscriber locality checks** — Handlers must check payload locality (`Author.Domain == nil` or `payload.Local`) before federating. Never federate remote-originated events.
+3. **Federation subscriber locality checks** — Handlers must check `payload.Local` (or `!payload.Local`) before federating. Never federate remote-originated events.
 4. **Inbox handlers use `*Remote` variants** — Inbox handlers must never call generic service methods. Use `*Remote` variants to avoid triggering outbound federation.
-5. **Check Domain, not InboxURL** — Use `account.Domain == nil` for local accounts and `status.Local` for local statuses. Never use `InboxURL == ""` or other proxy fields.
+5. **Use `IsLocal()`/`IsRemote()` helpers, not proxy fields** — Use `account.IsLocal()` / `account.IsRemote()` for accounts, and `status.IsLocal()` / `status.IsRemote()` for statuses. Never use `InboxURL == ""`, `Domain == nil`, or other proxy fields for locality checks.
 6. **Event payloads include locality** — Include `Local bool` where applicable so subscribers can filter correctly.
 
 ---

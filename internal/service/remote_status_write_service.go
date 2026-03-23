@@ -77,13 +77,6 @@ func NewRemoteStatusWriteService(s store.Store, c ConversationService, m MediaSe
 	}
 }
 
-func requireRemote(local bool, method string) error {
-	if local {
-		return fmt.Errorf("%s: %w", method, domain.ErrForbidden)
-	}
-	return nil
-}
-
 func (svc *remoteStatusWriteService) CreateRemote(ctx context.Context, in CreateRemoteStatusInput) (*domain.Status, error) {
 	// Pre-generate the ID so it's available to best-effort operations after the transaction.
 	// Use the original publish time for the ULID so backfilled statuses sort chronologically.
@@ -120,6 +113,7 @@ func (svc *remoteStatusWriteService) CreateRemote(ctx context.Context, in Create
 		return events.EmitEvent(ctx, tx, domain.EventStatusCreatedRemote, "status", st.ID, domain.StatusCreatedPayload{
 			Status: st,
 			Author: author,
+			Local:  st.IsLocal(),
 		})
 	})
 	if err != nil {
@@ -293,6 +287,7 @@ func (svc *remoteStatusWriteService) CreateRemoteReblog(ctx context.Context, in 
 		if txErr != nil {
 			slog.WarnContext(ctx, "CreateRemoteReblog: get original author for event", slog.Any("error", txErr), slog.String("account_id", original.AccountID))
 		}
+		localFromAccount := fromAccount != nil && fromAccount.IsLocal()
 		return events.EmitEvent(ctx, tx, domain.EventReblogCreated, "status", reblogID, domain.ReblogCreatedPayload{
 			AccountID:          in.AccountID,
 			ReblogStatusID:     reblogID,
@@ -301,6 +296,7 @@ func (svc *remoteStatusWriteService) CreateRemoteReblog(ctx context.Context, in 
 			FromAccount:        fromAccount,
 			OriginalAuthor:     originalAuthor,
 			OriginalStatusAPID: originalStatusAPID,
+			Local:              localFromAccount,
 		})
 	}); err != nil {
 		return nil, fmt.Errorf("CreateRemoteReblog: %w", err)
@@ -345,6 +341,7 @@ func (svc *remoteStatusWriteService) UpdateRemote(ctx context.Context, statusID 
 	if emitErr := events.EmitEvent(ctx, svc.store, domain.EventStatusUpdatedRemote, "status", statusID, domain.StatusUpdatedPayload{
 		Status: updated,
 		Author: author,
+		Local:  updated.IsLocal(),
 	}); emitErr != nil {
 		slog.WarnContext(ctx, "UpdateRemote: EmitEvent failed", slog.String("status_id", statusID), slog.Any("error", emitErr))
 	}
@@ -397,6 +394,7 @@ func (svc *remoteStatusWriteService) CreateRemoteFavourite(ctx context.Context, 
 				slog.WarnContext(ctx, "CreateRemoteFavourite: get status author for event", slog.Any("error", txErr), slog.String("account_id", statusAuthorID))
 			}
 		}
+		localFromAccount := fromAccount != nil && fromAccount.IsLocal()
 		return events.EmitEvent(ctx, tx, domain.EventFavouriteCreated, "favourite", statusID, domain.FavouriteCreatedPayload{
 			AccountID:      accountID,
 			StatusID:       statusID,
@@ -404,6 +402,7 @@ func (svc *remoteStatusWriteService) CreateRemoteFavourite(ctx context.Context, 
 			FromAccount:    fromAccount,
 			StatusAuthor:   statusAuthor,
 			StatusAPID:     statusAPID,
+			Local:          localFromAccount,
 		})
 	}); err != nil {
 		return nil, fmt.Errorf("CreateRemoteFavourite: %w", err)
@@ -448,6 +447,7 @@ func (svc *remoteStatusWriteService) DeleteRemoteReblog(ctx context.Context, acc
 		if err != nil {
 			slog.WarnContext(ctx, "DeleteRemoteReblog: get account", slog.Any("error", err), slog.String("account_id", accountID))
 		}
+		localFromAccount := fromAccount != nil && fromAccount.IsLocal()
 		return events.EmitEvent(ctx, tx, domain.EventReblogRemoved, "status", reblog.ID, domain.ReblogRemovedPayload{
 			AccountID:          accountID,
 			ReblogStatusID:     reblog.ID,
@@ -455,6 +455,7 @@ func (svc *remoteStatusWriteService) DeleteRemoteReblog(ctx context.Context, acc
 			OriginalAuthorID:   originalAuthorID,
 			FromAccount:        fromAccount,
 			OriginalStatusAPID: originalStatusAPID,
+			Local:              localFromAccount,
 		})
 	}); err != nil {
 		return fmt.Errorf("DeleteRemoteReblog: %w", err)
@@ -499,6 +500,7 @@ func (svc *remoteStatusWriteService) DeleteRemoteFavourite(ctx context.Context, 
 				slog.WarnContext(ctx, "DeleteRemoteFavourite: get status author for event", slog.Any("error", txErr), slog.String("account_id", statusAuthorID))
 			}
 		}
+		localFromAccount := fromAccount != nil && fromAccount.IsLocal()
 		return events.EmitEvent(ctx, tx, domain.EventFavouriteRemoved, "favourite", statusID, domain.FavouriteRemovedPayload{
 			AccountID:      accountID,
 			StatusID:       statusID,
@@ -506,6 +508,7 @@ func (svc *remoteStatusWriteService) DeleteRemoteFavourite(ctx context.Context, 
 			FromAccount:    fromAccount,
 			StatusAuthor:   statusAuthor,
 			StatusAPID:     statusAPID,
+			Local:          localFromAccount,
 		})
 	}); err != nil {
 		return fmt.Errorf("DeleteRemoteFavourite: %w", err)

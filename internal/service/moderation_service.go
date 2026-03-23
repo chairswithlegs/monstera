@@ -87,7 +87,7 @@ func (svc *moderationService) SuspendAccount(ctx context.Context, moderatorID, t
 	if err != nil {
 		return fmt.Errorf("GetAccountByID(%s): %w", targetID, err)
 	}
-	if acc.Domain != nil {
+	if acc.IsRemote() {
 		return fmt.Errorf("SuspendAccount: cannot suspend remote account, use domain blocks: %w", domain.ErrForbidden)
 	}
 	if err := svc.store.SuspendAccount(ctx, targetID); err != nil {
@@ -116,7 +116,7 @@ func (svc *moderationService) SilenceAccount(ctx context.Context, moderatorID, t
 	if err != nil {
 		return fmt.Errorf("GetAccountByID(%s): %w", targetID, err)
 	}
-	if acc.Domain != nil {
+	if acc.IsRemote() {
 		return fmt.Errorf("SilenceAccount: cannot silence remote account, use domain blocks: %w", domain.ErrForbidden)
 	}
 	if err := svc.store.SilenceAccount(ctx, targetID); err != nil {

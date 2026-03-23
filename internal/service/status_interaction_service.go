@@ -117,6 +117,7 @@ func (svc *statusInteractionService) CreateReblog(ctx context.Context, accountID
 		if originalStatusAPID == "" {
 			originalStatusAPID = fmt.Sprintf("%s/statuses/%s", svc.instanceBaseURL, orig.ID)
 		}
+		localFromAccount := rebloggerAccount != nil && rebloggerAccount.IsLocal()
 		return events.EmitEvent(ctx, tx, domain.EventReblogCreated, "status", reblogID, domain.ReblogCreatedPayload{
 			AccountID:          accountID,
 			ReblogStatusID:     reblogID,
@@ -125,6 +126,7 @@ func (svc *statusInteractionService) CreateReblog(ctx context.Context, accountID
 			FromAccount:        rebloggerAccount,
 			OriginalAuthor:     originalAuthor,
 			OriginalStatusAPID: originalStatusAPID,
+			Local:              localFromAccount,
 		})
 	})
 	if err != nil {
@@ -180,6 +182,7 @@ func (svc *statusInteractionService) DeleteReblog(ctx context.Context, accountID
 		if orig != nil {
 			originalAuthorID = orig.AccountID
 		}
+		localFromAccount := fromAccount != nil && fromAccount.IsLocal()
 		return events.EmitEvent(ctx, tx, domain.EventReblogRemoved, "status", reblog.ID, domain.ReblogRemovedPayload{
 			AccountID:          accountID,
 			ReblogStatusID:     reblog.ID,
@@ -187,6 +190,7 @@ func (svc *statusInteractionService) DeleteReblog(ctx context.Context, accountID
 			OriginalAuthorID:   originalAuthorID,
 			FromAccount:        fromAccount,
 			OriginalStatusAPID: originalStatusAPID,
+			Local:              localFromAccount,
 		})
 	}); err != nil {
 		return fmt.Errorf("DeleteReblog: %w", err)
@@ -239,6 +243,7 @@ func (svc *statusInteractionService) CreateFavourite(ctx context.Context, accoun
 		if txErr != nil {
 			slog.WarnContext(ctx, "CreateFavourite: get status author for event", slog.Any("error", txErr))
 		}
+		localFromAccount := favouriterAccount != nil && favouriterAccount.IsLocal()
 		return events.EmitEvent(ctx, tx, domain.EventFavouriteCreated, "favourite", statusID, domain.FavouriteCreatedPayload{
 			AccountID:      accountID,
 			StatusID:       statusID,
@@ -246,6 +251,7 @@ func (svc *statusInteractionService) CreateFavourite(ctx context.Context, accoun
 			FromAccount:    favouriterAccount,
 			StatusAuthor:   statusAuthor,
 			StatusAPID:     statusAPID,
+			Local:          localFromAccount,
 		})
 	})
 	if err != nil {
@@ -296,6 +302,7 @@ func (svc *statusInteractionService) DeleteFavourite(ctx context.Context, accoun
 				slog.WarnContext(ctx, "DeleteFavourite: get status author for event", slog.Any("error", txErr))
 			}
 		}
+		localFromAccount := fromAccount != nil && fromAccount.IsLocal()
 		return events.EmitEvent(ctx, tx, domain.EventFavouriteRemoved, "favourite", statusID, domain.FavouriteRemovedPayload{
 			AccountID:      accountID,
 			StatusID:       statusID,
@@ -303,6 +310,7 @@ func (svc *statusInteractionService) DeleteFavourite(ctx context.Context, accoun
 			FromAccount:    fromAccount,
 			StatusAuthor:   statusAuthor,
 			StatusAPID:     statusAPID,
+			Local:          localFromAccount,
 		})
 	})
 	if err != nil {

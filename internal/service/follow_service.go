@@ -116,6 +116,7 @@ func (svc *followService) Follow(ctx context.Context, actorAccountID, targetAcco
 			Follow: follow,
 			Actor:  actor,
 			Target: target,
+			Local:  actor.IsLocal(),
 		})
 	})
 	if err != nil {
@@ -166,6 +167,7 @@ func (svc *followService) Unfollow(ctx context.Context, actorAccountID, targetAc
 			FollowID: follow.ID,
 			Actor:    actor,
 			Target:   target,
+			Local:    actor.IsLocal(),
 		})
 	})
 	if err != nil {
@@ -243,6 +245,7 @@ func (svc *followService) Block(ctx context.Context, actorAccountID, targetAccou
 		return events.EmitEvent(ctx, tx, domain.EventBlockCreated, "block", actorAccountID+":"+targetAccountID, domain.BlockCreatedPayload{
 			Actor:  actor,
 			Target: target,
+			Local:  actor.IsLocal(),
 		})
 	})
 	if err != nil {
@@ -272,6 +275,7 @@ func (svc *followService) Unblock(ctx context.Context, actorAccountID, targetAcc
 		return events.EmitEvent(ctx, tx, domain.EventBlockRemoved, "block", actorAccountID+":"+targetAccountID, domain.BlockRemovedPayload{
 			Actor:  actor,
 			Target: target,
+			Local:  actor.IsLocal(),
 		})
 	})
 	if err != nil {

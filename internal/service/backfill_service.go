@@ -44,7 +44,7 @@ func (svc *backfillService) RequestBackfill(ctx context.Context, accountID strin
 	}
 
 	// Only backfill remote accounts.
-	if account.Domain == nil {
+	if account.IsLocal() {
 		return nil
 	}
 
