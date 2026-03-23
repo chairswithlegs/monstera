@@ -8,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.10
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.96.1
 	github.com/buckket/go-blurhash v1.1.0
+	github.com/coder/websocket v1.8.14
 	github.com/dgraph-io/ristretto/v2 v2.4.0
 	github.com/disintegration/imaging v1.6.2
 	github.com/go-chi/chi/v5 v5.2.5

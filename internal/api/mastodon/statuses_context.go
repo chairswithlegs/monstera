@@ -39,7 +39,7 @@ func (h *StatusesHandler) GETContext(w http.ResponseWriter, r *http.Request) {
 	}
 	ancestors := make([]apimodel.Status, 0, len(enrichedAncestors))
 	for i := range enrichedAncestors {
-		ancestors = append(ancestors, enrichedStatusToAPIModel(enrichedAncestors[i], h.instanceDomain))
+		ancestors = append(ancestors, apimodel.StatusFromEnriched(enrichedAncestors[i], h.instanceDomain))
 	}
 	descendantIDs := make([]string, len(ctxResult.Descendants))
 	for i := range ctxResult.Descendants {
@@ -52,7 +52,7 @@ func (h *StatusesHandler) GETContext(w http.ResponseWriter, r *http.Request) {
 	}
 	descendants := make([]apimodel.Status, 0, len(enrichedDescendants))
 	for i := range enrichedDescendants {
-		descendants = append(descendants, enrichedStatusToAPIModel(enrichedDescendants[i], h.instanceDomain))
+		descendants = append(descendants, apimodel.StatusFromEnriched(enrichedDescendants[i], h.instanceDomain))
 	}
 	api.WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"ancestors":   ancestors,
@@ -92,7 +92,7 @@ func (h *StatusesHandler) GETQuotes(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]apimodel.Status, 0, len(enriched))
 	for i := range enriched {
-		s := enrichedStatusToAPIModel(enriched[i], h.instanceDomain)
+		s := apimodel.StatusFromEnriched(enriched[i], h.instanceDomain)
 		h.setQuoteApprovalOnStatus(r.Context(), enriched[i], &s, &account.ID)
 		out = append(out, s)
 	}

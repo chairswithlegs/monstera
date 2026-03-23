@@ -115,51 +115,37 @@ func ToDomainList(l db.List) domain.List {
 	}
 }
 
-// applyAccountMediaURLs sets AvatarURL and HeaderURL on acc from the LEFT-JOINed media rows.
-// Both parameters are *string because the JOIN produces NULL when no media record exists.
-func applyAccountMediaURLs(acc *domain.Account, avatarURL, headerURL *string) {
-	if avatarURL != nil {
-		acc.AvatarURL = *avatarURL
-	}
-	if headerURL != nil {
-		acc.HeaderURL = *headerURL
-	}
-}
-
-// rowWithURLsToDomainAccount converts a db.Account plus LEFT-JOINed URL fields to domain.Account.
-func rowWithURLsToDomainAccount(base db.Account, avatarURL, headerURL *string) domain.Account {
-	acc := ToDomainAccount(base)
-	applyAccountMediaURLs(&acc, avatarURL, headerURL)
-	return acc
-}
-
 // ToDomainAccount converts a sqlc db.Account to a domain.Account.
 func ToDomainAccount(a db.Account) domain.Account {
 	d := domain.Account{
-		ID:             a.ID,
-		Username:       a.Username,
-		Domain:         a.Domain,
-		DisplayName:    a.DisplayName,
-		Note:           a.Note,
-		AvatarMediaID:  a.AvatarMediaID,
-		HeaderMediaID:  a.HeaderMediaID,
-		PublicKey:      a.PublicKey,
-		PrivateKey:     a.PrivateKey,
-		InboxURL:       a.InboxUrl,
-		OutboxURL:      a.OutboxUrl,
-		FollowersURL:   a.FollowersUrl,
-		FollowingURL:   a.FollowingUrl,
-		APID:           a.ApID,
-		ProfileURL:     ptrToString(a.Url),
-		FollowersCount: int(a.FollowersCount),
-		FollowingCount: int(a.FollowingCount),
-		StatusesCount:  int(a.StatusesCount),
-		Bot:            a.Bot,
-		Locked:         a.Locked,
-		Suspended:      a.Suspended,
-		Silenced:       a.Silenced,
-		CreatedAt:      pgTime(a.CreatedAt),
-		UpdatedAt:      pgTime(a.UpdatedAt),
+		ID:               a.ID,
+		Username:         a.Username,
+		Domain:           a.Domain,
+		DisplayName:      a.DisplayName,
+		Note:             a.Note,
+		AvatarMediaID:    a.AvatarMediaID,
+		HeaderMediaID:    a.HeaderMediaID,
+		AvatarURL:        a.AvatarUrl,
+		HeaderURL:        a.HeaderUrl,
+		PublicKey:        a.PublicKey,
+		PrivateKey:       a.PrivateKey,
+		InboxURL:         a.InboxUrl,
+		OutboxURL:        a.OutboxUrl,
+		FollowersURL:     a.FollowersUrl,
+		FollowingURL:     a.FollowingUrl,
+		APID:             a.ApID,
+		ProfileURL:       ptrToString(a.Url),
+		FeaturedURL:      a.FeaturedUrl,
+		FollowersCount:   int(a.FollowersCount),
+		FollowingCount:   int(a.FollowingCount),
+		StatusesCount:    int(a.StatusesCount),
+		Bot:              a.Bot,
+		Locked:           a.Locked,
+		Suspended:        a.Suspended,
+		Silenced:         a.Silenced,
+		LastBackfilledAt: pgTimePtr(a.LastBackfilledAt),
+		CreatedAt:        pgTime(a.CreatedAt),
+		UpdatedAt:        pgTime(a.UpdatedAt),
 	}
 	if len(a.Fields) > 0 {
 		d.Fields = json.RawMessage(a.Fields)
@@ -169,22 +155,22 @@ func ToDomainAccount(a db.Account) domain.Account {
 
 // MutedAccountRowToDomainAccount converts ListMutedAccountsPaginatedRow to domain.Account.
 func MutedAccountRowToDomainAccount(r db.ListMutedAccountsPaginatedRow) domain.Account {
-	return rowWithURLsToDomainAccount(r.Account, r.AvatarUrl, r.HeaderUrl)
+	return ToDomainAccount(r.Account)
 }
 
 // RebloggedByRowToDomainAccount converts GetRebloggedByRow to domain.Account.
 func RebloggedByRowToDomainAccount(r db.GetRebloggedByRow) domain.Account {
-	return rowWithURLsToDomainAccount(r.Account, r.AvatarUrl, r.HeaderUrl)
+	return ToDomainAccount(r.Account)
 }
 
 // BlockedAccountRowToDomainAccount converts ListBlockedAccountsPaginatedRow to domain.Account.
 func BlockedAccountRowToDomainAccount(r db.ListBlockedAccountsPaginatedRow) domain.Account {
-	return rowWithURLsToDomainAccount(r.Account, r.AvatarUrl, r.HeaderUrl)
+	return ToDomainAccount(r.Account)
 }
 
 // PendingFollowRequestRowToDomainAccount converts GetPendingFollowRequestsPaginatedRow to domain.Account.
 func PendingFollowRequestRowToDomainAccount(r db.GetPendingFollowRequestsPaginatedRow) domain.Account {
-	return rowWithURLsToDomainAccount(r.Account, r.AvatarUrl, r.HeaderUrl)
+	return ToDomainAccount(r.Account)
 }
 
 // ToDomainStatus converts a sqlc db.Status to a domain.Status.

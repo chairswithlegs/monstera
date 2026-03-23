@@ -17,7 +17,7 @@ services:
           - monstera2.local
 
   elk:
-    image: ghcr.io/elk-zone/elk:latest
+    image: ghcr.io/elk-zone/elk:v0.17.3
     user: "0:0"  # run as root so we can read Caddy's root-owned cert in caddy_data
     ports:
       - "5314:5314"

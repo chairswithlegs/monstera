@@ -10,6 +10,7 @@ import (
 
 	"github.com/chairswithlegs/monstera/internal/api"
 	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/microcosm-cc/bluemonday"
 )
 
@@ -349,4 +350,73 @@ func ParseCreateStatusRequest(r *http.Request) (CreateStatusRequest, error) {
 		return CreateStatusRequest{}, api.NewUnprocessableError(err.Error())
 	}
 	return req, nil
+}
+
+// StatusFromEnriched converts a service.EnrichedStatus to the Mastodon API Status model.
+func StatusFromEnriched(result service.EnrichedStatus, instanceDomain string) Status {
+	authorAcc := ToAccount(result.Author, instanceDomain)
+	mentionsResp := make([]Mention, 0, len(result.Mentions))
+	for _, a := range result.Mentions {
+		mentionsResp = append(mentionsResp, MentionFromAccount(a, instanceDomain))
+	}
+	tagsResp := make([]Tag, 0, len(result.Tags))
+	for _, t := range result.Tags {
+		tagsResp = append(tagsResp, TagFromName(t.Name, instanceDomain))
+	}
+	mediaResp := make([]MediaAttachment, 0, len(result.Media))
+	for i := range result.Media {
+		mediaResp = append(mediaResp, MediaFromDomain(&result.Media[i]))
+	}
+	out := ToStatus(result.Status, authorAcc, mentionsResp, tagsResp, mediaResp, result.Card, instanceDomain)
+	if result.Poll != nil {
+		p := PollFromEnriched(result.Poll)
+		out.Poll = &p
+	}
+	out.Favourited = result.Favourited
+	out.Reblogged = result.Reblogged
+	out.Bookmarked = result.Bookmarked
+	out.Pinned = result.Pinned
+	out.Muted = result.Muted
+	if result.ReblogOf != nil {
+		reblogAPI := StatusFromEnriched(*result.ReblogOf, instanceDomain)
+		out.Reblog = &reblogAPI
+	}
+	return out
+}
+
+// StatusesFromEnriched converts a slice of EnrichedStatus to API Status models.
+func StatusesFromEnriched(enriched []service.EnrichedStatus, instanceDomain string) []Status {
+	out := make([]Status, 0, len(enriched))
+	for i := range enriched {
+		out = append(out, StatusFromEnriched(enriched[i], instanceDomain))
+	}
+	return out
+}
+
+// PollFromEnriched converts a service.EnrichedPoll to the Mastodon API Poll model.
+func PollFromEnriched(p *service.EnrichedPoll) Poll {
+	var expiresAt *string
+	if p.Poll.ExpiresAt != nil {
+		s := p.Poll.ExpiresAt.UTC().Format(time.RFC3339)
+		expiresAt = &s
+	}
+	expired := p.Poll.ExpiresAt != nil && p.Poll.ExpiresAt.Before(time.Now())
+	options := make([]PollOption, 0, len(p.Options))
+	var votesCount int
+	for _, o := range p.Options {
+		votesCount += o.VotesCount
+		options = append(options, PollOption{Title: o.Title, VotesCount: o.VotesCount})
+	}
+	return Poll{
+		ID:          p.Poll.ID,
+		ExpiresAt:   expiresAt,
+		Expired:     expired,
+		Multiple:    p.Poll.Multiple,
+		VotesCount:  votesCount,
+		VotersCount: nil,
+		Voted:       p.Voted,
+		OwnVotes:    p.OwnVotes,
+		Options:     options,
+		Emojis:      []any{},
+	}
 }

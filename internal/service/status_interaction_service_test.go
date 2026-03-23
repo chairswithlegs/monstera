@@ -56,10 +56,15 @@ func TestStatusInteractionService_CreateReblog(t *testing.T) {
 		assert.Equal(t, 1, st.ReblogsCount)
 	})
 
-	t.Run("duplicate reblog returns ErrConflict", func(t *testing.T) {
-		_, err := interactionSvc.CreateReblog(ctx, bob.ID, bob.Username, statusID)
-		require.Error(t, err)
-		assert.ErrorIs(t, err, domain.ErrConflict)
+	t.Run("duplicate reblog is idempotent", func(t *testing.T) {
+		enriched, err := interactionSvc.CreateReblog(ctx, bob.ID, bob.Username, statusID)
+		require.NoError(t, err)
+		require.NotNil(t, enriched.Status)
+		assert.Equal(t, &statusID, enriched.Status.ReblogOfID)
+		// Count must not increment again.
+		st, err := fake.GetStatusByID(ctx, statusID)
+		require.NoError(t, err)
+		assert.Equal(t, 1, st.ReblogsCount)
 	})
 
 	t.Run("nonexistent status returns ErrNotFound", func(t *testing.T) {

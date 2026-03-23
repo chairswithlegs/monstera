@@ -23,14 +23,17 @@ const (
 	StreamOutboxDeliveryDLQ = "ACTIVITYPUB_OUTBOUND_DELIVERY_DLQ"
 	StreamOutboxFanout      = "ACTIVITYPUB_OUTBOUND_FANOUT"
 	StreamOutboxFanoutDLQ   = "ACTIVITYPUB_OUTBOUND_FANOUT_DLQ"
+	StreamBackfill          = "BACKFILL"
 
 	consumerDelivery = "activitypub-outbound-delivery"
 	consumerFanout   = "activitypub-outbound-fanout"
+	ConsumerBackfill = "backfill-worker"
 )
 
 var (
 	deliveryRetries = []time.Duration{30 * time.Second, 5 * time.Minute, time.Hour}
 	fanoutRetries   = []time.Duration{5 * time.Minute}
+	backfillRetries = []time.Duration{time.Minute, 5 * time.Minute}
 )
 
 // StreamConfigs defines the JetStream streams and consumers for ActivityPub federation.
@@ -93,6 +96,27 @@ var StreamConfigs = []natsutil.StreamConfig{
 			Retention: jetstream.LimitsPolicy,
 			Storage:   jetstream.FileStorage,
 			MaxAge:    30 * 24 * time.Hour,
+		},
+	},
+	{
+		Stream: jetstream.StreamConfig{
+			Name:       StreamBackfill,
+			Subjects:   []string{"backfill.account.>"},
+			Retention:  jetstream.WorkQueuePolicy,
+			Storage:    jetstream.FileStorage,
+			MaxAge:     24 * time.Hour,
+			Discard:    jetstream.DiscardOld,
+			Duplicates: 6 * time.Hour,
+		},
+		Consumers: []jetstream.ConsumerConfig{
+			{
+				Durable:       ConsumerBackfill,
+				AckPolicy:     jetstream.AckExplicitPolicy,
+				MaxAckPending: 3,
+				AckWait:       120 * time.Second,
+				MaxDeliver:    len(backfillRetries),
+				BackOff:       backfillRetries,
+			},
 		},
 	},
 }

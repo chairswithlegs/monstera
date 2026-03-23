@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
+
+	"encoding/json"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,7 +32,8 @@ func TestRemoteStatusWriteService_CreateRemote_Success(t *testing.T) {
 
 	statusSvc := NewStatusService(st, "https://example.com", "example.com", 5000)
 	convSvc := NewConversationService(st, statusSvc)
-	svc := NewRemoteStatusWriteService(st, convSvc, "https://example.com")
+	mediaSvc := NewMediaService(st, nil, 0)
+	svc := NewRemoteStatusWriteService(st, convSvc, mediaSvc, "https://example.com")
 
 	in := CreateRemoteStatusInput{
 		AccountID:  acc.ID,
@@ -47,13 +51,47 @@ func TestRemoteStatusWriteService_CreateRemote_Success(t *testing.T) {
 	assert.False(t, st2.Local)
 }
 
+func TestRemoteStatusWriteService_CreateRemote_PreservesPublishedAt(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := NewAccountService(st, "https://example.com")
+	acc, err := accountSvc.Register(ctx, RegisterInput{
+		Username: "remote2",
+		Email:    "r2@example.com",
+		Password: "p",
+		Role:     domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	statusSvc := NewStatusService(st, "https://example.com", "example.com", 5000)
+	convSvc := NewConversationService(st, statusSvc)
+	mediaSvc := NewMediaService(st, nil, 0)
+	svc := NewRemoteStatusWriteService(st, convSvc, mediaSvc, "https://example.com")
+
+	published := time.Date(2023, 6, 15, 12, 0, 0, 0, time.UTC)
+	in := CreateRemoteStatusInput{
+		AccountID:   acc.ID,
+		URI:         "https://remote.example/statuses/old",
+		Content:     testutil.StrPtr("old post"),
+		Visibility:  domain.VisibilityPublic,
+		APID:        "https://remote.example/statuses/old",
+		PublishedAt: &published,
+	}
+	created, err := svc.CreateRemote(ctx, in)
+	require.NoError(t, err)
+	require.NotNil(t, created)
+	assert.Equal(t, published, created.CreatedAt, "CreatedAt should match the AP Note Published timestamp")
+}
+
 func TestRemoteStatusWriteService_DeleteRemote_NotFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	statusSvc := NewStatusService(st, "https://example.com", "example.com", 5000)
 	convSvc := NewConversationService(st, statusSvc)
-	svc := NewRemoteStatusWriteService(st, convSvc, "https://example.com")
+	mediaSvc := NewMediaService(st, nil, 0)
+	svc := NewRemoteStatusWriteService(st, convSvc, mediaSvc, "https://example.com")
 
 	err := svc.DeleteRemote(ctx, "01nonexistent-status-id")
 	require.Error(t, err)
@@ -89,11 +127,92 @@ func TestRemoteStatusWriteService_DeleteRemote_ForbiddenLocal(t *testing.T) {
 
 	statusSvc := NewStatusService(st, "https://example.com", "example.com", 5000)
 	convSvc := NewConversationService(st, statusSvc)
-	svc := NewRemoteStatusWriteService(st, convSvc, "https://example.com")
+	mediaSvc := NewMediaService(st, nil, 0)
+	svc := NewRemoteStatusWriteService(st, convSvc, mediaSvc, "https://example.com")
 
 	err = svc.DeleteRemote(ctx, localStatusID)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrForbidden)
+}
+
+func TestRemoteStatusWriteService_CreateRemote_DuplicateAPID(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := NewAccountService(st, "https://example.com")
+	acc, err := accountSvc.Register(ctx, RegisterInput{
+		Username: "remote3",
+		Email:    "r3@example.com",
+		Password: "p",
+		Role:     domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	statusSvc := NewStatusService(st, "https://example.com", "example.com", 5000)
+	convSvc := NewConversationService(st, statusSvc)
+	mediaSvc := NewMediaService(st, nil, 0)
+	svc := NewRemoteStatusWriteService(st, convSvc, mediaSvc, "https://example.com")
+
+	in := CreateRemoteStatusInput{
+		AccountID:  acc.ID,
+		URI:        "https://remote.example/statuses/dup",
+		Content:    testutil.StrPtr("hello"),
+		Visibility: domain.VisibilityPublic,
+		APID:       "https://remote.example/statuses/dup",
+	}
+	_, err = svc.CreateRemote(ctx, in)
+	require.NoError(t, err)
+
+	// Second call with the same ap_id should return ErrConflict.
+	_, err = svc.CreateRemote(ctx, in)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrConflict)
+}
+
+func TestRemoteStatusWriteService_CreateRemote_NoMediaOnConflict(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := NewAccountService(st, "https://example.com")
+	acc, err := accountSvc.Register(ctx, RegisterInput{
+		Username: "remote4",
+		Email:    "r4@example.com",
+		Password: "p",
+		Role:     domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	statusSvc := NewStatusService(st, "https://example.com", "example.com", 5000)
+	convSvc := NewConversationService(st, statusSvc)
+	mediaSvc := NewMediaService(st, nil, 0)
+	svc := NewRemoteStatusWriteService(st, convSvc, mediaSvc, "https://example.com")
+
+	attachment := CreateRemoteMediaInput{
+		AccountID: acc.ID,
+		RemoteURL: "https://remote.example/image.jpg",
+		MediaType: "image/jpeg",
+	}
+	in := CreateRemoteStatusInput{
+		AccountID:   acc.ID,
+		URI:         "https://remote.example/statuses/media",
+		Content:     testutil.StrPtr("post with media"),
+		Visibility:  domain.VisibilityPublic,
+		APID:        "https://remote.example/statuses/media",
+		Attachments: []CreateRemoteMediaInput{attachment},
+	}
+
+	// First call: status and media are created.
+	created, err := svc.CreateRemote(ctx, in)
+	require.NoError(t, err)
+	atts, err := st.GetStatusAttachments(ctx, created.ID)
+	require.NoError(t, err)
+	assert.Len(t, atts, 1, "media should be attached after successful create")
+
+	// Second call: ErrConflict — no additional media records should be created.
+	_, err = svc.CreateRemote(ctx, in)
+	require.ErrorIs(t, err, domain.ErrConflict)
+	atts2, _ := st.GetStatusAttachments(ctx, created.ID)
+	assert.Len(t, atts2, 1, "no extra media should be created when CreateStatus conflicts")
 }
 
 func TestRemoteStatusWriteService_CreateRemoteFavourite_Success(t *testing.T) {
@@ -112,7 +231,8 @@ func TestRemoteStatusWriteService_CreateRemoteFavourite_Success(t *testing.T) {
 
 	statusSvc := NewStatusService(st, "https://example.com", "example.com", 5000)
 	convSvc := NewConversationService(st, statusSvc)
-	svc := NewRemoteStatusWriteService(st, convSvc, "https://example.com")
+	mediaSvc := NewMediaService(st, nil, 0)
+	svc := NewRemoteStatusWriteService(st, convSvc, mediaSvc, "https://example.com")
 
 	in := CreateRemoteStatusInput{
 		AccountID:  acc.ID,
@@ -130,4 +250,132 @@ func TestRemoteStatusWriteService_CreateRemoteFavourite_Success(t *testing.T) {
 	require.NotNil(t, fav)
 	assert.Equal(t, acc.ID, fav.AccountID)
 	assert.Equal(t, st2.ID, fav.StatusID)
+}
+
+func TestRemoteStatusWriteService_DeleteRemoteReblog_EmitsEvent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fs := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fs, "https://example.com")
+	reblogger, err := accountSvc.Register(ctx, RegisterInput{
+		Username: "reblogger",
+		Email:    "rb@example.com",
+		Password: "p",
+		Role:     domain.RoleUser,
+	})
+	require.NoError(t, err)
+	author, err := accountSvc.Register(ctx, RegisterInput{
+		Username: "author",
+		Email:    "a@example.com",
+		Password: "p",
+		Role:     domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	statusSvc := NewStatusService(fs, "https://example.com", "example.com", 5000)
+	convSvc := NewConversationService(fs, statusSvc)
+	mediaSvc := NewMediaService(fs, nil, 0)
+	svc := NewRemoteStatusWriteService(fs, convSvc, mediaSvc, "https://example.com")
+
+	// Create the original status.
+	originalID := uid.New()
+	_, err = fs.CreateStatus(ctx, store.CreateStatusInput{
+		ID:                  originalID,
+		URI:                 "https://example.com/statuses/" + originalID,
+		AccountID:           author.ID,
+		Content:             testutil.StrPtr("original"),
+		Visibility:          domain.VisibilityPublic,
+		APID:                "https://example.com/statuses/" + originalID,
+		Local:               true,
+		QuoteApprovalPolicy: domain.QuotePolicyPublic,
+	})
+	require.NoError(t, err)
+
+	// Create a remote reblog of that status.
+	_, err = svc.CreateRemoteReblog(ctx, CreateRemoteReblogInput{
+		AccountID:        reblogger.ID,
+		ObjectStatusAPID: "https://example.com/statuses/" + originalID,
+		ActivityAPID:     "https://remote.example/activities/announce-1",
+	})
+	require.NoError(t, err)
+
+	// Clear events from create so we only see the delete event.
+	fs.OutboxEvents = nil
+
+	err = svc.DeleteRemoteReblog(ctx, reblogger.ID, originalID)
+	require.NoError(t, err)
+
+	require.Len(t, fs.OutboxEvents, 1)
+	ev := fs.OutboxEvents[0]
+	assert.Equal(t, domain.EventReblogRemoved, ev.EventType)
+	assert.Equal(t, "status", ev.AggregateType)
+
+	var payload domain.ReblogRemovedPayload
+	require.NoError(t, json.Unmarshal(ev.Payload, &payload))
+	assert.Equal(t, reblogger.ID, payload.AccountID)
+	assert.Equal(t, originalID, payload.OriginalStatusID)
+	assert.Equal(t, author.ID, payload.OriginalAuthorID)
+	assert.NotEmpty(t, payload.ReblogStatusID)
+}
+
+func TestRemoteStatusWriteService_DeleteRemoteFavourite_EmitsEvent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fs := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fs, "https://example.com")
+	favouriter, err := accountSvc.Register(ctx, RegisterInput{
+		Username: "favouriter",
+		Email:    "f@example.com",
+		Password: "p",
+		Role:     domain.RoleUser,
+	})
+	require.NoError(t, err)
+	author, err := accountSvc.Register(ctx, RegisterInput{
+		Username: "author2",
+		Email:    "a2@example.com",
+		Password: "p",
+		Role:     domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	statusSvc := NewStatusService(fs, "https://example.com", "example.com", 5000)
+	convSvc := NewConversationService(fs, statusSvc)
+	mediaSvc := NewMediaService(fs, nil, 0)
+	svc := NewRemoteStatusWriteService(fs, convSvc, mediaSvc, "https://example.com")
+
+	// Create a status.
+	statusID := uid.New()
+	_, err = fs.CreateStatus(ctx, store.CreateStatusInput{
+		ID:                  statusID,
+		URI:                 "https://example.com/statuses/" + statusID,
+		AccountID:           author.ID,
+		Content:             testutil.StrPtr("original"),
+		Visibility:          domain.VisibilityPublic,
+		APID:                "https://example.com/statuses/" + statusID,
+		Local:               true,
+		QuoteApprovalPolicy: domain.QuotePolicyPublic,
+	})
+	require.NoError(t, err)
+
+	// Create a remote favourite.
+	_, err = svc.CreateRemoteFavourite(ctx, favouriter.ID, statusID, nil)
+	require.NoError(t, err)
+
+	// Clear events from create.
+	fs.OutboxEvents = nil
+
+	err = svc.DeleteRemoteFavourite(ctx, favouriter.ID, statusID)
+	require.NoError(t, err)
+
+	require.Len(t, fs.OutboxEvents, 1)
+	ev := fs.OutboxEvents[0]
+	assert.Equal(t, domain.EventFavouriteRemoved, ev.EventType)
+	assert.Equal(t, "favourite", ev.AggregateType)
+	assert.Equal(t, statusID, ev.AggregateID)
+
+	var payload domain.FavouriteRemovedPayload
+	require.NoError(t, json.Unmarshal(ev.Payload, &payload))
+	assert.Equal(t, favouriter.ID, payload.AccountID)
+	assert.Equal(t, statusID, payload.StatusID)
+	assert.Equal(t, author.ID, payload.StatusAuthorID)
 }

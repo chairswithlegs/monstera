@@ -25,6 +25,10 @@ type AccountService interface {
 	Create(ctx context.Context, in CreateAccountInput) (*domain.Account, error)
 	CreateOrUpdateRemoteAccount(ctx context.Context, in CreateOrUpdateRemoteInput) (*domain.Account, error)
 	SuspendRemote(ctx context.Context, accountID string) error
+	// SetRemotePins replaces all pinned statuses for a remote account.
+	// Clears existing pins then creates one pin per statusID.
+	// Returns ErrForbidden if accountID refers to a local account.
+	SetRemotePins(ctx context.Context, accountID string, statusIDs []string) error
 	CountFollowers(ctx context.Context, accountID string) (int64, error)
 	CountFollowing(ctx context.Context, accountID string) (int64, error)
 	GetRelationship(ctx context.Context, accountID, targetID string) (*domain.Relationship, error)
@@ -263,6 +267,7 @@ type CreateOrUpdateRemoteInput struct {
 	SharedInboxURL string
 	AvatarURL      string
 	HeaderURL      string
+	FeaturedURL    string
 	URL            string
 	Fields         json.RawMessage
 	Bot            bool
@@ -277,7 +282,7 @@ func (svc *accountService) CreateOrUpdateRemoteAccount(ctx context.Context, in C
 	// Check if the account already exists.
 	existing, err := svc.store.GetAccountByAPID(ctx, in.APID)
 	if err == nil {
-		if existing.Domain == nil {
+		if existing.IsLocal() {
 			return nil, fmt.Errorf("CreateOrUpdateRemoteAccount: cannot update local account: %w", domain.ErrForbidden)
 		}
 		fields := in.Fields
@@ -307,11 +312,13 @@ func (svc *accountService) CreateOrUpdateRemoteAccount(ctx context.Context, in C
 				return nil, fmt.Errorf("CreateOrUpdateRemoteAccount UpdateAccountKeys: %w", err)
 			}
 		}
+		if err := svc.store.UpdateRemoteAccountMeta(ctx, existing.ID, in.AvatarURL, in.HeaderURL, in.FollowersCount, in.FollowingCount, in.StatusesCount, in.FeaturedURL); err != nil {
+			return nil, fmt.Errorf("CreateOrUpdateRemoteAccount UpdateRemoteAccountMeta: %w", err)
+		}
 		acc, getErr := svc.store.GetAccountByAPID(ctx, in.APID)
 		if getErr != nil {
 			return nil, fmt.Errorf("CreateOrUpdateRemoteAccount GetAccountByAPID after update: %w", getErr)
 		}
-		enrichRemoteAccountURLs(acc, in)
 		return acc, nil
 	}
 
@@ -329,39 +336,32 @@ func (svc *accountService) CreateOrUpdateRemoteAccount(ctx context.Context, in C
 		urlPtr = &in.URL
 	}
 	storeIn := store.CreateAccountInput{
-		ID:           uid.New(),
-		Username:     in.Username,
-		Domain:       &dom,
-		DisplayName:  in.DisplayName,
-		Note:         in.Note,
-		PublicKey:    in.PublicKey,
-		InboxURL:     in.InboxURL,
-		OutboxURL:    in.OutboxURL,
-		FollowersURL: in.FollowersURL,
-		FollowingURL: in.FollowingURL,
-		APID:         in.APID,
-		Bot:          in.Bot,
-		Locked:       in.Locked,
-		URL:          urlPtr,
+		ID:             uid.New(),
+		Username:       in.Username,
+		Domain:         &dom,
+		DisplayName:    in.DisplayName,
+		Note:           in.Note,
+		PublicKey:      in.PublicKey,
+		InboxURL:       in.InboxURL,
+		OutboxURL:      in.OutboxURL,
+		FollowersURL:   in.FollowersURL,
+		FollowingURL:   in.FollowingURL,
+		APID:           in.APID,
+		Bot:            in.Bot,
+		Locked:         in.Locked,
+		URL:            urlPtr,
+		AvatarURL:      in.AvatarURL,
+		HeaderURL:      in.HeaderURL,
+		FeaturedURL:    in.FeaturedURL,
+		FollowersCount: in.FollowersCount,
+		FollowingCount: in.FollowingCount,
+		StatusesCount:  in.StatusesCount,
 	}
 	acc, createErr := svc.store.CreateAccount(ctx, storeIn)
 	if createErr != nil {
 		return nil, fmt.Errorf("CreateOrUpdateRemoteAccount CreateAccount: %w", createErr)
 	}
-	enrichRemoteAccountURLs(acc, in)
 	return acc, nil
-}
-
-// enrichRemoteAccountURLs overlays avatar/header URLs from the federation input
-// onto the account. The DB query only populates these via a media_attachments
-// JOIN (for local uploads), so remote avatar/header URLs need to be applied here.
-func enrichRemoteAccountURLs(acc *domain.Account, in CreateOrUpdateRemoteInput) {
-	if acc.AvatarURL == "" && in.AvatarURL != "" {
-		acc.AvatarURL = in.AvatarURL
-	}
-	if acc.HeaderURL == "" && in.HeaderURL != "" {
-		acc.HeaderURL = in.HeaderURL
-	}
 }
 
 // SuspendRemote suspends a remote account by ID (e.g. from federation Delete{Person}).
@@ -371,11 +371,27 @@ func (svc *accountService) SuspendRemote(ctx context.Context, accountID string) 
 	if err != nil {
 		return fmt.Errorf("SuspendRemote(%s): %w", accountID, err)
 	}
-	if acc.Domain == nil {
+	if acc.IsLocal() {
 		return fmt.Errorf("SuspendRemote(%s): %w", accountID, domain.ErrForbidden)
 	}
 	if err := svc.store.SuspendAccount(ctx, accountID); err != nil {
 		return fmt.Errorf("SuspendRemote(%s): %w", accountID, err)
+	}
+	return nil
+}
+
+// SetRemotePins replaces all pinned statuses for a remote account.
+// Returns ErrForbidden if accountID refers to a local account.
+func (svc *accountService) SetRemotePins(ctx context.Context, accountID string, statusIDs []string) error {
+	acc, err := svc.store.GetAccountByID(ctx, accountID)
+	if err != nil {
+		return fmt.Errorf("SetRemotePins(%s): %w", accountID, err)
+	}
+	if acc.IsLocal() {
+		return fmt.Errorf("SetRemotePins(%s): %w", accountID, domain.ErrForbidden)
+	}
+	if err := svc.store.ReplaceAccountPins(ctx, accountID, statusIDs); err != nil {
+		return fmt.Errorf("SetRemotePins(%s): %w", accountID, err)
 	}
 	return nil
 }
@@ -505,6 +521,8 @@ type UpdateCredentialsInput struct {
 	Note               *string
 	AvatarMediaID      *string
 	HeaderMediaID      *string
+	AvatarURL          *string
+	HeaderURL          *string
 	Locked             bool
 	Bot                bool
 	DefaultQuotePolicy *string         // public | followers | nobody
@@ -528,6 +546,8 @@ func (svc *accountService) UpdateCredentials(ctx context.Context, in UpdateCrede
 		Note:          in.Note,
 		AvatarMediaID: in.AvatarMediaID,
 		HeaderMediaID: in.HeaderMediaID,
+		AvatarURL:     in.AvatarURL,
+		HeaderURL:     in.HeaderURL,
 		Bot:           in.Bot,
 		Locked:        in.Locked,
 		Fields:        fields,
@@ -555,6 +575,7 @@ func (svc *accountService) UpdateCredentials(ctx context.Context, in UpdateCrede
 	}
 	_ = events.EmitEvent(ctx, svc.store, domain.EventAccountUpdated, "account", updated.ID, domain.AccountUpdatedPayload{
 		Account: updated,
+		Local:   updated.IsLocal(),
 	})
 	return updated, user, nil
 }

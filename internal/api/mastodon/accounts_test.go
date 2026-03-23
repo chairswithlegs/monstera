@@ -71,7 +71,7 @@ func TestAccountsHandler_VerifyCredentials(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	followSvc, tagFollowSvc := newTestFollowServices(st)
-	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, 0, "example.com")
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/verify_credentials", nil)
@@ -116,7 +116,7 @@ func TestAccountsHandler_GETAccountsLookup(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	followSvc, tagFollowSvc := newTestFollowServices(st)
-	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, 0, "example.com")
 
 	t.Run("missing acct returns 422", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/lookup", nil)
@@ -173,7 +173,7 @@ func TestAccountsHandler_GETAccounts(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	followSvc, tagFollowSvc := newTestFollowServices(st)
-	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, 0, "example.com")
 
 	t.Run("missing id returns 422", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/", nil)
@@ -231,7 +231,7 @@ func TestAccountsHandler_GETRelationships(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	followSvc, tagFollowSvc := newTestFollowServices(st)
-	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, 0, "example.com")
 
 	alice, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -291,7 +291,7 @@ func TestAccountsHandler_GETAccountStatuses(t *testing.T) {
 	followSvc, tagFollowSvc := newTestFollowServices(st)
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc)
-	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, timelineSvc, nil, nil, 0, "example.com")
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, timelineSvc, statusSvc, nil, nil, nil, 0, "example.com")
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
 		acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
@@ -304,7 +304,7 @@ func TestAccountsHandler_GETAccountStatuses(t *testing.T) {
 	})
 
 	t.Run("timeline nil returns 422", func(t *testing.T) {
-		handlerNoTimeline := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
+		handlerNoTimeline := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, 0, "example.com")
 		acc, err := accountSvc.Register(ctx, service.RegisterInput{
 			Username: "bob",
 			Email:    "bob@example.com",
@@ -346,7 +346,7 @@ func TestAccountsHandler_GETFollowers(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	followSvc, tagFollowSvc := newTestFollowServices(st)
-	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, 0, "example.com")
 
 	alice, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice-followers",
@@ -438,7 +438,7 @@ func TestAccountsHandler_GETFollowing(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	followSvc, tagFollowSvc := newTestFollowServices(st)
-	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, 0, "example.com")
 
 	alice, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice-following",
@@ -503,7 +503,7 @@ func TestAccountsHandler_GETBlocks(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	followSvc, tagFollowSvc := newTestFollowServices(st)
-	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, 0, "example.com")
 
 	actor, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -599,7 +599,7 @@ func TestAccountsHandler_GETMutes(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	followSvc, tagFollowSvc := newTestFollowServices(st)
-	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, 0, "example.com")
 
 	actor, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -695,7 +695,7 @@ func TestAccountsHandler_FollowedTags(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	_, tagFollowSvc := newTestFollowServices(st)
-	handler := NewAccountsHandler(accountSvc, nil, tagFollowSvc, nil, nil, nil, 0, "example.com")
+	handler := NewAccountsHandler(accountSvc, nil, tagFollowSvc, nil, nil, nil, nil, nil, 0, "example.com")
 
 	actor, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -826,7 +826,7 @@ func TestAccountsHandler_BlockUnblock(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	followSvc, tagFollowSvc := newTestFollowServices(st)
-	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, 0, "example.com")
 
 	actor, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -882,7 +882,7 @@ func TestAccountsHandler_MuteUnmute(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	followSvc, tagFollowSvc := newTestFollowServices(st)
-	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, 0, "example.com")
 
 	actor, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -935,7 +935,7 @@ func TestAccountsHandler_PATCHUpdateCredentials(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	followSvc, tagFollowSvc := newTestFollowServices(st)
-	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, 0, "example.com")
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPatch, "/api/v1/accounts/update_credentials", nil)
@@ -977,7 +977,7 @@ func TestAccountsHandler_PATCHUpdateCredentials(t *testing.T) {
 
 		uploadedAttachment := &domain.MediaAttachment{ID: "media-123", Type: "image", URL: "https://example.com/media/avatar.jpg"}
 		mediaSvc := &fakeMediaService{attachment: uploadedAttachment}
-		localHandler := NewAccountsHandler(localAccountSvc, nil, nil, nil, nil, mediaSvc, 10<<20, "example.com")
+		localHandler := NewAccountsHandler(localAccountSvc, nil, nil, nil, nil, nil, mediaSvc, nil, 10<<20, "example.com")
 
 		imgBytes := testutil.MinimalPNG(t)
 		var buf bytes.Buffer
@@ -993,7 +993,12 @@ func TestAccountsHandler_PATCHUpdateCredentials(t *testing.T) {
 		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
 		rec := httptest.NewRecorder()
 		localHandler.PATCHUpdateCredentials(rec, req)
-		assert.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, http.StatusOK, rec.Code)
+
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Equal(t, "https://example.com/media/avatar.jpg", body["avatar"])
+		assert.Equal(t, "https://example.com/media/avatar.jpg", body["avatar_static"])
 	})
 }
 
@@ -1003,7 +1008,7 @@ func TestAccountsHandler_GETDirectory(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	followSvc, tagFollowSvc := newTestFollowServices(st)
-	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, 0, "example.com")
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, 0, "example.com")
 
 	t.Run("returns 200 with accounts and default order active", func(t *testing.T) {
 		_, err := accountSvc.Register(ctx, service.RegisterInput{
@@ -1106,7 +1111,7 @@ func TestAccountsHandler_POSTAccounts(t *testing.T) {
 		st := testutil.NewFakeStore()
 		accountSvc := service.NewAccountService(st, "https://example.com")
 		settingsSvc := &fakeSettingsService{mode: mode}
-		return NewAccountsHandler(accountSvc, nil, nil, nil, settingsSvc, nil, 0, "example.com")
+		return NewAccountsHandler(accountSvc, nil, nil, nil, nil, settingsSvc, nil, nil, 0, "example.com")
 	}
 
 	t.Run("open mode returns 200 with account and pending false", func(t *testing.T) {
@@ -1196,7 +1201,7 @@ func TestAccountsHandler_POSTAccounts(t *testing.T) {
 		st := testutil.NewFakeStore()
 		accountSvc := service.NewAccountService(st, "https://example.com")
 		settingsSvc := &fakeSettingsService{mode: domain.MonsteraRegistrationModeOpen}
-		handler := NewAccountsHandler(accountSvc, nil, nil, nil, settingsSvc, nil, 0, "example.com")
+		handler := NewAccountsHandler(accountSvc, nil, nil, nil, nil, settingsSvc, nil, nil, 0, "example.com")
 
 		ctx := context.Background()
 		_, err := accountSvc.Register(ctx, service.RegisterInput{
@@ -1224,7 +1229,7 @@ func TestAccountsHandler_POSTAccounts(t *testing.T) {
 		require.NoError(t, st.UpdateMonsteraSettings(ctx, &domain.MonsteraSettings{RegistrationMode: domain.MonsteraRegistrationModeInvite}))
 		accountSvc := service.NewAccountService(st, "https://example.com")
 		settingsSvc := &fakeSettingsService{mode: domain.MonsteraRegistrationModeInvite}
-		handler := NewAccountsHandler(accountSvc, nil, nil, nil, settingsSvc, nil, 0, "example.com")
+		handler := NewAccountsHandler(accountSvc, nil, nil, nil, nil, settingsSvc, nil, nil, 0, "example.com")
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", strings.NewReader(validBody))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()

@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/chairswithlegs/monstera/internal/api"
+	"github.com/chairswithlegs/monstera/internal/api/mastodon/apimodel"
 	"github.com/chairswithlegs/monstera/internal/api/middleware"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
@@ -45,7 +46,7 @@ func (h *PollsHandler) GETPoll(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	api.WriteJSON(w, http.StatusOK, enrichedPollToAPIModel(poll))
+	api.WriteJSON(w, http.StatusOK, apimodel.PollFromEnriched(poll))
 }
 
 // POSTVotesRequest is the body for POST /api/v1/polls/:id/votes.
@@ -105,5 +106,5 @@ func (h *PollsHandler) POSTVotes(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	api.WriteJSON(w, http.StatusOK, enrichedPollToAPIModel(poll))
+	api.WriteJSON(w, http.StatusOK, apimodel.PollFromEnriched(poll))
 }

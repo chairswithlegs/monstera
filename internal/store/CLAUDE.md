@@ -13,3 +13,8 @@ Design doc: `docs/architecture/05-database.md`
 - Migrations live in `internal/store/migrations/` as sequential numbered SQL files (000001–000058).
 - Row-to-domain conversion for statuses uses `statusRowParams` struct instead of positional arguments — see `internal/store/postgres/convert.go`.
 - Accounts have a nullable `url` column for storing the human-readable profile URL of remote accounts.
+
+## Generating query code
+
+Query code is generated via sqlc based on the contents of store/postgres/queries.
+When queries are updated, regenerate the code via: `sqlc generate`.

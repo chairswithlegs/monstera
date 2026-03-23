@@ -177,6 +177,8 @@ func New(deps Deps) http.Handler {
 			r.Get("/streaming/public", deps.Streaming.GETPublic)
 			r.Get("/streaming/public/local", deps.Streaming.GETPublicLocal)
 			r.Get("/streaming/hashtag", deps.Streaming.GETHashtag)
+			// Unified WebSocket streaming endpoint (multiplexes all stream types).
+			r.Get("/streaming", deps.Streaming.GETStreamingWS)
 		})
 
 		r.Group(func(r chi.Router) {

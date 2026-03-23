@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/store"
@@ -51,6 +52,9 @@ func (svc *conversationService) ListConversations(ctx context.Context, accountID
 		}
 		enriched, err := svc.statusService.GetByIDEnriched(ctx, *ac.LastStatusID, &accountID)
 		if err != nil {
+			if !errors.Is(err, domain.ErrNotFound) {
+				slog.WarnContext(ctx, "ListConversations: get last status", slog.Any("error", err), slog.String("status_id", *ac.LastStatusID))
+			}
 			continue
 		}
 		if enriched.Status.DeletedAt != nil {

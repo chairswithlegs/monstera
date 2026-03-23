@@ -95,7 +95,7 @@ func (n *NotificationSubscriber) handleFollowCreated(ctx context.Context, event 
 		slog.ErrorContext(ctx, "notification subscriber: unmarshal follow.created", slog.Any("error", err))
 		return
 	}
-	if payload.Target == nil || !isLocalAccount(payload.Target) {
+	if payload.Target == nil || payload.Target.IsRemote() {
 		return
 	}
 	if payload.Actor == nil {
@@ -110,7 +110,7 @@ func (n *NotificationSubscriber) handleFollowRequested(ctx context.Context, even
 		slog.ErrorContext(ctx, "notification subscriber: unmarshal follow.requested", slog.Any("error", err))
 		return
 	}
-	if payload.Target == nil || !isLocalAccount(payload.Target) {
+	if payload.Target == nil || payload.Target.IsRemote() {
 		return
 	}
 	if payload.Actor == nil {
@@ -133,7 +133,7 @@ func (n *NotificationSubscriber) handleFavouriteCreated(ctx context.Context, eve
 		}
 		return
 	}
-	if !isLocalAccount(author) {
+	if author.IsRemote() {
 		return
 	}
 	if payload.AccountID == payload.StatusAuthorID {
@@ -157,7 +157,7 @@ func (n *NotificationSubscriber) handleReblogCreated(ctx context.Context, event 
 		}
 		return
 	}
-	if !isLocalAccount(author) {
+	if author.IsRemote() {
 		return
 	}
 	if payload.AccountID == payload.OriginalAuthorID {
@@ -178,7 +178,7 @@ func (n *NotificationSubscriber) handleStatusCreatedMentions(ctx context.Context
 	}
 	statusID := payload.Status.ID
 	for _, mentioned := range payload.Mentions {
-		if mentioned == nil || !isLocalAccount(mentioned) {
+		if mentioned == nil || mentioned.IsRemote() {
 			continue
 		}
 		if mentioned.ID == payload.Author.ID {
@@ -204,8 +204,4 @@ func (n *NotificationSubscriber) createNotification(ctx context.Context, recipie
 			slog.Any("error", err),
 		)
 	}
-}
-
-func isLocalAccount(a *domain.Account) bool {
-	return a.Domain == nil || *a.Domain == ""
 }

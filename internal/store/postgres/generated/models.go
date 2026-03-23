@@ -11,32 +11,36 @@ import (
 )
 
 type Account struct {
-	ID             string             `json:"id"`
-	Username       string             `json:"username"`
-	Domain         *string            `json:"domain"`
-	DisplayName    *string            `json:"display_name"`
-	Note           *string            `json:"note"`
-	PublicKey      string             `json:"public_key"`
-	PrivateKey     *string            `json:"private_key"`
-	InboxUrl       string             `json:"inbox_url"`
-	OutboxUrl      string             `json:"outbox_url"`
-	FollowersUrl   string             `json:"followers_url"`
-	FollowingUrl   string             `json:"following_url"`
-	ApID           string             `json:"ap_id"`
-	Bot            bool               `json:"bot"`
-	Locked         bool               `json:"locked"`
-	Suspended      bool               `json:"suspended"`
-	Silenced       bool               `json:"silenced"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
-	AvatarMediaID  *string            `json:"avatar_media_id"`
-	HeaderMediaID  *string            `json:"header_media_id"`
-	FollowersCount int32              `json:"followers_count"`
-	FollowingCount int32              `json:"following_count"`
-	StatusesCount  int32              `json:"statuses_count"`
-	Fields         []byte             `json:"fields"`
-	LastStatusAt   pgtype.Timestamptz `json:"last_status_at"`
-	Url            *string            `json:"url"`
+	ID               string             `json:"id"`
+	Username         string             `json:"username"`
+	Domain           *string            `json:"domain"`
+	DisplayName      *string            `json:"display_name"`
+	Note             *string            `json:"note"`
+	PublicKey        string             `json:"public_key"`
+	PrivateKey       *string            `json:"private_key"`
+	InboxUrl         string             `json:"inbox_url"`
+	OutboxUrl        string             `json:"outbox_url"`
+	FollowersUrl     string             `json:"followers_url"`
+	FollowingUrl     string             `json:"following_url"`
+	ApID             string             `json:"ap_id"`
+	Bot              bool               `json:"bot"`
+	Locked           bool               `json:"locked"`
+	Suspended        bool               `json:"suspended"`
+	Silenced         bool               `json:"silenced"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	AvatarMediaID    *string            `json:"avatar_media_id"`
+	HeaderMediaID    *string            `json:"header_media_id"`
+	FollowersCount   int32              `json:"followers_count"`
+	FollowingCount   int32              `json:"following_count"`
+	StatusesCount    int32              `json:"statuses_count"`
+	Fields           []byte             `json:"fields"`
+	LastStatusAt     pgtype.Timestamptz `json:"last_status_at"`
+	Url              *string            `json:"url"`
+	AvatarUrl        string             `json:"avatar_url"`
+	HeaderUrl        string             `json:"header_url"`
+	LastBackfilledAt pgtype.Timestamptz `json:"last_backfilled_at"`
+	FeaturedUrl      string             `json:"featured_url"`
 }
 
 type AccountConversation struct {
@@ -182,19 +186,6 @@ type Hashtag struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
-type PushSubscription struct {
-	ID            string             `json:"id"`
-	AccessTokenID string             `json:"access_token_id"`
-	AccountID     string             `json:"account_id"`
-	Endpoint      string             `json:"endpoint"`
-	KeyP256dh     string             `json:"key_p256dh"`
-	KeyAuth       string             `json:"key_auth"`
-	Alerts        []byte             `json:"alerts"`
-	Policy        string             `json:"policy"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
-}
-
 type Invite struct {
 	ID        string             `json:"id"`
 	Code      string             `json:"code"`
@@ -241,7 +232,6 @@ type MediaAttachment struct {
 	AccountID   string             `json:"account_id"`
 	StatusID    *string            `json:"status_id"`
 	Type        string             `json:"type"`
-	ContentType *string            `json:"content_type"`
 	StorageKey  string             `json:"storage_key"`
 	Url         string             `json:"url"`
 	PreviewUrl  *string            `json:"preview_url"`
@@ -251,6 +241,7 @@ type MediaAttachment struct {
 	Meta        []byte             `json:"meta"`
 	SizeBytes   int64              `json:"size_bytes"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	ContentType *string            `json:"content_type"`
 }
 
 type MonsteraSetting struct {
@@ -348,6 +339,19 @@ type PollVote struct {
 	AccountID string             `json:"account_id"`
 	OptionID  string             `json:"option_id"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type PushSubscription struct {
+	ID            string             `json:"id"`
+	AccessTokenID string             `json:"access_token_id"`
+	AccountID     string             `json:"account_id"`
+	Endpoint      string             `json:"endpoint"`
+	KeyP256dh     string             `json:"key_p256dh"`
+	KeyAuth       string             `json:"key_auth"`
+	Alerts        json.RawMessage    `json:"alerts"`
+	Policy        string             `json:"policy"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
 
 type QuoteApproval struct {

@@ -228,6 +228,7 @@ func (r *RemoteAccountResolver) SyncActorToStore(ctx context.Context, actor *voc
 		FollowingURL:   fields.FollowingURL,
 		SharedInboxURL: fields.SharedInboxURL,
 		URL:            fields.URL,
+		FeaturedURL:    fields.FeaturedURL,
 		Fields:         fields.Fields,
 		AvatarURL:      fields.AvatarURL,
 		HeaderURL:      fields.HeaderURL,

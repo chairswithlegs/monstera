@@ -9,13 +9,13 @@ INSERT INTO statuses (
     id, uri, account_id, text, content, content_warning,
     visibility, language, in_reply_to_id, in_reply_to_account_id, reblog_of_id,
     quoted_status_id, quote_approval_policy, quotes_count,
-    ap_id, sensitive, local
+    ap_id, sensitive, local, created_at
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
     $7, $8, $9, $10, $11,
     $12, $13, 0,
-    $14, $15, $16
-) RETURNING *;
+    $14, $15, $16, COALESCE(@created_at, NOW())
+) ON CONFLICT (ap_id) DO NOTHING RETURNING *;
 
 -- name: UpdateStatus :one
 UPDATE statuses SET
@@ -141,11 +141,9 @@ SELECT * FROM statuses
 WHERE account_id = $1 AND reblog_of_id = $2 AND deleted_at IS NULL;
 
 -- name: GetRebloggedBy :many
-SELECT sqlc.embed(a), am.url AS avatar_url, hm.url AS header_url
+SELECT sqlc.embed(a)
 FROM accounts a
 INNER JOIN statuses s ON s.account_id = a.id
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
 WHERE s.reblog_of_id = $1 AND s.deleted_at IS NULL
   AND ($2::text IS NULL OR s.id < $2)
 ORDER BY s.id DESC

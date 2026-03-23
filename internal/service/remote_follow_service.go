@@ -72,6 +72,7 @@ func (svc *remoteFollowService) CreateRemoteFollow(ctx context.Context, actorAcc
 				Follow: follow,
 				Actor:  actor,
 				Target: target,
+				Local:  actor.IsLocal(),
 			}); txErr != nil {
 				return fmt.Errorf("emit follow.created: %w", txErr)
 			}
@@ -79,12 +80,14 @@ func (svc *remoteFollowService) CreateRemoteFollow(ctx context.Context, actorAcc
 				Follow: follow,
 				Target: target,
 				Actor:  actor,
+				Local:  target.IsLocal(),
 			})
 		}
 		return events.EmitEvent(ctx, tx, domain.EventFollowRequested, "follow", follow.ID, domain.FollowRequestedPayload{
 			Follow: follow,
 			Actor:  actor,
 			Target: target,
+			Local:  actor.IsLocal(),
 		})
 	})
 	if err != nil {
@@ -123,6 +126,7 @@ func (svc *remoteFollowService) AcceptFollow(ctx context.Context, followID strin
 			Follow: follow,
 			Target: target,
 			Actor:  actor,
+			Local:  target.IsLocal(),
 		})
 	})
 	if err != nil {
@@ -164,6 +168,7 @@ func (svc *remoteFollowService) DeleteRemoteFollow(ctx context.Context, actorAcc
 			FollowID: follow.ID,
 			Actor:    actor,
 			Target:   target,
+			Local:    actor.IsLocal(),
 		})
 	})
 	if err != nil {
@@ -224,6 +229,7 @@ func (svc *remoteFollowService) CreateRemoteBlock(ctx context.Context, actorAcco
 		return events.EmitEvent(ctx, tx, domain.EventBlockCreated, "block", actorAccountID+":"+targetAccountID, domain.BlockCreatedPayload{
 			Actor:  actor,
 			Target: target,
+			Local:  actor.IsLocal(),
 		})
 	})
 	if err != nil {

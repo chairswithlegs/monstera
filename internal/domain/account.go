@@ -5,6 +5,12 @@ import (
 	"time"
 )
 
+// IsLocal reports whether the account belongs to this instance.
+func (a *Account) IsLocal() bool { return a.Domain == nil }
+
+// IsRemote reports whether the account belongs to a remote instance.
+func (a *Account) IsRemote() bool { return a.Domain != nil }
+
 // Account is the federated identity exposed via ActivityPub and the Mastodon API.
 type Account struct {
 	ID            string  // Internal ID for the account.
@@ -14,7 +20,7 @@ type Account struct {
 	Note          *string
 	AvatarMediaID *string
 	HeaderMediaID *string
-	// AvatarURL and HeaderURL are populated by the store via LEFT JOIN on media_attachments.
+	// AvatarURL and HeaderURL are stored directly on the accounts table.
 	AvatarURL           string
 	HeaderURL           string
 	PublicKey           string
@@ -25,6 +31,7 @@ type Account struct {
 	FollowingURL        string // ActivityPub Following URL.
 	APID                string // ActivityPub IRI for the account.
 	ProfileURL          string // Human-readable profile page URL (from AP Actor "url" field). For remote accounts stored from Actor; for local accounts computed at render time.
+	FeaturedURL         string // ActivityPub featured collection URL. Remote accounts only.
 	FollowersCount      int
 	FollowingCount      int
 	StatusesCount       int
@@ -33,8 +40,9 @@ type Account struct {
 	Locked              bool
 	Suspended           bool
 	Silenced            bool
-	SuspensionOrigin    *string
-	DeletionRequestedAt *time.Time
+	SuspensionOrigin    *string    // Origin of the suspension. Remote accounts only.
+	LastBackfilledAt    *time.Time // Last time the account was backfilled. Remote accounts only.
+	DeletionRequestedAt *time.Time // Time the account was requested to be deleted. Remote accounts only.
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }

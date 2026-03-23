@@ -27,15 +27,17 @@ type AccountsHandler struct {
 	follows        service.FollowService
 	tagFollows     service.TagFollowService
 	timeline       service.TimelineService
+	statuses       service.StatusService
 	settings       service.MonsteraSettingsService
 	media          service.MediaService
+	backfill       service.BackfillService
 	mediaMaxBytes  int64
 	instanceDomain string
 }
 
 // NewAccountsHandler returns a new AccountsHandler. follows may be nil to disable follow endpoints; timeline is required for GET account statuses.
-func NewAccountsHandler(accounts service.AccountService, follows service.FollowService, tagFollows service.TagFollowService, timeline service.TimelineService, settings service.MonsteraSettingsService, media service.MediaService, mediaMaxBytes int64, instanceDomain string) *AccountsHandler {
-	return &AccountsHandler{accounts: accounts, follows: follows, tagFollows: tagFollows, timeline: timeline, settings: settings, media: media, mediaMaxBytes: mediaMaxBytes, instanceDomain: instanceDomain}
+func NewAccountsHandler(accounts service.AccountService, follows service.FollowService, tagFollows service.TagFollowService, timeline service.TimelineService, statuses service.StatusService, settings service.MonsteraSettingsService, media service.MediaService, backfill service.BackfillService, mediaMaxBytes int64, instanceDomain string) *AccountsHandler {
+	return &AccountsHandler{accounts: accounts, follows: follows, tagFollows: tagFollows, timeline: timeline, statuses: statuses, settings: settings, media: media, backfill: backfill, mediaMaxBytes: mediaMaxBytes, instanceDomain: instanceDomain}
 }
 
 // GETVerifyCredentials handles GET /api/v1/accounts/verify_credentials.
@@ -77,6 +79,11 @@ func (h *AccountsHandler) GETAccounts(w http.ResponseWriter, r *http.Request) {
 	if acc.Suspended {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
+	}
+	if acc.Domain != nil && h.backfill != nil {
+		if err := h.backfill.RequestBackfill(r.Context(), acc.ID); err != nil {
+			slog.WarnContext(r.Context(), "backfill request failed", slog.String("account_id", acc.ID), slog.Any("error", err))
+		}
 	}
 	api.WriteJSON(w, http.StatusOK, apimodel.ToAccount(acc, h.instanceDomain))
 }
@@ -201,13 +208,14 @@ func (h *AccountsHandler) parseUpdateCredentialsRequest(w http.ResponseWriter, r
 	bot := api.FormValueIsTruthy(form, "bot")
 
 	var avatarMediaID, headerMediaID *string
+	var avatarURL, headerURL *string
 	if h.media != nil {
 		var err error
-		avatarMediaID, err = h.uploadFormFile(r, "avatar", account.ID, h.media.UploadAvatar)
+		avatarMediaID, avatarURL, err = h.uploadFormFile(r, "avatar", account.ID, h.media.UploadAvatar)
 		if err != nil {
 			return nil, err
 		}
-		headerMediaID, err = h.uploadFormFile(r, "header", account.ID, h.media.UploadHeader)
+		headerMediaID, headerURL, err = h.uploadFormFile(r, "header", account.ID, h.media.UploadHeader)
 		if err != nil {
 			return nil, err
 		}
@@ -235,6 +243,8 @@ func (h *AccountsHandler) parseUpdateCredentialsRequest(w http.ResponseWriter, r
 		Note:               notePtr,
 		AvatarMediaID:      avatarMediaID,
 		HeaderMediaID:      headerMediaID,
+		AvatarURL:          avatarURL,
+		HeaderURL:          headerURL,
 		Locked:             locked,
 		Bot:                bot,
 		DefaultQuotePolicy: defaultQuotePolicy,
@@ -245,18 +255,18 @@ func (h *AccountsHandler) parseUpdateCredentialsRequest(w http.ResponseWriter, r
 type uploadFunc func(ctx context.Context, accountID string, file io.Reader, contentType string) (*service.UploadResult, error)
 
 // uploadFormFile extracts a named file from the multipart form, uploads it
-// via the provided upload function, and returns the resulting media attachment ID.
-func (h *AccountsHandler) uploadFormFile(r *http.Request, field string, accountID string, upload uploadFunc) (*string, error) {
+// via the provided upload function, and returns the resulting media attachment ID and URL.
+func (h *AccountsHandler) uploadFormFile(r *http.Request, field string, accountID string, upload uploadFunc) (*string, *string, error) {
 	if r.MultipartForm == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	file, fh, err := r.FormFile(field)
 	if errors.Is(err, http.ErrMissingFile) {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if err != nil {
 		slog.ErrorContext(r.Context(), "failed to get "+field+" file from request", slog.Any("error", err))
-		return nil, nil
+		return nil, nil, nil
 	}
 	defer func() { _ = file.Close() }()
 	ct := fh.Header.Get("Content-Type")
@@ -265,9 +275,9 @@ func (h *AccountsHandler) uploadFormFile(r *http.Request, field string, accountI
 	}
 	result, err := upload(r.Context(), accountID, file, ct)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &result.Attachment.ID, nil
+	return &result.Attachment.ID, &result.Attachment.URL, nil
 }
 
 func parseFieldsAttributes(form map[string][]string) json.RawMessage {
@@ -318,12 +328,39 @@ func (h *AccountsHandler) GETAccountStatuses(w http.ResponseWriter, r *http.Requ
 		api.HandleError(w, r, err)
 		return
 	}
+	if target.Domain != nil && h.backfill != nil {
+		if err := h.backfill.RequestBackfill(r.Context(), target.ID); err != nil {
+			slog.WarnContext(r.Context(), "backfill request failed", slog.String("account_id", target.ID), slog.Any("error", err))
+		}
+	}
+	viewerID := &account.ID
+
+	// pinned=true: return only this account's pinned statuses.
+	// Remote accounts: full support requires fetching the AP `featured` collection
+	// (tracked in task #7); for now return empty so clients don't show all posts as pinned.
+	if r.URL.Query().Get("pinned") == "true" {
+		if target.Domain != nil {
+			api.WriteJSON(w, http.StatusOK, []apimodel.Status{})
+			return
+		}
+		enriched, err := h.statuses.PinnedStatusesEnriched(r.Context(), target.ID, viewerID)
+		if err != nil {
+			api.HandleError(w, r, err)
+			return
+		}
+		out := make([]apimodel.Status, 0, len(enriched))
+		for i := range enriched {
+			out = append(out, apimodel.StatusFromEnriched(enriched[i], h.instanceDomain))
+		}
+		api.WriteJSON(w, http.StatusOK, out)
+		return
+	}
+
 	if h.timeline == nil {
 		api.HandleError(w, r, api.NewUnprocessableError("timeline not configured"))
 		return
 	}
 	params := PageParamsFromRequest(r)
-	viewerID := &account.ID
 	enriched, err := h.timeline.AccountStatusesEnriched(r.Context(), target.ID, viewerID, optionalString(params.MaxID), params.Limit)
 	if err != nil {
 		api.HandleError(w, r, err)
@@ -331,21 +368,7 @@ func (h *AccountsHandler) GETAccountStatuses(w http.ResponseWriter, r *http.Requ
 	}
 	out := make([]apimodel.Status, 0, len(enriched))
 	for i := range enriched {
-		e := &enriched[i]
-		authorAcc := apimodel.ToAccount(e.Author, h.instanceDomain)
-		mentionsResp := make([]apimodel.Mention, 0, len(e.Mentions))
-		for _, a := range e.Mentions {
-			mentionsResp = append(mentionsResp, apimodel.MentionFromAccount(a, h.instanceDomain))
-		}
-		tagsResp := make([]apimodel.Tag, 0, len(e.Tags))
-		for _, t := range e.Tags {
-			tagsResp = append(tagsResp, apimodel.TagFromName(t.Name, h.instanceDomain))
-		}
-		mediaResp := make([]apimodel.MediaAttachment, 0, len(e.Media))
-		for j := range e.Media {
-			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
-		}
-		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, e.Card, h.instanceDomain))
+		out = append(out, apimodel.StatusFromEnriched(enriched[i], h.instanceDomain))
 	}
 	firstID, lastID := firstLastIDsFromAccountStatuses(enriched)
 	if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {

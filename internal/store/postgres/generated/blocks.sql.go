@@ -103,7 +103,7 @@ func (q *Queries) IsBlockedEitherDirection(ctx context.Context, arg IsBlockedEit
 }
 
 const listBlockedAccounts = `-- name: ListBlockedAccounts :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url FROM accounts a
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at, a.featured_url FROM accounts a
 INNER JOIN blocks b ON b.target_id = a.id
 WHERE b.account_id = $1
 ORDER BY b.id DESC
@@ -152,6 +152,10 @@ func (q *Queries) ListBlockedAccounts(ctx context.Context, arg ListBlockedAccoun
 			&i.Fields,
 			&i.LastStatusAt,
 			&i.Url,
+			&i.AvatarUrl,
+			&i.HeaderUrl,
+			&i.LastBackfilledAt,
+			&i.FeaturedUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -164,11 +168,9 @@ func (q *Queries) ListBlockedAccounts(ctx context.Context, arg ListBlockedAccoun
 }
 
 const listBlockedAccountsPaginated = `-- name: ListBlockedAccountsPaginated :many
-SELECT b.id AS cursor, a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, am.url AS avatar_url, hm.url AS header_url
+SELECT b.id AS cursor, a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at, a.featured_url
 FROM accounts a
 INNER JOIN blocks b ON b.target_id = a.id
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
 WHERE b.account_id = $1
   AND ($2::text IS NULL OR b.id < $2)
 ORDER BY b.id DESC
@@ -182,10 +184,8 @@ type ListBlockedAccountsPaginatedParams struct {
 }
 
 type ListBlockedAccountsPaginatedRow struct {
-	Cursor    string  `json:"cursor"`
-	Account   Account `json:"account"`
-	AvatarUrl *string `json:"avatar_url"`
-	HeaderUrl *string `json:"header_url"`
+	Cursor  string  `json:"cursor"`
+	Account Account `json:"account"`
 }
 
 func (q *Queries) ListBlockedAccountsPaginated(ctx context.Context, arg ListBlockedAccountsPaginatedParams) ([]ListBlockedAccountsPaginatedRow, error) {
@@ -225,8 +225,10 @@ func (q *Queries) ListBlockedAccountsPaginated(ctx context.Context, arg ListBloc
 			&i.Account.Fields,
 			&i.Account.LastStatusAt,
 			&i.Account.Url,
-			&i.AvatarUrl,
-			&i.HeaderUrl,
+			&i.Account.AvatarUrl,
+			&i.Account.HeaderUrl,
+			&i.Account.LastBackfilledAt,
+			&i.Account.FeaturedUrl,
 		); err != nil {
 			return nil, err
 		}

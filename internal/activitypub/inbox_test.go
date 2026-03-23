@@ -644,8 +644,8 @@ func newInboxProcessorForTest(t *testing.T, fake *testutil.FakeStore) Inbox {
 	followSvc := service.NewFollowService(fake, service.NewAccountService(fake, "https://example.com"), remoteFollowSvc)
 	statusSvc := service.NewStatusService(fake, instanceBaseURL, instanceDomain, 5000)
 	conversationSvc := service.NewConversationService(fake, statusSvc)
-	remoteStatusWriteSvc := service.NewRemoteStatusWriteService(fake, conversationSvc, instanceBaseURL)
 	mediaSvc := service.NewMediaService(fake, &testMediaStore{}, 1<<20)
+	remoteStatusWriteSvc := service.NewRemoteStatusWriteService(fake, conversationSvc, mediaSvc, instanceBaseURL)
 	remoteResolver := NewRemoteAccountResolver(accountSvc, "", false, instanceDomain)
 	return NewInbox(accountSvc, followSvc, remoteFollowSvc, statusSvc, remoteStatusWriteSvc, mediaSvc, remoteResolver, bl, instanceDomain)
 }

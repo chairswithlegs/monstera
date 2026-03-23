@@ -10,5 +10,8 @@ SELECT status_id FROM account_pins
 WHERE account_id = $1
 ORDER BY created_at ASC;
 
+-- name: DeleteAccountPinsByAccountID :exec
+DELETE FROM account_pins WHERE account_id = $1;
+
 -- name: CountAccountPins :one
 SELECT COUNT(*) FROM account_pins WHERE account_id = $1;

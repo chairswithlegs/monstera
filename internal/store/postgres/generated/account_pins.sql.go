@@ -49,6 +49,15 @@ func (q *Queries) DeleteAccountPin(ctx context.Context, arg DeleteAccountPinPara
 	return err
 }
 
+const deleteAccountPinsByAccountID = `-- name: DeleteAccountPinsByAccountID :exec
+DELETE FROM account_pins WHERE account_id = $1
+`
+
+func (q *Queries) DeleteAccountPinsByAccountID(ctx context.Context, accountID string) error {
+	_, err := q.db.Exec(ctx, deleteAccountPinsByAccountID, accountID)
+	return err
+}
+
 const listPinnedStatusIDs = `-- name: ListPinnedStatusIDs :many
 SELECT status_id FROM account_pins
 WHERE account_id = $1

@@ -24,21 +24,27 @@ var _ store.Store = (*PostgresStore)(nil)
 
 func toDbCreateAccountParams(in store.CreateAccountInput) db.CreateAccountParams {
 	return db.CreateAccountParams{
-		ID:           in.ID,
-		Username:     in.Username,
-		Domain:       in.Domain,
-		DisplayName:  in.DisplayName,
-		Note:         in.Note,
-		PublicKey:    in.PublicKey,
-		PrivateKey:   in.PrivateKey,
-		InboxUrl:     in.InboxURL,
-		OutboxUrl:    in.OutboxURL,
-		FollowersUrl: in.FollowersURL,
-		FollowingUrl: in.FollowingURL,
-		ApID:         in.APID,
-		Bot:          in.Bot,
-		Locked:       in.Locked,
-		Url:          in.URL,
+		ID:             in.ID,
+		Username:       in.Username,
+		Domain:         in.Domain,
+		DisplayName:    in.DisplayName,
+		Note:           in.Note,
+		PublicKey:      in.PublicKey,
+		PrivateKey:     in.PrivateKey,
+		InboxUrl:       in.InboxURL,
+		OutboxUrl:      in.OutboxURL,
+		FollowersUrl:   in.FollowersURL,
+		FollowingUrl:   in.FollowingURL,
+		ApID:           in.APID,
+		Bot:            in.Bot,
+		Locked:         in.Locked,
+		Url:            in.URL,
+		AvatarUrl:      in.AvatarURL,
+		HeaderUrl:      in.HeaderURL,
+		FeaturedUrl:    in.FeaturedURL,
+		FollowersCount: int32(in.FollowersCount), //nolint:gosec // count values from AP collections
+		FollowingCount: int32(in.FollowingCount), //nolint:gosec // count values from AP collections
+		StatusesCount:  int32(in.StatusesCount),  //nolint:gosec // count values from AP collections
 	}
 }
 
@@ -71,6 +77,7 @@ func toDbCreateStatusParams(in store.CreateStatusInput) db.CreateStatusParams {
 		ApID:                in.APID,
 		Sensitive:           in.Sensitive,
 		Local:               in.Local,
+		CreatedAt:           in.CreatedAt,
 	}
 }
 
@@ -125,7 +132,7 @@ func (s *PostgresStore) GetAccountByID(ctx context.Context, id string) (*domain.
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	acc := rowWithURLsToDomainAccount(row.Account, row.AvatarUrl, row.HeaderUrl)
+	acc := ToDomainAccount(row)
 	return &acc, nil
 }
 
@@ -139,7 +146,7 @@ func (s *PostgresStore) GetAccountsByIDs(ctx context.Context, ids []string) ([]*
 	}
 	out := make([]*domain.Account, 0, len(rows))
 	for _, row := range rows {
-		acc := rowWithURLsToDomainAccount(row.Account, row.AvatarUrl, row.HeaderUrl)
+		acc := ToDomainAccount(row)
 		out = append(out, &acc)
 	}
 	return out, nil
@@ -150,7 +157,7 @@ func (s *PostgresStore) GetLocalAccountByUsername(ctx context.Context, username 
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	acc := rowWithURLsToDomainAccount(row.Account, row.AvatarUrl, row.HeaderUrl)
+	acc := ToDomainAccount(row)
 	return &acc, nil
 }
 
@@ -159,7 +166,7 @@ func (s *PostgresStore) GetAccountByAPID(ctx context.Context, apID string) (*dom
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	acc := rowWithURLsToDomainAccount(row.Account, row.AvatarUrl, row.HeaderUrl)
+	acc := ToDomainAccount(row)
 	return &acc, nil
 }
 
@@ -171,7 +178,7 @@ func (s *PostgresStore) GetRemoteAccountByUsername(ctx context.Context, username
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	acc := rowWithURLsToDomainAccount(row.Account, row.AvatarUrl, row.HeaderUrl)
+	acc := ToDomainAccount(row)
 	return &acc, nil
 }
 
@@ -185,7 +192,7 @@ func (s *PostgresStore) SearchAccounts(ctx context.Context, query string, limit 
 	}
 	out := make([]*domain.Account, 0, len(rows))
 	for _, row := range rows {
-		acc := rowWithURLsToDomainAccount(row.Account, row.AvatarUrl, row.HeaderUrl)
+		acc := ToDomainAccount(row)
 		out = append(out, &acc)
 	}
 	return out, nil
@@ -208,6 +215,10 @@ func (s *PostgresStore) CreateUser(ctx context.Context, in store.CreateUserInput
 func (s *PostgresStore) CreateStatus(ctx context.Context, in store.CreateStatusInput) (*domain.Status, error) {
 	dbSt, err := s.q.CreateStatus(ctx, toDbCreateStatusParams(in))
 	if err != nil {
+		// ON CONFLICT (ap_id) DO NOTHING returns no rows on a duplicate; treat as conflict.
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrConflict
+		}
 		return nil, mapErr(err)
 	}
 	st := ToDomainStatus(dbSt)
@@ -288,6 +299,13 @@ func (s *PostgresStore) IncrementStatusesCount(ctx context.Context, accountID st
 
 func (s *PostgresStore) UpdateAccountLastStatusAt(ctx context.Context, accountID string) error {
 	return mapErr(s.q.UpdateAccountLastStatusAt(ctx, accountID))
+}
+
+func (s *PostgresStore) UpdateAccountLastBackfilledAt(ctx context.Context, id string, at time.Time) error {
+	return mapErr(s.q.UpdateAccountLastBackfilledAt(ctx, db.UpdateAccountLastBackfilledAtParams{
+		ID:               id,
+		LastBackfilledAt: pgtype.Timestamptz{Time: at, Valid: true},
+	}))
 }
 
 func (s *PostgresStore) DecrementStatusesCount(ctx context.Context, accountID string) error {
@@ -417,7 +435,7 @@ func (s *PostgresStore) GetStatusFavouritedBy(ctx context.Context, statusID stri
 	}
 	out := make([]domain.Account, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, rowWithURLsToDomainAccount(row.Account, row.AvatarUrl, row.HeaderUrl))
+		out = append(out, ToDomainAccount(row.Account))
 	}
 	return out, nil
 }
@@ -544,7 +562,7 @@ func (s *PostgresStore) GetStatusMentions(ctx context.Context, statusID string) 
 	}
 	out := make([]*domain.Account, 0, len(rows))
 	for i := range rows {
-		acc := rowWithURLsToDomainAccount(rows[i].Account, rows[i].AvatarUrl, rows[i].HeaderUrl)
+		acc := ToDomainAccount(rows[i].Account)
 		out = append(out, &acc)
 	}
 	return out, nil
@@ -1203,7 +1221,7 @@ func (s *PostgresStore) GetFollowers(ctx context.Context, accountID string, maxI
 	}
 	out := make([]domain.Account, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, rowWithURLsToDomainAccount(row.Account, row.AvatarUrl, row.HeaderUrl))
+		out = append(out, ToDomainAccount(row.Account))
 	}
 	return out, nil
 }
@@ -1223,7 +1241,7 @@ func (s *PostgresStore) GetFollowing(ctx context.Context, accountID string, maxI
 	}
 	out := make([]domain.Account, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, rowWithURLsToDomainAccount(row.Account, row.AvatarUrl, row.HeaderUrl))
+		out = append(out, ToDomainAccount(row.Account))
 	}
 	return out, nil
 }
@@ -1569,6 +1587,8 @@ func toDbUpdateAccountParams(in store.UpdateAccountInput) db.UpdateAccountParams
 		Locked:        in.Locked,
 		Fields:        fields,
 		Url:           in.URL,
+		AvatarUrl:     in.AvatarURL,
+		HeaderUrl:     in.HeaderURL,
 	}
 }
 
@@ -1587,11 +1607,41 @@ func (s *PostgresStore) UpdateAccountKeys(ctx context.Context, id, publicKey str
 func (s *PostgresStore) UpdateAccountURLs(ctx context.Context, id, inboxURL, outboxURL, followersURL, followingURL string) error {
 	return mapErr(s.q.UpdateAccountURLs(ctx, db.UpdateAccountURLsParams{
 		ID:           id,
-		InboxURL:     inboxURL,
-		OutboxURL:    outboxURL,
-		FollowersURL: followersURL,
-		FollowingURL: followingURL,
+		InboxUrl:     inboxURL,
+		OutboxUrl:    outboxURL,
+		FollowersUrl: followersURL,
+		FollowingUrl: followingURL,
 	}))
+}
+
+func (s *PostgresStore) UpdateRemoteAccountMeta(ctx context.Context, id, avatarURL, headerURL string, followersCount, followingCount, statusesCount int, featuredURL string) error {
+	return mapErr(s.q.UpdateRemoteAccountMeta(ctx, db.UpdateRemoteAccountMetaParams{
+		ID:             id,
+		AvatarUrl:      avatarURL,
+		HeaderUrl:      headerURL,
+		FollowersCount: int32(followersCount), //nolint:gosec // values from remote AP collection
+		FollowingCount: int32(followingCount), //nolint:gosec // values from remote AP collection
+		StatusesCount:  int32(statusesCount),  //nolint:gosec // values from remote AP collection
+		FeaturedUrl:    featuredURL,
+	}))
+}
+
+func (s *PostgresStore) DeleteAccountPinsByAccountID(ctx context.Context, accountID string) error {
+	return mapErr(s.q.DeleteAccountPinsByAccountID(ctx, accountID))
+}
+
+func (s *PostgresStore) ReplaceAccountPins(ctx context.Context, accountID string, statusIDs []string) error {
+	return s.WithTx(ctx, func(tx store.Store) error {
+		if err := tx.DeleteAccountPinsByAccountID(ctx, accountID); err != nil {
+			return fmt.Errorf("ReplaceAccountPins(%s): delete: %w", accountID, err)
+		}
+		for _, statusID := range statusIDs {
+			if err := tx.CreateAccountPin(ctx, accountID, statusID); err != nil {
+				return fmt.Errorf("ReplaceAccountPins(%s): create pin %s: %w", accountID, statusID, err)
+			}
+		}
+		return nil
+	})
 }
 
 func (s *PostgresStore) AttachMediaToStatus(ctx context.Context, mediaID, statusID, accountID string) error {
@@ -2179,7 +2229,7 @@ func (s *PostgresStore) ListLocalAccounts(ctx context.Context, limit, offset int
 	}
 	out := make([]domain.Account, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, rowWithURLsToDomainAccount(row.Account, row.AvatarUrl, row.HeaderUrl))
+		out = append(out, ToDomainAccount(row))
 	}
 	return out, nil
 }
@@ -2403,7 +2453,7 @@ func (s *PostgresStore) ListDirectoryAccounts(ctx context.Context, order string,
 	}
 	out := make([]domain.Account, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, rowWithURLsToDomainAccount(row.Account, row.AvatarUrl, row.HeaderUrl))
+		out = append(out, ToDomainAccount(row))
 	}
 	return out, nil
 }

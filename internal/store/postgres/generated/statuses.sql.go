@@ -39,32 +39,33 @@ INSERT INTO statuses (
     id, uri, account_id, text, content, content_warning,
     visibility, language, in_reply_to_id, in_reply_to_account_id, reblog_of_id,
     quoted_status_id, quote_approval_policy, quotes_count,
-    ap_id, sensitive, local
+    ap_id, sensitive, local, created_at
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
     $7, $8, $9, $10, $11,
     $12, $13, 0,
-    $14, $15, $16
-) RETURNING id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count
+    $14, $15, $16, COALESCE($17, NOW())
+) ON CONFLICT (ap_id) DO NOTHING RETURNING id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count
 `
 
 type CreateStatusParams struct {
-	ID                  string  `json:"id"`
-	Uri                 string  `json:"uri"`
-	AccountID           string  `json:"account_id"`
-	Text                *string `json:"text"`
-	Content             *string `json:"content"`
-	ContentWarning      *string `json:"content_warning"`
-	Visibility          string  `json:"visibility"`
-	Language            *string `json:"language"`
-	InReplyToID         *string `json:"in_reply_to_id"`
-	InReplyToAccountID  *string `json:"in_reply_to_account_id"`
-	ReblogOfID          *string `json:"reblog_of_id"`
-	QuotedStatusID      *string `json:"quoted_status_id"`
-	QuoteApprovalPolicy string  `json:"quote_approval_policy"`
-	ApID                string  `json:"ap_id"`
-	Sensitive           bool    `json:"sensitive"`
-	Local               bool    `json:"local"`
+	ID                  string      `json:"id"`
+	Uri                 string      `json:"uri"`
+	AccountID           string      `json:"account_id"`
+	Text                *string     `json:"text"`
+	Content             *string     `json:"content"`
+	ContentWarning      *string     `json:"content_warning"`
+	Visibility          string      `json:"visibility"`
+	Language            *string     `json:"language"`
+	InReplyToID         *string     `json:"in_reply_to_id"`
+	InReplyToAccountID  *string     `json:"in_reply_to_account_id"`
+	ReblogOfID          *string     `json:"reblog_of_id"`
+	QuotedStatusID      *string     `json:"quoted_status_id"`
+	QuoteApprovalPolicy string      `json:"quote_approval_policy"`
+	ApID                string      `json:"ap_id"`
+	Sensitive           bool        `json:"sensitive"`
+	Local               bool        `json:"local"`
+	CreatedAt           interface{} `json:"created_at"`
 }
 
 func (q *Queries) CreateStatus(ctx context.Context, arg CreateStatusParams) (Status, error) {
@@ -85,6 +86,7 @@ func (q *Queries) CreateStatus(ctx context.Context, arg CreateStatusParams) (Sta
 		arg.ApID,
 		arg.Sensitive,
 		arg.Local,
+		arg.CreatedAt,
 	)
 	var i Status
 	err := row.Scan(
@@ -551,11 +553,9 @@ func (q *Queries) GetReblogByAccountAndTarget(ctx context.Context, arg GetReblog
 }
 
 const getRebloggedBy = `-- name: GetRebloggedBy :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, am.url AS avatar_url, hm.url AS header_url
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at, a.featured_url
 FROM accounts a
 INNER JOIN statuses s ON s.account_id = a.id
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
 WHERE s.reblog_of_id = $1 AND s.deleted_at IS NULL
   AND ($2::text IS NULL OR s.id < $2)
 ORDER BY s.id DESC
@@ -569,9 +569,7 @@ type GetRebloggedByParams struct {
 }
 
 type GetRebloggedByRow struct {
-	Account   Account `json:"account"`
-	AvatarUrl *string `json:"avatar_url"`
-	HeaderUrl *string `json:"header_url"`
+	Account Account `json:"account"`
 }
 
 func (q *Queries) GetRebloggedBy(ctx context.Context, arg GetRebloggedByParams) ([]GetRebloggedByRow, error) {
@@ -610,8 +608,10 @@ func (q *Queries) GetRebloggedBy(ctx context.Context, arg GetRebloggedByParams) 
 			&i.Account.Fields,
 			&i.Account.LastStatusAt,
 			&i.Account.Url,
-			&i.AvatarUrl,
-			&i.HeaderUrl,
+			&i.Account.AvatarUrl,
+			&i.Account.HeaderUrl,
+			&i.Account.LastBackfilledAt,
+			&i.Account.FeaturedUrl,
 		); err != nil {
 			return nil, err
 		}

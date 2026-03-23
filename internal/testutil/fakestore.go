@@ -21,6 +21,7 @@ type FakeStore struct {
 	accountsByUsername     map[string]*domain.Account
 	usersByAccountID       map[string]*domain.User
 	statusesByID           map[string]*domain.Status
+	statusesByAPID         map[string]*domain.Status
 	statusesCount          map[string]int
 	homeTimeline           map[string][]*domain.Status
 	publicTimeline         []*domain.Status
@@ -150,6 +151,7 @@ func NewFakeStore() *FakeStore {
 		accountsByUsername:        make(map[string]*domain.Account),
 		usersByAccountID:          make(map[string]*domain.User),
 		statusesByID:              make(map[string]*domain.Status),
+		statusesByAPID:            make(map[string]*domain.Status),
 		statusesCount:             make(map[string]int),
 		homeTimeline:              make(map[string][]*domain.Status),
 		followsByKey:              make(map[string]*domain.Follow),
@@ -208,6 +210,9 @@ func (f *FakeStore) SeedStatus(s *domain.Status) {
 	}
 	copy := *s
 	f.statusesByID[s.ID] = &copy
+	if s.APID != "" {
+		f.statusesByAPID[s.APID] = &copy
+	}
 }
 
 // SeedUserAndAccount inserts a user and account directly into the FakeStore for test setup.
@@ -267,42 +272,33 @@ func (f *FakeStore) CreateAccount(ctx context.Context, in store.CreateAccountInp
 		profileURL = *in.URL
 	}
 	acc := &domain.Account{
-		ID:           in.ID,
-		Username:     in.Username,
-		Domain:       in.Domain,
-		DisplayName:  in.DisplayName,
-		Note:         in.Note,
-		PublicKey:    in.PublicKey,
-		PrivateKey:   in.PrivateKey,
-		InboxURL:     in.InboxURL,
-		OutboxURL:    in.OutboxURL,
-		FollowersURL: in.FollowersURL,
-		FollowingURL: in.FollowingURL,
-		APID:         in.APID,
-		ProfileURL:   profileURL,
-		Bot:          in.Bot,
-		Locked:       in.Locked,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:             in.ID,
+		Username:       in.Username,
+		Domain:         in.Domain,
+		DisplayName:    in.DisplayName,
+		Note:           in.Note,
+		PublicKey:      in.PublicKey,
+		PrivateKey:     in.PrivateKey,
+		InboxURL:       in.InboxURL,
+		OutboxURL:      in.OutboxURL,
+		FollowersURL:   in.FollowersURL,
+		FollowingURL:   in.FollowingURL,
+		APID:           in.APID,
+		ProfileURL:     profileURL,
+		AvatarURL:      in.AvatarURL,
+		HeaderURL:      in.HeaderURL,
+		FeaturedURL:    in.FeaturedURL,
+		FollowersCount: in.FollowersCount,
+		FollowingCount: in.FollowingCount,
+		StatusesCount:  in.StatusesCount,
+		Bot:            in.Bot,
+		Locked:         in.Locked,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 	f.accountsByID[acc.ID] = acc
 	f.accountsByUsername[key] = acc
 	return acc, nil
-}
-
-// resolveAccountMediaURLs populates AvatarURL/HeaderURL from mediaByID.
-// Must be called with f.mu already held.
-func (f *FakeStore) resolveAccountMediaURLs(acc *domain.Account) {
-	if acc.AvatarMediaID != nil {
-		if m, ok := f.mediaByID[*acc.AvatarMediaID]; ok {
-			acc.AvatarURL = m.URL
-		}
-	}
-	if acc.HeaderMediaID != nil {
-		if m, ok := f.mediaByID[*acc.HeaderMediaID]; ok {
-			acc.HeaderURL = m.URL
-		}
-	}
 }
 
 func (f *FakeStore) GetAccountByID(ctx context.Context, id string) (*domain.Account, error) {
@@ -316,7 +312,7 @@ func (f *FakeStore) GetAccountByID(ctx context.Context, id string) (*domain.Acco
 	if _, suspended := f.suspendedAccountIDs[id]; suspended {
 		out.Suspended = true
 	}
-	f.resolveAccountMediaURLs(&out)
+
 	return &out, nil
 }
 
@@ -336,7 +332,7 @@ func (f *FakeStore) GetAccountsByIDs(ctx context.Context, ids []string) ([]*doma
 		if _, suspended := f.suspendedAccountIDs[id]; suspended {
 			acc.Suspended = true
 		}
-		f.resolveAccountMediaURLs(&acc)
+
 		out = append(out, &acc)
 	}
 	return out, nil
@@ -348,7 +344,7 @@ func (f *FakeStore) GetAccountByAPID(ctx context.Context, apID string) (*domain.
 	for _, a := range f.accountsByID {
 		if a.APID == apID {
 			out := *a
-			f.resolveAccountMediaURLs(&out)
+
 			return &out, nil
 		}
 	}
@@ -375,7 +371,7 @@ func (f *FakeStore) GetLocalAccountByUsername(ctx context.Context, username stri
 		return nil, domain.ErrNotFound
 	}
 	out := *a
-	f.resolveAccountMediaURLs(&out)
+
 	return &out, nil
 }
 
@@ -391,7 +387,7 @@ func (f *FakeStore) GetRemoteAccountByUsername(ctx context.Context, username str
 		return nil, domain.ErrNotFound
 	}
 	out := *a
-	f.resolveAccountMediaURLs(&out)
+
 	return &out, nil
 }
 
@@ -424,7 +420,7 @@ func (f *FakeStore) SearchAccounts(ctx context.Context, query string, limit int)
 			break
 		}
 		acc := *a
-		f.resolveAccountMediaURLs(&acc)
+
 		out = append(out, &acc)
 	}
 	for _, a := range remote {
@@ -432,7 +428,7 @@ func (f *FakeStore) SearchAccounts(ctx context.Context, query string, limit int)
 			break
 		}
 		acc := *a
-		f.resolveAccountMediaURLs(&acc)
+
 		out = append(out, &acc)
 	}
 	return out, nil
@@ -458,7 +454,16 @@ func (f *FakeStore) CreateUser(ctx context.Context, in store.CreateUserInput) (*
 func (f *FakeStore) CreateStatus(ctx context.Context, in store.CreateStatusInput) (*domain.Status, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if in.APID != "" {
+		if _, exists := f.statusesByAPID[in.APID]; exists {
+			return nil, domain.ErrConflict
+		}
+	}
 	now := time.Now()
+	createdAt := now
+	if in.CreatedAt != nil {
+		createdAt = *in.CreatedAt
+	}
 	policy := in.QuoteApprovalPolicy
 	if policy == "" {
 		policy = "public"
@@ -480,10 +485,13 @@ func (f *FakeStore) CreateStatus(ctx context.Context, in store.CreateStatusInput
 		APID:                in.APID,
 		Sensitive:           in.Sensitive,
 		Local:               in.Local,
-		CreatedAt:           now,
+		CreatedAt:           createdAt,
 		UpdatedAt:           now,
 	}
 	f.statusesByID[s.ID] = s
+	if in.APID != "" {
+		f.statusesByAPID[in.APID] = s
+	}
 	if f.homeTimeline[in.AccountID] == nil {
 		f.homeTimeline[in.AccountID] = []*domain.Status{}
 	}
@@ -799,7 +807,7 @@ func (f *FakeStore) GetStatusFavouritedBy(ctx context.Context, statusID string, 
 		a, ok := f.accountsByID[e.AccountID]
 		if ok && a != nil {
 			acc := *a
-			f.resolveAccountMediaURLs(&acc)
+
 			out = append(out, acc)
 		}
 	}
@@ -834,7 +842,7 @@ func (f *FakeStore) GetRebloggedBy(ctx context.Context, statusID string, maxID *
 		a, ok := f.accountsByID[s.AccountID]
 		if ok && a != nil {
 			acc := *a
-			f.resolveAccountMediaURLs(&acc)
+
 			out = append(out, acc)
 		}
 	}
@@ -1689,7 +1697,15 @@ func (f *FakeStore) DismissNotification(ctx context.Context, id, accountID strin
 	return nil
 }
 func (f *FakeStore) GetStatusAttachments(ctx context.Context, statusID string) ([]domain.MediaAttachment, error) {
-	return nil, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.MediaAttachment
+	for _, m := range f.mediaByID {
+		if m.StatusID != nil && *m.StatusID == statusID {
+			out = append(out, *m)
+		}
+	}
+	return out, nil
 }
 
 func (f *FakeStore) GetMonsteraSettings(ctx context.Context) (*domain.MonsteraSettings, error) {
@@ -1897,7 +1913,7 @@ func (f *FakeStore) GetFollowers(ctx context.Context, accountID string, maxID *s
 		a, ok := f.accountsByID[e.AccountID]
 		if ok && a != nil {
 			acc := *a
-			f.resolveAccountMediaURLs(&acc)
+
 			out = append(out, acc)
 		}
 	}
@@ -1929,7 +1945,7 @@ func (f *FakeStore) GetFollowing(ctx context.Context, accountID string, maxID *s
 		a, ok := f.accountsByID[e.TargetID]
 		if ok && a != nil {
 			acc := *a
-			f.resolveAccountMediaURLs(&acc)
+
 			out = append(out, acc)
 		}
 	}
@@ -1991,6 +2007,31 @@ func (f *FakeStore) DeleteAccountPin(ctx context.Context, accountID, statusID st
 		}
 	}
 	f.accountPins = newPins
+	return nil
+}
+
+func (f *FakeStore) DeleteAccountPinsByAccountID(ctx context.Context, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var newPins []pinEntry
+	for _, p := range f.accountPins {
+		if p.accountID != accountID {
+			newPins = append(newPins, p)
+		}
+	}
+	f.accountPins = newPins
+	return nil
+}
+
+func (f *FakeStore) ReplaceAccountPins(ctx context.Context, accountID string, statusIDs []string) error {
+	if err := f.DeleteAccountPinsByAccountID(ctx, accountID); err != nil {
+		return err
+	}
+	for _, statusID := range statusIDs {
+		if err := f.CreateAccountPin(ctx, accountID, statusID); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -2318,6 +2359,17 @@ func (f *FakeStore) UpdateAccountLastStatusAt(ctx context.Context, accountID str
 	return nil
 }
 
+func (f *FakeStore) UpdateAccountLastBackfilledAt(_ context.Context, id string, at time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	acc, ok := f.accountsByID[id]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	acc.LastBackfilledAt = &at
+	return nil
+}
+
 func (f *FakeStore) ListDirectoryAccounts(ctx context.Context, order string, localOnly bool, offset, limit int) ([]domain.Account, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -2363,9 +2415,7 @@ func (f *FakeStore) ListDirectoryAccounts(ctx context.Context, order string, loc
 	slice := candidates[start:end]
 	out := make([]domain.Account, 0, len(slice))
 	for _, a := range slice {
-		ac := *a
-		f.resolveAccountMediaURLs(&ac)
-		out = append(out, ac)
+		out = append(out, *a)
 	}
 	return out, nil
 }
@@ -2423,7 +2473,7 @@ func (f *FakeStore) ListBlockedAccounts(ctx context.Context, accountID string, m
 		a, ok := f.accountsByID[e.TargetID]
 		if ok && a != nil {
 			acc := *a
-			f.resolveAccountMediaURLs(&acc)
+
 			out = append(out, acc)
 		}
 	}
@@ -2484,7 +2534,7 @@ func (f *FakeStore) ListMutedAccounts(ctx context.Context, accountID string, max
 		a, ok := f.accountsByID[e.TargetID]
 		if ok && a != nil {
 			acc := *a
-			f.resolveAccountMediaURLs(&acc)
+
 			out = append(out, acc)
 		}
 	}
@@ -2686,10 +2736,33 @@ func (f *FakeStore) UpdateAccount(ctx context.Context, in store.UpdateAccountInp
 	if in.URL != nil {
 		acc.ProfileURL = *in.URL
 	}
+	if in.AvatarURL != nil {
+		acc.AvatarURL = *in.AvatarURL
+	}
+	if in.HeaderURL != nil {
+		acc.HeaderURL = *in.HeaderURL
+	}
 	acc.Bot = in.Bot
 	acc.Locked = in.Locked
 	return nil
 }
+
+func (f *FakeStore) UpdateRemoteAccountMeta(ctx context.Context, id, avatarURL, headerURL string, followersCount, followingCount, statusesCount int, featuredURL string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	acc := f.accountsByID[id]
+	if acc == nil {
+		return domain.ErrNotFound
+	}
+	acc.AvatarURL = avatarURL
+	acc.HeaderURL = headerURL
+	acc.FollowersCount = followersCount
+	acc.FollowingCount = followingCount
+	acc.StatusesCount = statusesCount
+	acc.FeaturedURL = featuredURL
+	return nil
+}
+
 func (f *FakeStore) UpdateAccountKeys(ctx context.Context, id, publicKey string) error {
 	return nil
 }
@@ -2707,6 +2780,11 @@ func (f *FakeStore) UpdateAccountURLs(ctx context.Context, id, inboxURL, outboxU
 	return nil
 }
 func (f *FakeStore) AttachMediaToStatus(ctx context.Context, mediaID, statusID, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if m, ok := f.mediaByID[mediaID]; ok {
+		m.StatusID = &statusID
+	}
 	return nil
 }
 func (f *FakeStore) CreateMediaAttachment(ctx context.Context, in store.CreateMediaAttachmentInput) (*domain.MediaAttachment, error) {

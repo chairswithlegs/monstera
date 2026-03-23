@@ -1,49 +1,35 @@
 -- name: GetAccountByID :one
-SELECT sqlc.embed(a), am.url AS avatar_url, hm.url AS header_url
-FROM accounts a
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
-WHERE a.id = $1;
+SELECT * FROM accounts WHERE id = $1;
 
 -- name: GetAccountsByIDs :many
-SELECT sqlc.embed(a), am.url AS avatar_url, hm.url AS header_url
-FROM accounts a
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
-WHERE a.id = ANY($1::text[]);
+SELECT * FROM accounts WHERE id = ANY($1::text[]);
 
 -- name: GetLocalAccountByUsername :one
-SELECT sqlc.embed(a), am.url AS avatar_url, hm.url AS header_url
-FROM accounts a
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
-WHERE a.username = $1 AND a.domain IS NULL;
+SELECT * FROM accounts WHERE username = $1 AND domain IS NULL;
 
 -- name: GetRemoteAccountByUsername :one
-SELECT sqlc.embed(a), am.url AS avatar_url, hm.url AS header_url
-FROM accounts a
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
-WHERE a.username = $1 AND a.domain = $2;
+SELECT * FROM accounts WHERE username = $1 AND domain = $2;
 
 -- name: GetAccountByAPID :one
-SELECT sqlc.embed(a), am.url AS avatar_url, hm.url AS header_url
-FROM accounts a
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
-WHERE a.ap_id = $1;
+SELECT * FROM accounts WHERE ap_id = $1;
 
 -- name: CreateAccount :one
 INSERT INTO accounts (
     id, username, domain, display_name, note,
     public_key, private_key,
     inbox_url, outbox_url, followers_url, following_url,
-    ap_id, bot, locked, url
+    ap_id, bot, locked, url,
+    avatar_url, header_url,
+    followers_count, following_count, statuses_count,
+    featured_url
 ) VALUES (
     $1, $2, $3, $4, $5,
     $6, $7,
     $8, $9, $10, $11,
-    $12, $13, $14, $15
+    $12, $13, $14, $15,
+    $16, $17,
+    $18, $19, $20,
+    $21
 ) RETURNING *;
 
 -- name: UpdateAccount :one
@@ -56,6 +42,8 @@ UPDATE accounts SET
     locked          = COALESCE($7, locked),
     fields          = COALESCE($8, fields),
     url             = COALESCE($9, url),
+    avatar_url      = COALESCE(sqlc.narg('avatar_url'), avatar_url),
+    header_url      = COALESCE(sqlc.narg('header_url'), header_url),
     updated_at      = NOW()
 WHERE id = $1
 RETURNING *;
@@ -79,11 +67,7 @@ UPDATE accounts SET silenced = TRUE, updated_at = NOW() WHERE id = $1;
 UPDATE accounts SET silenced = FALSE, updated_at = NOW() WHERE id = $1;
 
 -- name: ListLocalAccounts :many
-SELECT sqlc.embed(a), am.url AS avatar_url, hm.url AS header_url
-FROM accounts a
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
-WHERE a.domain IS NULL ORDER BY a.id DESC LIMIT $1 OFFSET $2;
+SELECT * FROM accounts WHERE domain IS NULL ORDER BY id DESC LIMIT $1 OFFSET $2;
 
 -- name: CountLocalAccounts :one
 SELECT COUNT(*) FROM accounts WHERE domain IS NULL;
@@ -113,29 +97,37 @@ UPDATE accounts SET last_status_at = NOW() WHERE id = $1;
 UPDATE accounts SET statuses_count = GREATEST(0, statuses_count - 1) WHERE id = $1;
 
 -- name: SearchAccounts :many
-SELECT sqlc.embed(a), am.url AS avatar_url, hm.url AS header_url
-FROM accounts a
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
-WHERE a.suspended = FALSE
+SELECT * FROM accounts
+WHERE suspended = FALSE
   AND (
-    LOWER(a.username) LIKE LOWER($1) || '%'
-    OR (a.domain IS NOT NULL AND LOWER(a.username) || '@' || LOWER(COALESCE(a.domain, '')) LIKE LOWER($1) || '%')
+    LOWER(username) LIKE LOWER($1) || '%'
+    OR (domain IS NOT NULL AND LOWER(username) || '@' || LOWER(COALESCE(domain, '')) LIKE LOWER($1) || '%')
   )
-ORDER BY (a.domain IS NOT NULL), a.username
+ORDER BY (domain IS NOT NULL), username
 LIMIT $2;
 
 -- name: ListDirectoryAccounts :many
-SELECT sqlc.embed(a), am.url AS avatar_url, hm.url AS header_url
-FROM accounts a
-LEFT JOIN media_attachments am ON am.id = a.avatar_media_id
-LEFT JOIN media_attachments hm ON hm.id = a.header_media_id
-WHERE (NOT $1 OR a.domain IS NULL)
-  AND a.suspended = FALSE
+SELECT * FROM accounts
+WHERE (NOT $1 OR domain IS NULL)
+  AND suspended = FALSE
 ORDER BY
-  CASE WHEN $2::text = 'active' THEN a.last_status_at END DESC NULLS LAST,
-  a.created_at DESC
+  CASE WHEN $2::text = 'active' THEN last_status_at END DESC NULLS LAST,
+  created_at DESC
 LIMIT $3 OFFSET $4;
+
+-- name: UpdateRemoteAccountMeta :exec
+UPDATE accounts SET
+    avatar_url      = $2,
+    header_url      = $3,
+    followers_count = $4,
+    following_count = $5,
+    statuses_count  = $6,
+    featured_url    = $7,
+    updated_at      = NOW()
+WHERE id = $1;
+
+-- name: UpdateAccountLastBackfilledAt :exec
+UPDATE accounts SET last_backfilled_at = @last_backfilled_at WHERE id = @id;
 
 -- name: DeleteAccount :exec
 DELETE FROM accounts WHERE id = $1;
