@@ -158,7 +158,7 @@ func TestFederationSubscriber_processMessage_HandlerError_Naks(t *testing.T) {
 	naked := false
 	author := localAccount("01author")
 	status := &domain.Status{ID: "01status", APID: "https://example.com/statuses/01status"}
-	msg := makeMsg(t, domain.EventStatusCreated, domain.StatusCreatedPayload{Status: status, Author: author})
+	msg := makeMsg(t, domain.EventStatusCreated, domain.StatusCreatedPayload{Status: status, Author: author, Local: true})
 	msg.NakFn = func() { naked = true }
 	s.processMessage(context.Background(), msg)
 	assert.True(t, naked)
@@ -171,7 +171,7 @@ func TestFederationSubscriber_processMessage_HandlerSuccess_Acks(t *testing.T) {
 	acked := false
 	author := localAccount("01author")
 	status := &domain.Status{ID: "01status", APID: "https://example.com/statuses/01status"}
-	msg := makeMsg(t, domain.EventStatusCreated, domain.StatusCreatedPayload{Status: status, Author: author})
+	msg := makeMsg(t, domain.EventStatusCreated, domain.StatusCreatedPayload{Status: status, Author: author, Local: true})
 	msg.AckFn = func() { acked = true }
 	s.processMessage(context.Background(), msg)
 	assert.True(t, acked)
@@ -190,7 +190,7 @@ func TestFederationSubscriber_handleStatusCreated_PublishesFanout(t *testing.T) 
 
 	author := localAccount("01author")
 	status := &domain.Status{ID: "01status", APID: "https://example.com/statuses/01status"}
-	payload := domain.StatusCreatedPayload{Status: status, Author: author}
+	payload := domain.StatusCreatedPayload{Status: status, Author: author, Local: true}
 
 	err := s.handleStatusCreated(context.Background(), domainEvent(t, domain.EventStatusCreated, payload))
 	require.NoError(t, err)
@@ -212,7 +212,7 @@ func TestFederationSubscriber_handleStatusCreated_FallsBackToGeneratedID(t *test
 	author := localAccount("01author")
 	// No APID or URI set — subscriber should generate a URL
 	status := &domain.Status{ID: "01status"}
-	payload := domain.StatusCreatedPayload{Status: status, Author: author}
+	payload := domain.StatusCreatedPayload{Status: status, Author: author, Local: true}
 
 	err := s.handleStatusCreated(context.Background(), domainEvent(t, domain.EventStatusCreated, payload))
 	require.NoError(t, err)
@@ -324,7 +324,7 @@ func TestFederationSubscriber_handleStatusUpdated_PublishesFanout(t *testing.T) 
 
 	author := localAccount("01author")
 	status := &domain.Status{ID: "01status", APID: "https://example.com/statuses/01status"}
-	payload := domain.StatusUpdatedPayload{Status: status, Author: author}
+	payload := domain.StatusUpdatedPayload{Status: status, Author: author, Local: true}
 
 	err := s.handleStatusUpdated(context.Background(), domainEvent(t, domain.EventStatusUpdated, payload))
 	require.NoError(t, err)
@@ -386,7 +386,7 @@ func TestFederationSubscriber_handleFollowCreated_WithTargetInbox_PublishesDeliv
 	actor := localAccount("01actor")
 	target := remoteAccount("01target")
 	follow := &domain.Follow{ID: "01follow"}
-	payload := domain.FollowCreatedPayload{Follow: follow, Actor: actor, Target: target}
+	payload := domain.FollowCreatedPayload{Follow: follow, Actor: actor, Target: target, Local: true}
 
 	err := s.handleFollowCreated(context.Background(), domainEvent(t, domain.EventFollowCreated, payload))
 	require.NoError(t, err)
@@ -427,7 +427,7 @@ func TestFederationSubscriber_handleFollowRemoved_WithTargetInbox_PublishesUndo(
 
 	actor := localAccount("01actor")
 	target := remoteAccount("01target")
-	payload := domain.FollowRemovedPayload{FollowID: "01follow", Actor: actor, Target: target}
+	payload := domain.FollowRemovedPayload{FollowID: "01follow", Actor: actor, Target: target, Local: true}
 
 	err := s.handleFollowRemoved(context.Background(), domainEvent(t, domain.EventFollowRemoved, payload))
 	require.NoError(t, err)
@@ -470,7 +470,7 @@ func TestFederationSubscriber_handleFollowAccepted_WithActorInbox_PublishesAccep
 	target := localAccount("01target")
 	actor := remoteAccount("01actor")
 	follow := &domain.Follow{ID: "01follow"}
-	payload := domain.FollowAcceptedPayload{Follow: follow, Target: target, Actor: actor}
+	payload := domain.FollowAcceptedPayload{Follow: follow, Target: target, Actor: actor, Local: true}
 
 	err := s.handleFollowAccepted(context.Background(), domainEvent(t, domain.EventFollowAccepted, payload))
 	require.NoError(t, err)
@@ -511,7 +511,7 @@ func TestFederationSubscriber_handleBlockCreated_WithTargetInbox_PublishesBlock(
 
 	actor := localAccount("01actor")
 	target := remoteAccount("01target")
-	payload := domain.BlockCreatedPayload{Actor: actor, Target: target}
+	payload := domain.BlockCreatedPayload{Actor: actor, Target: target, Local: true}
 
 	err := s.handleBlockCreated(context.Background(), domainEvent(t, domain.EventBlockCreated, payload))
 	require.NoError(t, err)
@@ -551,7 +551,7 @@ func TestFederationSubscriber_handleBlockRemoved_WithTargetInbox_PublishesUndoBl
 
 	actor := localAccount("01actor")
 	target := remoteAccount("01target")
-	payload := domain.BlockRemovedPayload{Actor: actor, Target: target}
+	payload := domain.BlockRemovedPayload{Actor: actor, Target: target, Local: true}
 
 	err := s.handleBlockRemoved(context.Background(), domainEvent(t, domain.EventBlockRemoved, payload))
 	require.NoError(t, err)
@@ -573,7 +573,7 @@ func TestFederationSubscriber_handleAccountUpdated_PublishesFanout(t *testing.T)
 	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
 
 	account := localAccount("01account")
-	payload := domain.AccountUpdatedPayload{Account: account}
+	payload := domain.AccountUpdatedPayload{Account: account, Local: true}
 
 	err := s.handleAccountUpdated(context.Background(), domainEvent(t, domain.EventAccountUpdated, payload))
 	require.NoError(t, err)
@@ -648,6 +648,7 @@ func TestFederationSubscriber_handleReblogCreated_LocalFromAccount_PublishesFano
 		FromAccount:        fromAccount,
 		OriginalAuthor:     originalAuthor,
 		OriginalStatusAPID: originalStatusAPID,
+		Local:              true,
 	}
 	err := s.handleReblogCreated(context.Background(), domainEvent(t, domain.EventReblogCreated, payload))
 	require.NoError(t, err)
@@ -679,6 +680,7 @@ func TestFederationSubscriber_handleReblogCreated_LocalOriginalAuthor_SkipsDeliv
 		FromAccount:        fromAccount,
 		OriginalAuthor:     originalAuthor,
 		OriginalStatusAPID: "https://example.com/statuses/01status",
+		Local:              true,
 	}
 	err := s.handleReblogCreated(context.Background(), domainEvent(t, domain.EventReblogCreated, payload))
 	require.NoError(t, err)
@@ -724,6 +726,7 @@ func TestFederationSubscriber_handleFavouriteCreated_LocalFromAccount_RemoteAuth
 		FromAccount:  fromAccount,
 		StatusAuthor: statusAuthor,
 		StatusAPID:   statusAPID,
+		Local:        true,
 	}
 	err := s.handleFavouriteCreated(context.Background(), domainEvent(t, domain.EventFavouriteCreated, payload))
 	require.NoError(t, err)
@@ -748,6 +751,7 @@ func TestFederationSubscriber_handleFavouriteCreated_LocalAuthor_Skips(t *testin
 		FromAccount:  fromAccount,
 		StatusAuthor: statusAuthor,
 		StatusAPID:   "https://example.com/statuses/01status",
+		Local:        true,
 	}
 	err := s.handleFavouriteCreated(context.Background(), domainEvent(t, domain.EventFavouriteCreated, payload))
 	require.NoError(t, err)

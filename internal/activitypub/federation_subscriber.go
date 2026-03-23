@@ -164,7 +164,7 @@ func (s *FederationSubscriber) handleStatusCreated(ctx context.Context, event do
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal status.created payload: %w", err)
 	}
-	if payload.Author == nil || payload.Author.Domain != nil {
+	if !payload.Local || payload.Author == nil {
 		return nil
 	}
 	note, err := vocab.LocalStatusToNote(vocab.LocalStatusToNoteInput{
@@ -239,7 +239,7 @@ func (s *FederationSubscriber) handleStatusUpdated(ctx context.Context, event do
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal status.updated payload: %w", err)
 	}
-	if payload.Author == nil || payload.Author.Domain != nil {
+	if !payload.Local || payload.Author == nil {
 		return nil
 	}
 	note, err := vocab.LocalStatusToNote(vocab.LocalStatusToNoteInput{
@@ -280,7 +280,7 @@ func (s *FederationSubscriber) handleFollowCreated(ctx context.Context, event do
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal follow.created payload: %w", err)
 	}
-	if payload.Actor == nil || payload.Actor.Domain != nil {
+	if !payload.Local || payload.Actor == nil {
 		return nil
 	}
 	base := s.instanceBaseURL
@@ -312,7 +312,7 @@ func (s *FederationSubscriber) handleFollowRemoved(ctx context.Context, event do
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal follow.removed payload: %w", err)
 	}
-	if payload.Actor == nil || payload.Actor.Domain != nil {
+	if !payload.Local || payload.Actor == nil {
 		return nil
 	}
 	base := s.instanceBaseURL
@@ -349,7 +349,7 @@ func (s *FederationSubscriber) handleFollowAccepted(ctx context.Context, event d
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal follow.accepted payload: %w", err)
 	}
-	if payload.Target == nil || payload.Target.Domain != nil {
+	if !payload.Local || payload.Target == nil {
 		return nil
 	}
 	base := s.instanceBaseURL
@@ -386,7 +386,7 @@ func (s *FederationSubscriber) handleBlockCreated(ctx context.Context, event dom
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal block.created payload: %w", err)
 	}
-	if payload.Actor == nil || payload.Actor.Domain != nil {
+	if !payload.Local || payload.Actor == nil {
 		return nil
 	}
 	base := s.instanceBaseURL
@@ -418,7 +418,7 @@ func (s *FederationSubscriber) handleBlockRemoved(ctx context.Context, event dom
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal block.removed payload: %w", err)
 	}
-	if payload.Actor == nil || payload.Actor.Domain != nil {
+	if !payload.Local || payload.Actor == nil {
 		return nil
 	}
 	base := s.instanceBaseURL
@@ -455,7 +455,7 @@ func (s *FederationSubscriber) handleAccountUpdated(ctx context.Context, event d
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal account.updated payload: %w", err)
 	}
-	if payload.Account == nil || payload.Account.Domain != nil {
+	if !payload.Local || payload.Account == nil {
 		return nil
 	}
 	actor := vocab.AccountToActor(payload.Account, s.instanceBaseURL)
@@ -485,7 +485,7 @@ func (s *FederationSubscriber) handleReblogCreated(ctx context.Context, event do
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal reblog.created payload: %w", err)
 	}
-	if payload.FromAccount == nil || payload.FromAccount.Domain != nil {
+	if !payload.Local || payload.FromAccount == nil {
 		return nil
 	}
 	if payload.OriginalStatusAPID == "" {
@@ -506,7 +506,7 @@ func (s *FederationSubscriber) handleReblogCreated(ctx context.Context, event do
 	if err != nil {
 		return fmt.Errorf("marshal announce: %w", err)
 	}
-	if payload.OriginalAuthor != nil && payload.OriginalAuthor.InboxURL != "" && payload.OriginalAuthor.Domain != nil {
+	if payload.OriginalAuthor != nil && payload.OriginalAuthor.IsRemote() {
 		err = s.delivery.Publish(ctx, "announce", internal.OutboxDeliveryMessage{
 			ActivityID:  activityID,
 			Activity:    raw,
@@ -533,10 +533,10 @@ func (s *FederationSubscriber) handleFavouriteCreated(ctx context.Context, event
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal favourite.created payload: %w", err)
 	}
-	if payload.FromAccount == nil || payload.FromAccount.Domain != nil {
+	if !payload.Local || payload.FromAccount == nil {
 		return nil
 	}
-	if payload.StatusAuthor == nil || payload.StatusAuthor.InboxURL == "" || payload.StatusAuthor.Domain == nil {
+	if payload.StatusAuthor == nil || payload.StatusAuthor.IsLocal() {
 		return nil
 	}
 	if payload.StatusAPID == "" {
@@ -571,7 +571,7 @@ func (s *FederationSubscriber) handleReblogRemoved(ctx context.Context, event do
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal reblog.removed payload: %w", err)
 	}
-	if payload.FromAccount == nil || payload.FromAccount.Domain != nil {
+	if !payload.Local || payload.FromAccount == nil {
 		return nil
 	}
 	if payload.OriginalStatusAPID == "" {
@@ -612,13 +612,13 @@ func (s *FederationSubscriber) handleFavouriteRemoved(ctx context.Context, event
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal favourite.removed payload: %w", err)
 	}
-	if payload.FromAccount == nil || payload.FromAccount.Domain != nil {
+	if !payload.Local || payload.FromAccount == nil {
 		return nil
 	}
 	if payload.StatusAPID == "" {
 		return nil
 	}
-	if payload.StatusAuthor == nil || payload.StatusAuthor.InboxURL == "" || payload.StatusAuthor.Domain == nil {
+	if payload.StatusAuthor == nil || payload.StatusAuthor.IsLocal() {
 		return nil
 	}
 	base := s.instanceBaseURL
