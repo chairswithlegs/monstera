@@ -55,12 +55,11 @@ func (h *StreamingHandler) GETStreamingWS(w http.ResponseWriter, r *http.Request
 	// applies to browser requests. Mastodon native clients (Ivory, Tusky, etc.)
 	// do not send an Origin header, and the Mastodon reference implementation
 	// also skips this check, so it is expected to be disabled.
-	//
+	opts := &websocket.AcceptOptions{InsecureSkipVerify: true}
 	// Browser clients (e.g. Elk) pass the OAuth token as a WebSocket subprotocol
 	// because the browser WebSocket API does not allow custom headers. The server
-	// must echo back the negotiated subprotocol or the browser will close the
-	// connection immediately.
-	opts := &websocket.AcceptOptions{InsecureSkipVerify: true}
+	// must echo back the negotiated subprotocol or risk the browser closing the
+	// connection.
 	if proto := r.Header.Get("Sec-WebSocket-Protocol"); proto != "" {
 		opts.Subprotocols = []string{proto}
 	}
@@ -268,10 +267,6 @@ func (h *StreamingHandler) wsWriteLoop(ctx context.Context, conn *websocket.Conn
 }
 
 // wsPingLoop sends periodic WebSocket protocol pings to detect dead connections.
-// The browser handles pong responses transparently — JavaScript never sees them.
-// Unlike SSE (which needs a :keepalive comment to prevent proxy timeouts),
-// WebSocket connections are kept alive by protocol-level pings alone.
-// On ping failure it calls cancel to tear down the connection.
 func (h *StreamingHandler) wsPingLoop(ctx context.Context, conn *websocket.Conn, cancel context.CancelFunc) {
 	ticker := time.NewTicker(wsPingInterval)
 	defer ticker.Stop()
