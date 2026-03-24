@@ -26,15 +26,19 @@ type FederationSubscriber struct {
 	fanout          internal.OutboxFanoutWorker
 	delivery        internal.OutboxDeliveryWorker
 	instanceBaseURL string
+	uiBaseURL       string
 }
 
 // NewFederationSubscriber creates a federation subscriber.
+// instanceBaseURL is the AP/API server base URL; uiBaseURL is the web UI base URL
+// used for the human-readable Actor.URL field in federated profile documents.
 func NewFederationSubscriber(
 	js jetstream.JetStream,
 	followers service.RemoteFollowService,
 	bl *blocklist.BlocklistCache,
 	signer HTTPSignatureService,
 	instanceBaseURL string,
+	uiBaseURL string,
 	appEnv string,
 	insecureSkipTLS bool,
 	workerConcurrency int,
@@ -47,6 +51,7 @@ func NewFederationSubscriber(
 		delivery:        delivery,
 		fanout:          fanout,
 		instanceBaseURL: instanceBaseURL,
+		uiBaseURL:       uiBaseURL,
 	}
 }
 
@@ -458,7 +463,7 @@ func (s *FederationSubscriber) handleAccountUpdated(ctx context.Context, event d
 	if !payload.Local || payload.Account == nil {
 		return nil
 	}
-	actor := vocab.AccountToActor(payload.Account, s.instanceBaseURL)
+	actor := vocab.AccountToActor(payload.Account, s.instanceBaseURL, s.uiBaseURL)
 	actorID := actor.ID
 	activityID := fmt.Sprintf("%s/activities/%s", s.instanceBaseURL, uid.New())
 	update, err := vocab.NewUpdateActorActivity(activityID, actorID, actor)

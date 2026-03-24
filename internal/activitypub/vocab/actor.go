@@ -9,6 +9,10 @@ import (
 	"github.com/chairswithlegs/monstera/internal/domain"
 )
 
+func BuildActorPublicProfileURL(uiBaseURL, username string) string {
+	return fmt.Sprintf("%s/public/profile?u=%s", uiBaseURL, username)
+}
+
 // PropertyValue represents a Mastodon-style profile metadata field from an
 // Actor's attachment array. Only entries with Type == "PropertyValue" are used.
 type PropertyValue struct {
@@ -44,9 +48,12 @@ type Actor struct {
 }
 
 // AccountToActor builds an ActivityPub Actor from a domain account.
-// serverBaseURL is the base URL (e.g. "https://api.example.com") for building IRIs.
-func AccountToActor(a *domain.Account, serverBaseURL string) *Actor {
+// serverBaseURL is the base URL (e.g. "https://api.example.com") for building AP IRIs.
+// uiBaseURL is the base URL of the web UI (e.g. "https://example.com") used for the
+// human-readable Actor.URL field, which may differ from the API server.
+func AccountToActor(a *domain.Account, serverBaseURL, uiBaseURL string) *Actor {
 	base := strings.TrimSuffix(serverBaseURL, "/")
+	ui := strings.TrimSuffix(uiBaseURL, "/")
 	id := a.APID
 	if id == "" {
 		id = base + "/users/" + a.Username
@@ -88,7 +95,7 @@ func AccountToActor(a *domain.Account, serverBaseURL string) *Actor {
 		PreferredUsername:         a.Username,
 		Name:                      name,
 		Summary:                   summary,
-		URL:                       fmt.Sprintf("%s/@%s", base, a.Username),
+		URL:                       BuildActorPublicProfileURL(ui, a.Username),
 		Inbox:                     inbox,
 		Outbox:                    outbox,
 		Followers:                 followers,

@@ -2,6 +2,7 @@ package activitypub
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -15,13 +16,17 @@ import (
 type ActorHandler struct {
 	accounts        service.AccountService
 	instanceBaseURL string
+	uiBaseURL       string
 }
 
 // NewActorHandler returns a new ActorHandler.
-func NewActorHandler(accounts service.AccountService, instanceBaseURL string) *ActorHandler {
+// instanceBaseURL is the AP/API server base URL; uiBaseURL is the web UI base URL
+// (they may differ when the API and UI run on separate origins).
+func NewActorHandler(accounts service.AccountService, instanceBaseURL, uiBaseURL string) *ActorHandler {
 	return &ActorHandler{
 		accounts:        accounts,
 		instanceBaseURL: strings.TrimSuffix(instanceBaseURL, "/"),
+		uiBaseURL:       strings.TrimSuffix(uiBaseURL, "/"),
 	}
 }
 
@@ -35,7 +40,8 @@ func (h *ActorHandler) GETActor(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !acceptsActivityPub(r) {
-		http.Redirect(w, r, h.instanceBaseURL+"/@"+username, http.StatusSeeOther)
+		profileURL := vocab.BuildActorPublicProfileURL(h.uiBaseURL, url.QueryEscape(username))
+		http.Redirect(w, r, profileURL, http.StatusSeeOther)
 		return
 	}
 
@@ -44,7 +50,7 @@ func (h *ActorHandler) GETActor(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	actor := vocab.AccountToActor(acc, h.instanceBaseURL)
+	actor := vocab.AccountToActor(acc, h.instanceBaseURL, h.uiBaseURL)
 	w.Header().Set("Cache-Control", "max-age=300")
 	api.WriteActivityJSON(w, http.StatusOK, actor)
 }
