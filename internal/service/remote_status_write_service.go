@@ -78,34 +78,11 @@ func NewRemoteStatusWriteService(s store.Store, c ConversationService, m MediaSe
 }
 
 func (svc *remoteStatusWriteService) CreateRemote(ctx context.Context, in CreateRemoteStatusInput) (*domain.Status, error) {
-	// Pre-generate the ID so it's available to best-effort operations after the transaction.
 	// Use the original publish time for the ULID so backfilled statuses sort chronologically.
 	statusID := uid.New()
 	if in.PublishedAt != nil {
 		statusID = uid.NewWithTime(*in.PublishedAt)
 	}
-
-	// Pre-download media before the transaction so HTTP calls don't hold the TX open.
-	// Partial failures are tolerated — the status is still created with whatever media succeeds.
-	// Note: if the transaction later fails, pre-downloaded media records become orphaned.
-	// This is acceptable — orphan cleanup is handled by the media garbage collector.
-	attachments := in.Attachments
-	if len(attachments) > 4 {
-		attachments = attachments[:4]
-	}
-	var downloadedMediaIDs []string
-	for _, att := range attachments {
-		m, mediaErr := svc.media.CreateRemote(ctx, att)
-		if mediaErr != nil {
-			slog.WarnContext(ctx, "CreateRemote: create media failed", slog.String("url", att.RemoteURL), slog.Any("error", mediaErr))
-			continue
-		}
-		downloadedMediaIDs = append(downloadedMediaIDs, m.ID)
-	}
-
-	// Pre-resolve hashtags and mentions so their DB records exist before the transaction.
-	hashtagIDs := svc.resolveHashtagIDs(ctx, in.HashtagNames)
-	mentionAccountIDs := svc.resolveMentionAccountIDs(ctx, in.MentionIRIs)
 
 	var st *domain.Status
 	err := svc.store.WithTx(ctx, func(tx store.Store) error {
@@ -130,21 +107,33 @@ func (svc *remoteStatusWriteService) CreateRemote(ctx context.Context, in Create
 			return fmt.Errorf("CreateStatus: %w", txErr)
 		}
 
-		// Attach pre-downloaded media.
-		for _, mid := range downloadedMediaIDs {
-			if txErr = tx.AttachMediaToStatus(ctx, mid, st.ID, in.AccountID); txErr != nil {
-				slog.WarnContext(ctx, "CreateRemote: attach media failed", slog.String("media_id", mid), slog.Any("error", txErr))
+		// Create and attach media. Partial failures are tolerated — the status is
+		// still created with whatever media succeeds.
+		attachments := in.Attachments
+		if len(attachments) > 4 {
+			attachments = attachments[:4]
+		}
+		for _, att := range attachments {
+			m, mediaErr := svc.media.CreateRemote(ctx, att)
+			if mediaErr != nil {
+				slog.WarnContext(ctx, "CreateRemote: create media failed", slog.String("url", att.RemoteURL), slog.Any("error", mediaErr))
+				continue
+			}
+			if txErr = tx.AttachMediaToStatus(ctx, m.ID, st.ID, in.AccountID); txErr != nil {
+				slog.WarnContext(ctx, "CreateRemote: attach media failed", slog.String("media_id", m.ID), slog.Any("error", txErr))
 			}
 		}
 
-		// Attach pre-resolved hashtags.
+		// Resolve and attach hashtags.
+		hashtagIDs := svc.resolveHashtagIDs(ctx, in.HashtagNames)
 		if len(hashtagIDs) > 0 {
 			if txErr = tx.AttachHashtagsToStatus(ctx, st.ID, hashtagIDs); txErr != nil {
 				slog.WarnContext(ctx, "CreateRemote: attach hashtags failed", slog.String("status_id", st.ID), slog.Any("error", txErr))
 			}
 		}
 
-		// Create pre-resolved mentions.
+		// Resolve and create mentions.
+		mentionAccountIDs := svc.resolveMentionAccountIDs(ctx, in.MentionIRIs)
 		for _, accID := range mentionAccountIDs {
 			if txErr = tx.CreateStatusMention(ctx, st.ID, accID); txErr != nil {
 				slog.WarnContext(ctx, "CreateRemote: create mention failed", slog.String("status_id", st.ID), slog.String("account_id", accID), slog.Any("error", txErr))
@@ -158,7 +147,7 @@ func (svc *remoteStatusWriteService) CreateRemote(ctx context.Context, in Create
 			}
 		}
 
-		// Gather enrichment data within the transaction for the domain event.
+		// Gather enrichment data for the domain event.
 		author, txErr := tx.GetAccountByID(ctx, in.AccountID)
 		if txErr != nil {
 			return fmt.Errorf("GetAccountByID: %w", txErr)
@@ -210,8 +199,6 @@ func (svc *remoteStatusWriteService) CreateRemote(ctx context.Context, in Create
 }
 
 // resolveHashtagIDs ensures hashtag records exist and returns their IDs.
-// Called before the transaction so that GetOrCreateHashtag (which may INSERT)
-// doesn't hold the transaction open on contention.
 func (svc *remoteStatusWriteService) resolveHashtagIDs(ctx context.Context, names []string) []string {
 	if len(names) == 0 {
 		return nil
@@ -229,7 +216,6 @@ func (svc *remoteStatusWriteService) resolveHashtagIDs(ctx context.Context, name
 }
 
 // resolveMentionAccountIDs resolves AP actor IRIs to local account IDs.
-// Called before the transaction so that lookups don't hold the TX open.
 func (svc *remoteStatusWriteService) resolveMentionAccountIDs(ctx context.Context, mentionIRIs []string) []string {
 	if len(mentionIRIs) == 0 {
 		return nil
