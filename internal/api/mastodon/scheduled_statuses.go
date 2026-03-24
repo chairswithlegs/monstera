@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -19,13 +18,14 @@ import (
 
 // ScheduledStatusesHandler handles GET/PUT/DELETE /api/v1/scheduled_statuses.
 type ScheduledStatusesHandler struct {
-	statuses  service.StatusService
-	scheduled service.ScheduledStatusService
+	statuses       service.StatusService
+	scheduled      service.ScheduledStatusService
+	instanceDomain string
 }
 
 // NewScheduledStatusesHandler returns a new ScheduledStatusesHandler.
-func NewScheduledStatusesHandler(statuses service.StatusService, scheduled service.ScheduledStatusService) *ScheduledStatusesHandler {
-	return &ScheduledStatusesHandler{statuses: statuses, scheduled: scheduled}
+func NewScheduledStatusesHandler(statuses service.StatusService, scheduled service.ScheduledStatusService, instanceDomain string) *ScheduledStatusesHandler {
+	return &ScheduledStatusesHandler{statuses: statuses, scheduled: scheduled, instanceDomain: instanceDomain}
 }
 
 // mastodonScheduledParams returns params as a Mastodon-shaped JSON object (with application_id, poll: null, etc.) for client compatibility.
@@ -86,18 +86,8 @@ func (h *ScheduledStatusesHandler) GETScheduledStatuses(w http.ResponseWriter, r
 		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
-	maxID := r.URL.Query().Get("max_id")
-	var maxIDPtr *string
-	if maxID != "" {
-		maxIDPtr = &maxID
-	}
-	limit := 20
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 40 {
-			limit = n
-		}
-	}
-	list, err := h.statuses.ListScheduledStatuses(ctx, account.ID, maxIDPtr, limit)
+	params := PageParamsFromRequest(r)
+	list, err := h.statuses.ListScheduledStatuses(ctx, account.ID, optionalString(params.MaxID), params.Limit)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -105,6 +95,13 @@ func (h *ScheduledStatusesHandler) GETScheduledStatuses(w http.ResponseWriter, r
 	out := make([]apimodel.ScheduledStatus, 0, len(list))
 	for i := range list {
 		out = append(out, scheduledStatusToAPIModel(&list[i]))
+	}
+	if len(list) > 0 {
+		firstID := list[0].ID
+		lastID := list[len(list)-1].ID
+		if link := LinkHeader(AbsoluteRequestURL(r, h.instanceDomain), firstID, lastID); link != "" {
+			w.Header().Set("Link", link)
+		}
 	}
 	api.WriteJSON(w, http.StatusOK, out)
 }

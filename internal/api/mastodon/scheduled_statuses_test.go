@@ -26,7 +26,7 @@ func TestScheduledStatusesHandler_GETScheduledStatuses(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, service.NewConversationService(st, statusSvc), "https://example.com", "example.com", 500)
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewScheduledStatusesHandler(statusSvc, scheduledSvc)
+	handler := NewScheduledStatusesHandler(statusSvc, scheduledSvc, "example.com")
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -65,6 +65,27 @@ func TestScheduledStatusesHandler_GETScheduledStatuses(t *testing.T) {
 		assert.NotEmpty(t, list[0]["id"])
 		assert.NotEmpty(t, list[0]["scheduled_at"])
 	})
+
+	t.Run("Link header emitted when limit reached", func(t *testing.T) {
+		// Create a second scheduled status so two exist; request with limit=1.
+		_, err = st.CreateScheduledStatus(ctx, store.CreateScheduledStatusInput{
+			ID:          uid.New(),
+			AccountID:   acc.ID,
+			Params:      paramsJSON,
+			ScheduledAt: scheduledAt.Add(time.Minute),
+		})
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/scheduled_statuses?limit=1", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		rec := httptest.NewRecorder()
+		handler.GETScheduledStatuses(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var list []map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&list))
+		assert.Len(t, list, 1)
+		assert.Contains(t, rec.Header().Get("Link"), `rel="next"`)
+	})
 }
 
 func TestScheduledStatusesHandler_GETScheduledStatus(t *testing.T) {
@@ -74,7 +95,7 @@ func TestScheduledStatusesHandler_GETScheduledStatus(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, service.NewConversationService(st, statusSvc), "https://example.com", "example.com", 500)
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewScheduledStatusesHandler(statusSvc, scheduledSvc)
+	handler := NewScheduledStatusesHandler(statusSvc, scheduledSvc, "example.com")
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -139,7 +160,7 @@ func TestScheduledStatusesHandler_PUTScheduledStatus(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, service.NewConversationService(st, statusSvc), "https://example.com", "example.com", 500)
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewScheduledStatusesHandler(statusSvc, scheduledSvc)
+	handler := NewScheduledStatusesHandler(statusSvc, scheduledSvc, "example.com")
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -229,7 +250,7 @@ func TestScheduledStatusesHandler_DELETEScheduledStatus(t *testing.T) {
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, service.NewConversationService(st, statusSvc), "https://example.com", "example.com", 500)
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewScheduledStatusesHandler(statusSvc, scheduledSvc)
+	handler := NewScheduledStatusesHandler(statusSvc, scheduledSvc, "example.com")
 
 	acc, err := service.NewAccountService(st, "https://example.com").Register(ctx, service.RegisterInput{
 		Username: "alice",

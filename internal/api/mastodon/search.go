@@ -64,6 +64,29 @@ func mapTypeToSearchType(typ string) service.SearchType {
 	}
 }
 
+// GETAccountsSearch handles GET /api/v1/accounts/search.
+// Returns a flat array of accounts matching the query. resolve=true triggers remote WebFinger lookup.
+func (h *SearchHandler) GETAccountsSearch(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		api.HandleError(w, r, api.NewUnprocessableError("q is required"))
+		return
+	}
+	resolve := api.QueryParamIsTrue(r, "resolve")
+	limit := parseLimitParam(r, DefaultListLimit, MaxListLimit)
+	viewer := middleware.AccountFromContext(r.Context())
+	res, err := h.search.Search(r.Context(), viewer, q, service.SearchTypeAccounts, resolve, limit)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	out := make([]apimodel.Account, 0, len(res.Accounts))
+	for _, a := range res.Accounts {
+		out = append(out, apimodel.ToAccount(a, h.instanceDomain))
+	}
+	api.WriteJSON(w, http.StatusOK, out)
+}
+
 // GETSearch handles GET /api/v1/search and GET /api/v2/search.
 func (h *SearchHandler) GETSearch(w http.ResponseWriter, r *http.Request) {
 	req, err := parseSearchRequest(r)

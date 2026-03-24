@@ -23,22 +23,30 @@ type fakeTrendsService struct {
 	err      error
 }
 
-func (f *fakeTrendsService) TrendingStatuses(_ context.Context, limit int) ([]service.EnrichedStatus, error) {
+func (f *fakeTrendsService) TrendingStatuses(_ context.Context, offset, limit int) ([]service.EnrichedStatus, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
 	out := f.statuses
+	if offset >= len(out) {
+		return []service.EnrichedStatus{}, nil
+	}
+	out = out[offset:]
 	if len(out) > limit {
 		out = out[:limit]
 	}
 	return out, nil
 }
 
-func (f *fakeTrendsService) TrendingTags(_ context.Context, limit int) ([]domain.TrendingTag, error) {
+func (f *fakeTrendsService) TrendingTags(_ context.Context, offset, limit int) ([]domain.TrendingTag, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
 	out := f.tags
+	if offset >= len(out) {
+		return []domain.TrendingTag{}, nil
+	}
+	out = out[offset:]
 	if len(out) > limit {
 		out = out[:limit]
 	}
@@ -111,6 +119,51 @@ func TestTrendsHandler_GETTrendsStatuses_error(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 }
 
+func TestTrendsHandler_GETTrendsStatuses_offset(t *testing.T) {
+	t.Parallel()
+	makeStatus := func(id string) service.EnrichedStatus {
+		content := "hello " + id
+		return service.EnrichedStatus{
+			Status: &domain.Status{
+				ID:         id,
+				URI:        "https://example.com/statuses/" + id,
+				AccountID:  "01ACCOUNTID",
+				Content:    &content,
+				Visibility: "public",
+				Local:      true,
+				CreatedAt:  time.Now(),
+			},
+			Author: &domain.Account{ID: "01ACCOUNTID", Username: "alice"},
+		}
+	}
+	svc := &fakeTrendsService{
+		statuses: []service.EnrichedStatus{makeStatus("s1"), makeStatus("s2"), makeStatus("s3")},
+	}
+	handler := NewTrendsHandler(svc, "example.com")
+
+	cases := []struct {
+		query   string
+		wantIDs []string
+	}{
+		{"?offset=0&limit=2", []string{"s1", "s2"}},
+		{"?offset=2&limit=2", []string{"s3"}},
+		{"?offset=10&limit=2", []string{}},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/trends/statuses"+tc.query, nil)
+		rec := httptest.NewRecorder()
+		handler.GETTrendsStatuses(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body []map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		ids := make([]string, len(body))
+		for i, s := range body {
+			ids[i] = s["id"].(string)
+		}
+		assert.Equal(t, tc.wantIDs, ids, "query=%s", tc.query)
+	}
+}
+
 func TestTrendsHandler_GETTrendsTags_empty(t *testing.T) {
 	t.Parallel()
 	handler := NewTrendsHandler(&fakeTrendsService{}, "example.com")
@@ -156,6 +209,41 @@ func TestTrendsHandler_GETTrendsTags_withData(t *testing.T) {
 	h := history[0].(map[string]any)
 	assert.Equal(t, "42", h["uses"])
 	assert.Equal(t, "10", h["accounts"])
+}
+
+func TestTrendsHandler_GETTrendsTags_offset(t *testing.T) {
+	t.Parallel()
+	day := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	svc := &fakeTrendsService{
+		tags: []domain.TrendingTag{
+			{Hashtag: domain.Hashtag{ID: "tag1", Name: "golang"}, History: []domain.TagHistoryDay{{Day: day, Uses: 10, Accounts: 5}}},
+			{Hashtag: domain.Hashtag{ID: "tag2", Name: "rust"}, History: []domain.TagHistoryDay{{Day: day, Uses: 8, Accounts: 3}}},
+			{Hashtag: domain.Hashtag{ID: "tag3", Name: "zig"}, History: []domain.TagHistoryDay{{Day: day, Uses: 4, Accounts: 2}}},
+		},
+	}
+	handler := NewTrendsHandler(svc, "example.com")
+
+	cases := []struct {
+		query     string
+		wantNames []string
+	}{
+		{"?offset=1&limit=1", []string{"rust"}},
+		{"?offset=2&limit=5", []string{"zig"}},
+		{"?offset=5&limit=5", []string{}},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/trends/tags"+tc.query, nil)
+		rec := httptest.NewRecorder()
+		handler.GETTrendsTags(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body []map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		names := make([]string, len(body))
+		for i, tag := range body {
+			names[i] = tag["name"].(string)
+		}
+		assert.Equal(t, tc.wantNames, names, "query=%s", tc.query)
+	}
 }
 
 func TestTrendsHandler_GETTrendsTags_error(t *testing.T) {

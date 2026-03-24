@@ -13,8 +13,8 @@ import (
 
 // TrendsService provides trending statuses and tags from the pre-computed index.
 type TrendsService interface {
-	TrendingStatuses(ctx context.Context, limit int) ([]EnrichedStatus, error)
-	TrendingTags(ctx context.Context, limit int) ([]domain.TrendingTag, error)
+	TrendingStatuses(ctx context.Context, offset, limit int) ([]EnrichedStatus, error)
+	TrendingTags(ctx context.Context, offset, limit int) ([]domain.TrendingTag, error)
 	RefreshIndexes(ctx context.Context) error
 }
 
@@ -37,24 +37,32 @@ func NewTrendsService(s store.Store, statusSvc StatusService) TrendsService {
 	return &trendsService{store: s, statusSvc: statusSvc, cacheTTL: 15 * time.Minute}
 }
 
-func (svc *trendsService) TrendingStatuses(ctx context.Context, limit int) ([]EnrichedStatus, error) {
+func (svc *trendsService) TrendingStatuses(ctx context.Context, offset, limit int) ([]EnrichedStatus, error) {
 	c, err := svc.getCache(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := c.statuses
+	if offset >= len(out) {
+		return []EnrichedStatus{}, nil
+	}
+	out = out[offset:]
 	if len(out) > limit {
 		out = out[:limit]
 	}
 	return out, nil
 }
 
-func (svc *trendsService) TrendingTags(ctx context.Context, limit int) ([]domain.TrendingTag, error) {
+func (svc *trendsService) TrendingTags(ctx context.Context, offset, limit int) ([]domain.TrendingTag, error) {
 	c, err := svc.getCache(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := c.tags
+	if offset >= len(out) {
+		return []domain.TrendingTag{}, nil
+	}
+	out = out[offset:]
 	if len(out) > limit {
 		out = out[:limit]
 	}

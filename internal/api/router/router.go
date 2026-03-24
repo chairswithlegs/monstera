@@ -219,6 +219,7 @@ func New(deps Deps) http.Handler {
 				if rl := deps.RateLimit; rl != nil {
 					r.Use(middleware.RateLimitByAccount(rl.Limiter, rl.AuthLimit, rl.AuthWindow))
 				}
+				r.Method("GET", "/accounts/search", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Search.GETAccountsSearch)))
 				r.Method("GET", "/accounts/verify_credentials", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Accounts.GETVerifyCredentials)))
 				r.Method("GET", "/preferences", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Preferences.GETPreferences)))
 				r.Method("GET", "/statuses/{id}/quotes", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.Statuses.GETQuotes)))
