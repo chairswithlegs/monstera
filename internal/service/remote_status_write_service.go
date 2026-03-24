@@ -84,6 +84,29 @@ func (svc *remoteStatusWriteService) CreateRemote(ctx context.Context, in Create
 	if in.PublishedAt != nil {
 		statusID = uid.NewWithTime(*in.PublishedAt)
 	}
+
+	// Pre-download media before the transaction so HTTP calls don't hold the TX open.
+	// Partial failures are tolerated — the status is still created with whatever media succeeds.
+	// Note: if the transaction later fails, pre-downloaded media records become orphaned.
+	// This is acceptable — orphan cleanup is handled by the media garbage collector.
+	attachments := in.Attachments
+	if len(attachments) > 4 {
+		attachments = attachments[:4]
+	}
+	var downloadedMediaIDs []string
+	for _, att := range attachments {
+		m, mediaErr := svc.media.CreateRemote(ctx, att)
+		if mediaErr != nil {
+			slog.WarnContext(ctx, "CreateRemote: create media failed", slog.String("url", att.RemoteURL), slog.Any("error", mediaErr))
+			continue
+		}
+		downloadedMediaIDs = append(downloadedMediaIDs, m.ID)
+	}
+
+	// Pre-resolve hashtags and mentions so their DB records exist before the transaction.
+	hashtagIDs := svc.resolveHashtagIDs(ctx, in.HashtagNames)
+	mentionAccountIDs := svc.resolveMentionAccountIDs(ctx, in.MentionIRIs)
+
 	var st *domain.Status
 	err := svc.store.WithTx(ctx, func(tx store.Store) error {
 		var txErr error
@@ -106,49 +129,73 @@ func (svc *remoteStatusWriteService) CreateRemote(ctx context.Context, in Create
 		if txErr != nil {
 			return fmt.Errorf("CreateStatus: %w", txErr)
 		}
+
+		// Attach pre-downloaded media.
+		for _, mid := range downloadedMediaIDs {
+			if txErr = tx.AttachMediaToStatus(ctx, mid, st.ID, in.AccountID); txErr != nil {
+				slog.WarnContext(ctx, "CreateRemote: attach media failed", slog.String("media_id", mid), slog.Any("error", txErr))
+			}
+		}
+
+		// Attach pre-resolved hashtags.
+		if len(hashtagIDs) > 0 {
+			if txErr = tx.AttachHashtagsToStatus(ctx, st.ID, hashtagIDs); txErr != nil {
+				slog.WarnContext(ctx, "CreateRemote: attach hashtags failed", slog.String("status_id", st.ID), slog.Any("error", txErr))
+			}
+		}
+
+		// Create pre-resolved mentions.
+		for _, accID := range mentionAccountIDs {
+			if txErr = tx.CreateStatusMention(ctx, st.ID, accID); txErr != nil {
+				slog.WarnContext(ctx, "CreateRemote: create mention failed", slog.String("status_id", st.ID), slog.String("account_id", accID), slog.Any("error", txErr))
+			}
+		}
+
+		// Increment replies count.
+		if in.InReplyToID != nil && *in.InReplyToID != "" {
+			if txErr = tx.IncrementRepliesCount(ctx, *in.InReplyToID); txErr != nil {
+				slog.WarnContext(ctx, "CreateRemote: increment replies count failed", slog.String("parent_id", *in.InReplyToID), slog.Any("error", txErr))
+			}
+		}
+
+		// Gather enrichment data within the transaction for the domain event.
 		author, txErr := tx.GetAccountByID(ctx, in.AccountID)
 		if txErr != nil {
 			return fmt.Errorf("GetAccountByID: %w", txErr)
 		}
+		mentions, txErr := tx.GetStatusMentions(ctx, st.ID)
+		if txErr != nil {
+			return fmt.Errorf("GetStatusMentions: %w", txErr)
+		}
+		tags, txErr := tx.GetStatusHashtags(ctx, st.ID)
+		if txErr != nil {
+			return fmt.Errorf("GetStatusHashtags: %w", txErr)
+		}
+		media, txErr := tx.GetStatusAttachments(ctx, st.ID)
+		if txErr != nil {
+			return fmt.Errorf("GetStatusAttachments: %w", txErr)
+		}
+		mentionedIDs := make([]string, 0, len(mentions))
+		for _, m := range mentions {
+			if m != nil {
+				mentionedIDs = append(mentionedIDs, m.ID)
+			}
+		}
 		return events.EmitEvent(ctx, tx, domain.EventStatusCreatedRemote, "status", st.ID, domain.StatusCreatedPayload{
-			Status: st,
-			Author: author,
-			Local:  st.IsLocal(),
+			Status:              st,
+			Author:              author,
+			Mentions:            mentions,
+			Tags:                tags,
+			Media:               media,
+			MentionedAccountIDs: mentionedIDs,
+			Local:               st.IsLocal(),
 		})
 	})
 	if err != nil {
 		return nil, fmt.Errorf("CreateRemote: %w", err)
 	}
-	// Best-effort post-commit operations: partial failures leave the status intact.
 
-	// Create attachments
-	attachments := in.Attachments
-	if len(attachments) > 4 {
-		attachments = attachments[:4]
-	}
-	for _, att := range attachments {
-		m, mediaErr := svc.media.CreateRemote(ctx, att)
-		if mediaErr != nil {
-			slog.WarnContext(ctx, "CreateRemote: create media failed", slog.String("url", att.RemoteURL), slog.Any("error", mediaErr))
-			continue
-		}
-		if attErr := svc.store.AttachMediaToStatus(ctx, m.ID, st.ID, in.AccountID); attErr != nil {
-			slog.WarnContext(ctx, "CreateRemote: attach media failed", slog.String("media_id", m.ID), slog.Any("error", attErr))
-		}
-	}
-
-	// Increment replies count
-	if in.InReplyToID != nil && *in.InReplyToID != "" {
-		if incErr := svc.store.IncrementRepliesCount(ctx, *in.InReplyToID); incErr != nil {
-			slog.WarnContext(ctx, "CreateRemote: increment replies count failed", slog.String("parent_id", *in.InReplyToID), slog.Any("error", incErr))
-		}
-	}
-
-	// Store hashtags and mentions
-	svc.storeRemoteHashtags(ctx, st.ID, in.HashtagNames)
-	svc.storeRemoteMentions(ctx, st.ID, in.MentionIRIs)
-
-	// Update conversation for direct statuses
+	// Update conversation for direct statuses (post-commit since it's best-effort).
 	if in.Visibility == domain.VisibilityDirect {
 		mentionedIDs, err := svc.store.GetStatusMentionAccountIDs(ctx, st.ID)
 		if err != nil {
@@ -162,39 +209,40 @@ func (svc *remoteStatusWriteService) CreateRemote(ctx context.Context, in Create
 	return st, nil
 }
 
-func (svc *remoteStatusWriteService) storeRemoteHashtags(ctx context.Context, statusID string, names []string) {
+// resolveHashtagIDs ensures hashtag records exist and returns their IDs.
+// Called before the transaction so that GetOrCreateHashtag (which may INSERT)
+// doesn't hold the transaction open on contention.
+func (svc *remoteStatusWriteService) resolveHashtagIDs(ctx context.Context, names []string) []string {
 	if len(names) == 0 {
-		return
+		return nil
 	}
-	var hashtagIDs []string
+	ids := make([]string, 0, len(names))
 	for _, name := range names {
 		ht, err := svc.store.GetOrCreateHashtag(ctx, name)
 		if err != nil {
 			slog.WarnContext(ctx, "CreateRemote: GetOrCreateHashtag failed", slog.String("tag", name), slog.Any("error", err))
 			continue
 		}
-		hashtagIDs = append(hashtagIDs, ht.ID)
+		ids = append(ids, ht.ID)
 	}
-	if len(hashtagIDs) > 0 {
-		if err := svc.store.AttachHashtagsToStatus(ctx, statusID, hashtagIDs); err != nil {
-			slog.WarnContext(ctx, "CreateRemote: AttachHashtagsToStatus failed", slog.String("status_id", statusID), slog.Any("error", err))
-		}
-	}
+	return ids
 }
 
-func (svc *remoteStatusWriteService) storeRemoteMentions(ctx context.Context, statusID string, mentionIRIs []string) {
+// resolveMentionAccountIDs resolves AP actor IRIs to local account IDs.
+// Called before the transaction so that lookups don't hold the TX open.
+func (svc *remoteStatusWriteService) resolveMentionAccountIDs(ctx context.Context, mentionIRIs []string) []string {
 	if len(mentionIRIs) == 0 {
-		return
+		return nil
 	}
+	ids := make([]string, 0, len(mentionIRIs))
 	for _, iri := range mentionIRIs {
 		acc, err := svc.store.GetAccountByAPID(ctx, iri)
 		if err != nil {
 			continue
 		}
-		if err := svc.store.CreateStatusMention(ctx, statusID, acc.ID); err != nil {
-			slog.WarnContext(ctx, "CreateRemote: CreateStatusMention failed", slog.String("status_id", statusID), slog.String("account_id", acc.ID), slog.Any("error", err))
-		}
+		ids = append(ids, acc.ID)
 	}
+	return ids
 }
 
 func (svc *remoteStatusWriteService) DeleteRemote(ctx context.Context, statusID string) error {
@@ -308,42 +356,64 @@ func (svc *remoteStatusWriteService) UpdateRemote(ctx context.Context, statusID 
 	if err := requireRemote(st.Local, "UpdateRemote"); err != nil {
 		return err
 	}
-	if err := svc.store.CreateStatusEdit(ctx, store.CreateStatusEditInput{
-		ID:             uid.New(),
-		StatusID:       statusID,
-		AccountID:      st.AccountID,
-		Text:           st.Text,
-		Content:        st.Content,
-		ContentWarning: st.ContentWarning,
-		Sensitive:      st.Sensitive,
+	if err := svc.store.WithTx(ctx, func(tx store.Store) error {
+		if err := tx.CreateStatusEdit(ctx, store.CreateStatusEditInput{
+			ID:             uid.New(),
+			StatusID:       statusID,
+			AccountID:      st.AccountID,
+			Text:           st.Text,
+			Content:        st.Content,
+			ContentWarning: st.ContentWarning,
+			Sensitive:      st.Sensitive,
+		}); err != nil {
+			return fmt.Errorf("UpdateRemote CreateStatusEdit: %w", err)
+		}
+		if err := tx.UpdateStatus(ctx, store.UpdateStatusInput{
+			ID:             statusID,
+			Text:           in.Text,
+			Content:        in.Content,
+			ContentWarning: in.ContentWarning,
+			Sensitive:      in.Sensitive,
+		}); err != nil {
+			return fmt.Errorf("UpdateRemote UpdateStatus: %w", err)
+		}
+		updated, err := tx.GetStatusByID(ctx, statusID)
+		if err != nil {
+			return fmt.Errorf("UpdateRemote GetStatusByID: %w", err)
+		}
+		author, err := tx.GetAccountByID(ctx, st.AccountID)
+		if err != nil {
+			return fmt.Errorf("UpdateRemote GetAccountByID: %w", err)
+		}
+		mentions, err := tx.GetStatusMentions(ctx, statusID)
+		if err != nil {
+			return fmt.Errorf("UpdateRemote GetStatusMentions: %w", err)
+		}
+		tags, err := tx.GetStatusHashtags(ctx, statusID)
+		if err != nil {
+			return fmt.Errorf("UpdateRemote GetStatusHashtags: %w", err)
+		}
+		media, err := tx.GetStatusAttachments(ctx, statusID)
+		if err != nil {
+			return fmt.Errorf("UpdateRemote GetStatusAttachments: %w", err)
+		}
+		mentionedIDs := make([]string, 0, len(mentions))
+		for _, m := range mentions {
+			if m != nil {
+				mentionedIDs = append(mentionedIDs, m.ID)
+			}
+		}
+		return events.EmitEvent(ctx, tx, domain.EventStatusUpdatedRemote, "status", statusID, domain.StatusUpdatedPayload{
+			Status:              updated,
+			Author:              author,
+			Mentions:            mentions,
+			Tags:                tags,
+			Media:               media,
+			MentionedAccountIDs: mentionedIDs,
+			Local:               updated.IsLocal(),
+		})
 	}); err != nil {
-		return fmt.Errorf("UpdateRemote CreateStatusEdit: %w", err)
-	}
-	if err := svc.store.UpdateStatus(ctx, store.UpdateStatusInput{
-		ID:             statusID,
-		Text:           in.Text,
-		Content:        in.Content,
-		ContentWarning: in.ContentWarning,
-		Sensitive:      in.Sensitive,
-	}); err != nil {
-		return fmt.Errorf("UpdateRemote UpdateStatus: %w", err)
-	}
-	updated, err := svc.store.GetStatusByID(ctx, statusID)
-	if err != nil {
-		slog.WarnContext(ctx, "UpdateRemote: GetStatusByID for event emission", slog.String("status_id", statusID), slog.Any("error", err))
-		return nil
-	}
-	author, err := svc.store.GetAccountByID(ctx, st.AccountID)
-	if err != nil {
-		slog.WarnContext(ctx, "UpdateRemote: GetAccountByID for event emission", slog.String("account_id", st.AccountID), slog.Any("error", err))
-		return nil
-	}
-	if emitErr := events.EmitEvent(ctx, svc.store, domain.EventStatusUpdatedRemote, "status", statusID, domain.StatusUpdatedPayload{
-		Status: updated,
-		Author: author,
-		Local:  updated.IsLocal(),
-	}); emitErr != nil {
-		slog.WarnContext(ctx, "UpdateRemote: EmitEvent failed", slog.String("status_id", statusID), slog.Any("error", emitErr))
+		return fmt.Errorf("UpdateRemote: %w", err)
 	}
 	return nil
 }

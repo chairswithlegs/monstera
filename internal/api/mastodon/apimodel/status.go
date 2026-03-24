@@ -237,10 +237,6 @@ type CreateStatusRequest struct {
 }
 
 func (r *CreateStatusRequest) Validate() error {
-	if err := api.ValidateRequiredField(r.Status, "status"); err != nil {
-		return fmt.Errorf("status: %w", err)
-	}
-
 	if r.QuotedStatusID != "" && (len(r.MediaIDs) > 0 || (r.Poll != nil && len(r.Poll.Options) > 0)) {
 		return errors.New("cannot attach media or poll to a quote post")
 	}
@@ -339,9 +335,10 @@ func ParseCreateStatusRequest(r *http.Request) (CreateStatusRequest, error) {
 		}
 	}
 	req.Status = strings.TrimSpace(req.Status)
-	if req.Status == "" && len(req.MediaIDs) == 0 {
+	hasPoll := req.Poll != nil && len(req.Poll.Options) > 0
+	if req.Status == "" && len(req.MediaIDs) == 0 && !hasPoll {
 		// nolint:wrapcheck
-		return CreateStatusRequest{}, api.NewUnprocessableError("status cannot be blank")
+		return CreateStatusRequest{}, api.NewUnprocessableError("validation error: one of status, media, or poll must be provided")
 	}
 
 	req.Sanitize()
@@ -382,6 +379,28 @@ func StatusFromEnriched(result service.EnrichedStatus, instanceDomain string) St
 		out.Reblog = &reblogAPI
 	}
 	return out
+}
+
+// StatusFromParts converts individual domain components into a Mastodon API Status.
+// Use this when the parts are available separately (e.g. from event payloads)
+// rather than bundled in an EnrichedStatus.
+func StatusFromParts(status *domain.Status, author *domain.Account, mentions []*domain.Account, tags []domain.Hashtag, media []domain.MediaAttachment, instanceDomain string) Status {
+	acc := ToAccount(author, instanceDomain)
+	apiMentions := make([]Mention, 0, len(mentions))
+	for _, m := range mentions {
+		if m != nil {
+			apiMentions = append(apiMentions, MentionFromAccount(m, instanceDomain))
+		}
+	}
+	apiTags := make([]Tag, 0, len(tags))
+	for _, t := range tags {
+		apiTags = append(apiTags, TagFromName(t.Name, instanceDomain))
+	}
+	apiMedia := make([]MediaAttachment, 0, len(media))
+	for i := range media {
+		apiMedia = append(apiMedia, MediaFromDomain(&media[i]))
+	}
+	return ToStatus(status, acc, apiMentions, apiTags, apiMedia, nil, instanceDomain)
 }
 
 // StatusesFromEnriched converts a slice of EnrichedStatus to API Status models.

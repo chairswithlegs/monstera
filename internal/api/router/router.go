@@ -168,6 +168,7 @@ func New(deps Deps) http.Handler {
 			r.Use(middleware.StreamingTokenFromQuery)
 			r.Use(middleware.RequireAuth(deps.OAuthServer, deps.AccountsService))
 			r.Get("/streaming/user", deps.Streaming.GETUser)
+			r.Get("/streaming/user/notification", deps.Streaming.GETUserNotification)
 			r.Get("/streaming/list", deps.Streaming.GETList)
 			r.Get("/streaming/direct", deps.Streaming.GETDirect)
 		})

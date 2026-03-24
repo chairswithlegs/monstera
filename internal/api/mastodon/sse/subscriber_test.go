@@ -457,12 +457,16 @@ func TestProcessMessage_NotificationCreated_PublishesToRecipient(t *testing.T) {
 	assert.True(t, msg.wasAcked())
 
 	msgs := pub.published()
-	require.Len(t, msgs, 1)
-	assert.Equal(t, SubjectPrefixUser+"recipient-1", msgs[0].Subject)
+	require.Len(t, msgs, 2)
 
-	ev := decodePublished(t, msgs[0])
-	assert.Equal(t, EventNotification, ev.Event)
-	assert.Equal(t, streamNameUser, ev.Stream)
+	subjects := make(map[string]bool, len(msgs))
+	for _, m := range msgs {
+		subjects[m.Subject] = true
+		ev := decodePublished(t, m)
+		assert.Equal(t, EventNotification, ev.Event)
+	}
+	assert.True(t, subjects[SubjectPrefixUser+"recipient-1"], "should publish to user stream")
+	assert.True(t, subjects[SubjectPrefixUserNotification+"recipient-1"], "should publish to user:notification stream")
 }
 
 func TestProcessMessage_NotificationCreated_WithStatus(t *testing.T) {
@@ -494,7 +498,7 @@ func TestProcessMessage_NotificationCreated_WithStatus(t *testing.T) {
 	sub.processMessage(context.Background(), msg)
 
 	msgs := pub.published()
-	require.Len(t, msgs, 1)
+	require.Len(t, msgs, 2)
 
 	ev := decodePublished(t, msgs[0])
 	assert.Equal(t, EventNotification, ev.Event)
@@ -691,4 +695,90 @@ func TestProcessMessage_StatusCreated_Direct_NoListStreams(t *testing.T) {
 	for _, m := range msgs {
 		assert.NotEqual(t, SubjectPrefixList+"list-1", m.Subject, "direct messages should not go to list streams")
 	}
+}
+
+func TestProcessMessage_StatusCreated_Reblog_ExcludedFromPublicTimeline(t *testing.T) {
+	t.Parallel()
+	sub, pub, store, enricher := newTestSubscriber(t)
+
+	store.followers["author-1"] = []string{"follower-1"}
+
+	origID := "original-1"
+	enricher.statuses[origID] = makeMinimalStatus(origID, "orig-author", domain.VisibilityPublic, true)
+	enricher.accounts["orig-author"] = makeMinimalAccount("orig-author", "bob")
+
+	reblogStatus := makeMinimalStatus("reblog-1", "author-1", domain.VisibilityPublic, true)
+	reblogStatus.ReblogOfID = &origID
+
+	payload := domain.StatusCreatedPayload{
+		Status: reblogStatus,
+		Author: makeMinimalAccount("author-1", "alice"),
+	}
+	data := makeDomainEvent(t, domain.EventStatusCreated, payload)
+	msg := &fakeMsg{data: data}
+
+	sub.processMessage(context.Background(), msg)
+
+	assert.True(t, msg.wasAcked())
+
+	msgs := pub.published()
+	subjects := make(map[string]bool)
+	for _, m := range msgs {
+		subjects[m.Subject] = true
+	}
+
+	assert.False(t, subjects[SubjectPrefixPublic], "reblogs should not appear on public timeline")
+	assert.False(t, subjects[SubjectPrefixPublicLocal], "reblogs should not appear on public:local timeline")
+	assert.True(t, subjects[SubjectPrefixUser+"follower-1"], "reblogs should still be delivered to followers")
+}
+
+func TestProcessMessage_StatusUpdated_PublishesStatusUpdateEvent(t *testing.T) {
+	t.Parallel()
+	sub, pub, store, _ := newTestSubscriber(t)
+
+	store.followers["author-1"] = []string{"follower-1"}
+
+	payload := domain.StatusUpdatedPayload{
+		Status: makeMinimalStatus("status-1", "author-1", domain.VisibilityPublic, true),
+		Author: makeMinimalAccount("author-1", "alice"),
+	}
+	data := makeDomainEvent(t, domain.EventStatusUpdated, payload)
+	msg := &fakeMsg{data: data}
+
+	sub.processMessage(context.Background(), msg)
+
+	assert.True(t, msg.wasAcked())
+
+	msgs := pub.published()
+	require.NotEmpty(t, msgs)
+
+	subjects := make(map[string]bool)
+	for _, m := range msgs {
+		subjects[m.Subject] = true
+		ev := decodePublished(t, m)
+		assert.Equal(t, EventStatusUpdate, ev.Event, "edited statuses should use status.update event type")
+	}
+
+	assert.True(t, subjects[SubjectPrefixPublic], "should publish to public timeline")
+	assert.True(t, subjects[SubjectPrefixPublicLocal], "local edits should publish to public:local")
+	assert.True(t, subjects[SubjectPrefixUser+"follower-1"], "should publish to followers")
+}
+
+func TestProcessMessage_StatusUpdatedRemote_IsHandled(t *testing.T) {
+	t.Parallel()
+	sub, pub, store, _ := newTestSubscriber(t)
+
+	store.followers["author-1"] = []string{"follower-1"}
+
+	payload := domain.StatusUpdatedPayload{
+		Status: makeMinimalStatus("status-1", "author-1", domain.VisibilityPublic, false),
+		Author: makeMinimalAccount("author-1", "alice"),
+	}
+	data := makeDomainEvent(t, domain.EventStatusUpdatedRemote, payload)
+	msg := &fakeMsg{data: data}
+
+	sub.processMessage(context.Background(), msg)
+
+	assert.True(t, msg.wasAcked())
+	assert.NotEmpty(t, pub.published(), "status.updated.remote should be handled")
 }

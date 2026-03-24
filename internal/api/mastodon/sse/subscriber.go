@@ -82,6 +82,8 @@ func (s *Subscriber) processMessage(ctx context.Context, msg jetstream.Msg) {
 	switch event.EventType {
 	case domain.EventStatusCreated, domain.EventStatusCreatedRemote:
 		s.handleStatusCreated(ctx, event)
+	case domain.EventStatusUpdated, domain.EventStatusUpdatedRemote:
+		s.handleStatusUpdated(ctx, event)
 	case domain.EventStatusDeleted, domain.EventStatusDeletedRemote:
 		s.handleStatusDeleted(ctx, event)
 	case domain.EventNotificationCreated:
@@ -102,22 +104,7 @@ func (s *Subscriber) handleStatusCreated(ctx context.Context, event domain.Domai
 		return
 	}
 
-	author := apimodel.ToAccount(payload.Author, s.instanceDomain)
-	mentions := make([]apimodel.Mention, 0, len(payload.Mentions))
-	for _, m := range payload.Mentions {
-		if m != nil {
-			mentions = append(mentions, apimodel.MentionFromAccount(m, s.instanceDomain))
-		}
-	}
-	tags := make([]apimodel.Tag, 0, len(payload.Tags))
-	for _, t := range payload.Tags {
-		tags = append(tags, apimodel.TagFromName(t.Name, s.instanceDomain))
-	}
-	media := make([]apimodel.MediaAttachment, 0, len(payload.Media))
-	for i := range payload.Media {
-		media = append(media, apimodel.MediaFromDomain(&payload.Media[i]))
-	}
-	apiStatus := apimodel.ToStatus(payload.Status, author, mentions, tags, media, nil, s.instanceDomain)
+	apiStatus := apimodel.StatusFromParts(payload.Status, payload.Author, payload.Mentions, payload.Tags, payload.Media, s.instanceDomain)
 	if payload.Status.ReblogOfID != nil {
 		if enriched, err := s.statusSvc.GetByIDEnriched(ctx, *payload.Status.ReblogOfID, nil); err == nil {
 			orig := apimodel.StatusFromEnriched(enriched, s.instanceDomain)
@@ -132,24 +119,53 @@ func (s *Subscriber) handleStatusCreated(ctx context.Context, event domain.Domai
 		return
 	}
 
-	hashtagNames := make([]string, 0, len(payload.Tags))
-	for _, t := range payload.Tags {
-		hashtagNames = append(hashtagNames, t.Name)
-	}
-
-	s.routeStatusCreated(ctx, payload.Status.AccountID, payload.Status.Visibility, payload.Status.Local, statusJSON, hashtagNames, payload.MentionedAccountIDs)
+	hashtagNames := hashtagNamesFromTags(payload.Tags)
+	isReblog := payload.Status.ReblogOfID != nil
+	s.routeStatusEvent(ctx, EventUpdate, payload.Status.AccountID, payload.Status.Visibility, isReblog, payload.Status.Local, statusJSON, hashtagNames, payload.MentionedAccountIDs)
 }
 
-func (s *Subscriber) routeStatusCreated(ctx context.Context, accountID, visibility string, local bool, statusJSON []byte, hashtagNames, mentionedAccountIDs []string) {
-	ev := SSEEvent{Event: EventUpdate, Data: string(statusJSON)}
+func (s *Subscriber) handleStatusUpdated(ctx context.Context, event domain.DomainEvent) {
+	var payload domain.StatusUpdatedPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		slog.ErrorContext(ctx, "sse subscriber: unmarshal status.updated", slog.Any("error", err))
+		return
+	}
+	if payload.Status == nil || payload.Author == nil {
+		return
+	}
+
+	apiStatus := apimodel.StatusFromParts(payload.Status, payload.Author, payload.Mentions, payload.Tags, payload.Media, s.instanceDomain)
+	statusJSON, err := json.Marshal(apiStatus)
+	if err != nil {
+		slog.ErrorContext(ctx, "sse subscriber: marshal status (update)", slog.Any("error", err))
+		return
+	}
+
+	hashtagNames := hashtagNamesFromTags(payload.Tags)
+	s.routeStatusEvent(ctx, EventStatusUpdate, payload.Status.AccountID, payload.Status.Visibility, false, payload.Status.Local, statusJSON, hashtagNames, payload.MentionedAccountIDs)
+}
+
+func hashtagNamesFromTags(tags []domain.Hashtag) []string {
+	names := make([]string, 0, len(tags))
+	for _, t := range tags {
+		names = append(names, t.Name)
+	}
+	return names
+}
+
+func (s *Subscriber) routeStatusEvent(ctx context.Context, eventType, accountID, visibility string, isReblog, local bool, statusJSON []byte, hashtagNames, mentionedAccountIDs []string) {
+	ev := SSEEvent{Event: eventType, Data: string(statusJSON)}
 
 	switch visibility {
 	case domain.VisibilityPublic:
-		ev.Stream = StreamPublic
-		s.publish(ctx, SubjectPrefixPublic, ev, "events.public")
-		if local {
-			ev.Stream = StreamPublicLocal
-			s.publish(ctx, SubjectPrefixPublicLocal, ev, "events.public.local")
+		// Reblogs are excluded from public timeline streams per the Mastodon spec.
+		if !isReblog {
+			ev.Stream = StreamPublic
+			s.publish(ctx, SubjectPrefixPublic, ev, "events.public")
+			if local {
+				ev.Stream = StreamPublicLocal
+				s.publish(ctx, SubjectPrefixPublicLocal, ev, "events.public.local")
+			}
 		}
 		fallthrough
 	case domain.VisibilityUnlisted:
@@ -193,9 +209,14 @@ func (s *Subscriber) routeStatusCreated(ctx context.Context, accountID, visibili
 		}
 		s.publishToListStreams(ctx, accountID, ev)
 	case domain.VisibilityDirect:
+		// Deliver to the author's own streams so they see the DM they sent in real time.
 		ev.Stream = streamNameUser
+		if subj := StreamKeyToSubject(StreamUserPrefix + accountID); subj != "" {
+			s.publish(ctx, subj, ev, "events.user.*")
+		}
+		// Deliver to all mentioned accounts' user streams.
 		for _, fid := range mentionedAccountIDs {
-			if fid == "" {
+			if fid == "" || fid == accountID {
 				continue
 			}
 			subj := StreamKeyToSubject(StreamUserPrefix + fid)
@@ -203,7 +224,15 @@ func (s *Subscriber) routeStatusCreated(ctx context.Context, accountID, visibili
 				s.publish(ctx, subj, ev, "events.user.*")
 			}
 		}
-		s.publishToDirectStreams(ctx, mentionedAccountIDs, ev)
+		// Deliver to direct streams for author and all mentioned accounts.
+		allDirect := make([]string, 0, len(mentionedAccountIDs)+1)
+		allDirect = append(allDirect, accountID)
+		for _, fid := range mentionedAccountIDs {
+			if fid != "" && fid != accountID {
+				allDirect = append(allDirect, fid)
+			}
+		}
+		s.publishToDirectStreams(ctx, allDirect, ev)
 	}
 }
 
@@ -323,6 +352,14 @@ func (s *Subscriber) handleNotificationCreated(ctx context.Context, event domain
 	subj := StreamKeyToSubject(StreamUserPrefix + payload.RecipientAccountID)
 	if subj != "" {
 		s.publish(ctx, subj, ev, "events.user.*")
+	}
+
+	// Also publish to the notification-only stream so clients subscribed to
+	// "user:notification" (e.g. Elk) receive notification events separately.
+	notifEv := SSEEvent{Stream: StreamUserNotificationPrefix + payload.RecipientAccountID, Event: EventNotification, Data: string(notifJSON)}
+	notifSubj := StreamKeyToSubject(StreamUserNotificationPrefix + payload.RecipientAccountID)
+	if notifSubj != "" {
+		s.publish(ctx, notifSubj, notifEv, "events.user.notification.*")
 	}
 }
 

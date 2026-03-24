@@ -9,23 +9,26 @@ import (
 
 const (
 	// NATS subjects
-	SubjectPrefixPublic      = "events.public"
-	SubjectPrefixPublicLocal = "events.public.local"
-	SubjectPrefixUser        = "events.user."
-	SubjectPrefixHashtag     = "events.hashtag."
-	SubjectPrefixList        = "events.list."
-	SubjectPrefixDirect      = "events.direct."
+	SubjectPrefixPublic           = "events.public"
+	SubjectPrefixPublicLocal      = "events.public.local"
+	SubjectPrefixUser             = "events.user."
+	SubjectPrefixUserNotification = "events.user.notification."
+	SubjectPrefixHashtag          = "events.hashtag."
+	SubjectPrefixList             = "events.list."
+	SubjectPrefixDirect           = "events.direct."
 
 	// SSE stream keys
-	StreamPublic        = "public"
-	StreamPublicLocal   = "public:local"
-	StreamUserPrefix    = "user:"
-	StreamHashtagPrefix = "hashtag:"
-	StreamListPrefix    = "list:"
-	StreamDirectPrefix  = "direct:"
+	StreamPublic                 = "public"
+	StreamPublicLocal            = "public:local"
+	StreamUserPrefix             = "user:"
+	StreamUserNotificationPrefix = "user:notification:"
+	StreamHashtagPrefix          = "hashtag:"
+	StreamListPrefix             = "list:"
+	StreamDirectPrefix           = "direct:"
 
 	// SSE event types
 	EventUpdate       = "update"
+	EventStatusUpdate = "status.update"
 	EventNotification = "notification"
 	EventDelete       = "delete"
 )
@@ -38,13 +41,18 @@ type SSEEvent struct {
 }
 
 // StreamKeyToSubject maps an internal stream key to the NATS subject.
-// Stream keys: "public", "public:local", "user:{accountID}", "hashtag:{tag}".
+// Stream keys: "public", "public:local", "user:{accountID}", "user:notification:{accountID}", "hashtag:{tag}".
+//
+// In all three mapping functions below, user:notification must be checked before
+// user: because user: is a prefix of user:notification:.
 func StreamKeyToSubject(streamKey string) string {
 	switch {
 	case streamKey == StreamPublic:
 		return SubjectPrefixPublic
 	case streamKey == StreamPublicLocal:
 		return SubjectPrefixPublicLocal
+	case strings.HasPrefix(streamKey, StreamUserNotificationPrefix):
+		return SubjectPrefixUserNotification + strings.TrimPrefix(streamKey, StreamUserNotificationPrefix)
 	case strings.HasPrefix(streamKey, StreamUserPrefix):
 		return SubjectPrefixUser + strings.TrimPrefix(streamKey, StreamUserPrefix)
 	case strings.HasPrefix(streamKey, StreamHashtagPrefix):
@@ -65,6 +73,8 @@ func SubjectToStreamKey(subject string) string {
 		return StreamPublic
 	case subject == SubjectPrefixPublicLocal:
 		return StreamPublicLocal
+	case strings.HasPrefix(subject, SubjectPrefixUserNotification):
+		return StreamUserNotificationPrefix + strings.TrimPrefix(subject, SubjectPrefixUserNotification)
 	case strings.HasPrefix(subject, SubjectPrefixUser):
 		return StreamUserPrefix + strings.TrimPrefix(subject, SubjectPrefixUser)
 	case strings.HasPrefix(subject, SubjectPrefixHashtag):
@@ -86,6 +96,8 @@ func StreamKeyMetricLabel(streamKey string) string {
 		return StreamPublic
 	case streamKey == StreamPublicLocal:
 		return StreamPublicLocal
+	case strings.HasPrefix(streamKey, StreamUserNotificationPrefix):
+		return "user:notification"
 	case strings.HasPrefix(streamKey, StreamUserPrefix):
 		return "user"
 	case strings.HasPrefix(streamKey, StreamHashtagPrefix):

@@ -318,6 +318,40 @@ func TestGETStreamingWS_MaxSubscriptions_ExtraSubscribeIgnored(t *testing.T) {
 	assert.Never(t, func() bool { return nc.subCount() > wsMaxSubscriptions }, 100*time.Millisecond, time.Millisecond, "extra subscribe beyond max should be ignored")
 }
 
+func TestGETStreamingWS_SubprotocolToken_IsEchoedBack(t *testing.T) {
+	t.Parallel()
+	hub, _ := newHubNoStart(t)
+
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	acc, err := accountSvc.Register(context.Background(), service.RegisterInput{
+		Username: "bob",
+		Email:    "bob@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	// Server injects the account (simulating what OptionalAuth does after the
+	// middleware extracts the token from Sec-WebSocket-Protocol).
+	srv := wsTestServer(t, hub, nil, acc)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	const fakeToken = "fake-access-token"
+	conn, resp, err := websocket.Dial(ctx, wsURL(srv, "/streaming"), &websocket.DialOptions{
+		Subprotocols: []string{fakeToken},
+	})
+	require.NoError(t, err)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	t.Cleanup(func() { _ = conn.CloseNow() })
+
+	assert.Equal(t, fakeToken, conn.Subprotocol(), "server must echo back the subprotocol")
+}
+
 func TestGETStreamingWS_ConnectionClose_CleansUpSubscriptions(t *testing.T) {
 	t.Parallel()
 	// Use hub without Start so subCount == 0 initially.
