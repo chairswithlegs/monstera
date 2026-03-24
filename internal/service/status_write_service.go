@@ -228,7 +228,8 @@ func (svc *statusWriteService) Create(ctx context.Context, in CreateStatusInput)
 		mediaIDs = mediaIDs[:4]
 	}
 	text := strings.TrimSpace(in.Text)
-	if text == "" && len(mediaIDs) == 0 {
+	hasPoll := in.Poll != nil && len(in.Poll.Options) > 0
+	if text == "" && len(mediaIDs) == 0 && !hasPoll {
 		return EnrichedStatus{}, fmt.Errorf("Create: %w", domain.ErrValidation)
 	}
 	visibility := resolveVisibilityService(in.Visibility, defaultVisibility)
@@ -614,14 +615,21 @@ func (svc *statusWriteService) Update(ctx context.Context, in UpdateStatusInput)
 				updParentAPID = parent.APID
 			}
 		}
+		updMentionedIDs := make([]string, 0, len(updMentions))
+		for _, m := range updMentions {
+			if m != nil {
+				updMentionedIDs = append(updMentionedIDs, m.ID)
+			}
+		}
 		return events.EmitEvent(ctx, tx, domain.EventStatusUpdated, "status", statusID, domain.StatusUpdatedPayload{
-			Status:     updated,
-			Author:     updAuthor,
-			Mentions:   updMentions,
-			Tags:       updTags,
-			Media:      updMedia,
-			ParentAPID: updParentAPID,
-			Local:      updated.IsLocal(),
+			Status:              updated,
+			Author:              updAuthor,
+			Mentions:            updMentions,
+			Tags:                updTags,
+			Media:               updMedia,
+			MentionedAccountIDs: updMentionedIDs,
+			ParentAPID:          updParentAPID,
+			Local:               updated.IsLocal(),
 		})
 	})
 	if err != nil {

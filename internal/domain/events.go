@@ -64,13 +64,14 @@ type StatusDeletedPayload struct {
 
 // StatusUpdatedPayload carries data for an edited status.
 type StatusUpdatedPayload struct {
-	Status     *Status           `json:"status"`
-	Author     *Account          `json:"author"`
-	Mentions   []*Account        `json:"mentions"`
-	Tags       []Hashtag         `json:"tags"`
-	Media      []MediaAttachment `json:"media"`
-	ParentAPID string            `json:"parent_ap_id,omitempty"`
-	Local      bool              `json:"local"`
+	Status              *Status           `json:"status"`
+	Author              *Account          `json:"author"`
+	Mentions            []*Account        `json:"mentions"`
+	Tags                []Hashtag         `json:"tags"`
+	Media               []MediaAttachment `json:"media"`
+	MentionedAccountIDs []string          `json:"mentioned_account_ids"`
+	ParentAPID          string            `json:"parent_ap_id,omitempty"`
+	Local               bool              `json:"local"`
 }
 
 // FollowCreatedPayload carries data when a follow is created.

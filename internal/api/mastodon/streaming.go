@@ -98,6 +98,18 @@ func (h *StreamingHandler) GETList(w http.ResponseWriter, r *http.Request) {
 	h.serveSSE(w, r, streamKey)
 }
 
+// GETUserNotification handles GET /api/v1/streaming/user/notification. Requires auth;
+// delivers only notification events for the authenticated user.
+func (h *StreamingHandler) GETUserNotification(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	streamKey := sse.StreamUserNotificationPrefix + account.ID
+	h.serveSSE(w, r, streamKey)
+}
+
 // GETDirect handles GET /api/v1/streaming/direct. Requires auth; stream key direct:{accountID}.
 func (h *StreamingHandler) GETDirect(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())

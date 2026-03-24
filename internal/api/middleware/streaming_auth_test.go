@@ -46,6 +46,32 @@ func TestStreamingTokenFromQuery(t *testing.T) {
 		assert.Equal(t, "Bearer existing-token", req.Header.Get("Authorization"))
 	})
 
+	t.Run("Sec-WebSocket-Protocol sets Bearer header when Authorization and query param are absent", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/streaming", nil)
+		req.Header.Set("Sec-WebSocket-Protocol", "proto-token")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "Bearer proto-token", req.Header.Get("Authorization"))
+	})
+
+	t.Run("access_token query param takes priority over Sec-WebSocket-Protocol", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/streaming?access_token=query-token", nil)
+		req.Header.Set("Sec-WebSocket-Protocol", "proto-token")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, "Bearer query-token", req.Header.Get("Authorization"))
+	})
+
+	t.Run("Authorization header takes priority over Sec-WebSocket-Protocol", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/streaming", nil)
+		req.Header.Set("Authorization", "Bearer existing-token")
+		req.Header.Set("Sec-WebSocket-Protocol", "proto-token")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, "Bearer existing-token", req.Header.Get("Authorization"))
+	})
+
 	t.Run("next handler is always called", func(t *testing.T) {
 		nextCalled := false
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

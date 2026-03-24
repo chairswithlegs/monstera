@@ -202,11 +202,30 @@ func TestParseCreateStatusRequest(t *testing.T) {
 		assert.ErrorIs(t, err, api.ErrBadRequest)
 	})
 
-	t.Run("empty status returns error", func(t *testing.T) {
+	t.Run("empty status without media or poll returns error", func(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/statuses", bytes.NewBufferString(`{"status":""}`))
 		req.Header.Set("Content-Type", "application/json")
 		_, err := ParseCreateStatusRequest(req)
 		assert.ErrorIs(t, err, api.ErrUnprocessable)
+	})
+
+	t.Run("empty status with media_ids succeeds", func(t *testing.T) {
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/statuses", bytes.NewBufferString(`{"status":"","media_ids":["abc123"]}`))
+		req.Header.Set("Content-Type", "application/json")
+		parsed, err := ParseCreateStatusRequest(req)
+		require.NoError(t, err)
+		assert.Empty(t, parsed.Status)
+		assert.Equal(t, []string{"abc123"}, parsed.MediaIDs)
+	})
+
+	t.Run("empty status with poll succeeds", func(t *testing.T) {
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/statuses", bytes.NewBufferString(`{"status":"","poll":{"options":["a","b"],"expires_in":3600}}`))
+		req.Header.Set("Content-Type", "application/json")
+		parsed, err := ParseCreateStatusRequest(req)
+		require.NoError(t, err)
+		assert.Empty(t, parsed.Status)
+		require.NotNil(t, parsed.Poll)
+		assert.Equal(t, []string{"a", "b"}, parsed.Poll.Options)
 	})
 
 	t.Run("valid JSON parses fields", func(t *testing.T) {

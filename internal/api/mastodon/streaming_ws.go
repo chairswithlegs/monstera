@@ -55,7 +55,15 @@ func (h *StreamingHandler) GETStreamingWS(w http.ResponseWriter, r *http.Request
 	// applies to browser requests. Mastodon native clients (Ivory, Tusky, etc.)
 	// do not send an Origin header, and the Mastodon reference implementation
 	// also skips this check, so it is expected to be disabled.
-	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+	opts := &websocket.AcceptOptions{InsecureSkipVerify: true}
+	// Browser clients (e.g. Elk) pass the OAuth token as a WebSocket subprotocol
+	// because the browser WebSocket API does not allow custom headers. The server
+	// must echo back the negotiated subprotocol or risk the browser closing the
+	// connection.
+	if proto := r.Header.Get("Sec-WebSocket-Protocol"); proto != "" {
+		opts.Subprotocols = []string{proto}
+	}
+	conn, err := websocket.Accept(w, r, opts)
 	if err != nil {
 		// websocket.Accept writes the error response itself.
 		slog.WarnContext(r.Context(), "ws: upgrade failed", slog.Any("error", err))
@@ -125,6 +133,14 @@ func (h *StreamingHandler) wsReadLoop(
 	for {
 		_, data, err := conn.Read(ctx)
 		if err != nil {
+			// StatusGoingAway and StatusNormalClosure are expected browser disconnects
+			// (page navigation, tab close). Log at DEBUG to avoid log noise.
+			code := websocket.CloseStatus(err)
+			if code == websocket.StatusGoingAway || code == websocket.StatusNormalClosure {
+				slog.DebugContext(ctx, "ws: client disconnected", slog.String("reason", code.String()))
+			} else {
+				slog.WarnContext(ctx, "ws: read failed", slog.Any("error", err))
+			}
 			return
 		}
 
@@ -250,8 +266,7 @@ func (h *StreamingHandler) wsWriteLoop(ctx context.Context, conn *websocket.Conn
 	}
 }
 
-// wsPingLoop sends periodic pings to detect dead connections.
-// On ping failure it calls cancel to tear down the connection.
+// wsPingLoop sends periodic WebSocket protocol pings to detect dead connections.
 func (h *StreamingHandler) wsPingLoop(ctx context.Context, conn *websocket.Conn, cancel context.CancelFunc) {
 	ticker := time.NewTicker(wsPingInterval)
 	defer ticker.Stop()
@@ -285,6 +300,12 @@ func (h *StreamingHandler) resolveWSStreamKey(
 			return "", nil, api.ErrUnauthorized
 		}
 		return sse.StreamUserPrefix + account.ID, []string{"user"}, nil
+
+	case "user:notification":
+		if account == nil {
+			return "", nil, api.ErrUnauthorized
+		}
+		return sse.StreamUserNotificationPrefix + account.ID, []string{"user:notification"}, nil
 
 	case "direct":
 		if account == nil {

@@ -58,6 +58,7 @@ type FakeStore struct {
 	listAccountIDs map[string][]string
 
 	mentionsByStatusID map[string][]string // statusID -> accountIDs mentioned
+	hashtagsByStatusID map[string][]string // statusID -> hashtag IDs
 
 	markersByKey map[string]*domain.Marker // "accountID:timeline"
 
@@ -170,6 +171,7 @@ func NewFakeStore() *FakeStore {
 		listsByID:                 make(map[string]*domain.List),
 		listAccountIDs:            make(map[string][]string),
 		mentionsByStatusID:        make(map[string][]string),
+		hashtagsByStatusID:        make(map[string][]string),
 		markersByKey:              make(map[string]*domain.Marker),
 		lastStatusAtByAccount:     make(map[string]time.Time),
 		accountPins:               nil,
@@ -1023,6 +1025,9 @@ func (f *FakeStore) GetOrCreateHashtag(ctx context.Context, name string) (*domai
 	return h, nil
 }
 func (f *FakeStore) AttachHashtagsToStatus(ctx context.Context, statusID string, hashtagIDs []string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.hashtagsByStatusID[statusID] = append(f.hashtagsByStatusID[statusID], hashtagIDs...)
 	return nil
 }
 
@@ -1035,7 +1040,16 @@ func (f *FakeStore) DeleteStatusHashtags(ctx context.Context, statusID string) e
 }
 
 func (f *FakeStore) GetStatusHashtags(ctx context.Context, statusID string) ([]domain.Hashtag, error) {
-	return nil, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ids := f.hashtagsByStatusID[statusID]
+	out := make([]domain.Hashtag, 0, len(ids))
+	for _, id := range ids {
+		if h, ok := f.hashtagsByID[id]; ok {
+			out = append(out, *h)
+		}
+	}
+	return out, nil
 }
 func (f *FakeStore) SearchHashtagsByPrefix(ctx context.Context, prefix string, limit int) ([]domain.Hashtag, error) {
 	f.mu.Lock()

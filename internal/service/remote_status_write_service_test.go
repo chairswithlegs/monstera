@@ -252,6 +252,136 @@ func TestRemoteStatusWriteService_CreateRemoteFavourite_Success(t *testing.T) {
 	assert.Equal(t, st2.ID, fav.StatusID)
 }
 
+func TestRemoteStatusWriteService_CreateRemote_EventPayloadIncludesMediaMentionsTags(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fs := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fs, "https://example.com")
+	remoteAuthor, err := accountSvc.Register(ctx, RegisterInput{
+		Username: "remoteauthor",
+		Email:    "ra@example.com",
+		Password: "p",
+		Role:     domain.RoleUser,
+	})
+	require.NoError(t, err)
+	mentioned, err := accountSvc.Register(ctx, RegisterInput{
+		Username: "mentioned",
+		Email:    "m@example.com",
+		Password: "p",
+		Role:     domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	statusSvc := NewStatusService(fs, "https://example.com", "example.com", 5000)
+	convSvc := NewConversationService(fs, statusSvc)
+	mediaSvc := NewMediaService(fs, nil, 0)
+	svc := NewRemoteStatusWriteService(fs, convSvc, mediaSvc, "https://example.com")
+
+	in := CreateRemoteStatusInput{
+		AccountID:  remoteAuthor.ID,
+		URI:        "https://remote.example/statuses/full",
+		Content:    testutil.StrPtr("<p>hello @mentioned</p>"),
+		Visibility: domain.VisibilityPublic,
+		APID:       "https://remote.example/statuses/full",
+		Attachments: []CreateRemoteMediaInput{
+			{AccountID: remoteAuthor.ID, RemoteURL: "https://remote.example/image.jpg", MediaType: "image/jpeg"},
+		},
+		HashtagNames: []string{"golang", "fediverse"},
+		MentionIRIs:  []string{mentioned.APID},
+	}
+	created, err := svc.CreateRemote(ctx, in)
+	require.NoError(t, err)
+	require.NotNil(t, created)
+
+	// Find the status.created.remote event.
+	var foundEvent *domain.DomainEvent
+	for i := range fs.OutboxEvents {
+		if fs.OutboxEvents[i].EventType == domain.EventStatusCreatedRemote {
+			foundEvent = &fs.OutboxEvents[i]
+			break
+		}
+	}
+	require.NotNil(t, foundEvent, "expected a status.created.remote event")
+
+	var payload domain.StatusCreatedPayload
+	require.NoError(t, json.Unmarshal(foundEvent.Payload, &payload))
+
+	assert.NotNil(t, payload.Author, "event payload should include author")
+	assert.Len(t, payload.Media, 1, "event payload should include media")
+	assert.Len(t, payload.Tags, 2, "event payload should include tags")
+	assert.Len(t, payload.Mentions, 1, "event payload should include mentions")
+	assert.Equal(t, mentioned.ID, payload.Mentions[0].ID)
+	assert.Contains(t, payload.MentionedAccountIDs, mentioned.ID)
+	assert.False(t, payload.Local)
+}
+
+func TestRemoteStatusWriteService_UpdateRemote_EventPayloadIncludesMediaMentionsTags(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fs := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fs, "https://example.com")
+	remoteAuthor, err := accountSvc.Register(ctx, RegisterInput{
+		Username: "updateauthor",
+		Email:    "ua@example.com",
+		Password: "p",
+		Role:     domain.RoleUser,
+	})
+	require.NoError(t, err)
+	mentioned, err := accountSvc.Register(ctx, RegisterInput{
+		Username: "updatementioned",
+		Email:    "um@example.com",
+		Password: "p",
+		Role:     domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	statusSvc := NewStatusService(fs, "https://example.com", "example.com", 5000)
+	convSvc := NewConversationService(fs, statusSvc)
+	mediaSvc := NewMediaService(fs, nil, 0)
+	svc := NewRemoteStatusWriteService(fs, convSvc, mediaSvc, "https://example.com")
+
+	// Create the initial remote status with media, tags, mentions.
+	in := CreateRemoteStatusInput{
+		AccountID:  remoteAuthor.ID,
+		URI:        "https://remote.example/statuses/upd",
+		Content:    testutil.StrPtr("<p>original</p>"),
+		Visibility: domain.VisibilityPublic,
+		APID:       "https://remote.example/statuses/upd",
+		Attachments: []CreateRemoteMediaInput{
+			{AccountID: remoteAuthor.ID, RemoteURL: "https://remote.example/pic.jpg", MediaType: "image/jpeg"},
+		},
+		HashtagNames: []string{"testing"},
+		MentionIRIs:  []string{mentioned.APID},
+	}
+	created, err := svc.CreateRemote(ctx, in)
+	require.NoError(t, err)
+
+	// Clear events from create.
+	fs.OutboxEvents = nil
+
+	// Update the remote status.
+	updatedContent := "<p>edited</p>"
+	err = svc.UpdateRemote(ctx, created.ID, created, UpdateRemoteStatusInput{
+		Content: &updatedContent,
+	})
+	require.NoError(t, err)
+
+	require.Len(t, fs.OutboxEvents, 1)
+	ev := fs.OutboxEvents[0]
+	assert.Equal(t, domain.EventStatusUpdatedRemote, ev.EventType)
+
+	var payload domain.StatusUpdatedPayload
+	require.NoError(t, json.Unmarshal(ev.Payload, &payload))
+
+	assert.NotNil(t, payload.Author, "event payload should include author")
+	assert.Len(t, payload.Media, 1, "event payload should include existing media")
+	assert.Len(t, payload.Tags, 1, "event payload should include existing tags")
+	assert.Len(t, payload.Mentions, 1, "event payload should include existing mentions")
+	assert.Equal(t, mentioned.ID, payload.Mentions[0].ID)
+	assert.Contains(t, payload.MentionedAccountIDs, mentioned.ID, "event payload should include mentioned account IDs")
+	assert.False(t, payload.Local)
+}
+
 func TestRemoteStatusWriteService_DeleteRemoteReblog_EmitsEvent(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
