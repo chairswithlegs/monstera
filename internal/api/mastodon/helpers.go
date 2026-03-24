@@ -134,6 +134,16 @@ func parseLimitParam(r *http.Request, defaultLimit, maxLimit int) int { //nolint
 	return defaultLimit
 }
 
+// parseOffsetParam reads the "offset" query parameter. Invalid or missing values return 0.
+func parseOffsetParam(r *http.Request) int {
+	if s := r.URL.Query().Get("offset"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 0
+}
+
 // optionalString returns a pointer to s if non-empty, otherwise nil.
 func optionalString(s string) *string {
 	if s == "" {

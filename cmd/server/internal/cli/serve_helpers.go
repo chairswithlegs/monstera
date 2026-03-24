@@ -391,7 +391,7 @@ func createRouter(cfg *config.Config, s *svcs, i *infra, sseHub *sse.Hub) http.H
 		OAuthServer:            s.oauthServer,
 		Accounts:               mastodon.NewAccountsHandler(s.account, s.follow, s.tagFollow, s.timeline, s.statusRead, s.monsteraSettings, s.media, s.backfill, cfg.MediaMaxBytes, cfg.MonsteraInstanceDomain),
 		Statuses:               mastodon.NewStatusesHandler(s.account, s.statusRead, s.statusWrite, s.statusInteraction, s.scheduled, s.conversation, cfg.MonsteraInstanceDomain, i.sharedCache, nil),
-		ScheduledStatuses:      mastodon.NewScheduledStatusesHandler(s.statusRead, s.scheduled),
+		ScheduledStatuses:      mastodon.NewScheduledStatusesHandler(s.statusRead, s.scheduled, cfg.MonsteraInstanceDomain),
 		Polls:                  mastodon.NewPollsHandler(s.statusRead, s.statusInteraction),
 		Timelines:              mastodon.NewTimelinesHandler(s.timeline, cfg.MonsteraInstanceDomain),
 		Instance:               mastodon.NewInstanceHandler(cfg.MonsteraInstanceDomain, cfg.InstanceName, cfg.MaxStatusChars, cfg.MediaMaxBytes, nil, s.instance),

@@ -2,7 +2,6 @@ package mastodon
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/chairswithlegs/monstera/internal/api"
 	"github.com/chairswithlegs/monstera/internal/api/mastodon/apimodel"
@@ -22,8 +21,9 @@ func NewTrendsHandler(svc service.TrendsService, instanceDomain string) *TrendsH
 
 // GETTrendsStatuses handles GET /api/v1/trends/statuses.
 func (h *TrendsHandler) GETTrendsStatuses(w http.ResponseWriter, r *http.Request) {
-	limit := parseTrendsLimit(r, 20)
-	enriched, err := h.svc.TrendingStatuses(r.Context(), limit)
+	offset := parseOffsetParam(r)
+	limit := parseLimitParam(r, 20, 40)
+	enriched, err := h.svc.TrendingStatuses(r.Context(), offset, limit)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -52,8 +52,9 @@ func (h *TrendsHandler) GETTrendsStatuses(w http.ResponseWriter, r *http.Request
 
 // GETTrendsTags handles GET /api/v1/trends/tags.
 func (h *TrendsHandler) GETTrendsTags(w http.ResponseWriter, r *http.Request) {
-	limit := parseTrendsLimit(r, 10)
-	tags, err := h.svc.TrendingTags(r.Context(), limit)
+	offset := parseOffsetParam(r)
+	limit := parseLimitParam(r, 10, 40)
+	tags, err := h.svc.TrendingTags(r.Context(), offset, limit)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -70,19 +71,4 @@ func (h *TrendsHandler) GETTrendsTags(w http.ResponseWriter, r *http.Request) {
 // Deferred — OGP parsing not implemented.
 func (h *TrendsHandler) GETTrendsLinks(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusOK, []any{})
-}
-
-func parseTrendsLimit(r *http.Request, defaultLimit int) int {
-	s := r.URL.Query().Get("limit")
-	if s == "" {
-		return defaultLimit
-	}
-	n, err := strconv.Atoi(s)
-	if err != nil || n <= 0 {
-		return defaultLimit
-	}
-	if n > 40 {
-		return 40
-	}
-	return n
 }

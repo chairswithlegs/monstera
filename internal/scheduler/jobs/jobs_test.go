@@ -54,11 +54,11 @@ func (f *fakeTrendsService) RefreshIndexes(_ context.Context) error {
 	return f.refreshErr
 }
 
-func (f *fakeTrendsService) TrendingStatuses(_ context.Context, _ int) ([]service.EnrichedStatus, error) {
+func (f *fakeTrendsService) TrendingStatuses(_ context.Context, _, _ int) ([]service.EnrichedStatus, error) {
 	return nil, nil
 }
 
-func (f *fakeTrendsService) TrendingTags(_ context.Context, _ int) ([]domain.TrendingTag, error) {
+func (f *fakeTrendsService) TrendingTags(_ context.Context, _, _ int) ([]domain.TrendingTag, error) {
 	return nil, nil
 }
 

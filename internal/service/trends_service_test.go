@@ -60,7 +60,7 @@ func TestTrendsService_TrendingStatuses(t *testing.T) {
 
 	statusSvc := NewStatusService(fs, "https://example.com", "example.com", 500)
 	svc := NewTrendsService(fs, statusSvc)
-	statuses, err := svc.TrendingStatuses(context.Background(), 10)
+	statuses, err := svc.TrendingStatuses(context.Background(), 0, 10)
 	require.NoError(t, err)
 	require.Len(t, statuses, 1)
 	assert.Equal(t, "st1", statuses[0].Status.ID)
@@ -80,10 +80,58 @@ func TestTrendsService_TrendingStatuses_limit(t *testing.T) {
 
 	statusSvc := NewStatusService(fs, "https://example.com", "example.com", 500)
 	svc := NewTrendsService(fs, statusSvc)
-	statuses, err := svc.TrendingStatuses(context.Background(), 2)
+	statuses, err := svc.TrendingStatuses(context.Background(), 0, 2)
 	require.NoError(t, err)
 	// All IDs are missing from the store, so statuses will be empty (warnings logged).
 	assert.LessOrEqual(t, len(statuses), 2)
+}
+
+func TestTrendsService_TrendingStatuses_offset(t *testing.T) {
+	t.Parallel()
+
+	fs := testutil.NewFakeStore()
+	fs.TrendingStatuses = []domain.TrendingStatus{
+		{StatusID: "missing1"},
+		{StatusID: "missing2"},
+		{StatusID: "missing3"},
+	}
+
+	statusSvc := NewStatusService(fs, "https://example.com", "example.com", 500)
+	svc := NewTrendsService(fs, statusSvc)
+
+	// Offset beyond cache returns empty, not an error.
+	statuses, err := svc.TrendingStatuses(context.Background(), 10, 5)
+	require.NoError(t, err)
+	assert.Empty(t, statuses)
+}
+
+func TestTrendsService_TrendingTags_offset(t *testing.T) {
+	t.Parallel()
+
+	fs := testutil.NewFakeStore()
+	day := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	ht1, err := fs.GetOrCreateHashtag(context.Background(), "golang")
+	require.NoError(t, err)
+	ht2, err := fs.GetOrCreateHashtag(context.Background(), "rust")
+	require.NoError(t, err)
+
+	fs.TrendingTagHistory = []domain.TrendingTagHistory{
+		{HashtagID: ht1.ID, Day: day, Uses: 100, Accounts: 20},
+		{HashtagID: ht2.ID, Day: day, Uses: 50, Accounts: 10},
+	}
+
+	statusSvc := NewStatusService(fs, "https://example.com", "example.com", 500)
+	svc := NewTrendsService(fs, statusSvc)
+
+	// offset=1 should return only the second tag.
+	tags, err := svc.TrendingTags(context.Background(), 1, 5)
+	require.NoError(t, err)
+	require.Len(t, tags, 1)
+
+	// offset beyond cache length returns empty, not an error.
+	tags, err = svc.TrendingTags(context.Background(), 10, 5)
+	require.NoError(t, err)
+	assert.Empty(t, tags)
 }
 
 func TestTrendsService_TrendingTags(t *testing.T) {
@@ -102,7 +150,7 @@ func TestTrendsService_TrendingTags(t *testing.T) {
 
 	statusSvc := NewStatusService(fs, "https://example.com", "example.com", 500)
 	svc := NewTrendsService(fs, statusSvc)
-	tags, err := svc.TrendingTags(context.Background(), 10)
+	tags, err := svc.TrendingTags(context.Background(), 0, 10)
 	require.NoError(t, err)
 	require.Len(t, tags, 1)
 	assert.Equal(t, "golang", tags[0].Hashtag.Name)
@@ -115,7 +163,7 @@ func TestTrendsService_TrendingTags_empty(t *testing.T) {
 	fs := testutil.NewFakeStore()
 	statusSvc := NewStatusService(fs, "https://example.com", "example.com", 500)
 	svc := NewTrendsService(fs, statusSvc)
-	tags, err := svc.TrendingTags(context.Background(), 10)
+	tags, err := svc.TrendingTags(context.Background(), 0, 10)
 	require.NoError(t, err)
 	assert.Empty(t, tags)
 }
@@ -164,7 +212,7 @@ func TestTrendsService_cacheHit(t *testing.T) {
 	svc.cacheTTL = time.Hour // long TTL to ensure cache is used
 
 	// First call fills the cache.
-	_, err := svc.TrendingTags(context.Background(), 10)
+	_, err := svc.TrendingTags(context.Background(), 0, 10)
 	require.NoError(t, err)
 
 	// Mutate the fake store — second call should NOT see the change (cache hit).
@@ -173,7 +221,7 @@ func TestTrendsService_cacheHit(t *testing.T) {
 		{HashtagID: "tag1", Day: day, Uses: 99},
 	}
 
-	tags, err := svc.TrendingTags(context.Background(), 10)
+	tags, err := svc.TrendingTags(context.Background(), 0, 10)
 	require.NoError(t, err)
 	assert.Empty(t, tags) // still sees empty cache from first fill
 }
