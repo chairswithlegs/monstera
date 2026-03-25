@@ -83,6 +83,10 @@ type Deps struct {
 	// nil when media is served externally (e.g. S3/CDN).
 	MediaFileServer http.Handler
 
+	// UIBaseURL is the base URL of the Monstera web UI (e.g. https://example.com).
+	// Used to build redirect URLs for Mastodon client compatibility routes.
+	UIBaseURL string
+
 	// Monstera API handlers
 	User                   *monstera.UserHandler
 	ModeratorDashboard     *monstera.ModeratorDashboardHandler
@@ -117,6 +121,12 @@ func New(deps Deps) http.Handler {
 		// Health check routes
 		r.Get("/healthz/live", deps.Health.GETLiveness)
 		r.Get("/healthz/ready", deps.Health.GETReadiness)
+
+		// Mastodon extra settings endpoint
+		// This is a Mastodon client compatibility route that redirects to the Monstera UI profile page.
+		r.Get("/auth/edit", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, deps.UIBaseURL+"/account/profile", http.StatusSeeOther)
+		})
 
 		// ActivityPub routes — paths are protocol-mandated and must not be prefixed.
 		// Co-hosting with the UI is handled via reverse proxy + content negotiation.
