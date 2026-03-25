@@ -21,7 +21,6 @@ func TestDecodeJSONBody(t *testing.T) {
 		err := DecodeJSONBody(req, &v)
 		require.Error(t, err)
 		require.ErrorIs(t, err, ErrBadRequest)
-		assert.Contains(t, err.Error(), "request body is required")
 	})
 
 	t.Run("invalid JSON returns ErrBadRequest", func(t *testing.T) {
@@ -30,7 +29,6 @@ func TestDecodeJSONBody(t *testing.T) {
 		err := DecodeJSONBody(req, &v)
 		require.Error(t, err)
 		require.ErrorIs(t, err, ErrBadRequest)
-		assert.Contains(t, err.Error(), "invalid JSON")
 	})
 
 	t.Run("valid JSON decodes into v", func(t *testing.T) {

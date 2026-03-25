@@ -33,7 +33,7 @@ func (h *InboxHandler) POSTInbox(w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("Content-Type")
 	if ct != "" && !strings.Contains(ct, "application/activity+json") && !strings.Contains(ct, "application/ld+json") {
 		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "content type must be application/activity+json or application/ld+json"))
-		err := api.NewBadRequestError("content type must be application/activity+json or application/ld+json")
+		err := api.NewUnsupportedContentTypeError(ct)
 		api.HandleError(w, r, err)
 		return
 	}
@@ -41,7 +41,7 @@ func (h *InboxHandler) POSTInbox(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "failed to read body"), slog.Any("error", err))
-		err := api.NewBadRequestError("failed to read body")
+		err := api.NewInvalidRequestBodyError()
 		api.HandleError(w, r, err)
 		return
 	}
@@ -49,14 +49,14 @@ func (h *InboxHandler) POSTInbox(w http.ResponseWriter, r *http.Request) {
 	keyID, err := h.verifier.Verify(r.Context(), r)
 	if err != nil {
 		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "signature verification failed"), slog.String("key_id", keyID), slog.Any("error", err))
-		err := api.NewBadRequestError("signature verification failed")
+		err := api.NewInvalidRequestBodyError()
 		api.HandleError(w, r, err)
 		return
 	}
 	var activity vocab.Activity
 	if err := json.Unmarshal(body, &activity); err != nil {
 		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "invalid activity json"), slog.Any("error", err))
-		err := api.NewBadRequestError("invalid activity json")
+		err := api.NewInvalidRequestBodyError()
 		api.HandleError(w, r, err)
 		return
 	}
@@ -66,19 +66,19 @@ func (h *InboxHandler) POSTInbox(w http.ResponseWriter, r *http.Request) {
 	actorDomain := vocab.DomainFromIRI(activity.Actor)
 	if keyDomain == "" || actorDomain == "" {
 		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "cannot verify key attribution"), slog.String("key_id", keyID), slog.String("actor", activity.Actor))
-		err := api.NewBadRequestError("cannot verify key attribution")
+		err := api.NewInvalidRequestBodyError()
 		api.HandleError(w, r, err)
 		return
 	}
 	if keyDomain != actorDomain {
 		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "key domain does not match actor"), slog.String("key_domain", keyDomain), slog.String("actor_domain", actorDomain))
-		err := api.NewBadRequestError("key domain does not match actor")
+		err := api.NewInvalidRequestBodyError()
 		api.HandleError(w, r, err)
 		return
 	}
 	if actorDomain == h.instanceDomain {
 		slog.WarnContext(r.Context(), "inbox: bad request", slog.String("reason", "activities from own domain are illegitimate"), slog.String("actor_domain", actorDomain))
-		err := api.NewBadRequestError("activities from own domain are illegitimate")
+		err := api.NewInvalidRequestBodyError()
 		api.HandleError(w, r, err)
 		return
 	}

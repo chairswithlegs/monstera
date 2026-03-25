@@ -30,7 +30,7 @@ func NewMarkersHandler(markers service.MarkerService) *MarkersHandler {
 func (h *MarkersHandler) GETMarkers(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
 	if account == nil {
-		api.HandleError(w, r, api.NewUnauthorizedError("The access token is invalid"))
+		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
 	timelines := r.URL.Query()["timeline[]"]
@@ -68,7 +68,7 @@ type MarkerTimelineInput struct {
 func (h *MarkersHandler) POSTMarkers(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
 	if account == nil {
-		api.HandleError(w, r, api.NewUnauthorizedError("The access token is invalid"))
+		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
 	var body POSTMarkersRequest
@@ -79,7 +79,7 @@ func (h *MarkersHandler) POSTMarkers(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		if err := r.ParseForm(); err != nil { //nolint:gosec // G120: body size limited by upstream MaxBodySize middleware
-			api.HandleError(w, r, api.NewBadRequestError("invalid form"))
+			api.HandleError(w, r, api.NewInvalidRequestBodyError())
 			return
 		}
 		body.Home = formMarkerTimeline(r, "home")

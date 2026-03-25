@@ -90,7 +90,7 @@ func (h *FiltersHandler) POSTFilters(w http.ResponseWriter, r *http.Request) {
 	f, err := h.filters.CreateFilter(r.Context(), account.ID, body.Phrase, body.Context, body.WholeWord, body.ExpiresAt, body.Irreversible)
 	if err != nil {
 		if errors.Is(err, domain.ErrValidation) {
-			api.HandleError(w, r, api.NewUnprocessableError("phrase is required"))
+			api.HandleError(w, r, api.NewMissingRequiredFieldError("phrase"))
 			return
 		}
 		api.HandleError(w, r, err)

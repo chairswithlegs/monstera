@@ -76,12 +76,12 @@ func (h *Handler) POSTRegisterApp(w http.ResponseWriter, r *http.Request) {
 		var ok bool
 		redirectURIs, ok = redirectURIsToString(body.RedirectURIs)
 		if !ok {
-			api.HandleError(w, r, api.NewBadRequestError("redirect_uris is required"))
+			api.HandleError(w, r, api.NewMissingRequiredFieldError("redirect_uris"))
 			return
 		}
 	} else {
 		if err := r.ParseForm(); err != nil { //nolint:gosec // G120: body size limited by global MaxBodySize middleware
-			api.HandleError(w, r, api.NewBadRequestError("invalid request body"))
+			api.HandleError(w, r, api.NewInvalidRequestBodyError())
 			return
 		}
 		name = strings.TrimSpace(r.Form.Get("client_name"))
@@ -91,11 +91,11 @@ func (h *Handler) POSTRegisterApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if name == "" {
-		api.HandleError(w, r, api.NewBadRequestError("client_name is required"))
+		api.HandleError(w, r, api.NewMissingRequiredFieldError("client_name"))
 		return
 	}
 	if redirectURIs == "" {
-		api.HandleError(w, r, api.NewBadRequestError("redirect_uris is required"))
+		api.HandleError(w, r, api.NewMissingRequiredFieldError("redirect_uris"))
 		return
 	}
 
@@ -129,19 +129,19 @@ func (h *Handler) GETAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if responseType != "code" {
-		api.HandleError(w, r, api.NewBadRequestError("response_type must be 'code'"))
+		api.HandleError(w, r, api.NewInvalidValueError("response_type"))
 		return
 	}
 
 	if codeChallengeMethod != "" && codeChallengeMethod != "S256" {
-		api.HandleError(w, r, api.NewBadRequestError("code_challenge_method must be 'S256'"))
+		api.HandleError(w, r, api.NewInvalidValueError("code_challenge_method"))
 		return
 	}
 
 	app, err := h.auth.GetApplicationByClientID(r.Context(), clientID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.NewBadRequestError("invalid client_id"))
+			api.HandleError(w, r, api.NewInvalidValueError("client_id"))
 			return
 		}
 		api.HandleError(w, r, err)
@@ -149,7 +149,7 @@ func (h *Handler) GETAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !h.auth.ValidateRedirectURI(redirectURI, app) {
-		api.HandleError(w, r, api.NewBadRequestError("redirect_uri is not registered"))
+		api.HandleError(w, r, api.NewInvalidValueError("redirect_uri"))
 		return
 	}
 
@@ -197,7 +197,7 @@ func (h *Handler) POSTLogin(w http.ResponseWriter, r *http.Request) {
 	app, err := h.auth.GetApplicationByClientID(r.Context(), body.ClientID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.NewBadRequestError("invalid client_id"))
+			api.HandleError(w, r, api.NewInvalidValueError("client_id"))
 			return
 		}
 		api.HandleError(w, r, err)
@@ -205,7 +205,7 @@ func (h *Handler) POSTLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !h.auth.ValidateRedirectURI(body.RedirectURI, app) {
-		api.HandleError(w, r, api.NewBadRequestError("redirect_uri is not registered"))
+		api.HandleError(w, r, api.NewInvalidValueError("redirect_uri"))
 		return
 	}
 
@@ -213,11 +213,11 @@ func (h *Handler) POSTLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrUnconfirmed):
-			api.HandleError(w, r, api.NewUnauthorizedError("please confirm your email address before signing in"))
+			api.HandleError(w, r, api.NewUnconfirmedError())
 		case errors.Is(err, service.ErrSuspended):
-			api.HandleError(w, r, api.NewUnauthorizedError("your account has been suspended"))
+			api.HandleError(w, r, api.NewSuspendedError())
 		default:
-			api.HandleError(w, r, api.NewUnauthorizedError("invalid email or password"))
+			api.HandleError(w, r, api.NewInvalidEmailOrPasswordError())
 		}
 		return
 	}
@@ -237,7 +237,7 @@ func (h *Handler) POSTLogin(w http.ResponseWriter, r *http.Request) {
 
 	redirectURL, err := url.Parse(body.RedirectURI)
 	if err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("invalid redirect_uri"))
+		api.HandleError(w, r, api.NewInvalidValueError("redirect_uri"))
 		return
 	}
 	redirectQuery := redirectURL.Query()
@@ -280,7 +280,7 @@ func (h *Handler) POSTToken(w http.ResponseWriter, r *http.Request) {
 		scope = body.Scope
 	} else {
 		if err := r.ParseForm(); err != nil { //nolint:gosec // G120: body size limited by global MaxBodySize middleware
-			api.HandleError(w, r, api.NewBadRequestError("invalid request body"))
+			api.HandleError(w, r, api.NewInvalidRequestBodyError())
 			return
 		}
 		grantType = r.Form.Get("grant_type")
@@ -322,14 +322,14 @@ func (h *Handler) POSTToken(w http.ResponseWriter, r *http.Request) {
 		api.WriteJSON(w, http.StatusOK, resp)
 
 	default:
-		api.HandleError(w, r, api.NewBadRequestError("unsupported grant_type"))
+		api.HandleError(w, r, api.NewUnsupportedGrantTypeError(grantType))
 	}
 }
 
 // POSTRevoke handles POST /oauth/revoke (RFC 7009).
 func (h *Handler) POSTRevoke(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil { //nolint:gosec // G120: body size limited by global MaxBodySize middleware
-		api.HandleError(w, r, api.NewBadRequestError("invalid request body"))
+		api.HandleError(w, r, api.NewInvalidRequestBodyError())
 		return
 	}
 

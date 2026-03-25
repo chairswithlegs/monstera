@@ -48,7 +48,7 @@ func (b *PatchPreferencesRequest) Validate() error {
 		return fmt.Errorf("default_quote_policy: %w", err)
 	}
 	if len(b.DefaultLanguage) > 35 {
-		return fmt.Errorf("default_language: %w", api.NewUnprocessableError("too long"))
+		return fmt.Errorf("default_language: %w", api.NewInvalidValueError("default_language"))
 	}
 	return nil
 }

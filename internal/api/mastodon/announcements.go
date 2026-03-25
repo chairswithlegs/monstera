@@ -86,7 +86,7 @@ func (h *AnnouncementsHandler) PUTAnnouncementReaction(w http.ResponseWriter, r 
 			return
 		}
 		if errors.Is(err, domain.ErrValidation) {
-			api.HandleError(w, r, api.NewUnprocessableError("Validation failed: Name is not a recognized emoji"))
+			api.HandleError(w, r, api.NewInvalidValueError("name"))
 			return
 		}
 		api.HandleError(w, r, err)
@@ -115,7 +115,7 @@ func (h *AnnouncementsHandler) DELETEAnnouncementReaction(w http.ResponseWriter,
 			return
 		}
 		if errors.Is(err, domain.ErrValidation) {
-			api.HandleError(w, r, api.NewUnprocessableError("Validation failed: Name is not a recognized emoji"))
+			api.HandleError(w, r, api.NewInvalidValueError("name"))
 			return
 		}
 		api.HandleError(w, r, err)

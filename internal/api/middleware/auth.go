@@ -145,13 +145,13 @@ func RequiredScopes(scopes ...string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			claims := TokenClaimsFromContext(r.Context())
 			if claims == nil {
-				err := api.NewForbiddenError("This action is outside the authorized scopes")
+				err := api.NewOutsideOfScopesError()
 				api.HandleError(w, r, err)
 				return
 			}
 
 			if !claims.Scopes.HasAll(scopes...) {
-				err := api.NewForbiddenError("This action is outside the authorized scopes")
+				err := api.NewOutsideOfScopesError()
 				api.HandleError(w, r, err)
 				return
 			}

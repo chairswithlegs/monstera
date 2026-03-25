@@ -69,7 +69,7 @@ func (h *ModeratorInvitesHandler) POSTInvites(w http.ResponseWriter, r *http.Req
 func (h *ModeratorInvitesHandler) DELETEInvite(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		api.HandleError(w, r, api.NewBadRequestError("id required"))
+		api.HandleError(w, r, api.NewMissingRequiredParamError("id"))
 		return
 	}
 	if err := h.registration.RevokeInvite(r.Context(), id); err != nil {

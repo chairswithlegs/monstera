@@ -77,7 +77,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 	if req.ScheduledAt != "" {
 		scheduledAt, err := time.Parse(time.RFC3339, req.ScheduledAt)
 		if err != nil {
-			api.HandleError(w, r, api.NewUnprocessableError("scheduled_at must be a valid ISO8601 datetime"))
+			api.HandleError(w, r, api.NewInvalidRFC3339Error("scheduled_at"))
 			return
 		}
 		params := domain.ScheduledStatusParams{
@@ -100,7 +100,7 @@ func (h *StatusesHandler) POSTStatuses(w http.ResponseWriter, r *http.Request) {
 		s, err := h.scheduled.CreateScheduledStatus(ctx, account.ID, paramsJSON, scheduledAt)
 		if err != nil {
 			if errors.Is(err, domain.ErrValidation) {
-				api.HandleError(w, r, api.NewUnprocessableError("scheduled_at must be in the future"))
+				api.HandleError(w, r, api.NewMustBeInTheFutureError("scheduled_at"))
 				return
 			}
 			api.HandleError(w, r, err)
@@ -261,7 +261,7 @@ func (h *StatusesHandler) POSTPin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, domain.ErrUnprocessable) {
-			api.HandleError(w, r, api.NewUnprocessableError("Only public and unlisted statuses can be pinned"))
+			api.HandleError(w, r, api.NewOnlyPublicAndUnlistedStatusesCanBePinnedError())
 			return
 		}
 		api.HandleError(w, r, err)
@@ -336,11 +336,11 @@ func (h *StatusesHandler) PUTStatuses(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, domain.ErrUnprocessable) {
-			api.HandleError(w, r, api.NewUnprocessableError("cannot edit this status"))
+			api.HandleError(w, r, api.NewCannotEditStatusError())
 			return
 		}
 		if errors.Is(err, domain.ErrValidation) {
-			api.HandleError(w, r, api.NewUnprocessableError("invalid or empty status"))
+			api.HandleError(w, r, api.NewInvalidValueError("status"))
 			return
 		}
 		api.HandleError(w, r, err)
@@ -387,7 +387,7 @@ func (h *StatusesHandler) PUTInteractionPolicy(w http.ResponseWriter, r *http.Re
 			return
 		}
 		if errors.Is(err, domain.ErrValidation) {
-			api.HandleError(w, r, api.NewUnprocessableError("quote_approval_policy must be public, followers, or nobody"))
+			api.HandleError(w, r, api.NewInvalidValueError("quote_approval_policy"))
 			return
 		}
 		api.HandleError(w, r, err)

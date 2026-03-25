@@ -77,7 +77,7 @@ func (h *FeaturedTagsHandler) POSTFeaturedTags(w http.ResponseWriter, r *http.Re
 	ft, err := h.featuredTags.CreateFeaturedTag(r.Context(), account.ID, body.Name)
 	if err != nil {
 		if errors.Is(err, domain.ErrValidation) {
-			api.HandleError(w, r, api.NewUnprocessableError("Validation failed: Tag is invalid"))
+			api.HandleError(w, r, api.NewInvalidValueError("name"))
 			return
 		}
 		api.HandleError(w, r, err)

@@ -34,7 +34,7 @@ func NewPreferencesHandler(accounts service.AccountService) *PreferencesHandler 
 func (h *PreferencesHandler) GETPreferences(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
 	if account == nil {
-		api.HandleError(w, r, api.NewUnauthorizedError("The access token is invalid"))
+		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
 	_, user, err := h.accounts.GetAccountWithUser(r.Context(), account.ID)

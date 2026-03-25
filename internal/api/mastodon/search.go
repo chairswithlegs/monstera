@@ -33,7 +33,7 @@ type searchRequest struct {
 func parseSearchRequest(r *http.Request) (*searchRequest, error) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if q == "" {
-		return nil, fmt.Errorf("parse search request: %w", api.NewUnprocessableError("q is required"))
+		return nil, fmt.Errorf("parse search request: %w", api.NewMissingRequiredFieldError("q"))
 	}
 	typ := r.URL.Query().Get("type")
 	resolve := api.QueryParamIsTrue(r, "resolve")
@@ -41,7 +41,7 @@ func parseSearchRequest(r *http.Request) (*searchRequest, error) {
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n <= 0 {
-			return nil, fmt.Errorf("parse search request: %w", api.NewUnprocessableError("limit must be a positive integer"))
+			return nil, fmt.Errorf("parse search request: %w", api.NewInvalidValueError("limit"))
 		}
 		if n > 40 {
 			n = 40
@@ -69,7 +69,7 @@ func mapTypeToSearchType(typ string) service.SearchType {
 func (h *SearchHandler) GETAccountsSearch(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if q == "" {
-		api.HandleError(w, r, api.NewUnprocessableError("q is required"))
+		api.HandleError(w, r, api.NewMissingRequiredFieldError("q"))
 		return
 	}
 	resolve := api.QueryParamIsTrue(r, "resolve")

@@ -1,7 +1,6 @@
 package apimodel
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -238,7 +237,7 @@ type CreateStatusRequest struct {
 
 func (r *CreateStatusRequest) Validate() error {
 	if r.QuotedStatusID != "" && (len(r.MediaIDs) > 0 || (r.Poll != nil && len(r.Poll.Options) > 0)) {
-		return errors.New("cannot attach media or poll to a quote post")
+		return fmt.Errorf("%w: cannot attach media or poll to a quote post", api.ErrUnprocessable)
 	}
 
 	return nil
@@ -265,7 +264,7 @@ type UpdateStatusRequest struct {
 
 func (r *UpdateStatusRequest) Validate() error {
 	if strings.TrimSpace(r.Status) == "" {
-		return fmt.Errorf("validate status: %w", api.NewUnprocessableError("status text is required"))
+		return fmt.Errorf("validate status: %w", api.NewMissingRequiredFieldError("status"))
 	}
 	return nil
 }
@@ -283,7 +282,7 @@ type PUTInteractionPolicyRequest struct {
 func (r *PUTInteractionPolicyRequest) Validate() error {
 	policy := strings.TrimSpace(r.QuoteApprovalPolicy)
 	if policy == "" {
-		return fmt.Errorf("quote_approval_policy: %w", api.NewUnprocessableError("quote_approval_policy is required"))
+		return fmt.Errorf("quote_approval_policy: %w", api.NewMissingRequiredFieldError("quote_approval_policy"))
 	}
 	r.QuoteApprovalPolicy = policy
 	return nil
@@ -301,7 +300,7 @@ func ParseCreateStatusRequest(r *http.Request) (CreateStatusRequest, error) {
 	} else {
 		if err := r.ParseForm(); err != nil {
 			// nolint:wrapcheck
-			return CreateStatusRequest{}, api.NewUnprocessableError("invalid form")
+			return CreateStatusRequest{}, api.NewInvalidRequestBodyError()
 		}
 		req.Status = r.FormValue("status")
 		req.Visibility = r.FormValue("visibility")
@@ -335,16 +334,16 @@ func ParseCreateStatusRequest(r *http.Request) (CreateStatusRequest, error) {
 		}
 	}
 	req.Status = strings.TrimSpace(req.Status)
-	hasPoll := req.Poll != nil && len(req.Poll.Options) > 0
-	if req.Status == "" && len(req.MediaIDs) == 0 && !hasPoll {
-		// nolint:wrapcheck
-		return CreateStatusRequest{}, api.NewUnprocessableError("validation error: one of status, media, or poll must be provided")
+
+	// Require at least one of the following fields: status, media_ids, poll.
+	if req.Status == "" && len(req.MediaIDs) == 0 && req.Poll == nil {
+		return CreateStatusRequest{}, api.NewMissingRequiredFieldsError([]string{"status", "media_ids", "poll"})
 	}
 
 	req.Sanitize()
 	if err := req.Validate(); err != nil {
 		// nolint:wrapcheck
-		return CreateStatusRequest{}, api.NewUnprocessableError(err.Error())
+		return CreateStatusRequest{}, fmt.Errorf("validate: %w", err)
 	}
 	return req, nil
 }

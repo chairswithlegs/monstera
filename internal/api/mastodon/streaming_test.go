@@ -64,9 +64,10 @@ func TestStreamingHandler_GETHashtag_MissingTag_Returns400(t *testing.T) {
 	h.GETHashtag(rec, req)
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
-	var body map[string]string
+	var body map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
-	assert.Contains(t, body["error"], "tag")
+	params, _ := body["params"].(map[string]any)
+	assert.Equal(t, "tag", params["field"])
 }
 
 func TestStreamingHandler_GETHashtag_EmptyTagAfterTrim_Returns400(t *testing.T) {
@@ -230,9 +231,10 @@ func TestStreamingHandler_GETList_MissingListParam_Returns400(t *testing.T) {
 	h.GETList(rec, req)
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
-	var body map[string]string
+	var body map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
-	assert.Contains(t, body["error"], "list")
+	params, _ := body["params"].(map[string]any)
+	assert.Equal(t, "list", params["field"])
 }
 
 func TestStreamingHandler_GETList_NotOwnedList_Returns403(t *testing.T) {

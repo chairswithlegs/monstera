@@ -119,7 +119,7 @@ func (h *PushHandler) POSTSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.Subscription.Endpoint == "" {
-		api.HandleError(w, r, api.NewBadRequestError("subscription[endpoint] is required"))
+		api.HandleError(w, r, api.NewMissingRequiredFieldError("subscription[endpoint]"))
 		return
 	}
 	policy := body.Data.Policy
