@@ -30,8 +30,7 @@ type FederationSubscriber struct {
 }
 
 // NewFederationSubscriber creates a federation subscriber.
-// instanceBaseURL is the AP/API server base URL; uiBaseURL is the web UI base URL
-// used for the human-readable Actor.URL field in federated profile documents.
+// instanceBaseURL is the AP/API server base URL; uiBaseURL is the web UI base URL.
 func NewFederationSubscriber(
 	js jetstream.JetStream,
 	followers service.RemoteFollowService,

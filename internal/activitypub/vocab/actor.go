@@ -50,7 +50,7 @@ type Actor struct {
 // AccountToActor builds an ActivityPub Actor from a domain account.
 // serverBaseURL is the base URL (e.g. "https://api.example.com") for building AP IRIs.
 // uiBaseURL is the base URL of the web UI (e.g. "https://example.com") used for the
-// human-readable Actor.URL field, which may differ from the API server.
+// building the profile page URL.
 func AccountToActor(a *domain.Account, serverBaseURL, uiBaseURL string) *Actor {
 	base := strings.TrimSuffix(serverBaseURL, "/")
 	ui := strings.TrimSuffix(uiBaseURL, "/")
@@ -115,8 +115,7 @@ func AccountToActor(a *domain.Account, serverBaseURL, uiBaseURL string) *Actor {
 	return actor
 }
 
-// RemoteActorFields holds the pure field-mapping result of an inbound Actor.
-// It contains no service or store types so the vocab package stays dependency-free.
+// RemoteActorFields holds the field-mapping result of an inbound Actor.
 type RemoteActorFields struct {
 	APID           string
 	Username       string
@@ -133,7 +132,7 @@ type RemoteActorFields struct {
 	HeaderURL      string
 	Bot            bool
 	Locked         bool
-	URL            string // Human-readable profile page URL (Actor.URL)
+	URL            string // Profile page URL (Actor.URL)
 	FeaturedURL    string // ActivityPub featured collection URL (Actor.Featured)
 	// Fields holds profile metadata parsed from Actor.Attachment PropertyValue
 	// entries. Stored as JSON array of {"name":"...","value":"..."}. The

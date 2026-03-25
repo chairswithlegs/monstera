@@ -21,7 +21,6 @@ type ActorHandler struct {
 
 // NewActorHandler returns a new ActorHandler.
 // instanceBaseURL is the AP/API server base URL; uiBaseURL is the web UI base URL
-// (they may differ when the API and UI run on separate origins).
 func NewActorHandler(accounts service.AccountService, instanceBaseURL, uiBaseURL string) *ActorHandler {
 	return &ActorHandler{
 		accounts:        accounts,
