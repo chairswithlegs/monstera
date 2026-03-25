@@ -12,7 +12,7 @@ import {
   type PendingRegistration,
   type Invite,
 } from '@/lib/api/admin';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -55,12 +55,12 @@ export default function ModeratorRegistrationsPage() {
   const [rejectUserId, setRejectUserId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  const modeBadge: Record<string, { label: string; variant: BadgeVariant }> = {
+  const modeBadge = useMemo<Record<string, { label: string; variant: BadgeVariant }>>(() => ({
     open: { label: t('regModeOpen'), variant: 'secondary' },
     approval: { label: t('regModeApproval'), variant: 'secondary' },
     invite: { label: t('regModeInvite'), variant: 'default' },
     closed: { label: t('regModeClosed'), variant: 'destructive' },
-  };
+  }), [t]);
 
   const load = () => {
     Promise.all([

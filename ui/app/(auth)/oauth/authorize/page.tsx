@@ -18,7 +18,7 @@ function AuthorizeContent() {
   const t = useTranslations('auth');
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
+    <div className="flex flex-1 items-center justify-center bg-background">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>{t('authorizeTitle', { appName: params.appName })}</CardTitle>
@@ -70,7 +70,7 @@ function AuthorizeContent() {
 function LoadingFallback() {
   const t = useTranslations('common');
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
+    <div className="flex flex-1 items-center justify-center bg-background">
       <Card className="w-full max-w-sm">
         <CardContent className="pt-6">
           <p className="text-muted-foreground">{t('loading')}</p>

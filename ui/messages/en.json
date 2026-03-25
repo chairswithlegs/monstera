@@ -45,8 +45,7 @@
     "authorizeDescription": "{appName} is requesting access to your account.",
     "requestsAccountAccess": "is requesting access to your account.",
     "permissionsRequested": "Permissions requested:",
-    "registrationsClosed": "Registrations are closed.",
-    "federatedServer": "A federated server running on {softwareName}."
+    "registrationsClosed": "Registrations are closed."
   },
   "account": {
     "profileTitle": "Profile",
@@ -280,5 +279,9 @@
     "noInstances": "None yet.",
     "noDomainBlocks": "No domain blocks.",
     "noFilters": "No filters."
+  },
+  "footer": {
+    "poweredBy": "Powered by",
+    "language": "Language"
   }
 }

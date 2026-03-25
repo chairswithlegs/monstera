@@ -8,7 +8,7 @@ Before any Next.js work, find and read the relevant doc in `ui/node_modules/next
 
 The UI uses `next-intl` in **client-only mode** (static export; no middleware, no server APIs).
 
-- Message files live in `ui/messages/<locale>.json`. All strings are namespaced: `common`, `nav`, `auth`, `account`, `home`, `admin`, `moderator`, `profile`, `errors`, `empty`.
+- Message files live in `ui/messages/<locale>.json`. All strings are namespaced: `common`, `nav`, `auth`, `account`, `home`, `admin`, `moderator`, `profile`, `errors`, `empty`, `footer`.
 - `IntlProvider` (in `ui/components/intl-provider.tsx`) reads the `NEXT_LOCALE` cookie on mount and feeds the correct bundle to `NextIntlClientProvider`. It is mounted in `ui/app/layout.tsx`.
 - Pages and components use `useTranslations('namespace')` — never hard-code English strings.
 - To add a new locale, see `docs/adding-a-locale.md`.

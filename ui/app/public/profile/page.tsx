@@ -43,7 +43,7 @@ function ProfileContent() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex flex-1 items-center justify-center">
         <p className="text-muted-foreground">{tCommon('loading')}</p>
       </div>
     );
@@ -51,7 +51,7 @@ function ProfileContent() {
 
   if (!username) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex flex-1 items-center justify-center">
         <Alert variant="destructive" className="max-w-md">
           <AlertDescription>{t('noProfileSpecified')}</AlertDescription>
         </Alert>
@@ -61,7 +61,7 @@ function ProfileContent() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex flex-1 items-center justify-center">
         <Alert variant="destructive" className="max-w-md">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -173,7 +173,7 @@ function ProfileContent() {
 function LoadingFallback() {
   const tCommon = useTranslations('common');
   return (
-    <div className="flex items-center justify-center min-h-screen">
+    <div className="flex flex-1 items-center justify-center">
       <p className="text-muted-foreground">{tCommon('loading')}</p>
     </div>
   );

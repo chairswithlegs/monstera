@@ -2,12 +2,10 @@
 
 import { getUser, patchPreferences } from '@/lib/api/user';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { locales, localeNames, defaultLocale, type Locale } from '@/i18n/config';
-import { getLocaleFromCookie, setLocale } from '@/lib/i18n/locale';
 import { translateApiError } from '@/lib/i18n/errors';
 
 // Common BCP-47 language tags shown in the post language dropdown.
@@ -36,6 +34,7 @@ export default function PreferencesPage() {
   const t = useTranslations('account');
   const tCommon = useTranslations('common');
   const tErr = useTranslations('errors');
+  const locale = useLocale();
   const [defaultPrivacy, setDefaultPrivacy] = useState('public');
   const [defaultSensitive, setDefaultSensitive] = useState(false);
   const [defaultLanguage, setDefaultLanguage] = useState('');
@@ -44,7 +43,6 @@ export default function PreferencesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [uiLocale, setUiLocale] = useState<Locale>(defaultLocale);
 
   // Include current value in options if it's not in the standard list (avoids data loss).
   const langOptions = useMemo(() => {
@@ -53,8 +51,8 @@ export default function PreferencesPage() {
   }, [defaultLanguage]);
 
   const langNames = useMemo(
-    () => new Intl.DisplayNames([uiLocale], { type: 'language' }),
-    [uiLocale]
+    () => new Intl.DisplayNames([locale], { type: 'language' }),
+    [locale]
   );
 
   const load = useCallback(() => {
@@ -71,7 +69,6 @@ export default function PreferencesPage() {
 
   useEffect(() => {
     load();
-    setUiLocale(getLocaleFromCookie());
   }, [load]);
 
   const save = async (e: React.FormEvent) => {
@@ -94,7 +91,7 @@ export default function PreferencesPage() {
     }
   };
 
-  if (loading) return <div className="text-muted-foreground">{t('preferencesTitle')}…</div>;
+  if (loading) return <div className="text-muted-foreground">{tCommon('loading')}</div>;
 
   return (
     <div>
@@ -127,43 +124,22 @@ export default function PreferencesPage() {
             ))}
           </select>
         </div>
-        <div className="flex flex-col gap-3">
-          <div>
-            <h2 className="text-base font-medium text-foreground">{t('language')}</h2>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="default-language">{t('postLanguage')}</Label>
-            <p className="text-xs text-muted-foreground">{t('defaultPostLanguageHint')}</p>
-            <select
-              id="default-language"
-              value={defaultLanguage}
-              onChange={(e) => setDefaultLanguage(e.target.value)}
-              className="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <option value="">{t('postLanguageNotSet')}</option>
-              {langOptions.map((code) => (
-                <option key={code} value={code}>
-                  {langNames.of(code) ?? code}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ui-locale">{t('interfaceLanguage')}</Label>
-            <p className="text-xs text-muted-foreground">{t('languageHint')}</p>
-            <select
-              id="ui-locale"
-              value={uiLocale}
-              onChange={(e) => setLocale(e.target.value as Locale)}
-              className="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              {locales.map((loc) => (
-                <option key={loc} value={loc}>
-                  {localeNames[loc]}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="default-language">{t('postLanguage')}</Label>
+          <p className="text-xs text-muted-foreground">{t('defaultPostLanguageHint')}</p>
+          <select
+            id="default-language"
+            value={defaultLanguage}
+            onChange={(e) => setDefaultLanguage(e.target.value)}
+            className="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <option value="">{t('postLanguageNotSet')}</option>
+            {langOptions.map((code) => (
+              <option key={code} value={code}>
+                {langNames.of(code) ?? code}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">

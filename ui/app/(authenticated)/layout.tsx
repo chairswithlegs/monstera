@@ -44,7 +44,7 @@ export default function AuthenticatedLayout({
   const showAdmin = user && isAdmin(user);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex flex-col flex-1 bg-gray-50">
       <nav className="border-b bg-white px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center">
           <Link href="/home" className="font-semibold text-gray-900 mr-auto">

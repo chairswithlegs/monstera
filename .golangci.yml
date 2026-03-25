@@ -45,6 +45,8 @@ linters:
 
   exclusions:
     generated: strict
+    paths:
+      - ui/node_modules
     presets:
       - common-false-positives
     rules:

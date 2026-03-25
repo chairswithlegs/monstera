@@ -34,7 +34,7 @@ export default function LandingPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="flex flex-1 items-center justify-center bg-background">
         <p className="text-muted-foreground">{tErr('failed_to_load')}</p>
       </div>
     );
@@ -42,7 +42,7 @@ export default function LandingPage() {
 
   if (error) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-4">
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-background px-4">
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -53,17 +53,14 @@ export default function LandingPage() {
     );
   }
 
-  const { software, usage, openRegistrations } = nodeInfo!;
+  const { software, openRegistrations } = nodeInfo!;
   const serverName = (nodeInfo!.metadata.server_name as string) || software.name;
   const serverDescription = nodeInfo!.metadata.server_description as string | undefined;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex-1 bg-background">
       <div className="mx-auto max-w-2xl px-6 py-16">
         <h1 className="text-3xl font-bold text-foreground">{serverName}</h1>
-        <p className="mt-2 text-muted-foreground">
-          {t('federatedServer', { softwareName: software.name })}
-        </p>
         {serverDescription && (
           <p className="mt-4 text-base text-foreground">{serverDescription}</p>
         )}

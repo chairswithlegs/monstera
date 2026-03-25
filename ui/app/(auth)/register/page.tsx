@@ -55,7 +55,7 @@ export default function RegisterPage() {
 
   if (pending) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="flex flex-1 items-center justify-center bg-background">
         <Card className="w-full max-w-sm">
           <CardHeader>
             <CardTitle>{t('registrationSubmittedTitle')}</CardTitle>
@@ -72,7 +72,7 @@ export default function RegisterPage() {
 
   if (success) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="flex flex-1 items-center justify-center bg-background">
         <Card className="w-full max-w-sm">
           <CardHeader>
             <CardTitle>{t('registrationSuccessTitle')}</CardTitle>
@@ -91,7 +91,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
+    <div className="flex flex-1 items-center justify-center bg-background">
       <Dialog open={serverRules.length > 0 && !rulesAccepted}>
         <DialogContent>
           <DialogHeader>
