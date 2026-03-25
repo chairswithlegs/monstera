@@ -32,6 +32,9 @@ type RateLimitConfig struct {
 
 // Deps holds dependencies required to build the HTTP router.
 type Deps struct {
+	// UIBaseURL is the base URL of the Monstera web UI
+	UIBaseURL string
+
 	OAuthServer     *oauthpkg.Server
 	AccountsService service.AccountService
 	RateLimit       *RateLimitConfig
@@ -82,10 +85,6 @@ type Deps struct {
 	// MediaFileServer serves locally-stored media files (local driver only).
 	// nil when media is served externally (e.g. S3/CDN).
 	MediaFileServer http.Handler
-
-	// UIBaseURL is the base URL of the Monstera web UI (e.g. https://example.com).
-	// Used to build redirect URLs for Mastodon client compatibility routes.
-	UIBaseURL string
 
 	// Monstera API handlers
 	User                   *monstera.UserHandler
