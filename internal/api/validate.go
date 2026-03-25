@@ -9,7 +9,7 @@ import (
 // Use for required request body fields (semantic validation → 422).
 func ValidateRequiredField(value, fieldName string) error {
 	if value == "" {
-		return NewUnprocessableError(fieldName + " is required")
+		return NewMissingRequiredFieldError(fieldName)
 	}
 	return nil
 }
@@ -21,18 +21,17 @@ func ValidateOneOf[T comparable](value T, allowed []T, fieldName string) error {
 			return nil
 		}
 	}
-	return NewUnprocessableError(fieldName + ": invalid value")
+	return NewInvalidValueError(fieldName)
 }
 
 // ValidateRFC3339 parses raw as RFC3339 and returns the time, or ErrUnprocessable on parse failure.
 func ValidateRFC3339(raw, fieldName string) (time.Time, error) {
-	msg := fieldName + ": must be a valid RFC3339 datetime"
 	if raw == "" {
-		return time.Time{}, NewUnprocessableError(msg)
+		return time.Time{}, NewInvalidRFC3339Error(fieldName)
 	}
 	t, err := time.Parse(time.RFC3339, raw)
 	if err != nil {
-		return time.Time{}, NewUnprocessableError(msg)
+		return time.Time{}, NewInvalidRFC3339Error(fieldName)
 	}
 	return t, nil
 }
@@ -57,7 +56,7 @@ func ValidatePositiveInt(raw, fieldName string, defaultVal, max int) (int, error
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil || n <= 0 {
-		return 0, NewUnprocessableError(fieldName + " must be a positive integer")
+		return 0, NewPositiveIntRequiredError(fieldName)
 	}
 	if n > max {
 		return max, nil

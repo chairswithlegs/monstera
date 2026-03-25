@@ -118,11 +118,11 @@ func TestAccountsHandler_GETAccountsLookup(t *testing.T) {
 	followSvc, tagFollowSvc := newTestFollowServices(st)
 	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, 0, "example.com")
 
-	t.Run("missing acct returns 422", func(t *testing.T) {
+	t.Run("missing acct returns 400", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/lookup", nil)
 		rec := httptest.NewRecorder()
 		handler.GETAccountsLookup(rec, req)
-		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
 	})
 
 	t.Run("unknown account returns 404", func(t *testing.T) {

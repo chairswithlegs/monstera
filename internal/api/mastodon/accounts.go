@@ -44,13 +44,13 @@ func NewAccountsHandler(accounts service.AccountService, follows service.FollowS
 func (h *AccountsHandler) GETVerifyCredentials(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
 	if account == nil {
-		api.HandleError(w, r, api.NewUnauthorizedError("The access token is invalid"))
+		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
 	acc, user, err := h.accounts.GetAccountWithUser(r.Context(), account.ID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			api.HandleError(w, r, api.NewUnauthorizedError("The access token is invalid"))
+			api.HandleError(w, r, api.ErrUnauthorized)
 			return
 		}
 		api.HandleError(w, r, err)
@@ -95,7 +95,7 @@ func (h *AccountsHandler) GETAccounts(w http.ResponseWriter, r *http.Request) {
 func (h *AccountsHandler) GETAccountsLookup(w http.ResponseWriter, r *http.Request) {
 	acct := strings.TrimSpace(r.URL.Query().Get("acct"))
 	if acct == "" {
-		api.HandleError(w, r, api.NewUnprocessableError("acct parameter is required"))
+		api.HandleError(w, r, api.NewMissingRequiredParamError("acct"))
 		return
 	}
 	var username string
@@ -110,7 +110,7 @@ func (h *AccountsHandler) GETAccountsLookup(w http.ResponseWriter, r *http.Reque
 		username = acct
 	}
 	if username == "" {
-		api.HandleError(w, r, api.NewUnprocessableError("acct must contain a username"))
+		api.HandleError(w, r, api.NewMissingRequiredFieldError("acct"))
 		return
 	}
 	acc, err := h.accounts.GetByUsername(r.Context(), username, accountDomain)
@@ -196,7 +196,7 @@ func (h *AccountsHandler) parseUpdateCredentialsRequest(w http.ResponseWriter, r
 		slog.DebugContext(r.Context(), "failed to parse multipart form, falling back to form parse", slog.Any("error", err))
 		if r.Form == nil {
 			if err := r.ParseForm(); err != nil {
-				return nil, fmt.Errorf("parse form: %w", api.NewBadRequestError("failed to parse form"))
+				return nil, fmt.Errorf("parse form: %w", api.NewInvalidRequestBodyError())
 			}
 		}
 	}
@@ -356,8 +356,9 @@ func (h *AccountsHandler) GETAccountStatuses(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// TODO: this would be better as a compile-time error.
 	if h.timeline == nil {
-		api.HandleError(w, r, api.NewUnprocessableError("timeline not configured"))
+		api.HandleError(w, r, api.ErrUnprocessable)
 		return
 	}
 	params := PageParamsFromRequest(r)
@@ -398,7 +399,7 @@ func (h *AccountsHandler) POSTAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if settings.RegistrationMode == domain.MonsteraRegistrationModeClosed {
-		api.HandleError(w, r, api.NewForbiddenError("registrations are closed"))
+		api.HandleError(w, r, api.NewRegistrationClosedError())
 		return
 	}
 

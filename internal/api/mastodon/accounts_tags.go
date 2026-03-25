@@ -65,7 +65,7 @@ func (h *AccountsHandler) POSTTagFollow(w http.ResponseWriter, r *http.Request) 
 	}
 	name := strings.TrimSpace(strings.ToLower(chi.URLParam(r, "name")))
 	if name == "" {
-		api.HandleError(w, r, api.NewBadRequestError("tag name is required"))
+		api.HandleError(w, r, api.NewMissingRequiredParamError("name"))
 		return
 	}
 	tag, err := h.tagFollows.FollowTag(r.Context(), account.ID, name)
@@ -85,7 +85,7 @@ func (h *AccountsHandler) POSTTagUnfollow(w http.ResponseWriter, r *http.Request
 	}
 	name := strings.TrimSpace(strings.ToLower(chi.URLParam(r, "name")))
 	if name == "" {
-		api.HandleError(w, r, api.NewBadRequestError("tag name is required"))
+		api.HandleError(w, r, api.NewMissingRequiredParamError("name"))
 		return
 	}
 	tag, err := h.tagFollows.UnfollowTagByName(r.Context(), account.ID, name)

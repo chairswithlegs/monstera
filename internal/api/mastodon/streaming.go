@@ -66,12 +66,12 @@ func (h *StreamingHandler) GETPublicLocal(w http.ResponseWriter, r *http.Request
 func (h *StreamingHandler) GETHashtag(w http.ResponseWriter, r *http.Request) {
 	tag := strings.TrimSpace(r.URL.Query().Get("tag"))
 	if tag == "" {
-		api.HandleError(w, r, api.NewBadRequestError("tag is required"))
+		api.HandleError(w, r, api.NewMissingRequiredParamError("tag"))
 		return
 	}
 	tag = strings.TrimPrefix(strings.ToLower(tag), "#")
 	if tag == "" {
-		api.HandleError(w, r, api.NewBadRequestError("tag is required"))
+		api.HandleError(w, r, api.NewMissingRequiredParamError("tag"))
 		return
 	}
 	streamKey := sse.StreamHashtagPrefix + tag
@@ -87,7 +87,7 @@ func (h *StreamingHandler) GETList(w http.ResponseWriter, r *http.Request) {
 	}
 	listID := strings.TrimSpace(r.URL.Query().Get("list"))
 	if listID == "" {
-		api.HandleError(w, r, api.NewBadRequestError("list is required"))
+		api.HandleError(w, r, api.NewMissingRequiredParamError("list"))
 		return
 	}
 	if _, err := h.lists.GetList(r.Context(), account.ID, listID); err != nil {

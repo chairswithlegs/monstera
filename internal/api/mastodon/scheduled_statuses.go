@@ -185,7 +185,7 @@ func (h *ScheduledStatusesHandler) PUTScheduledStatus(w http.ResponseWriter, r *
 			return
 		}
 		if errors.Is(err, domain.ErrValidation) {
-			api.HandleError(w, r, api.NewUnprocessableError("scheduled_at must be in the future"))
+			api.HandleError(w, r, api.NewMustBeInTheFutureError("scheduled_at"))
 			return
 		}
 		api.HandleError(w, r, err)

@@ -29,7 +29,8 @@ func TestSearchHandler_GETSearch(t *testing.T) {
 		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 		var body map[string]any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
-		assert.Contains(t, body["error"], "q is required")
+		params, _ := body["params"].(map[string]any)
+		assert.Equal(t, "q", params["field"])
 	})
 
 	t.Run("empty q returns 422", func(t *testing.T) {

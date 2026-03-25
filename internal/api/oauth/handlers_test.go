@@ -46,24 +46,24 @@ func TestHandler_POSTRegisterApp(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
 	})
 
-	t.Run("missing client_name returns 400", func(t *testing.T) {
+	t.Run("missing client_name returns 422", func(t *testing.T) {
 		body := map[string]string{"redirect_uris": "https://app.example/cb", "scopes": "read"}
 		enc, _ := json.Marshal(body)
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/apps", bytes.NewReader(enc))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		h.POSTRegisterApp(rec, req)
-		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	})
 
-	t.Run("missing redirect_uris returns 400", func(t *testing.T) {
+	t.Run("missing redirect_uris returns 422", func(t *testing.T) {
 		body := map[string]string{"client_name": "My App", "scopes": "read"}
 		enc, _ := json.Marshal(body)
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/apps", bytes.NewReader(enc))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		h.POSTRegisterApp(rec, req)
-		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	})
 
 	t.Run("happy path JSON returns 200 with client_id and client_secret", func(t *testing.T) {
@@ -111,18 +111,18 @@ func TestHandler_GETAuthorize(t *testing.T) {
 	authSvc := service.NewAuthService(st, "ui.example.com", oauth.MONSTERA_UI_APPLICATION_ID)
 	h := NewHandler(srv, authSvc, mustParseURL("https://ui.example.com"))
 
-	t.Run("response_type not code returns 400", func(t *testing.T) {
+	t.Run("response_type not code returns 422", func(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/oauth/authorize?response_type=token&client_id=foo&redirect_uri=https://app.example/cb", nil)
 		rec := httptest.NewRecorder()
 		h.GETAuthorize(rec, req)
-		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	})
 
-	t.Run("invalid client_id returns 400", func(t *testing.T) {
+	t.Run("invalid client_id returns 422", func(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/oauth/authorize?response_type=code&client_id=nonexistent&redirect_uri=https://app.example/cb", nil)
 		rec := httptest.NewRecorder()
 		h.GETAuthorize(rec, req)
-		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	})
 
 	t.Run("happy path returns 302 redirect to UI", func(t *testing.T) {
@@ -278,7 +278,7 @@ func TestHandler_POSTLogin(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
 	})
 
-	t.Run("invalid client_id returns 400", func(t *testing.T) {
+	t.Run("invalid client_id returns 422", func(t *testing.T) {
 		body := map[string]string{
 			"email":        "alice@example.com",
 			"password":     "password",
@@ -290,7 +290,7 @@ func TestHandler_POSTLogin(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		h.POSTLogin(rec, req)
-		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	})
 
 	t.Run("invalid credentials returns 401", func(t *testing.T) {

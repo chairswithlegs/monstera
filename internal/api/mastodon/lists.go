@@ -98,7 +98,7 @@ func (h *ListsHandler) POSTLists(w http.ResponseWriter, r *http.Request) {
 	l, err := h.lists.CreateList(r.Context(), account.ID, body.Title, body.RepliesPolicy, body.Exclusive)
 	if err != nil {
 		if errors.Is(err, domain.ErrValidation) {
-			api.HandleError(w, r, api.NewUnprocessableError("title is required"))
+			api.HandleError(w, r, api.NewMissingRequiredFieldError("title"))
 			return
 		}
 		api.HandleError(w, r, err)

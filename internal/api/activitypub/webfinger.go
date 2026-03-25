@@ -33,15 +33,16 @@ func (h *WebFingerHandler) GETWebFinger(w http.ResponseWriter, r *http.Request) 
 		api.HandleError(w, r, err)
 		return
 	}
+	// Only "acct:username@domain" is supported.
 	if !strings.HasPrefix(resource, "acct:") {
-		err := api.NewBadRequestError("resource must use acct: scheme")
+		err := api.NewInvalidValueError("resource")
 		api.HandleError(w, r, err)
 		return
 	}
 	acct := strings.TrimPrefix(resource, "acct:")
 	parts := strings.SplitN(acct, "@", 2)
 	if len(parts) != 2 {
-		err := api.NewBadRequestError("invalid acct URI")
+		err := api.NewInvalidValueError("resource")
 		api.HandleError(w, r, err)
 		return
 	}

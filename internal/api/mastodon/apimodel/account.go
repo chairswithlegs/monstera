@@ -141,7 +141,7 @@ func (req RegisterAccountRequest) Validate() error {
 		return fmt.Errorf("password: %w", err)
 	}
 	if !req.Agreement {
-		return fmt.Errorf("%w", api.NewUnprocessableError("agreement must be accepted"))
+		return fmt.Errorf("agreement: %w", api.NewMissingRequiredFieldError("agreement"))
 	}
 	return nil
 }

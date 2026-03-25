@@ -15,7 +15,6 @@ func TestValidateRequiredField(t *testing.T) {
 		err := ValidateRequiredField("", "foo")
 		require.Error(t, err)
 		require.ErrorIs(t, err, ErrUnprocessable)
-		assert.Contains(t, err.Error(), "foo")
 	})
 
 	t.Run("non-empty returns nil", func(t *testing.T) {

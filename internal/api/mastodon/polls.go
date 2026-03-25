@@ -56,15 +56,15 @@ type POSTVotesRequest struct {
 
 func (r *POSTVotesRequest) Validate() error {
 	if len(r.Choices) == 0 {
-		return fmt.Errorf("validate votes: %w", api.NewUnprocessableError("choices is required"))
+		return fmt.Errorf("validate votes: %w", api.NewMissingRequiredFieldError("choices"))
 	}
 	seen := make(map[int]struct{}, len(r.Choices))
 	for _, c := range r.Choices {
 		if c < 0 {
-			return fmt.Errorf("validate votes: %w", api.NewUnprocessableError("choices contains invalid index"))
+			return fmt.Errorf("validate votes: %w", api.NewInvalidValueError("choices"))
 		}
 		if _, dup := seen[c]; dup {
-			return fmt.Errorf("validate votes: %w", api.NewUnprocessableError("choices contains duplicate index"))
+			return fmt.Errorf("validate votes: %w", api.NewInvalidValueError("choices"))
 		}
 		seen[c] = struct{}{}
 	}
@@ -96,11 +96,11 @@ func (h *PollsHandler) POSTVotes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, domain.ErrUnprocessable) {
-			api.HandleError(w, r, api.NewUnprocessableError("The poll has already ended"))
+			api.HandleError(w, r, api.NewPollEndedError())
 			return
 		}
 		if errors.Is(err, domain.ErrValidation) {
-			api.HandleError(w, r, api.NewUnprocessableError("Validation failed: invalid choice or already voted"))
+			api.HandleError(w, r, api.NewInvalidValueError("choices"))
 			return
 		}
 		api.HandleError(w, r, err)

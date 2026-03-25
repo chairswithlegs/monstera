@@ -52,7 +52,7 @@ func (h *ModeratorReportsHandler) GETReports(w http.ResponseWriter, r *http.Requ
 func (h *ModeratorReportsHandler) GETReport(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		api.HandleError(w, r, api.NewBadRequestError("id required"))
+		api.HandleError(w, r, api.NewMissingRequiredParamError("id"))
 		return
 	}
 	rep, err := h.moderation.GetReport(r.Context(), id)
@@ -72,7 +72,7 @@ func (h *ModeratorReportsHandler) POSTAssign(w http.ResponseWriter, r *http.Requ
 	}
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		api.HandleError(w, r, api.NewBadRequestError("id required"))
+		api.HandleError(w, r, api.NewMissingRequiredParamError("id"))
 		return
 	}
 	var body apimodel.PostAssignReportRequest
@@ -96,7 +96,7 @@ func (h *ModeratorReportsHandler) POSTResolve(w http.ResponseWriter, r *http.Req
 	}
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		api.HandleError(w, r, api.NewBadRequestError("id required"))
+		api.HandleError(w, r, api.NewMissingRequiredParamError("id"))
 		return
 	}
 	var body apimodel.PostResolveReportRequest

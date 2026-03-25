@@ -52,7 +52,7 @@ func (h *ModeratorContentHandler) POSTFilters(w http.ResponseWriter, r *http.Req
 func (h *ModeratorContentHandler) PUTFilter(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		api.HandleError(w, r, api.NewBadRequestError("id required"))
+		api.HandleError(w, r, api.NewMissingRequiredParamError("id"))
 		return
 	}
 	var body apimodel.PutServerFilterRequest
@@ -72,7 +72,7 @@ func (h *ModeratorContentHandler) PUTFilter(w http.ResponseWriter, r *http.Reque
 func (h *ModeratorContentHandler) DELETEFilter(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		api.HandleError(w, r, api.NewBadRequestError("id required"))
+		api.HandleError(w, r, api.NewMissingRequiredParamError("id"))
 		return
 	}
 	if err := h.filters.DeleteServerFilter(r.Context(), id); err != nil {

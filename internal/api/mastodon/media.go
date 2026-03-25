@@ -34,12 +34,12 @@ func (h *MediaHandler) POSTMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseMultipartForm(0); err != nil { //nolint:gosec // G120: body size limited by upstream MaxBodySize middleware
-		api.HandleError(w, r, api.NewBadRequestError("invalid multipart form"))
+		api.HandleError(w, r, api.NewInvalidRequestBodyError())
 		return
 	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		api.HandleError(w, r, api.NewBadRequestError("missing or invalid file"))
+		api.HandleError(w, r, api.NewInvalidRequestBodyError())
 		return
 	}
 	defer func() { _ = file.Close() }()
@@ -114,15 +114,15 @@ func parseFocusParam(s string) (*float64, *float64, error) {
 	}
 	parts := strings.Split(s, ",")
 	if len(parts) != 2 {
-		return nil, nil, fmt.Errorf("parse focus: %w", api.NewUnprocessableError("focus must be two comma-separated numbers (x,y) in range -1.0 to 1.0"))
+		return nil, nil, fmt.Errorf("parse focus: %w", api.NewInvalidValueError("focus"))
 	}
 	x, errX := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
 	y, errY := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
 	if errX != nil || errY != nil {
-		return nil, nil, fmt.Errorf("parse focus: %w", api.NewUnprocessableError("focus must be two comma-separated numbers (x,y) in range -1.0 to 1.0"))
+		return nil, nil, fmt.Errorf("parse focus: %w", api.NewInvalidValueError("focus"))
 	}
 	if x < -1 || x > 1 || y < -1 || y > 1 {
-		return nil, nil, fmt.Errorf("parse focus: %w", api.NewUnprocessableError("focus x and y must be in range -1.0 to 1.0"))
+		return nil, nil, fmt.Errorf("parse focus: %w", api.NewInvalidValueError("focus"))
 	}
 	return &x, &y, nil
 }

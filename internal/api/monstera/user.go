@@ -20,12 +20,12 @@ func NewUserHandler(accounts service.AccountService) *UserHandler {
 func (h *UserHandler) GETUser(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromContext(r.Context())
 	if user == nil {
-		api.HandleError(w, r, api.NewUnauthorizedError("The access token is invalid"))
+		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
 	account := middleware.AccountFromContext(r.Context())
 	if account == nil {
-		api.HandleError(w, r, api.NewUnauthorizedError("The access token is invalid"))
+		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
 	api.WriteJSON(w, http.StatusOK, apimodel.ToUser(user, account))
@@ -34,12 +34,12 @@ func (h *UserHandler) GETUser(w http.ResponseWriter, r *http.Request) {
 func (h *UserHandler) PATCHProfile(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromContext(r.Context())
 	if user == nil {
-		api.HandleError(w, r, api.NewUnauthorizedError("The access token is invalid"))
+		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
 	account := middleware.AccountFromContext(r.Context())
 	if account == nil {
-		api.HandleError(w, r, api.NewUnauthorizedError("The access token is invalid"))
+		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
 	var body apimodel.PatchProfileRequest
@@ -66,7 +66,7 @@ func (h *UserHandler) PATCHProfile(w http.ResponseWriter, r *http.Request) {
 func (h *UserHandler) PATCHPreferences(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromContext(r.Context())
 	if user == nil {
-		api.HandleError(w, r, api.NewUnauthorizedError("The access token is invalid"))
+		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
 	var body apimodel.PatchPreferencesRequest
@@ -91,7 +91,7 @@ func (h *UserHandler) PATCHPreferences(w http.ResponseWriter, r *http.Request) {
 func (h *UserHandler) PATCHEmail(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromContext(r.Context())
 	if user == nil {
-		api.HandleError(w, r, api.NewUnauthorizedError("The access token is invalid"))
+		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
 	var body apimodel.PatchEmailRequest
@@ -111,7 +111,7 @@ func (h *UserHandler) PATCHEmail(w http.ResponseWriter, r *http.Request) {
 func (h *UserHandler) PATCHPassword(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromContext(r.Context())
 	if user == nil {
-		api.HandleError(w, r, api.NewUnauthorizedError("The access token is invalid"))
+		api.HandleError(w, r, api.ErrUnauthorized)
 		return
 	}
 	var body apimodel.PatchPasswordRequest

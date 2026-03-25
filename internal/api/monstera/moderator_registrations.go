@@ -49,7 +49,7 @@ func (h *ModeratorRegistrationsHandler) POSTApprove(w http.ResponseWriter, r *ht
 	}
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		api.HandleError(w, r, api.NewBadRequestError("id required"))
+		api.HandleError(w, r, api.NewMissingRequiredParamError("id"))
 		return
 	}
 	if err := h.registration.Approve(r.Context(), user.ID, id); err != nil {
@@ -68,7 +68,7 @@ func (h *ModeratorRegistrationsHandler) POSTReject(w http.ResponseWriter, r *htt
 	}
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		api.HandleError(w, r, api.NewBadRequestError("id required"))
+		api.HandleError(w, r, api.NewMissingRequiredParamError("id"))
 		return
 	}
 	var body apimodel.PostRejectRegistrationRequest

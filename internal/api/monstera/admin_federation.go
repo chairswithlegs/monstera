@@ -95,7 +95,7 @@ func (h *AdminFederationHandler) DELETEDomainBlock(w http.ResponseWriter, r *htt
 	}
 	domainName := chi.URLParam(r, "domain")
 	if domainName == "" {
-		api.HandleError(w, r, api.NewBadRequestError("domain required"))
+		api.HandleError(w, r, api.NewMissingRequiredParamError("domain"))
 		return
 	}
 	if err := h.moderation.DeleteDomainBlock(r.Context(), user.ID, domainName); err != nil {
