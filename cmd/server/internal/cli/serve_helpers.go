@@ -320,7 +320,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 	hub := sse.NewHub(natsutil.NewConnSubscriber(i.nats.Conn), metrics)
 	sseSub := sse.NewSubscriber(i.nats.JS, i.nats.Conn, i.store, s.statusRead, cfg.MonsteraInstanceDomain)
 	fedSub := ap.NewFederationSubscriber(i.nats.JS, s.remoteFollow, i.blocklist, s.signatureService,
-		instanceBaseURL, cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.FederationWorkerConcurrency)
+		instanceBaseURL, cfg.MonsteraUIURL.String(), cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.FederationWorkerConcurrency)
 	notifSub := events.NewNotificationSubscriber(i.nats.JS, events.NotificationDeps{
 		Notifications: s.notification,
 		Accounts:      s.account,
@@ -414,7 +414,7 @@ func createRouter(cfg *config.Config, s *svcs, i *infra, sseHub *sse.Hub) http.H
 		WebFinger:              activitypub.NewWebFingerHandler(s.account, cfg.MonsteraInstanceDomain, instanceBaseURL),
 		NodeInfoPtr:            activitypub.NewNodeInfoPointerHandler(instanceBaseURL),
 		NodeInfo:               activitypub.NewNodeInfoHandler(s.instance, cfg.Version),
-		Actor:                  activitypub.NewActorHandler(s.account, instanceBaseURL),
+		Actor:                  activitypub.NewActorHandler(s.account, instanceBaseURL, cfg.MonsteraUIURL.String()),
 		Collections:            activitypub.NewCollectionsHandler(s.account, s.statusRead, instanceBaseURL),
 		Outbox:                 activitypub.NewOutbox(s.account, s.timeline, instanceBaseURL),
 		Inbox:                  activitypub.NewInboxHandler(s.inboxProcessor, s.signatureService, cfg.MonsteraInstanceDomain),

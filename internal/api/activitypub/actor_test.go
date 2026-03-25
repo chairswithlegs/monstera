@@ -31,7 +31,7 @@ func TestActorHandler_GETActor(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fake.ConfirmUser(ctx, "01USERBOB"))
 
-	h := NewActorHandler(service.NewAccountService(fake, "https://example.com"), "https://example.com")
+	h := NewActorHandler(service.NewAccountService(fake, "https://example.com"), "https://example.com", "https://ui.example.com")
 
 	r := httptest.NewRequest(http.MethodGet, "/users/bob", nil)
 	r.Header.Set("Accept", "application/activity+json")
@@ -67,7 +67,7 @@ func TestActorHandler_browser_redirects_to_profile(t *testing.T) {
 		GetActiveLocalAccountFunc: func(_ context.Context, _ string) (*domain.Account, error) {
 			return &domain.Account{Username: "alice"}, nil
 		},
-	}, "https://example.com")
+	}, "https://example.com", "https://ui.example.com")
 
 	r := httptest.NewRequest(http.MethodGet, "/users/alice", nil)
 	r.Header.Set("Accept", "text/html")
@@ -76,7 +76,7 @@ func TestActorHandler_browser_redirects_to_profile(t *testing.T) {
 	h.GETActor(w, r)
 
 	assert.Equal(t, http.StatusSeeOther, w.Code)
-	assert.Equal(t, "https://example.com/@alice", w.Header().Get("Location"))
+	assert.Equal(t, "https://ui.example.com/public/profile?u=alice", w.Header().Get("Location"))
 }
 
 func TestActorHandler_ld_json_accept_returns_actor(t *testing.T) {
@@ -85,7 +85,7 @@ func TestActorHandler_ld_json_accept_returns_actor(t *testing.T) {
 		GetActiveLocalAccountFunc: func(_ context.Context, _ string) (*domain.Account, error) {
 			return &domain.Account{ID: "01ALICE", Username: "alice", APID: "https://example.com/users/alice"}, nil
 		},
-	}, "https://example.com")
+	}, "https://example.com", "https://ui.example.com")
 
 	r := httptest.NewRequest(http.MethodGet, "/users/alice", nil)
 	r.Header.Set("Accept", `application/ld+json; profile="https://www.w3.org/ns/activitystreams"`)
@@ -103,7 +103,7 @@ func TestActorHandler_notFound(t *testing.T) {
 		GetActiveLocalAccountFunc: func(_ context.Context, _ string) (*domain.Account, error) {
 			return nil, domain.ErrNotFound
 		},
-	}, "https://example.com")
+	}, "https://example.com", "https://ui.example.com")
 	r := httptest.NewRequest(http.MethodGet, "/users/nobody", nil)
 	r.Header.Set("Accept", "application/activity+json")
 	r = testutil.AddChiURLParam(r, "username", "nobody")

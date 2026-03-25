@@ -9,6 +9,10 @@ import (
 	"github.com/chairswithlegs/monstera/internal/domain"
 )
 
+func BuildActorPublicProfileURL(uiBaseURL, username string) string {
+	return fmt.Sprintf("%s/public/profile?u=%s", uiBaseURL, username)
+}
+
 // PropertyValue represents a Mastodon-style profile metadata field from an
 // Actor's attachment array. Only entries with Type == "PropertyValue" are used.
 type PropertyValue struct {
@@ -44,9 +48,12 @@ type Actor struct {
 }
 
 // AccountToActor builds an ActivityPub Actor from a domain account.
-// serverBaseURL is the base URL (e.g. "https://api.example.com") for building IRIs.
-func AccountToActor(a *domain.Account, serverBaseURL string) *Actor {
+// serverBaseURL is the base URL (e.g. "https://api.example.com") for building AP IRIs.
+// uiBaseURL is the base URL of the web UI (e.g. "https://example.com") used for the
+// building the profile page URL.
+func AccountToActor(a *domain.Account, serverBaseURL, uiBaseURL string) *Actor {
 	base := strings.TrimSuffix(serverBaseURL, "/")
+	ui := strings.TrimSuffix(uiBaseURL, "/")
 	id := a.APID
 	if id == "" {
 		id = base + "/users/" + a.Username
@@ -88,7 +95,7 @@ func AccountToActor(a *domain.Account, serverBaseURL string) *Actor {
 		PreferredUsername:         a.Username,
 		Name:                      name,
 		Summary:                   summary,
-		URL:                       fmt.Sprintf("%s/@%s", base, a.Username),
+		URL:                       BuildActorPublicProfileURL(ui, a.Username),
 		Inbox:                     inbox,
 		Outbox:                    outbox,
 		Followers:                 followers,
@@ -108,8 +115,7 @@ func AccountToActor(a *domain.Account, serverBaseURL string) *Actor {
 	return actor
 }
 
-// RemoteActorFields holds the pure field-mapping result of an inbound Actor.
-// It contains no service or store types so the vocab package stays dependency-free.
+// RemoteActorFields holds the field-mapping result of an inbound Actor.
 type RemoteActorFields struct {
 	APID           string
 	Username       string
@@ -126,7 +132,7 @@ type RemoteActorFields struct {
 	HeaderURL      string
 	Bot            bool
 	Locked         bool
-	URL            string // Human-readable profile page URL (Actor.URL)
+	URL            string // Profile page URL (Actor.URL)
 	FeaturedURL    string // ActivityPub featured collection URL (Actor.Featured)
 	// Fields holds profile metadata parsed from Actor.Attachment PropertyValue
 	// entries. Stored as JSON array of {"name":"...","value":"..."}. The

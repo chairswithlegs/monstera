@@ -4,7 +4,6 @@ on:
   pull_request:
     branches: [main]
     paths-ignore:
-      - 'ui/**'
       - 'docs/**'
       - 'federation-testing/**'
       - '**/*.md'
@@ -93,3 +92,24 @@ jobs:
       - name: Stop dependencies
         if: always()
         run: docker compose -f docker-compose.yaml --profile dependencies down
+
+  ui_tests:
+    name: UI Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Set up Node
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ui
+
+      - name: Run tests
+        run: npm test
+        working-directory: ui
