@@ -32,6 +32,9 @@ type RateLimitConfig struct {
 
 // Deps holds dependencies required to build the HTTP router.
 type Deps struct {
+	// UIBaseURL is the base URL of the Monstera web UI
+	UIBaseURL string
+
 	OAuthServer     *oauthpkg.Server
 	AccountsService service.AccountService
 	RateLimit       *RateLimitConfig
@@ -117,6 +120,12 @@ func New(deps Deps) http.Handler {
 		// Health check routes
 		r.Get("/healthz/live", deps.Health.GETLiveness)
 		r.Get("/healthz/ready", deps.Health.GETReadiness)
+
+		// Mastodon extra settings endpoint
+		// This is a Mastodon client compatibility route that redirects to the Monstera UI profile page.
+		r.Get("/auth/edit", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, deps.UIBaseURL+"/account/profile", http.StatusSeeOther)
+		})
 
 		// ActivityPub routes — paths are protocol-mandated and must not be prefixed.
 		// Co-hosting with the UI is handled via reverse proxy + content negotiation.

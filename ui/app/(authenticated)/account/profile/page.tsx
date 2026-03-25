@@ -104,7 +104,7 @@ export default function ProfilePage() {
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="bio">Bio</Label>
-          <p className="text-xs text-muted-foreground">A short description of yourself shown on your public profile. Supports plain text.</p>
+          <p className="text-xs text-muted-foreground">A short description of yourself shown on your public profile.</p>
           <textarea
             id="bio"
             value={note}

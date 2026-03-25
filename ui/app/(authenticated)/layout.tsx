@@ -20,7 +20,7 @@ export default function AuthenticatedLayout({
   const [serverName, setServerName] = useState<string>('');
 
   useEffect(() => {
-    if (!loading && !token) router.replace('/login');
+    if (!loading && !token) router.replace(`/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`);
   }, [token, loading, router]);
 
   useEffect(() => {
