@@ -13,6 +13,7 @@ import {
   type Invite,
 } from '@/lib/api/admin';
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -36,17 +37,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { translateApiError } from '@/lib/i18n/errors';
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
 
-const modeBadge: Record<string, { label: string; variant: BadgeVariant }> = {
-  open: { label: 'Open', variant: 'secondary' },
-  approval: { label: 'Approval required', variant: 'secondary' },
-  invite: { label: 'Invite only', variant: 'default' },
-  closed: { label: 'Closed', variant: 'destructive' },
-};
-
 export default function ModeratorRegistrationsPage() {
+  const t = useTranslations('moderator');
+  const tCommon = useTranslations('common');
+  const tErr = useTranslations('errors');
+  const tEmpty = useTranslations('empty');
   const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [pending, setPending] = useState<PendingRegistration[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
@@ -56,12 +55,19 @@ export default function ModeratorRegistrationsPage() {
   const [rejectUserId, setRejectUserId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
+  const modeBadge: Record<string, { label: string; variant: BadgeVariant }> = {
+    open: { label: t('regModeOpen'), variant: 'secondary' },
+    approval: { label: t('regModeApproval'), variant: 'secondary' },
+    invite: { label: t('regModeInvite'), variant: 'default' },
+    closed: { label: t('regModeClosed'), variant: 'destructive' },
+  };
+
   const load = () => {
     Promise.all([
       getSettings().then(setSettings),
       getRegistrations().then((r) => setPending(r.pending)),
       getInvites().then((r) => setInvites(r.invites)),
-    ]).catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
+    ]).catch((e) => setError(translateApiError(tErr, e)));
   };
 
   useEffect(() => {
@@ -74,7 +80,7 @@ export default function ModeratorRegistrationsPage() {
       await approveRegistration(id);
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed');
+      setError(translateApiError(tErr, e));
     } finally {
       setActing(false);
     }
@@ -93,7 +99,7 @@ export default function ModeratorRegistrationsPage() {
       setRejectUserId(null);
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed');
+      setError(translateApiError(tErr, e));
     } finally {
       setActing(false);
     }
@@ -105,7 +111,7 @@ export default function ModeratorRegistrationsPage() {
       await createInvite({});
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create invite');
+      setError(translateApiError(tErr, e));
     } finally {
       setCreating(false);
     }
@@ -116,7 +122,7 @@ export default function ModeratorRegistrationsPage() {
       await deleteInvite(id);
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to delete invite');
+      setError(translateApiError(tErr, e));
     }
   };
 
@@ -135,24 +141,24 @@ export default function ModeratorRegistrationsPage() {
   return (
     <div className="space-y-8">
       <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-semibold text-foreground">Registrations</h1>
+        <h1 className="text-2xl font-semibold text-foreground">{t('registrationsTitle')}</h1>
         <Badge variant={badge.variant}>{badge.label}</Badge>
       </div>
 
       <section>
-        <h2 className="mb-4 text-lg font-medium text-foreground">Pending registrations</h2>
+        <h2 className="mb-4 text-lg font-medium text-foreground">{t('pendingRegistrations')}</h2>
         <Card>
           <CardContent>
             {pending.length === 0 ? (
-              <EmptyState message="No pending registrations." />
+              <EmptyState message={tEmpty('noPendingRegistrations')} />
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Username</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Reason</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t('regColUsername')}</TableHead>
+                    <TableHead>{t('regColEmail')}</TableHead>
+                    <TableHead>{t('regColReason')}</TableHead>
+                    <TableHead className="text-right">{t('reportsColActions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -170,7 +176,7 @@ export default function ModeratorRegistrationsPage() {
                           onClick={() => approve(p.user_id)}
                           className="mr-2"
                         >
-                          Approve
+                          {tCommon('approve')}
                         </Button>
                         <Button
                           type="button"
@@ -179,7 +185,7 @@ export default function ModeratorRegistrationsPage() {
                           disabled={acting}
                           onClick={() => openRejectDialog(p.user_id)}
                         >
-                          Reject
+                          {tCommon('reject')}
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -193,29 +199,29 @@ export default function ModeratorRegistrationsPage() {
 
       <section>
         <div className="mb-4 flex items-center gap-4">
-          <h2 className="text-lg font-medium text-foreground">Invite codes</h2>
+          <h2 className="text-lg font-medium text-foreground">{t('inviteCodes')}</h2>
           <div className="flex items-center gap-2">
             <Button type="button" disabled={creating || !inviteMode} onClick={create}>
-              Create invite
+              {t('createInvite')}
             </Button>
             {!inviteMode && (
-              <span className="text-sm text-muted-foreground">Enable invite mode to allow creating invites</span>
+              <span className="text-sm text-muted-foreground">{t('inviteModeRequired')}</span>
             )}
           </div>
         </div>
         <Card>
           <CardContent>
             {invites.length === 0 ? (
-              <EmptyState message="No invite codes yet." />
+              <EmptyState message={tEmpty('noInviteCodes')} />
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Uses</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead>Expires</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t('inviteColCode')}</TableHead>
+                    <TableHead>{t('inviteColUses')}</TableHead>
+                    <TableHead>{t('inviteColCreated')}</TableHead>
+                    <TableHead>{t('inviteColExpires')}</TableHead>
+                    <TableHead className="text-right">{t('reportsColActions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -228,7 +234,7 @@ export default function ModeratorRegistrationsPage() {
                       </TableCell>
                       <TableCell className="text-muted-foreground">{new Date(inv.created_at).toLocaleString()}</TableCell>
                       <TableCell className="text-muted-foreground">
-                        {inv.expires_at ? new Date(inv.expires_at).toLocaleDateString() : 'Never'}
+                        {inv.expires_at ? new Date(inv.expires_at).toLocaleDateString() : t('inviteNeverExpires')}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
@@ -238,7 +244,7 @@ export default function ModeratorRegistrationsPage() {
                           onClick={() => remove(inv.id)}
                           className="text-destructive hover:text-destructive"
                         >
-                          Revoke
+                          {tCommon('revoke')}
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -253,24 +259,24 @@ export default function ModeratorRegistrationsPage() {
       <Dialog open={rejectUserId !== null} onOpenChange={(open) => !open && setRejectUserId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reject registration</DialogTitle>
-            <DialogDescription>Optionally provide a reason for the rejection.</DialogDescription>
+            <DialogTitle>{t('rejectRegistrationTitle')}</DialogTitle>
+            <DialogDescription>{t('rejectRegistrationDescription')}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-2 py-4">
-            <Label htmlFor="reject-reason">Reason (optional)</Label>
+            <Label htmlFor="reject-reason">{t('rejectReason')}</Label>
             <Input
               id="reject-reason"
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="Reason for rejection"
+              placeholder={t('rejectReasonPlaceholder')}
             />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRejectUserId(null)}>
-              Cancel
+              {tCommon('cancel')}
             </Button>
             <Button variant="destructive" onClick={reject} disabled={acting}>
-              {acting ? 'Rejecting…' : 'Reject'}
+              {acting ? t('rejecting') : tCommon('reject')}
             </Button>
           </DialogFooter>
         </DialogContent>

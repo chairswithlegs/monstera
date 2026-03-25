@@ -1,6 +1,8 @@
 'use client';
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { registerAccount } from '@/lib/api/accounts';
+import { translateApiError } from '@/lib/i18n/errors';
 
 interface RegisterState {
   loading: boolean;
@@ -17,6 +19,7 @@ interface RegisterState {
 }
 
 export function useRegister(): RegisterState {
+  const t = useTranslations('errors');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -50,7 +53,7 @@ export function useRegister(): RegisterState {
         setSuccess(true);
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(translateApiError(t, err));
     } finally {
       setLoading(false);
     }

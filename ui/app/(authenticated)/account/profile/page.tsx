@@ -3,12 +3,19 @@
 import { getUser, patchProfile } from '@/lib/api/user';
 import type { ProfileField } from '@/lib/api/user';
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { translateApiError } from '@/lib/i18n/errors';
 
 export default function ProfilePage() {
+  const t = useTranslations('account');
+  const tCommon = useTranslations('common');
+  const tErr = useTranslations('errors');
+  const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [note, setNote] = useState('');
   const [locked, setLocked] = useState(false);
@@ -22,6 +29,7 @@ export default function ProfilePage() {
   const load = useCallback(() => {
     getUser()
       .then((u) => {
+        setUsername(u.username);
         setDisplayName(u.display_name ?? '');
         setNote(u.note ?? '');
         setLocked(u.locked);
@@ -29,9 +37,9 @@ export default function ProfilePage() {
         const rawFields: ProfileField[] = u.fields ?? [];
         setFields(rawFields.map((f) => ({ name: f.name, value: f.value })));
       })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
+      .catch((e) => setError(translateApiError(tErr, e)))
       .finally(() => setLoading(false));
-  }, []);
+  }, [tErr]);
 
   useEffect(() => {
     load();
@@ -68,18 +76,27 @@ export default function ProfilePage() {
       });
       setSuccess(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save');
+      setError(translateApiError(tErr, e));
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) return <div className="text-muted-foreground">Loading...</div>;
+  if (loading) return <div className="text-muted-foreground">{tCommon('loading')}</div>;
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-gray-900">Profile</h1>
-      <p className="mt-2 text-gray-500">Update your public profile information.</p>
+      <div className="flex items-baseline justify-between gap-4">
+        <h1 className="text-2xl font-semibold text-gray-900">{t('profileTitle')}</h1>
+        {username && (
+          <Button variant="link" size="sm" className="h-auto p-0" asChild>
+            <Link href={`/public/profile?u=${encodeURIComponent(username)}`} target="_blank">
+              {t('viewPublicProfile')}
+            </Link>
+          </Button>
+        )}
+      </div>
+      <p className="mt-2 text-gray-500">{t('profileDescription')}</p>
       {error && (
         <Alert variant="destructive" className="mt-4">
           <AlertDescription>{error}</AlertDescription>
@@ -87,31 +104,31 @@ export default function ProfilePage() {
       )}
       {success && (
         <Alert variant="default" className="mt-4">
-          <AlertDescription>Profile saved.</AlertDescription>
+          <AlertDescription>{t('profileSaved')}</AlertDescription>
         </Alert>
       )}
       <form onSubmit={save} className="mt-6 max-w-2xl space-y-4">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="display-name">Display name</Label>
-          <p className="text-xs text-muted-foreground">Your name as it appears on your profile and in posts. Leave blank to use your username.</p>
+          <Label htmlFor="display-name">{t('displayName')}</Label>
+          <p className="text-xs text-muted-foreground">{t('displayNameHint')}</p>
           <Input
             id="display-name"
             type="text"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Your name"
+            placeholder={t('displayNamePlaceholder')}
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="bio">Bio</Label>
-          <p className="text-xs text-muted-foreground">A short description of yourself shown on your public profile.</p>
+          <Label htmlFor="bio">{t('bio')}</Label>
+          <p className="text-xs text-muted-foreground">{t('bioHint')}</p>
           <textarea
             id="bio"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={4}
             className="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-            placeholder="Tell people about yourself."
+            placeholder={t('bioPlaceholder')}
           />
         </div>
         <div className="flex flex-col gap-1.5">
@@ -123,9 +140,9 @@ export default function ProfilePage() {
               onChange={(e) => setLocked(e.target.checked)}
               className="h-4 w-4 rounded border-gray-300"
             />
-            <Label htmlFor="locked">Require follow requests</Label>
+            <Label htmlFor="locked">{t('requireFollowRequests')}</Label>
           </div>
-          <p className="text-xs text-muted-foreground">When enabled, new followers must be approved before they can see your posts.</p>
+          <p className="text-xs text-muted-foreground">{t('requireFollowRequestsHint')}</p>
         </div>
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">
@@ -136,42 +153,42 @@ export default function ProfilePage() {
               onChange={(e) => setBot(e.target.checked)}
               className="h-4 w-4 rounded border-gray-300"
             />
-            <Label htmlFor="bot">This is a bot account</Label>
+            <Label htmlFor="bot">{t('botAccount')}</Label>
           </div>
-          <p className="text-xs text-muted-foreground">Marks your account as automated. Displayed as a badge on your profile across the fediverse.</p>
+          <p className="text-xs text-muted-foreground">{t('botAccountHint')}</p>
         </div>
         <div className="flex flex-col gap-2">
           <div className="flex flex-col gap-1">
-            <Label>Profile fields</Label>
-            <p className="text-xs text-muted-foreground">Up to 4 custom label–value pairs shown on your profile, e.g. &ldquo;Website&rdquo; or &ldquo;Pronouns&rdquo;.</p>
+            <Label>{t('profileFields')}</Label>
+            <p className="text-xs text-muted-foreground">{t('profileFieldsHint')}</p>
           </div>
           {fields.map((f, i) => (
             <div key={i} className="flex gap-2">
               <Input
-                placeholder="Label"
+                placeholder={t('labelPlaceholder')}
                 value={f.name}
                 onChange={(e) => updateField(i, 'name', e.target.value)}
                 className="w-40"
               />
               <Input
-                placeholder="Content"
+                placeholder={t('contentPlaceholder')}
                 value={f.value}
                 onChange={(e) => updateField(i, 'value', e.target.value)}
                 className="flex-1"
               />
               <Button type="button" variant="outline" onClick={() => removeField(i)}>
-                Remove
+                {tCommon('remove')}
               </Button>
             </div>
           ))}
           {fields.length < 4 && (
             <Button type="button" variant="outline" onClick={addField} className="self-start">
-              Add field
+              {t('addField')}
             </Button>
           )}
         </div>
         <Button type="submit" disabled={saving}>
-          {saving ? 'Saving…' : 'Save'}
+          {saving ? tCommon('saving') : tCommon('save')}
         </Button>
       </form>
     </div>

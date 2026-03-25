@@ -3,6 +3,7 @@
 import { getReport, resolveReport, type Report } from '@/lib/api/admin';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
@@ -16,10 +17,14 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { translateApiError } from '@/lib/i18n/errors';
 
 type Props = { id: string };
 
 export default function ReportDetailView({ id }: Props) {
+  const t = useTranslations('moderator');
+  const tCommon = useTranslations('common');
+  const tErr = useTranslations('errors');
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
@@ -30,8 +35,8 @@ export default function ReportDetailView({ id }: Props) {
     if (!id) return;
     getReport(id)
       .then(setReport)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
-  }, [id]);
+      .catch((e) => setError(translateApiError(tErr, e)));
+  }, [id, tErr]);
 
   useEffect(() => {
     load();
@@ -45,7 +50,7 @@ export default function ReportDetailView({ id }: Props) {
       setResolutionNote('');
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed');
+      setError(translateApiError(tErr, e));
     } finally {
       setActing(false);
     }
@@ -58,13 +63,13 @@ export default function ReportDetailView({ id }: Props) {
       </Alert>
     );
   }
-  if (!report) return <p className="text-muted-foreground">Loading…</p>;
+  if (!report) return <p className="text-muted-foreground">{tCommon('loading')}</p>;
 
   return (
     <div>
       <p className="mb-4">
         <Button variant="link" size="sm" className="h-auto p-0" asChild>
-          <Link href="/moderator/reports">← Back to reports</Link>
+          <Link href="/moderator/reports">{t('backToReports')}</Link>
         </Button>
       </p>
       <h1 className="text-2xl font-semibold text-foreground">Report {report.id.slice(0, 8)}…</h1>
@@ -100,29 +105,29 @@ export default function ReportDetailView({ id }: Props) {
           <Dialog open={resolveOpen} onOpenChange={setResolveOpen}>
             <DialogTrigger asChild>
               <Button type="button" disabled={acting}>
-                Resolve report
+                {t('resolveReport')}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Resolve report</DialogTitle>
-                <DialogDescription>Add a resolution note (optional).</DialogDescription>
+                <DialogTitle>{t('resolveReportTitle')}</DialogTitle>
+                <DialogDescription>{t('resolveReportDescription')}</DialogDescription>
               </DialogHeader>
               <div className="grid gap-2 py-4">
-                <Label htmlFor="resolution-note">Resolution note</Label>
+                <Label htmlFor="resolution-note">{t('resolutionNote')}</Label>
                 <Input
                   id="resolution-note"
                   value={resolutionNote}
                   onChange={(e) => setResolutionNote(e.target.value)}
-                  placeholder="What action was taken?"
+                  placeholder={t('resolutionNotePlaceholder')}
                 />
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setResolveOpen(false)}>
-                  Cancel
+                  {tCommon('cancel')}
                 </Button>
                 <Button onClick={resolve} disabled={acting}>
-                  {acting ? 'Resolving…' : 'Resolve'}
+                  {acting ? t('resolving') : tCommon('resolve')}
                 </Button>
               </DialogFooter>
             </DialogContent>

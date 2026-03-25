@@ -1,7 +1,10 @@
 'use client';
 import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { getConfig } from '@/lib/config';
+import { ApiResponseError } from '@/lib/api/errors';
+import { translateApiError } from '@/lib/i18n/errors';
 
 interface AuthorizeParams {
   clientId: string;
@@ -24,6 +27,7 @@ interface AuthorizeState {
 
 export function useAuthorize(): AuthorizeState {
   const searchParams = useSearchParams();
+  const t = useTranslations('errors');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,16 +66,14 @@ export function useAuthorize(): AuthorizeState {
       });
 
       if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(
-          (body as { error?: string }).error ?? 'Invalid credentials'
-        );
+        const body = await response.json().catch(() => ({})) as { error?: string; code?: string; params?: Record<string, string> };
+        throw new ApiResponseError(body.code ? body : { ...body, code: 'invalid_credentials' });
       }
 
       const data = (await response.json()) as { redirect_url: string };
       window.location.href = data.redirect_url;
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(translateApiError(t, err));
     } finally {
       setLoading(false);
     }

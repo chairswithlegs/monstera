@@ -2,12 +2,17 @@
 
 import { patchEmail, patchPassword } from '@/lib/api/user';
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { translateApiError } from '@/lib/i18n/errors';
 
 export default function SecurityPage() {
+  const t = useTranslations('account');
+  const tCommon = useTranslations('common');
+  const tErr = useTranslations('errors');
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState<string | null>(null);
   const [emailSuccess, setEmailSuccess] = useState(false);
@@ -29,7 +34,7 @@ export default function SecurityPage() {
       setEmailSuccess(true);
       setEmail('');
     } catch (e) {
-      setEmailError(e instanceof Error ? e.message : 'Failed to update email');
+      setEmailError(translateApiError(tErr, e));
     } finally {
       setSavingEmail(false);
     }
@@ -46,7 +51,7 @@ export default function SecurityPage() {
       setCurrentPassword('');
       setNewPassword('');
     } catch (e) {
-      setPasswordError(e instanceof Error ? e.message : 'Failed to change password');
+      setPasswordError(translateApiError(tErr, e));
     } finally {
       setSavingPassword(false);
     }
@@ -55,12 +60,12 @@ export default function SecurityPage() {
   return (
     <div className="space-y-10">
       <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Security</h1>
-        <p className="mt-2 text-gray-500">Manage your login credentials.</p>
+        <h1 className="text-2xl font-semibold text-gray-900">{t('securityTitle')}</h1>
+        <p className="mt-2 text-gray-500">{t('securityDescription')}</p>
       </div>
 
       <section className="space-y-4">
-        <h2 className="text-lg font-medium text-gray-900">Change email</h2>
+        <h2 className="text-lg font-medium text-gray-900">{t('changeEmail')}</h2>
         {emailError && (
           <Alert variant="destructive">
             <AlertDescription>{emailError}</AlertDescription>
@@ -68,12 +73,12 @@ export default function SecurityPage() {
         )}
         {emailSuccess && (
           <Alert variant="default">
-            <AlertDescription>Email updated.</AlertDescription>
+            <AlertDescription>{t('emailUpdated')}</AlertDescription>
           </Alert>
         )}
         <form onSubmit={saveEmail} className="max-w-2xl space-y-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="new-email">New email address</Label>
+            <Label htmlFor="new-email">{t('newEmailAddress')}</Label>
             <Input
               id="new-email"
               type="email"
@@ -83,13 +88,13 @@ export default function SecurityPage() {
             />
           </div>
           <Button type="submit" disabled={savingEmail}>
-            {savingEmail ? 'Saving…' : 'Update email'}
+            {savingEmail ? tCommon('saving') : t('updateEmail')}
           </Button>
         </form>
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-lg font-medium text-gray-900">Change password</h2>
+        <h2 className="text-lg font-medium text-gray-900">{t('changePassword')}</h2>
         {passwordError && (
           <Alert variant="destructive">
             <AlertDescription>{passwordError}</AlertDescription>
@@ -97,12 +102,12 @@ export default function SecurityPage() {
         )}
         {passwordSuccess && (
           <Alert variant="default">
-            <AlertDescription>Password changed.</AlertDescription>
+            <AlertDescription>{t('passwordChanged')}</AlertDescription>
           </Alert>
         )}
         <form onSubmit={savePassword} className="max-w-2xl space-y-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="current-password">Current password</Label>
+            <Label htmlFor="current-password">{t('currentPassword')}</Label>
             <Input
               id="current-password"
               type="password"
@@ -111,7 +116,7 @@ export default function SecurityPage() {
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="new-password">New password</Label>
+            <Label htmlFor="new-password">{t('newPassword')}</Label>
             <Input
               id="new-password"
               type="password"
@@ -120,7 +125,7 @@ export default function SecurityPage() {
             />
           </div>
           <Button type="submit" disabled={savingPassword}>
-            {savingPassword ? 'Saving…' : 'Change password'}
+            {savingPassword ? tCommon('saving') : t('changePassword')}
           </Button>
         </form>
       </section>

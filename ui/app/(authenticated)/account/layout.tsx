@@ -2,12 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-
-const navItems = [
-  { href: '/account/profile', label: 'Profile' },
-  { href: '/account/preferences', label: 'Preferences' },
-  { href: '/account/security', label: 'Security' },
-];
+import { useTranslations } from 'next-intl';
 
 export default function AccountLayout({
   children,
@@ -15,6 +10,13 @@ export default function AccountLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const t = useTranslations('account');
+
+  const navItems = [
+    { href: '/account/profile', label: t('navProfile') },
+    { href: '/account/preferences', label: t('navPreferences') },
+    { href: '/account/security', label: t('navSecurity') },
+  ];
 
   return (
     <div className="flex gap-8">

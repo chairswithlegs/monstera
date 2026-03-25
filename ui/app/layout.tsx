@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { IntlProvider } from "@/components/intl-provider";
+import enMessages from "../messages/en.json";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -17,6 +19,9 @@ export const metadata: Metadata = {
   description: "A self-hosted ActivityPub server",
 };
 
+const messages = { en: enMessages };
+// To add a new locale: import frMessages from '../messages/fr.json' and add fr: frMessages
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -27,7 +32,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <IntlProvider messages={messages}>{children}</IntlProvider>
       </body>
     </html>
   );

@@ -3,18 +3,10 @@
 import { getUser, isAdminOrModerator } from '@/lib/api/user';
 import type { User } from '@/lib/api/user';
 import { ModeratorUserProvider } from '@/contexts/moderator-user';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-
-const navItems = [
-  { href: '/moderator/dashboard', label: 'Dashboard' },
-  { href: '/moderator/users', label: 'Users' },
-  { href: '/moderator/registrations', label: 'Registrations' },
-  { href: '/moderator/reports', label: 'Reports' },
-  { href: '/moderator/federation', label: 'Federation' },
-  { href: '/moderator/content', label: 'Content' },
-];
 
 export default function ModeratorLayout({
   children,
@@ -23,6 +15,7 @@ export default function ModeratorLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const t = useTranslations('moderator');
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -43,6 +36,15 @@ export default function ModeratorLayout({
   if (loading || !user || !isAdminOrModerator(user)) {
     return null;
   }
+
+  const navItems = [
+    { href: '/moderator/dashboard', label: t('navDashboard') },
+    { href: '/moderator/users', label: t('navUsers') },
+    { href: '/moderator/registrations', label: t('navRegistrations') },
+    { href: '/moderator/reports', label: t('navReports') },
+    { href: '/moderator/federation', label: t('navFederation') },
+    { href: '/moderator/content', label: t('navContent') },
+  ];
 
   return (
     <ModeratorUserProvider user={user}>

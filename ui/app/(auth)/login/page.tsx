@@ -1,6 +1,7 @@
 'use client';
 import { Suspense } from 'react';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { useLogin } from '@/hooks/useLogin';
 import { CredentialsForm } from '@/components/credentials-form';
 import { Button } from '@/components/ui/button';
@@ -14,12 +15,13 @@ import {
 
 function LoginContent() {
   const { loading, error, submitCredentials } = useLogin();
+  const t = useTranslations('auth');
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Sign in</CardTitle>
+          <CardTitle>{t('loginTitle')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {error && (
@@ -31,14 +33,14 @@ function LoginContent() {
           <CredentialsForm onSubmit={submitCredentials} loading={loading} />
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            Don&apos;t have an account?{' '}
+            {t('noAccount')}{' '}
             <Button variant="link" size="sm" className="h-auto p-0" asChild>
-              <Link href="/register">Register</Link>
+              <Link href="/register">{t('register')}</Link>
             </Button>
           </p>
           <p className="mt-2 text-center text-sm text-muted-foreground">
             <Button variant="link" size="sm" className="h-auto p-0" asChild>
-              <Link href="/">Back to home</Link>
+              <Link href="/">{t('backToHome')}</Link>
             </Button>
           </p>
         </CardContent>
@@ -47,17 +49,22 @@ function LoginContent() {
   );
 }
 
+function LoadingFallback() {
+  const t = useTranslations('common');
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <Card className="w-full max-w-sm">
+        <CardContent className="pt-6">
+          <p className="text-muted-foreground">{t('loading')}</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function LoginPage() {
   return (
-    <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <Card className="w-full max-w-sm">
-          <CardContent className="pt-6">
-            <p className="text-muted-foreground">Loading...</p>
-          </CardContent>
-        </Card>
-      </div>
-    }>
+    <Suspense fallback={<LoadingFallback />}>
       <LoginContent />
     </Suspense>
   );

@@ -4,12 +4,16 @@ import { getNodeInfo } from '@/lib/api/nodeinfo';
 import { useAuth } from '@/hooks/useAuth';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import type { NodeInfoResponse } from '@/lib/api/nodeinfo';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { translateApiError } from '@/lib/i18n/errors';
 
 export default function LandingPage() {
   const { token, loading: authLoading } = useAuth();
+  const t = useTranslations('auth');
+  const tErr = useTranslations('errors');
   const [nodeInfo, setNodeInfo] = useState<NodeInfoResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,16 +26,16 @@ export default function LandingPage() {
     }
     getNodeInfo()
       .then(setNodeInfo)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
+      .catch((e) => setError(translateApiError(tErr, e)))
       .finally(() => setLoading(false));
-  }, [token, authLoading]);
+  }, [token, authLoading, tErr]);
 
   if (authLoading || token) return null;
 
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <p className="text-muted-foreground">Loading...</p>
+        <p className="text-muted-foreground">{tErr('failed_to_load')}</p>
       </div>
     );
   }
@@ -43,7 +47,7 @@ export default function LandingPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
         <Button asChild variant="link">
-          <Link href="/login">Sign in</Link>
+          <Link href="/login">{t('signIn')}</Link>
         </Button>
       </div>
     );
@@ -58,7 +62,7 @@ export default function LandingPage() {
       <div className="mx-auto max-w-2xl px-6 py-16">
         <h1 className="text-3xl font-bold text-foreground">{serverName}</h1>
         <p className="mt-2 text-muted-foreground">
-          A federated server running on <a href="https://github.com/chairswithlegs/monstera" className="text-primary hover:underline">{software.name}</a>.
+          {t('federatedServer', { softwareName: software.name })}
         </p>
         {serverDescription && (
           <p className="mt-4 text-base text-foreground">{serverDescription}</p>
@@ -66,18 +70,18 @@ export default function LandingPage() {
 
         <div className="mt-10 flex flex-wrap items-center gap-4">
           <Button asChild>
-            <Link href="/login">Sign in</Link>
+            <Link href="/login">{t('signIn')}</Link>
           </Button>
           {openRegistrations ? (
             <Button asChild variant="outline">
-              <Link href="/register">Register</Link>
+              <Link href="/register">{t('register')}</Link>
             </Button>
           ) : (
             <div className="flex items-center gap-2">
               <Button variant="outline" disabled>
-                Register
+                {t('register')}
               </Button>
-              <span className="text-sm text-muted-foreground">Registrations are closed.</span>
+              <span className="text-sm text-muted-foreground">{t('registrationsClosed')}</span>
             </div>
           )}
         </div>
