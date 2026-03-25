@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { generateCodeVerifier, generateCodeChallenge } from '@/lib/auth/pkce';
 import { storeTokens } from '@/lib/auth/tokens';
 import { getConfig } from '@/lib/config';
@@ -21,6 +21,7 @@ interface LoginState {
 
 export function useLogin(): LoginState {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -89,7 +90,8 @@ export function useLogin(): LoginState {
     if (!response.ok) throw new Error('Token exchange failed');
     const { access_token, refresh_token } = await response.json();
     storeTokens(access_token, refresh_token);
-    router.replace(uiLoginRedirectPath);
+    const redirectTo = searchParams.get('redirect');
+    router.replace(redirectTo && redirectTo.startsWith('/') ? redirectTo : uiLoginRedirectPath);
   }
 
   return { loading, error, submitCredentials };
