@@ -173,7 +173,6 @@ type Querier interface {
 	GetTopScoredPublicStatuses(ctx context.Context, arg GetTopScoredPublicStatusesParams) ([]GetTopScoredPublicStatusesRow, error)
 	GetTrendingStatuses(ctx context.Context, limit int32) ([]TrendingStatus, error)
 	GetTrendingTagHistory(ctx context.Context, dollar_1 int32) ([]GetTrendingTagHistoryRow, error)
-	GetUnbackfilledRemoteFollowing(ctx context.Context, arg GetUnbackfilledRemoteFollowingParams) ([]GetUnbackfilledRemoteFollowingRow, error)
 	GetUserByAccountID(ctx context.Context, accountID string) (User, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id string) (User, error)

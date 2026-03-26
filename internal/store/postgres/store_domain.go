@@ -1267,22 +1267,6 @@ func (s *PostgresStore) GetFollowing(ctx context.Context, accountID string, maxI
 	return out, nil
 }
 
-func (s *PostgresStore) GetUnbackfilledRemoteFollowing(ctx context.Context, accountID string, before time.Time, limit int) ([]domain.Account, error) {
-	rows, err := s.q.GetUnbackfilledRemoteFollowing(ctx, db.GetUnbackfilledRemoteFollowingParams{
-		AccountID:        accountID,
-		LastBackfilledAt: pgtype.Timestamptz{Time: before, Valid: true},
-		Limit:            int32(limit), //nolint:gosec // limit clamped by caller
-	})
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	out := make([]domain.Account, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, ToDomainAccount(row.Account))
-	}
-	return out, nil
-}
-
 func (s *PostgresStore) GetPendingFollowRequests(ctx context.Context, targetID string, maxID *string, limit int) ([]domain.Account, *string, error) {
 	cursor := noCursorSentinel
 	if maxID != nil && *maxID != "" {

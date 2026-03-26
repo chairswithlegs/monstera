@@ -141,7 +141,6 @@ type FollowStore interface {
 	GetDistinctFollowerInboxURLsPaginated(ctx context.Context, accountID string, cursor string, limit int) ([]string, error)
 	GetLocalFollowerAccountIDs(ctx context.Context, targetID string) ([]string, error)
 	DeleteFollowsByDomain(ctx context.Context, domain string) error
-	GetUnbackfilledRemoteFollowing(ctx context.Context, accountID string, before time.Time, limit int) ([]domain.Account, error)
 }
 
 // InteractionStore handles blocks, mutes, favourites, bookmarks, reblogs, and quotes.

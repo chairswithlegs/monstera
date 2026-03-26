@@ -287,7 +287,7 @@ func registerSchedulerJobs(s *svcs, i *infra) scheduler.Scheduler {
 	})
 	sched.Register(scheduler.Job{
 		Name:     "update-trending",
-		Interval: 30 * time.Second,
+		Interval: 5 * time.Minute,
 		Handler:  schedulerjobs.UpdateTrendingIndexes(s.trends),
 	})
 	sched.Register(scheduler.Job{

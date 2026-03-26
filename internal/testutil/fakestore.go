@@ -3332,29 +3332,6 @@ func (f *FakeStore) DeleteFollowsByDomain(ctx context.Context, domain string) er
 	return nil
 }
 
-func (f *FakeStore) GetUnbackfilledRemoteFollowing(_ context.Context, accountID string, before time.Time, limit int) ([]domain.Account, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var out []domain.Account
-	for _, follow := range f.followsByKey {
-		if follow.AccountID != accountID || follow.State != domain.FollowStateAccepted {
-			continue
-		}
-		a, ok := f.accountsByID[follow.TargetID]
-		if !ok || a == nil || a.Domain == nil || a.Suspended || a.OutboxURL == "" {
-			continue
-		}
-		if a.LastBackfilledAt != nil && !a.LastBackfilledAt.Before(before) {
-			continue
-		}
-		out = append(out, *a)
-		if limit > 0 && len(out) >= limit {
-			break
-		}
-	}
-	return out, nil
-}
-
 func (f *FakeStore) CreatePoll(ctx context.Context, in store.CreatePollInput) (*domain.Poll, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
