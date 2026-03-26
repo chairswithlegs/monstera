@@ -21,7 +21,7 @@ func TestFollowRequestsHandler_GETFollowRequests(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	remoteFollowSvc := service.NewRemoteFollowService(st)
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"), remoteFollowSvc)
+	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"), remoteFollowSvc, nil)
 	handler := NewFollowRequestsHandler(followSvc, accountSvc, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
@@ -57,7 +57,7 @@ func TestFollowRequestsHandler_POSTAuthorize(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	remoteFollowSvc := service.NewRemoteFollowService(st)
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"), remoteFollowSvc)
+	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"), remoteFollowSvc, nil)
 	handler := NewFollowRequestsHandler(followSvc, accountSvc, "example.com")
 
 	target, err := accountSvc.Register(ctx, service.RegisterInput{
@@ -93,7 +93,7 @@ func TestFollowRequestsHandler_POSTReject(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	remoteFollowSvc := service.NewRemoteFollowService(st)
-	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"), remoteFollowSvc)
+	followSvc := service.NewFollowService(st, service.NewAccountService(st, "https://example.com"), remoteFollowSvc, nil)
 	handler := NewFollowRequestsHandler(followSvc, accountSvc, "example.com")
 
 	ctx := context.Background()

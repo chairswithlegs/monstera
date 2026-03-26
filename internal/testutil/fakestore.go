@@ -3308,18 +3308,6 @@ func (f *FakeStore) DeleteAccount(ctx context.Context, id string) error {
 	delete(f.suspendedAccountIDs, id)
 	return nil
 }
-func (f *FakeStore) GetRandomLocalAccount(_ context.Context) (*domain.Account, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, acc := range f.accountsByID {
-		if acc.Domain == nil && !acc.Suspended {
-			a := *acc
-			return &a, nil
-		}
-	}
-	return nil, domain.ErrNotFound
-}
-
 func (f *FakeStore) ListLocalAccounts(ctx context.Context, limit, offset int) ([]domain.Account, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -3342,22 +3330,6 @@ func (f *FakeStore) ListLocalAccounts(ctx context.Context, limit, offset int) ([
 }
 func (f *FakeStore) DeleteFollowsByDomain(ctx context.Context, domain string) error {
 	return nil
-}
-
-func (f *FakeStore) GetRandomFollowTarget(_ context.Context, accountID string) (*domain.Account, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, follow := range f.followsByKey {
-		if follow.AccountID != accountID || follow.State != domain.FollowStateAccepted {
-			continue
-		}
-		a, ok := f.accountsByID[follow.TargetID]
-		if ok && a != nil {
-			acc := *a
-			return &acc, nil
-		}
-	}
-	return nil, domain.ErrNotFound
 }
 
 func (f *FakeStore) GetUnbackfilledRemoteFollowing(_ context.Context, accountID string, before time.Time, limit int) ([]domain.Account, error) {

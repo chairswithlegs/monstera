@@ -641,7 +641,7 @@ func newInboxProcessorForTest(t *testing.T, fake *testutil.FakeStore) Inbox {
 	instanceBaseURL := "https://" + instanceDomain
 	accountSvc := service.NewAccountService(fake, instanceBaseURL)
 	remoteFollowSvc := service.NewRemoteFollowService(fake)
-	followSvc := service.NewFollowService(fake, service.NewAccountService(fake, "https://example.com"), remoteFollowSvc)
+	followSvc := service.NewFollowService(fake, service.NewAccountService(fake, "https://example.com"), remoteFollowSvc, nil)
 	statusSvc := service.NewStatusService(fake, instanceBaseURL, instanceDomain, 5000)
 	conversationSvc := service.NewConversationService(fake, statusSvc)
 	mediaSvc := service.NewMediaService(fake, &testMediaStore{}, 1<<20)

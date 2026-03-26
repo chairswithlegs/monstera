@@ -86,15 +86,6 @@ WHERE f.target_id = $1
   AND a.domain IS NULL
   AND a.suspended = FALSE;
 
--- name: GetRandomFollowTarget :one
-SELECT sqlc.embed(a)
-FROM accounts a
-INNER JOIN follows f ON f.target_id = a.id
-WHERE f.account_id = $1
-  AND f.state = 'accepted'
-ORDER BY random()
-LIMIT 1;
-
 -- name: GetUnbackfilledRemoteFollowing :many
 SELECT sqlc.embed(a)
 FROM accounts a

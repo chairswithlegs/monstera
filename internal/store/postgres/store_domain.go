@@ -1267,15 +1267,6 @@ func (s *PostgresStore) GetFollowing(ctx context.Context, accountID string, maxI
 	return out, nil
 }
 
-func (s *PostgresStore) GetRandomFollowTarget(ctx context.Context, accountID string) (*domain.Account, error) {
-	row, err := s.q.GetRandomFollowTarget(ctx, accountID)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	acc := ToDomainAccount(row.Account)
-	return &acc, nil
-}
-
 func (s *PostgresStore) GetUnbackfilledRemoteFollowing(ctx context.Context, accountID string, before time.Time, limit int) ([]domain.Account, error) {
 	rows, err := s.q.GetUnbackfilledRemoteFollowing(ctx, db.GetUnbackfilledRemoteFollowingParams{
 		AccountID:        accountID,
@@ -2278,15 +2269,6 @@ func (s *PostgresStore) ListLocalAccounts(ctx context.Context, limit, offset int
 		out = append(out, ToDomainAccount(row))
 	}
 	return out, nil
-}
-
-func (s *PostgresStore) GetRandomLocalAccount(ctx context.Context) (*domain.Account, error) {
-	row, err := s.q.GetRandomLocalAccount(ctx)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	acc := ToDomainAccount(row)
-	return &acc, nil
 }
 
 func (s *PostgresStore) CreateUserFilter(ctx context.Context, in store.CreateUserFilterInput) (*domain.UserFilter, error) {

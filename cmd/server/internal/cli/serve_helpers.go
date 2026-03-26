@@ -225,13 +225,13 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 	accountSvc := service.NewAccountService(i.store, instanceBaseURL)
 	statusSvc := service.NewStatusService(i.store, instanceBaseURL, cfg.MonsteraInstanceDomain, cfg.MaxStatusChars)
 	conversationSvc := service.NewConversationService(i.store, statusSvc)
+	backfillSvc := service.NewBackfillService(i.store, i.nats.JS, cfg.BackfillCooldown)
 	remoteFollowSvc := service.NewRemoteFollowService(i.store)
-	followSvc := service.NewFollowService(i.store, accountSvc, remoteFollowSvc)
+	followSvc := service.NewFollowService(i.store, accountSvc, remoteFollowSvc, backfillSvc)
 	tagFollowSvc := service.NewTagFollowService(i.store)
 	mediaSvc := service.NewMediaService(i.store, i.mediaStore, cfg.MediaMaxBytes)
 
 	mailer := service.NewRegistrationEmailSender(i.emailSender, i.emailTemplates, cfg.EmailFrom, cfg.EmailFromName)
-	backfillSvc := service.NewBackfillService(i.store, i.nats.JS, cfg.BackfillCooldown)
 	remoteResolver := ap.NewRemoteAccountResolver(accountSvc, cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.MonsteraInstanceDomain)
 	signatureService := ap.NewHTTPSignatureService(cfg.FederationInsecureSkipTLS, instanceBaseURL, i.sharedCache, i.cache, accountSvc)
 
@@ -300,11 +300,6 @@ func registerSchedulerJobs(s *svcs, i *infra) scheduler.Scheduler {
 		Interval: time.Hour,
 		Handler:  schedulerjobs.CleanupOutboxEvents(i.store, 24*time.Hour),
 	})
-	sched.Register(scheduler.Job{
-		Name:     "crawl-remote-accounts",
-		Interval: 10 * time.Second,
-		Handler:  schedulerjobs.CrawlRemoteAccounts(i.store, s.backfill),
-	})
 	return sched
 }
 
@@ -331,7 +326,6 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 		Accounts:      s.account,
 		Conversations: s.statusRead,
 	})
-
 	backfillWorker := ap.NewBackfillWorker(i.nats.JS, s.account, s.backfill, s.remoteResolver,
 		s.remoteStatusWrite, s.remoteFollow, s.statusRead, cfg.MonsteraInstanceDomain, cfg.BackfillMaxPages, cfg.BackfillCooldown)
 

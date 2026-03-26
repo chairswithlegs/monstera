@@ -2,12 +2,9 @@ package jobs
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
-	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/chairswithlegs/monstera/internal/store"
 )
@@ -50,49 +47,6 @@ func ProcessPendingCards(svc service.CardService) func(context.Context) error {
 func CleanupOutboxEvents(s store.Store, retention time.Duration) func(context.Context) error {
 	return func(ctx context.Context) error {
 		return s.DeletePublishedOutboxEventsBefore(ctx, time.Now().Add(-retention))
-	}
-}
-
-// CrawlRemoteAccounts returns a job handler that walks the social graph outward
-// from a random local account, enqueuing backfill jobs for each hop.
-func CrawlRemoteAccounts(s store.Store, backfill service.BackfillService) func(context.Context) error {
-	return func(ctx context.Context) error {
-		// Get a random local account to start from.
-		localAccount, err := s.GetRandomLocalAccount(ctx)
-		if err != nil {
-			if errors.Is(err, domain.ErrNotFound) {
-				return nil
-			}
-			return fmt.Errorf("CrawlRemoteAccounts GetRandomLocalAccount: %w", err)
-		}
-
-		// Crawl up to n hops of remote follows, backfilling each hop.
-		const maxHops = 2
-		prevHop := localAccount
-		var hop *domain.Account
-		for i := 0; i < maxHops; i++ {
-			hop, err = s.GetRandomFollowTarget(ctx, prevHop.ID)
-			if err != nil {
-				if errors.Is(err, domain.ErrNotFound) {
-					return nil
-				}
-				return fmt.Errorf("CrawlRemoteAccounts GetRandomFollowTarget(hop%d): %w", i, err)
-			}
-
-			if hop.IsLocal() {
-				break
-			}
-
-			slog.InfoContext(ctx, "crawl-remote-accounts", slog.String("hop", hop.ID))
-
-			if err := backfill.RequestBackfill(ctx, hop.ID); err != nil {
-				return fmt.Errorf("CrawlRemoteAccounts RequestBackfill(hop%d): %w", i, err)
-			}
-
-			prevHop = hop
-		}
-
-		return nil
 	}
 }
 

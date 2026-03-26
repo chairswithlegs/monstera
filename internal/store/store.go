@@ -55,7 +55,6 @@ type AccountStore interface {
 	UnsilenceAccount(ctx context.Context, id string) error
 	DeleteAccount(ctx context.Context, id string) error
 	ListLocalAccounts(ctx context.Context, limit, offset int) ([]domain.Account, error)
-	GetRandomLocalAccount(ctx context.Context) (*domain.Account, error)
 	ListDirectoryAccounts(ctx context.Context, order string, localOnly bool, offset, limit int) ([]domain.Account, error)
 	UpdateAccountLastStatusAt(ctx context.Context, accountID string) error
 	CreateAccountPin(ctx context.Context, accountID, statusID string) error
@@ -142,7 +141,6 @@ type FollowStore interface {
 	GetDistinctFollowerInboxURLsPaginated(ctx context.Context, accountID string, cursor string, limit int) ([]string, error)
 	GetLocalFollowerAccountIDs(ctx context.Context, targetID string) ([]string, error)
 	DeleteFollowsByDomain(ctx context.Context, domain string) error
-	GetRandomFollowTarget(ctx context.Context, accountID string) (*domain.Account, error)
 	GetUnbackfilledRemoteFollowing(ctx context.Context, accountID string, before time.Time, limit int) ([]domain.Account, error)
 }
 

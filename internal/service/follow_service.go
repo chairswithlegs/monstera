@@ -34,11 +34,12 @@ type followService struct {
 	store         store.Store
 	accounts      AccountService
 	remoteFollows RemoteFollowService
+	backfill      BackfillService
 }
 
 // NewFollowService returns a FollowService.
-func NewFollowService(s store.Store, accounts AccountService, remoteFollows RemoteFollowService) FollowService {
-	return &followService{store: s, accounts: accounts, remoteFollows: remoteFollows}
+func NewFollowService(s store.Store, accounts AccountService, remoteFollows RemoteFollowService, backfill BackfillService) FollowService {
+	return &followService{store: s, accounts: accounts, remoteFollows: remoteFollows, backfill: backfill}
 }
 
 // Follow creates a follow from actor to target. Returns the relationship after the change.
@@ -121,6 +122,13 @@ func (svc *followService) Follow(ctx context.Context, actorAccountID, targetAcco
 	})
 	if err != nil {
 		return nil, fmt.Errorf("Follow tx: %w", err)
+	}
+
+	// When a local account follows a remote account, trigger a backfill.
+	if svc.backfill != nil && actor.IsLocal() && target.IsRemote() {
+		if err := svc.backfill.RequestBackfill(ctx, targetAccountID); err != nil {
+			slog.WarnContext(ctx, "Follow: RequestBackfill failed", slog.String("target_id", targetAccountID), slog.Any("error", err))
+		}
 	}
 
 	rel, err = svc.accounts.GetRelationship(ctx, actorAccountID, targetAccountID)

@@ -522,58 +522,6 @@ func (q *Queries) GetPendingFollowRequestsPaginated(ctx context.Context, arg Get
 	return items, nil
 }
 
-const getRandomFollowTarget = `-- name: GetRandomFollowTarget :one
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at, a.featured_url
-FROM accounts a
-INNER JOIN follows f ON f.target_id = a.id
-WHERE f.account_id = $1
-  AND f.state = 'accepted'
-ORDER BY random()
-LIMIT 1
-`
-
-type GetRandomFollowTargetRow struct {
-	Account Account `json:"account"`
-}
-
-func (q *Queries) GetRandomFollowTarget(ctx context.Context, accountID string) (GetRandomFollowTargetRow, error) {
-	row := q.db.QueryRow(ctx, getRandomFollowTarget, accountID)
-	var i GetRandomFollowTargetRow
-	err := row.Scan(
-		&i.Account.ID,
-		&i.Account.Username,
-		&i.Account.Domain,
-		&i.Account.DisplayName,
-		&i.Account.Note,
-		&i.Account.PublicKey,
-		&i.Account.PrivateKey,
-		&i.Account.InboxUrl,
-		&i.Account.OutboxUrl,
-		&i.Account.FollowersUrl,
-		&i.Account.FollowingUrl,
-		&i.Account.ApID,
-		&i.Account.Bot,
-		&i.Account.Locked,
-		&i.Account.Suspended,
-		&i.Account.Silenced,
-		&i.Account.CreatedAt,
-		&i.Account.UpdatedAt,
-		&i.Account.AvatarMediaID,
-		&i.Account.HeaderMediaID,
-		&i.Account.FollowersCount,
-		&i.Account.FollowingCount,
-		&i.Account.StatusesCount,
-		&i.Account.Fields,
-		&i.Account.LastStatusAt,
-		&i.Account.Url,
-		&i.Account.AvatarUrl,
-		&i.Account.HeaderUrl,
-		&i.Account.LastBackfilledAt,
-		&i.Account.FeaturedUrl,
-	)
-	return i, err
-}
-
 const getUnbackfilledRemoteFollowing = `-- name: GetUnbackfilledRemoteFollowing :many
 SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at, a.featured_url
 FROM accounts a

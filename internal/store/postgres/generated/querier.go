@@ -155,8 +155,6 @@ type Querier interface {
 	GetPublicTimeline(ctx context.Context, arg GetPublicTimelineParams) ([]Status, error)
 	GetPushSubscriptionByAccessToken(ctx context.Context, accessTokenID string) (PushSubscription, error)
 	GetQuoteApproval(ctx context.Context, quotingStatusID string) (QuoteApproval, error)
-	GetRandomFollowTarget(ctx context.Context, accountID string) (GetRandomFollowTargetRow, error)
-	GetRandomLocalAccount(ctx context.Context) (Account, error)
 	GetReblogByAccountAndTarget(ctx context.Context, arg GetReblogByAccountAndTargetParams) (Status, error)
 	GetRebloggedBy(ctx context.Context, arg GetRebloggedByParams) ([]GetRebloggedByRow, error)
 	GetRemoteAccountByUsername(ctx context.Context, arg GetRemoteAccountByUsernameParams) (Account, error)

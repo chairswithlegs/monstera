@@ -354,52 +354,6 @@ func (q *Queries) GetLocalAccountByUsername(ctx context.Context, username string
 	return i, err
 }
 
-const getRandomLocalAccount = `-- name: GetRandomLocalAccount :one
-SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url, last_backfilled_at, featured_url FROM accounts
-WHERE domain IS NULL
-  AND suspended = FALSE
-ORDER BY random()
-LIMIT 1
-`
-
-func (q *Queries) GetRandomLocalAccount(ctx context.Context) (Account, error) {
-	row := q.db.QueryRow(ctx, getRandomLocalAccount)
-	var i Account
-	err := row.Scan(
-		&i.ID,
-		&i.Username,
-		&i.Domain,
-		&i.DisplayName,
-		&i.Note,
-		&i.PublicKey,
-		&i.PrivateKey,
-		&i.InboxUrl,
-		&i.OutboxUrl,
-		&i.FollowersUrl,
-		&i.FollowingUrl,
-		&i.ApID,
-		&i.Bot,
-		&i.Locked,
-		&i.Suspended,
-		&i.Silenced,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.AvatarMediaID,
-		&i.HeaderMediaID,
-		&i.FollowersCount,
-		&i.FollowingCount,
-		&i.StatusesCount,
-		&i.Fields,
-		&i.LastStatusAt,
-		&i.Url,
-		&i.AvatarUrl,
-		&i.HeaderUrl,
-		&i.LastBackfilledAt,
-		&i.FeaturedUrl,
-	)
-	return i, err
-}
-
 const getRemoteAccountByUsername = `-- name: GetRemoteAccountByUsername :one
 SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url, last_backfilled_at, featured_url FROM accounts WHERE username = $1 AND domain = $2
 `
