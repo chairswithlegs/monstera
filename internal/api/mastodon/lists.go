@@ -2,7 +2,10 @@ package mastodon
 
 import (
 	"errors"
+	"io"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -206,11 +209,6 @@ func (h *ListsHandler) GETListAccounts(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusOK, out)
 }
 
-// POSTListAccountsRequest is the body for POST /api/v1/lists/:id/accounts.
-type POSTListAccountsRequest struct {
-	AccountIDs []string `json:"account_ids"`
-}
-
 // POSTListAccounts handles POST /api/v1/lists/:id/accounts.
 func (h *ListsHandler) POSTListAccounts(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
@@ -223,12 +221,12 @@ func (h *ListsHandler) POSTListAccounts(w http.ResponseWriter, r *http.Request) 
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	var body POSTListAccountsRequest
-	if err := api.DecodeJSONBody(r, &body); err != nil {
+	accountIDs, err := parseListAccountIDsRequest(r)
+	if err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
-	if err := h.lists.AddAccountsToList(r.Context(), account.ID, id, body.AccountIDs); err != nil {
+	if err := h.lists.AddAccountsToList(r.Context(), account.ID, id, accountIDs); err != nil {
 		if errors.Is(err, domain.ErrForbidden) {
 			api.HandleError(w, r, api.ErrForbidden)
 			return
@@ -241,11 +239,6 @@ func (h *ListsHandler) POSTListAccounts(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-}
-
-// DELETEListAccountsRequest is the body for DELETE /api/v1/lists/:id/accounts.
-type DELETEListAccountsRequest struct {
-	AccountIDs []string `json:"account_ids"`
 }
 
 // DELETEListAccounts handles DELETE /api/v1/lists/:id/accounts.
@@ -260,12 +253,12 @@ func (h *ListsHandler) DELETEListAccounts(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
-	var body DELETEListAccountsRequest
-	if err := api.DecodeJSONBody(r, &body); err != nil {
+	accountIDs, err := parseListAccountIDsRequest(r)
+	if err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
-	if err := h.lists.RemoveAccountsFromList(r.Context(), account.ID, id, body.AccountIDs); err != nil {
+	if err := h.lists.RemoveAccountsFromList(r.Context(), account.ID, id, accountIDs); err != nil {
 		if errors.Is(err, domain.ErrForbidden) {
 			api.HandleError(w, r, api.ErrForbidden)
 			return
@@ -278,4 +271,35 @@ func (h *ListsHandler) DELETEListAccounts(w http.ResponseWriter, r *http.Request
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// parseListAccountIDsRequest parses account_ids from a JSON or form-encoded body.
+// Mastodon clients send account_ids[] as form params; JSON clients send {"account_ids":[...]}.
+func parseListAccountIDsRequest(r *http.Request) ([]string, error) {
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		var body struct {
+			AccountIDs []string `json:"account_ids"`
+		}
+		if err := api.DecodeJSONBody(r, &body); err != nil {
+			return nil, err
+		}
+		return body.AccountIDs, nil
+	}
+	// r.ParseForm only reads the body for POST/PUT/PATCH, not DELETE.
+	// Read the body directly so form-encoded DELETE requests work too.
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, api.NewInvalidRequestBodyError()
+	}
+	form, err := url.ParseQuery(string(raw))
+	if err != nil {
+		return nil, api.NewInvalidRequestBodyError()
+	}
+	if ids := form["account_ids[]"]; len(ids) > 0 {
+		return ids, nil
+	}
+	if ids := form["account_ids"]; len(ids) > 0 {
+		return ids, nil
+	}
+	return nil, nil
 }
