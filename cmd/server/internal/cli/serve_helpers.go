@@ -287,7 +287,7 @@ func registerSchedulerJobs(s *svcs, i *infra) scheduler.Scheduler {
 	})
 	sched.Register(scheduler.Job{
 		Name:     "update-trending",
-		Interval: 15 * time.Minute,
+		Interval: 30 * time.Second,
 		Handler:  schedulerjobs.UpdateTrendingIndexes(s.trends),
 	})
 	sched.Register(scheduler.Job{
@@ -299,6 +299,11 @@ func registerSchedulerJobs(s *svcs, i *infra) scheduler.Scheduler {
 		Name:     "cleanup-outbox-events",
 		Interval: time.Hour,
 		Handler:  schedulerjobs.CleanupOutboxEvents(i.store, 24*time.Hour),
+	})
+	sched.Register(scheduler.Job{
+		Name:     "crawl-remote-accounts",
+		Interval: 10 * time.Second,
+		Handler:  schedulerjobs.CrawlRemoteAccounts(i.store, s.backfill),
 	})
 	return sched
 }
@@ -328,7 +333,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 	})
 
 	backfillWorker := ap.NewBackfillWorker(i.nats.JS, s.account, s.backfill, s.remoteResolver,
-		s.remoteStatusWrite, s.statusRead, cfg.MonsteraInstanceDomain, cfg.BackfillMaxPages, cfg.BackfillCooldown)
+		s.remoteStatusWrite, s.remoteFollow, s.statusRead, cfg.MonsteraInstanceDomain, cfg.BackfillMaxPages, cfg.BackfillCooldown)
 
 	workers := []namedWorker{
 		{"event-poller", i.eventPoller},

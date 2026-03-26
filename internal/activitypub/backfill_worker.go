@@ -26,6 +26,7 @@ type BackfillWorker struct {
 	backfill       service.BackfillService
 	remoteResolver *RemoteAccountResolver
 	remoteStatuses service.RemoteStatusWriteService
+	remoteFollows  service.RemoteFollowService
 	statuses       service.StatusService
 	instanceDomain string
 	maxPages       int
@@ -40,6 +41,7 @@ func NewBackfillWorker(
 	backfill service.BackfillService,
 	resolver *RemoteAccountResolver,
 	remoteStatuses service.RemoteStatusWriteService,
+	remoteFollows service.RemoteFollowService,
 	statuses service.StatusService,
 	instanceDomain string,
 	maxPages int,
@@ -51,6 +53,7 @@ func NewBackfillWorker(
 		backfill:       backfill,
 		remoteResolver: resolver,
 		remoteStatuses: remoteStatuses,
+		remoteFollows:  remoteFollows,
 		statuses:       statuses,
 		instanceDomain: instanceDomain,
 		maxPages:       maxPages,
@@ -117,6 +120,8 @@ func (w *BackfillWorker) processBackfill(ctx context.Context, accountID string) 
 		}
 	}
 
+	w.fetchAndProcessFollowing(ctx, account)
+
 	// Always mark backfilled, even on partial failure.
 	if err := w.backfill.MarkBackfilled(ctx, accountID); err != nil {
 		slog.ErrorContext(ctx, "backfill: mark backfilled failed", slog.String("account_id", accountID), slog.Any("error", err))
@@ -157,6 +162,70 @@ func (w *BackfillWorker) fetchAndProcessFeatured(ctx context.Context, account *d
 		statusIDs = append(statusIDs, st.ID)
 	}
 	return statusIDs, true
+}
+
+// fetchAndProcessFollowing fetches the remote account's AP following collection and stores
+// each follow relationship locally. Actors not yet known to this instance are resolved and
+// created via RemoteAccountResolver. Duplicate follows are silently discarded.
+func (w *BackfillWorker) fetchAndProcessFollowing(ctx context.Context, account *domain.Account) {
+	if account.FollowingURL == "" {
+		return
+	}
+	if w.remoteResolver == nil {
+		return
+	}
+
+	var coll vocab.OrderedCollection
+	if err := w.remoteResolver.resolveIRIDocument(ctx, account.FollowingURL, &coll); err != nil {
+		slog.WarnContext(ctx, "backfill: fetch following collection failed",
+			slog.String("account_id", account.ID), slog.Any("error", err))
+		return
+	}
+
+	pageURL := coll.First
+	if pageURL == "" {
+		w.processFollowingItems(ctx, account, coll.OrderedItems)
+		return
+	}
+
+	for page := 0; page < w.maxPages && pageURL != ""; page++ {
+		if page > 0 {
+			time.Sleep(pageFetchDelay)
+		}
+		var collPage vocab.OrderedCollectionPage
+		if err := w.remoteResolver.resolveIRIDocument(ctx, pageURL, &collPage); err != nil {
+			slog.WarnContext(ctx, "backfill: fetch following page failed",
+				slog.String("account_id", account.ID), slog.String("page_url", pageURL), slog.Any("error", err))
+			return
+		}
+		w.processFollowingItems(ctx, account, collPage.OrderedItems)
+		pageURL = collPage.Next
+	}
+}
+
+func (w *BackfillWorker) processFollowingItems(ctx context.Context, account *domain.Account, items []json.RawMessage) {
+	for _, raw := range items {
+		iri := extractIRI(raw)
+		if iri == "" {
+			continue
+		}
+		// Skip self-follows from misconfigured servers.
+		if iri == account.APID {
+			continue
+		}
+		target, err := w.remoteResolver.ResolveRemoteAccountByIRI(ctx, iri)
+		if err != nil {
+			slog.DebugContext(ctx, "backfill: resolve following actor failed",
+				slog.String("account_id", account.ID), slog.String("iri", iri), slog.Any("error", err))
+			continue
+		}
+		if _, err := w.remoteFollows.CreateRemoteFollow(ctx, account.ID, target.ID, domain.FollowStateAccepted, nil); err != nil {
+			if !errors.Is(err, domain.ErrConflict) {
+				slog.WarnContext(ctx, "backfill: store following relationship failed",
+					slog.String("account_id", account.ID), slog.String("target_id", target.ID), slog.Any("error", err))
+			}
+		}
+	}
 }
 
 // extractIRI returns the IRI from a raw JSON item that is either a bare string

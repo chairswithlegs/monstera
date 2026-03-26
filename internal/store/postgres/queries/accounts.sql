@@ -129,5 +129,12 @@ WHERE id = $1;
 -- name: UpdateAccountLastBackfilledAt :exec
 UPDATE accounts SET last_backfilled_at = @last_backfilled_at WHERE id = @id;
 
+-- name: GetRandomLocalAccount :one
+SELECT * FROM accounts
+WHERE domain IS NULL
+  AND suspended = FALSE
+ORDER BY random()
+LIMIT 1;
+
 -- name: DeleteAccount :exec
 DELETE FROM accounts WHERE id = $1;

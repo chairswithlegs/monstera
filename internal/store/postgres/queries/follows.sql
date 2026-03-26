@@ -86,6 +86,28 @@ WHERE f.target_id = $1
   AND a.domain IS NULL
   AND a.suspended = FALSE;
 
+-- name: GetRandomFollowTarget :one
+SELECT sqlc.embed(a)
+FROM accounts a
+INNER JOIN follows f ON f.target_id = a.id
+WHERE f.account_id = $1
+  AND f.state = 'accepted'
+ORDER BY random()
+LIMIT 1;
+
+-- name: GetUnbackfilledRemoteFollowing :many
+SELECT sqlc.embed(a)
+FROM accounts a
+INNER JOIN follows f ON f.target_id = a.id
+WHERE f.account_id = $1
+  AND f.state = 'accepted'
+  AND a.domain IS NOT NULL
+  AND a.suspended = FALSE
+  AND a.outbox_url != ''
+  AND (a.last_backfilled_at IS NULL OR a.last_backfilled_at < $2)
+ORDER BY a.last_backfilled_at ASC NULLS FIRST
+LIMIT $3;
+
 -- name: DeleteFollowsByDomain :exec
 DELETE FROM follows
 WHERE account_id IN (SELECT a.id FROM accounts a WHERE a.domain = $1)
