@@ -5,6 +5,7 @@ import { getUser, isAdmin, isAdminOrModerator } from '@/lib/api/user';
 import type { User } from '@/lib/api/user';
 import { getNodeInfo } from '@/lib/api/nodeinfo';
 import { logout } from '@/lib/auth/logout';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -16,6 +17,7 @@ export default function AuthenticatedLayout({
 }) {
   const { token, loading } = useAuth();
   const router = useRouter();
+  const t = useTranslations('nav');
   const [user, setUser] = useState<User | null>(null);
   const [serverName, setServerName] = useState<string>('');
 
@@ -42,7 +44,7 @@ export default function AuthenticatedLayout({
   const showAdmin = user && isAdmin(user);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex flex-col flex-1 bg-gray-50">
       <nav className="border-b bg-white px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center">
           <Link href="/home" className="font-semibold text-gray-900 mr-auto">
@@ -53,14 +55,14 @@ export default function AuthenticatedLayout({
               href="/account"
               className="font-medium text-gray-700 hover:text-gray-900"
             >
-              Account
+              {t('account')}
             </Link>
             {showModeration && (
               <Link
                 href="/moderator"
                 className="font-medium text-gray-700 hover:text-gray-900"
               >
-                Moderation
+                {t('moderation')}
               </Link>
             )}
             {showAdmin && (
@@ -68,14 +70,14 @@ export default function AuthenticatedLayout({
                 href="/admin"
                 className="font-medium text-gray-700 hover:text-gray-900"
               >
-                Admin
+                {t('admin')}
               </Link>
             )}
             <button
               onClick={logout}
               className="font-medium text-gray-700 hover:text-gray-900"
             >
-              Log out
+              {t('logout')}
             </button>
           </div>
         </div>

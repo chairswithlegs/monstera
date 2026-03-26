@@ -2,16 +2,21 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { getPublicAccount } from '@/lib/api/accounts';
 import type { PublicAccount } from '@/lib/api/accounts';
 import { getConfig } from '@/lib/config';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { translateApiError } from '@/lib/i18n/errors';
 
 function ProfileContent() {
   const searchParams = useSearchParams();
   const username = searchParams.get('u');
+  const t = useTranslations('profile');
+  const tCommon = useTranslations('common');
+  const tErr = useTranslations('errors');
 
   const [account, setAccount] = useState<PublicAccount | null>(null);
   const [actorURL, setActorURL] = useState<string>('');
@@ -26,29 +31,29 @@ function ProfileContent() {
     Promise.all([getPublicAccount(username), getConfig()])
       .then(([acc, config]) => {
         if (acc.acct.includes('@')) {
-          setError('Profile not found');
+          setError(t('profileNotFound'));
           return;
         }
         setAccount(acc);
         setActorURL(`${config.server_url}/users/${acc.username}`);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load profile'))
+      .catch((e) => setError(translateApiError(tErr, e)))
       .finally(() => setLoading(false));
-  }, [username]);
+  }, [username, t, tErr]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-muted-foreground">Loading…</p>
+      <div className="flex flex-1 items-center justify-center">
+        <p className="text-muted-foreground">{tCommon('loading')}</p>
       </div>
     );
   }
 
   if (!username) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex flex-1 items-center justify-center">
         <Alert variant="destructive" className="max-w-md">
-          <AlertDescription>No profile specified.</AlertDescription>
+          <AlertDescription>{t('noProfileSpecified')}</AlertDescription>
         </Alert>
       </div>
     );
@@ -56,7 +61,7 @@ function ProfileContent() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex flex-1 items-center justify-center">
         <Alert variant="destructive" className="max-w-md">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -82,16 +87,18 @@ function ProfileContent() {
             />
           )}
           {/* Avatar */}
-          <div className="absolute -bottom-10 left-6">
-            <img
-              src={account.avatar}
-              alt={displayName}
-              className="w-20 h-20 rounded-full border-4 border-background object-cover"
-            />
-          </div>
+          {account.avatar && (
+            <div className="absolute -bottom-10 left-6">
+              <img
+                src={account.avatar}
+                alt={displayName}
+                className="w-20 h-20 rounded-full border-4 border-background object-cover"
+              />
+            </div>
+          )}
         </div>
 
-        <CardContent className="pt-14 pb-6">
+        <CardContent className={`${account.avatar ? 'pt-14' : 'pt-6'} pb-6`}>
           {/* Name + handle */}
           <div className="flex items-start justify-between gap-2">
             <div>
@@ -99,8 +106,8 @@ function ProfileContent() {
               <p className="text-sm text-muted-foreground">@{account.acct}</p>
             </div>
             <div className="flex gap-1.5 flex-shrink-0">
-              {account.bot && <Badge variant="secondary">Bot</Badge>}
-              {account.locked && <Badge variant="outline">Locked</Badge>}
+              {account.bot && <Badge variant="secondary">{t('botBadge')}</Badge>}
+              {account.locked && <Badge variant="outline">{t('lockedBadge')}</Badge>}
             </div>
           </div>
 
@@ -116,15 +123,15 @@ function ProfileContent() {
           <div className="mt-4 flex gap-6 text-sm">
             <div>
               <span className="font-semibold">{account.statuses_count}</span>{' '}
-              <span className="text-muted-foreground">Posts</span>
+              <span className="text-muted-foreground">{t('posts')}</span>
             </div>
             <div>
               <span className="font-semibold">{account.following_count}</span>{' '}
-              <span className="text-muted-foreground">Following</span>
+              <span className="text-muted-foreground">{t('following')}</span>
             </div>
             <div>
               <span className="font-semibold">{account.followers_count}</span>{' '}
-              <span className="text-muted-foreground">Followers</span>
+              <span className="text-muted-foreground">{t('followers')}</span>
             </div>
           </div>
 
@@ -148,7 +155,7 @@ function ProfileContent() {
           {/* ActivityPub ID */}
           {actorURL && (
             <div className="mt-4 text-xs text-muted-foreground">
-              <span>ActivityPub ID: </span>
+              <span>{t('activityPubId')}</span>
               <a
                 href={actorURL}
                 className="underline underline-offset-2 hover:text-foreground break-all"
@@ -163,15 +170,18 @@ function ProfileContent() {
   );
 }
 
+function LoadingFallback() {
+  const tCommon = useTranslations('common');
+  return (
+    <div className="flex flex-1 items-center justify-center">
+      <p className="text-muted-foreground">{tCommon('loading')}</p>
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center min-h-screen">
-          <p className="text-muted-foreground">Loading…</p>
-        </div>
-      }
-    >
+    <Suspense fallback={<LoadingFallback />}>
       <ProfileContent />
     </Suspense>
   );

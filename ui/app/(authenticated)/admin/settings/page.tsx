@@ -5,20 +5,18 @@ import { getUser, isAdminOrModerator } from '@/lib/api/user';
 import type { User } from '@/lib/api/user';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-
-const registrationModeOptions = [
-  { value: 'closed', label: 'Closed (no new registrations)' },
-  { value: 'open', label: 'Open (anyone can register)' },
-  { value: 'approval', label: 'Approval required' },
-  { value: 'invite', label: 'Invite only' },
-] as const;
+import { translateApiError } from '@/lib/i18n/errors';
 
 export default function ServerSettingsPage() {
   const router = useRouter();
+  const t = useTranslations('admin');
+  const tCommon = useTranslations('common');
+  const tErr = useTranslations('errors');
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [registrationMode, setRegistrationMode] = useState('closed');
@@ -30,6 +28,13 @@ export default function ServerSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const registrationModeOptions = [
+    { value: 'closed', label: t('modeClosed') },
+    { value: 'open', label: t('modeOpen') },
+    { value: 'approval', label: t('modeApproval') },
+    { value: 'invite', label: t('modeInvite') },
+  ];
 
   useEffect(() => {
     getUser()
@@ -55,8 +60,8 @@ export default function ServerSettingsPage() {
         setServerDescription(s.server_description ?? '');
         setServerRules(s.server_rules?.join('\n') ?? '');
       })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
-  }, []);
+      .catch((e) => setError(translateApiError(tErr, e)));
+  }, [tErr]);
 
   useEffect(() => {
     if (user && isAdminOrModerator(user)) load();
@@ -78,7 +83,7 @@ export default function ServerSettingsPage() {
       });
       setSuccess(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save');
+      setError(translateApiError(tErr, e));
     } finally {
       setSaving(false);
     }
@@ -90,8 +95,8 @@ export default function ServerSettingsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-gray-900">Server settings</h1>
-      <p className="mt-2 text-gray-500">Instance configuration.</p>
+      <h1 className="text-2xl font-semibold text-gray-900">{t('settingsTitle')}</h1>
+      <p className="mt-2 text-gray-500">{t('settingsDescription')}</p>
       {error && (
         <Alert variant="destructive" className="mt-4">
           <AlertDescription>{error}</AlertDescription>
@@ -99,12 +104,12 @@ export default function ServerSettingsPage() {
       )}
       {success && (
         <Alert variant="default" className="mt-4">
-          <AlertDescription>Settings saved.</AlertDescription>
+          <AlertDescription>{t('settingsSaved')}</AlertDescription>
         </Alert>
       )}
       <form onSubmit={save} className="mt-6 max-w-2xl space-y-4">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="registration-mode">Registration mode</Label>
+          <Label htmlFor="registration-mode">{t('registrationMode')}</Label>
           <select
             id="registration-mode"
             value={registrationMode}
@@ -121,7 +126,7 @@ export default function ServerSettingsPage() {
         {registrationMode === 'invite' && (
           <>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="invite-max-uses">Default max uses per invite</Label>
+              <Label htmlFor="invite-max-uses">{t('inviteMaxUses')}</Label>
               <Input
                 id="invite-max-uses"
                 type="number"
@@ -132,7 +137,7 @@ export default function ServerSettingsPage() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="invite-expires-in-days">Default invite expiry (days)</Label>
+              <Label htmlFor="invite-expires-in-days">{t('inviteExpiry')}</Label>
               <Input
                 id="invite-expires-in-days"
                 type="number"
@@ -146,7 +151,7 @@ export default function ServerSettingsPage() {
         )}
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="server-name">
-            Server name{' '}
+            {t('serverName')}{' '}
             <span className="text-muted-foreground text-xs">{serverName.length}/24</span>
           </Label>
           <Input
@@ -159,7 +164,7 @@ export default function ServerSettingsPage() {
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="server-description">Server description</Label>
+          <Label htmlFor="server-description">{t('serverDescription')}</Label>
           <textarea
             id="server-description"
             value={serverDescription}
@@ -170,7 +175,7 @@ export default function ServerSettingsPage() {
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="server-rules">Server rules</Label>
+          <Label htmlFor="server-rules">{t('serverRules')}</Label>
           <textarea
             id="server-rules"
             value={serverRules}
@@ -179,10 +184,10 @@ export default function ServerSettingsPage() {
             className="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             placeholder="Be respectful.&#10;No spam."
           />
-          <p className="text-xs text-muted-foreground">One rule per line. Rules are shown to users during registration.</p>
+          <p className="text-xs text-muted-foreground">{t('serverRulesHint')}</p>
         </div>
         <Button type="submit" disabled={saving}>
-          {saving ? 'Saving…' : 'Save'}
+          {saving ? tCommon('saving') : tCommon('save')}
         </Button>
       </form>
     </div>

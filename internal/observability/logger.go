@@ -106,6 +106,12 @@ func RequestLoggerMiddleware() func(http.Handler) http.Handler {
 			start := time.Now()
 			rec := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
 			next.ServeHTTP(rec, r)
+
+			// Don't log successful health checks
+			if strings.HasPrefix(r.URL.Path, "/healthz") && rec.status == http.StatusOK {
+				return
+			}
+
 			attrs := []any{
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),

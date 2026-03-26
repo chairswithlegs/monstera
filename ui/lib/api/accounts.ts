@@ -1,4 +1,5 @@
 import { getConfig } from '@/lib/config';
+import { ApiResponseError } from '@/lib/api/errors';
 
 export interface PublicAccount {
   id: string;
@@ -23,8 +24,10 @@ export async function getPublicAccount(username: string): Promise<PublicAccount>
   const res = await fetch(
     `${config.server_url}/api/v1/accounts/lookup?acct=${encodeURIComponent(username)}`
   );
-  if (res.status === 404) throw new Error('Profile not found');
-  if (!res.ok) throw new Error('Failed to load profile');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string; code?: string; params?: Record<string, string> };
+    throw new ApiResponseError(body);
+  }
   return res.json() as Promise<PublicAccount>;
 }
 
@@ -52,8 +55,8 @@ export async function registerAccount(
     body: JSON.stringify(input),
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? 'Registration failed');
+    const body = await res.json().catch(() => ({})) as { error?: string; code?: string; params?: Record<string, string> };
+    throw new ApiResponseError(body);
   }
   return res.json() as Promise<RegisterAccountResponse>;
 }

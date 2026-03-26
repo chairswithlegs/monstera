@@ -2,14 +2,10 @@
 
 import { getUser, isAdmin } from '@/lib/api/user';
 import type { User } from '@/lib/api/user';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-
-const navItems = [
-  { href: '/admin/settings', label: 'Settings' },
-  { href: '/admin/users', label: 'Users' },
-];
 
 export default function AdminLayout({
   children,
@@ -18,6 +14,7 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const t = useTranslations('admin');
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -38,6 +35,11 @@ export default function AdminLayout({
   if (loading || !user || !isAdmin(user)) {
     return null;
   }
+
+  const navItems = [
+    { href: '/admin/settings', label: t('navSettings') },
+    { href: '/admin/users', label: t('navUsers') },
+  ];
 
   return (
     <div className="flex gap-8">

@@ -4,6 +4,7 @@ import { getUsers, type AdminUser } from '@/lib/api/admin';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import AdminUserDetailView from './UserDetailView';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -21,16 +22,21 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/empty-state';
+import { translateApiError } from '@/lib/i18n/errors';
 
 function UsersList() {
+  const t = useTranslations('admin');
+  const tCommon = useTranslations('common');
+  const tErr = useTranslations('errors');
+  const tEmpty = useTranslations('empty');
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getUsers({ limit: 50 })
       .then((r) => setUsers(r.users))
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
-  }, []);
+      .catch((e) => setError(translateApiError(tErr, e)));
+  }, [tErr]);
 
   if (error) {
     return (
@@ -42,20 +48,20 @@ function UsersList() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-foreground">Users</h1>
+      <h1 className="text-2xl font-semibold text-foreground">{t('usersTitle')}</h1>
       <Card className="mt-6">
         <CardContent>
           {users.length === 0 ? (
-            <EmptyState message="No users." />
+            <EmptyState message={tEmpty('noUsers')} />
           ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Username</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>{t('usersColUsername')}</TableHead>
+                <TableHead>{t('usersColEmail')}</TableHead>
+                <TableHead>{t('usersColRole')}</TableHead>
+                <TableHead>{t('usersColStatus')}</TableHead>
+                <TableHead className="text-right">{t('usersColActions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -71,14 +77,14 @@ function UsersList() {
                   <TableCell className="text-muted-foreground">{u.email}</TableCell>
                   <TableCell className="text-muted-foreground">{u.role}</TableCell>
                   <TableCell>
-                    {u.suspended && <Badge variant="destructive">Suspended</Badge>}
-                    {u.silenced && !u.suspended && <Badge variant="secondary">Silenced</Badge>}
+                    {u.suspended && <Badge variant="destructive">{t('badgeSuspended')}</Badge>}
+                    {u.silenced && !u.suspended && <Badge variant="secondary">{t('badgeSilenced')}</Badge>}
                     {!u.suspended && !u.silenced && <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button variant="link" size="sm" asChild>
                       <Link href={`/admin/users?id=${encodeURIComponent(u.account_id)}`}>
-                        View
+                        {tCommon('view')}
                       </Link>
                     </Button>
                   </TableCell>
@@ -94,6 +100,7 @@ function UsersList() {
 }
 
 export default function AdminUsersPage() {
+  const tCommon = useTranslations('common');
   const searchParams = useSearchParams();
   const id = searchParams.get('id');
 
@@ -102,7 +109,7 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <Suspense fallback={<p className="text-muted-foreground">Loading…</p>}>
+    <Suspense fallback={<p className="text-muted-foreground">{tCommon('loading')}</p>}>
       <UsersList />
     </Suspense>
   );

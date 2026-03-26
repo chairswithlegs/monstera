@@ -1,26 +1,40 @@
 'use client';
 
 import { getUser, patchPreferences } from '@/lib/api/user';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslations, useLocale } from 'next-intl';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { translateApiError } from '@/lib/i18n/errors';
+
+// Common BCP-47 language tags shown in the post language dropdown.
+// Covers the most widely used languages on the fediverse.
+const LANGUAGES = [
+  'ar', 'ca', 'cs', 'da', 'de', 'el', 'en', 'eo', 'es', 'eu',
+  'fi', 'fr', 'ga', 'gl', 'he', 'hu', 'id', 'it', 'ja', 'ka',
+  'ko', 'lt', 'nl', 'no', 'oc', 'pl', 'pt', 'pt-BR', 'ru', 'sk',
+  'sl', 'sq', 'sr', 'sv', 'ta', 'th', 'tr', 'uk', 'zh', 'zh-Hant',
+];
 
 const visibilityOptions = [
-  { value: 'public', label: 'Public' },
-  { value: 'unlisted', label: 'Unlisted' },
-  { value: 'private', label: 'Followers only' },
-  { value: 'direct', label: 'Direct message' },
-];
+  { value: 'public', key: 'visibilityPublic' },
+  { value: 'unlisted', key: 'visibilityUnlisted' },
+  { value: 'private', key: 'visibilityPrivate' },
+  { value: 'direct', key: 'visibilityDirect' },
+] as const;
 
 const quotePolicyOptions = [
-  { value: 'public', label: 'Anyone' },
-  { value: 'followers', label: 'Followers only' },
-  { value: 'nobody', label: 'Nobody' },
-];
+  { value: 'public', key: 'quotePolicyAnyone' },
+  { value: 'followers', key: 'quotePolicyFollowers' },
+  { value: 'nobody', key: 'quotePolicyNobody' },
+] as const;
 
 export default function PreferencesPage() {
+  const t = useTranslations('account');
+  const tCommon = useTranslations('common');
+  const tErr = useTranslations('errors');
+  const locale = useLocale();
   const [defaultPrivacy, setDefaultPrivacy] = useState('public');
   const [defaultSensitive, setDefaultSensitive] = useState(false);
   const [defaultLanguage, setDefaultLanguage] = useState('');
@@ -30,6 +44,17 @@ export default function PreferencesPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  // Include current value in options if it's not in the standard list (avoids data loss).
+  const langOptions = useMemo(() => {
+    const inList = defaultLanguage === '' || LANGUAGES.includes(defaultLanguage);
+    return inList ? LANGUAGES : [...LANGUAGES, defaultLanguage].sort();
+  }, [defaultLanguage]);
+
+  const langNames = useMemo(
+    () => new Intl.DisplayNames([locale], { type: 'language' }),
+    [locale]
+  );
+
   const load = useCallback(() => {
     getUser()
       .then((u) => {
@@ -38,9 +63,9 @@ export default function PreferencesPage() {
         setDefaultLanguage(u.default_language || '');
         setDefaultQuotePolicy(u.default_quote_policy || 'public');
       })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
+      .catch((e) => setError(translateApiError(tErr, e)))
       .finally(() => setLoading(false));
-  }, []);
+  }, [tErr]);
 
   useEffect(() => {
     load();
@@ -60,18 +85,18 @@ export default function PreferencesPage() {
       });
       setSuccess(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save');
+      setError(translateApiError(tErr, e));
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) return <div className="text-muted-foreground">Loading...</div>;
+  if (loading) return <div className="text-muted-foreground">{tCommon('loading')}</div>;
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-gray-900">Preferences</h1>
-      <p className="mt-2 text-gray-500">Configure defaults for new posts.</p>
+      <h1 className="text-2xl font-semibold text-gray-900">{t('preferencesTitle')}</h1>
+      <p className="mt-2 text-gray-500">{t('preferencesDescription')}</p>
       {error && (
         <Alert variant="destructive" className="mt-4">
           <AlertDescription>{error}</AlertDescription>
@@ -79,13 +104,13 @@ export default function PreferencesPage() {
       )}
       {success && (
         <Alert variant="default" className="mt-4">
-          <AlertDescription>Preferences saved.</AlertDescription>
+          <AlertDescription>{t('preferencesSaved')}</AlertDescription>
         </Alert>
       )}
       <form onSubmit={save} className="mt-6 max-w-2xl space-y-4">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="default-privacy">Default post visibility</Label>
-          <p className="text-xs text-muted-foreground">Controls who can see new posts. Public appears on timelines; Unlisted is public but omitted from timelines; Followers only is private to your followers; Direct is only visible to mentioned accounts.</p>
+          <Label htmlFor="default-privacy">{t('defaultPostVisibility')}</Label>
+          <p className="text-xs text-muted-foreground">{t('defaultPostVisibilityHint')}</p>
           <select
             id="default-privacy"
             value={defaultPrivacy}
@@ -94,21 +119,27 @@ export default function PreferencesPage() {
           >
             {visibilityOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
-                {opt.label}
+                {t(opt.key)}
               </option>
             ))}
           </select>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="default-language">Default post language</Label>
-          <p className="text-xs text-muted-foreground">BCP-47 language tag for new posts (e.g. <code className="font-mono">en</code>, <code className="font-mono">fr</code>, <code className="font-mono">zh-Hant</code>). Used by clients and screen readers to present content in the correct language.</p>
-          <Input
+          <Label htmlFor="default-language">{t('postLanguage')}</Label>
+          <p className="text-xs text-muted-foreground">{t('defaultPostLanguageHint')}</p>
+          <select
             id="default-language"
-            type="text"
             value={defaultLanguage}
             onChange={(e) => setDefaultLanguage(e.target.value)}
-            placeholder="en"
-          />
+            className="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <option value="">{t('postLanguageNotSet')}</option>
+            {langOptions.map((code) => (
+              <option key={code} value={code}>
+                {langNames.of(code) ?? code}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">
@@ -119,13 +150,13 @@ export default function PreferencesPage() {
               onChange={(e) => setDefaultSensitive(e.target.checked)}
               className="h-4 w-4 rounded border-gray-300"
             />
-            <Label htmlFor="default-sensitive">Mark media as sensitive by default</Label>
+            <Label htmlFor="default-sensitive">{t('markSensitive')}</Label>
           </div>
-          <p className="text-xs text-muted-foreground">When enabled, images and videos in new posts will be hidden behind a content warning until the viewer clicks to reveal them.</p>
+          <p className="text-xs text-muted-foreground">{t('markSensitiveHint')}</p>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="default-quote-policy">Who can quote your posts</Label>
-          <p className="text-xs text-muted-foreground">Controls who is allowed to quote your posts on compatible servers. This applies as the default for new posts and can be overridden per post.</p>
+          <Label htmlFor="default-quote-policy">{t('quotePolicy')}</Label>
+          <p className="text-xs text-muted-foreground">{t('quotePolicyHint')}</p>
           <select
             id="default-quote-policy"
             value={defaultQuotePolicy}
@@ -134,13 +165,13 @@ export default function PreferencesPage() {
           >
             {quotePolicyOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
-                {opt.label}
+                {t(opt.key)}
               </option>
             ))}
           </select>
         </div>
         <Button type="submit" disabled={saving}>
-          {saving ? 'Saving…' : 'Save'}
+          {saving ? tCommon('saving') : tCommon('save')}
         </Button>
       </form>
     </div>

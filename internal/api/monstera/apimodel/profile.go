@@ -3,10 +3,15 @@ package apimodel
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 
 	"github.com/chairswithlegs/monstera/internal/api"
 	"github.com/microcosm-cc/bluemonday"
 )
+
+// bcp47Re matches valid BCP-47 language tags (e.g. "en", "en-US", "zh-Hans-CN").
+// Empty string is also accepted (clears the preference).
+var bcp47Re = regexp.MustCompile(`^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$`)
 
 type PatchProfileRequest struct {
 	DisplayName        *string         `json:"display_name"`
@@ -47,7 +52,7 @@ func (b *PatchPreferencesRequest) Validate() error {
 	if err := api.ValidateOneOf(b.DefaultQuotePolicy, []string{"public", "followers", "nobody"}, "default_quote_policy"); err != nil {
 		return fmt.Errorf("default_quote_policy: %w", err)
 	}
-	if len(b.DefaultLanguage) > 35 {
+	if b.DefaultLanguage != "" && !bcp47Re.MatchString(b.DefaultLanguage) {
 		return fmt.Errorf("default_language: %w", api.NewInvalidValueError("default_language"))
 	}
 	return nil

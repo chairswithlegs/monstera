@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -13,10 +14,13 @@ interface CredentialsFormProps {
 export function CredentialsForm({
   onSubmit,
   loading,
-  submitLabel = 'Sign in',
+  submitLabel,
 }: CredentialsFormProps) {
+  const t = useTranslations('auth');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  const label = submitLabel ?? t('signIn');
 
   return (
     <form
@@ -27,7 +31,7 @@ export function CredentialsForm({
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email">{t('email')}</Label>
         <Input
           id="email"
           type="text"
@@ -39,7 +43,7 @@ export function CredentialsForm({
         />
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="password">Password</Label>
+        <Label htmlFor="password">{t('password')}</Label>
         <Input
           id="password"
           type="password"
@@ -51,7 +55,7 @@ export function CredentialsForm({
         />
       </div>
       <Button type="submit" disabled={loading} className="mt-2 w-full">
-        {loading ? `${submitLabel}...` : submitLabel}
+        {loading ? `${label}...` : label}
       </Button>
     </form>
   );

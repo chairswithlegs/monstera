@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -25,6 +26,7 @@ import { getNodeInfo } from '@/lib/api/nodeinfo';
 
 export default function RegisterPage() {
   const { loading, error, pending, success, submit } = useRegister();
+  const t = useTranslations('auth');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -53,14 +55,14 @@ export default function RegisterPage() {
 
   if (pending) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="flex flex-1 items-center justify-center bg-background">
         <Card className="w-full max-w-sm">
           <CardHeader>
-            <CardTitle>Registration submitted</CardTitle>
+            <CardTitle>{t('registrationSubmittedTitle')}</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              Your registration is pending approval. You will be notified once your account is approved.
+              {t('registrationSubmittedBody')}
             </p>
           </CardContent>
         </Card>
@@ -70,16 +72,16 @@ export default function RegisterPage() {
 
   if (success) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="flex flex-1 items-center justify-center bg-background">
         <Card className="w-full max-w-sm">
           <CardHeader>
-            <CardTitle>Registration successful!</CardTitle>
+            <CardTitle>{t('registrationSuccessTitle')}</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              Your account has been created.{' '}
+              {t('registrationSuccessBody')}{' '}
               <Button variant="link" size="sm" className="h-auto p-0" asChild>
-                <Link href="/login">Sign in</Link>
+                <Link href="/login">{t('signIn')}</Link>
               </Button>
             </p>
           </CardContent>
@@ -89,13 +91,13 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
+    <div className="flex flex-1 items-center justify-center bg-background">
       <Dialog open={serverRules.length > 0 && !rulesAccepted}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Server rules</DialogTitle>
+            <DialogTitle>{t('serverRulesTitle')}</DialogTitle>
             <DialogDescription>
-              Please read and agree to these rules before registering.
+              {t('serverRulesDescription')}
             </DialogDescription>
           </DialogHeader>
           <ol className="list-decimal pl-5 space-y-2 text-sm">
@@ -105,7 +107,7 @@ export default function RegisterPage() {
           </ol>
           <DialogFooter>
             <Button onClick={() => setRulesAccepted(true)}>
-              I agree to these rules
+              {t('agreeToRules')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -113,12 +115,12 @@ export default function RegisterPage() {
 
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Create an account</CardTitle>
+          <CardTitle>{t('registerTitle')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t('email')}</Label>
               <Input
                 id="email"
                 type="email"
@@ -130,7 +132,7 @@ export default function RegisterPage() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="username">{t('username')}</Label>
               <Input
                 id="username"
                 type="text"
@@ -142,7 +144,7 @@ export default function RegisterPage() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t('password')}</Label>
               <Input
                 id="password"
                 type="password"
@@ -154,7 +156,7 @@ export default function RegisterPage() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="reason">Why do you want to join? (optional)</Label>
+              <Label htmlFor="reason">{t('joinReason')}</Label>
               <textarea
                 id="reason"
                 disabled={loading}
@@ -166,7 +168,7 @@ export default function RegisterPage() {
             </div>
             {registrationMode === 'invite' && (
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="invite-code">Invite code</Label>
+                <Label htmlFor="invite-code">{t('inviteCode')}</Label>
                 <Input
                   id="invite-code"
                   type="text"
@@ -183,19 +185,19 @@ export default function RegisterPage() {
               </Alert>
             )}
             <Button type="submit" disabled={loading} className="mt-2 w-full">
-              {loading ? 'Registering…' : 'Register'}
+              {loading ? t('registering') : t('register')}
             </Button>
           </form>
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            Already have an account?{' '}
+            {t('alreadyHaveAccount')}{' '}
             <Button variant="link" size="sm" className="h-auto p-0" asChild>
-              <Link href="/login">Sign in</Link>
+              <Link href="/login">{t('signIn')}</Link>
             </Button>
           </p>
           <p className="mt-2 text-center text-sm text-muted-foreground">
             <Button variant="link" size="sm" className="h-auto p-0" asChild>
-              <Link href="/">Back to home</Link>
+              <Link href="/">{t('backToHome')}</Link>
             </Button>
           </p>
         </CardContent>

@@ -1,5 +1,6 @@
 import { authFetch } from "./client";
 import { getConfig } from "@/lib/config";
+import { throwApiError } from "@/lib/api/errors";
 
 
 export interface ProfileField {
@@ -39,7 +40,7 @@ export async function getUser() {
   const config = await getConfig();
   const response = await authFetch(`${config.server_url}/monstera/api/v1/user`);
   if (!response.ok) {
-    throw new Error('Failed to verify credentials');
+    await throwApiError(response);
   }
   return response.json() as Promise<User>;
 }
@@ -59,7 +60,7 @@ export async function patchProfile(data: {
     body: JSON.stringify(data),
   });
   if (!response.ok) {
-    throw new Error('Failed to update profile');
+    await throwApiError(response);
   }
   return response.json() as Promise<User>;
 }
@@ -77,7 +78,7 @@ export async function patchPreferences(data: {
     body: JSON.stringify(data),
   });
   if (!response.ok) {
-    throw new Error('Failed to update preferences');
+    await throwApiError(response);
   }
   return response.json() as Promise<User>;
 }
@@ -90,7 +91,7 @@ export async function patchEmail(data: { email: string }): Promise<User> {
     body: JSON.stringify(data),
   });
   if (!response.ok) {
-    throw new Error('Failed to update email');
+    await throwApiError(response);
   }
   return response.json() as Promise<User>;
 }
@@ -106,7 +107,6 @@ export async function patchPassword(data: {
     body: JSON.stringify(data),
   });
   if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(response.status === 403 ? 'Current password is incorrect' : (text || 'Failed to change password'));
+    await throwApiError(response);
   }
 }

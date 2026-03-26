@@ -1,5 +1,6 @@
 import { getAccessToken, refreshAccessToken } from '@/lib/auth/tokens';
 import { logout } from '@/lib/auth/logout';
+import { ApiResponseError } from '@/lib/api/errors';
 
 let isRefreshing = false;
 let refreshQueue: Array<(token: string) => void> = [];
@@ -49,7 +50,7 @@ export async function authFetch(
       });
     } catch {
       logout();
-      throw new Error('Session expired');
+      throw new ApiResponseError({ error: 'Session expired', code: 'session_expired' });
     }
   }
 

@@ -2,14 +2,13 @@
 
 import { getFilters, createFilter, deleteFilter, type ServerFilter } from '@/lib/api/admin';
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card';
 import {
   Table,
@@ -20,8 +19,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/empty-state';
+import { translateApiError } from '@/lib/i18n/errors';
 
 export default function ModeratorContentPage() {
+  const t = useTranslations('moderator');
+  const tCommon = useTranslations('common');
+  const tErr = useTranslations('errors');
+  const tEmpty = useTranslations('empty');
   const [filters, setFilters] = useState<ServerFilter[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [newPhrase, setNewPhrase] = useState('');
@@ -30,8 +34,8 @@ export default function ModeratorContentPage() {
   const load = useCallback(() => {
     getFilters()
       .then((r) => setFilters(r.filters))
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
-  }, []);
+      .catch((e) => setError(translateApiError(tErr, e)));
+  }, [tErr]);
 
   useEffect(() => {
     load();
@@ -46,7 +50,7 @@ export default function ModeratorContentPage() {
       setNewPhrase('');
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to add filter');
+      setError(translateApiError(tErr, e));
     } finally {
       setSubmitting(false);
     }
@@ -57,7 +61,7 @@ export default function ModeratorContentPage() {
       await deleteFilter(id);
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to delete');
+      setError(translateApiError(tErr, e));
     }
   };
 
@@ -71,35 +75,35 @@ export default function ModeratorContentPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-foreground">Content</h1>
-      <p className="mt-1 text-sm text-muted-foreground">Server-side keyword filters.</p>
+      <h1 className="text-2xl font-semibold text-foreground">{t('contentTitle')}</h1>
+      <p className="mt-1 text-sm text-muted-foreground">{t('contentDescription')}</p>
 
       <section className="mt-8">
-        <h2 className="text-lg font-medium text-foreground">Server filters</h2>
+        <h2 className="text-lg font-medium text-foreground">{t('serverFilters')}</h2>
         <form onSubmit={addFilter} className="mt-4 flex gap-2">
           <Input
             type="text"
             value={newPhrase}
             onChange={(e) => setNewPhrase(e.target.value)}
-            placeholder="Keyword or phrase"
+            placeholder={t('filterKeyword')}
             className="min-w-[200px]"
           />
           <Button type="submit" disabled={submitting}>
-            Add filter
+            {t('addFilter')}
           </Button>
         </form>
         <Card className="mt-4">
           <CardContent>
             {filters.length === 0 ? (
-              <EmptyState message="No filters." />
+              <EmptyState message={tEmpty('noFilters')} />
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Phrase</TableHead>
-                    <TableHead>Scope</TableHead>
-                    <TableHead>Action</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t('filterColPhrase')}</TableHead>
+                    <TableHead>{t('filterColScope')}</TableHead>
+                    <TableHead>{t('filterColAction')}</TableHead>
+                    <TableHead className="text-right">{t('filterColActions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -110,7 +114,7 @@ export default function ModeratorContentPage() {
                       <TableCell className="text-muted-foreground">{f.action}</TableCell>
                       <TableCell className="text-right">
                         <Button type="button" variant="ghost" size="sm" onClick={() => removeFilter(f.id)} className="text-destructive hover:text-destructive">
-                          Delete
+                          {tCommon('delete')}
                         </Button>
                       </TableCell>
                     </TableRow>

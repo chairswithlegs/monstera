@@ -11,6 +11,7 @@ import type { User } from '@/lib/api/user';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
@@ -34,6 +35,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { translateApiError } from '@/lib/i18n/errors';
 
 const roleOptions = ['user', 'moderator', 'admin'] as const;
 
@@ -41,6 +43,9 @@ type Props = { id: string };
 
 export default function AdminUserDetailView({ id }: Props) {
   const router = useRouter();
+  const t = useTranslations('admin');
+  const tCommon = useTranslations('common');
+  const tErr = useTranslations('errors');
   const [user, setUser] = useState<AdminUser | null>(null);
   const [currentActor, setCurrentActor] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,8 +57,8 @@ export default function AdminUserDetailView({ id }: Props) {
     if (!id) return;
     getUser(id)
       .then(setUser)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
-  }, [id]);
+      .catch((e) => setError(translateApiError(tErr, e)));
+  }, [id, tErr]);
 
   useEffect(() => {
     load();
@@ -68,7 +73,7 @@ export default function AdminUserDetailView({ id }: Props) {
       await fn();
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Action failed');
+      setError(translateApiError(tErr, e));
     } finally {
       setActing(false);
     }
@@ -87,7 +92,7 @@ export default function AdminUserDetailView({ id }: Props) {
       await deleteUser(user.account_id);
       router.push('/admin/users');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Action failed');
+      setError(translateApiError(tErr, e));
       setActing(false);
     }
   };
@@ -99,7 +104,7 @@ export default function AdminUserDetailView({ id }: Props) {
       </Alert>
     );
   }
-  if (!user) return <p className="text-muted-foreground">Loading…</p>;
+  if (!user) return <p className="text-muted-foreground">{tCommon('loading')}</p>;
 
   const isSelf = currentActor !== null && user.account_id === currentActor.account_id;
 
@@ -107,22 +112,22 @@ export default function AdminUserDetailView({ id }: Props) {
     <div>
       <p className="mb-4">
         <Button variant="link" size="sm" className="h-auto p-0" asChild>
-          <Link href="/admin/users">← Back to users</Link>
+          <Link href="/admin/users">{t('backToUsers')}</Link>
         </Button>
       </p>
       <h1 className="text-2xl font-semibold text-foreground">@{user.username}</h1>
       <p className="mt-1 text-muted-foreground">{user.email}</p>
-      <p className="mt-1 text-sm text-muted-foreground">Account ID: {user.account_id}</p>
-      <p className="mt-1 text-sm text-muted-foreground">Role: {user.role}</p>
-      {user.suspended && <p className="mt-2 text-destructive">Suspended</p>}
-      {user.silenced && !user.suspended && <p className="mt-2 text-amber-600 dark:text-amber-500">Silenced</p>}
+      <p className="mt-1 text-sm text-muted-foreground">{t('accountId', { id: user.account_id })}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{t('role', { role: user.role })}</p>
+      {user.suspended && <p className="mt-2 text-destructive">{t('badgeSuspended')}</p>}
+      {user.silenced && !user.suspended && <p className="mt-2 text-amber-600 dark:text-amber-500">{t('badgeSilenced')}</p>}
       {error && (
         <Alert variant="destructive" className="mt-2">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
       {isSelf && (
-        <p className="mt-3 text-sm text-muted-foreground">Role and delete actions are disabled for your own account.</p>
+        <p className="mt-3 text-sm text-muted-foreground">{t('selfActionDisabled')}</p>
       )}
       <div className="mt-6 flex flex-wrap gap-2">
         <Dialog
@@ -134,16 +139,16 @@ export default function AdminUserDetailView({ id }: Props) {
         >
           <DialogTrigger asChild>
             <Button type="button" variant="secondary" disabled={acting || isSelf}>
-              Set role
+              {t('setRole')}
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Set role</DialogTitle>
-              <DialogDescription>Choose a new role for @{user.username}.</DialogDescription>
+              <DialogTitle>{t('setRoleTitle')}</DialogTitle>
+              <DialogDescription>{t('setRoleDescription', { username: user.username })}</DialogDescription>
             </DialogHeader>
             <div className="grid gap-2 py-4">
-              <Label htmlFor="new-role">New role</Label>
+              <Label htmlFor="new-role">{t('newRole')}</Label>
               <select
                 id="new-role"
                 value={newRole}
@@ -157,10 +162,10 @@ export default function AdminUserDetailView({ id }: Props) {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setRoleDialogOpen(false)}>
-                Cancel
+                {tCommon('cancel')}
               </Button>
               <Button onClick={handleSetRole} disabled={acting}>
-                {acting ? 'Saving…' : 'Save'}
+                {acting ? tCommon('saving') : tCommon('save')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -168,20 +173,20 @@ export default function AdminUserDetailView({ id }: Props) {
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button type="button" variant="destructive" disabled={acting || isSelf} className="bg-red-800 hover:bg-red-900">
-              Delete account
+              {t('deleteAccount')}
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete account?</AlertDialogTitle>
+              <AlertDialogTitle>{t('deleteAccountTitle')}</AlertDialogTitle>
               <AlertDialogDescription>
-                This action cannot be undone. This will permanently delete the account and all associated data.
+                {t('deleteAccountDescription')}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
               <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                Delete
+                {tCommon('delete')}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

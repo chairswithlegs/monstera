@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { getPublicAccount } from './accounts';
+import { ApiResponseError } from './errors';
 
 vi.mock('@/lib/config', () => ({
   getConfig: vi.fn().mockResolvedValue({ server_url: 'https://api.example.com' }),
@@ -38,22 +39,28 @@ describe('getPublicAccount', () => {
     );
   });
 
-  it('throws "Profile not found" on 404', async () => {
+  it('throws ApiResponseError with code on 404', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: false,
       status: 404,
+      json: () => Promise.resolve({ error: 'Record not found', code: 'not_found' }),
     }));
 
-    await expect(getPublicAccount('nobody')).rejects.toThrow('Profile not found');
+    const err = await getPublicAccount('nobody').catch((e) => e);
+    expect(err).toBeInstanceOf(ApiResponseError);
+    expect(err.code).toBe('not_found');
   });
 
-  it('throws "Failed to load profile" on other non-ok response', async () => {
+  it('throws ApiResponseError on other non-ok response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: false,
       status: 500,
+      json: () => Promise.resolve({ error: 'Internal server error', code: 'internal_error' }),
     }));
 
-    await expect(getPublicAccount('alice')).rejects.toThrow('Failed to load profile');
+    const err = await getPublicAccount('alice').catch((e) => e);
+    expect(err).toBeInstanceOf(ApiResponseError);
+    expect(err.code).toBe('internal_error');
   });
 
   it('encodes special characters in the username', async () => {

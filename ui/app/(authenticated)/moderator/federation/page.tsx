@@ -4,6 +4,7 @@ import { getInstances, getDomainBlocks, createDomainBlock, deleteDomainBlock, ty
 import { useModeratorUser } from '@/contexts/moderator-user';
 import { isAdmin } from '@/lib/api/user';
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,9 +22,14 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/empty-state';
+import { translateApiError } from '@/lib/i18n/errors';
 
 export default function ModeratorFederationPage() {
   const currentUser = useModeratorUser();
+  const t = useTranslations('moderator');
+  const tCommon = useTranslations('common');
+  const tErr = useTranslations('errors');
+  const tEmpty = useTranslations('empty');
   const [instances, setInstances] = useState<KnownInstance[]>([]);
   const [blocks, setBlocks] = useState<DomainBlock[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -34,11 +40,11 @@ export default function ModeratorFederationPage() {
   const load = useCallback(() => {
     getInstances({ limit: 50 })
       .then((r) => setInstances(r.instances))
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load instances'));
+      .catch((e) => setError(translateApiError(tErr, e)));
     getDomainBlocks()
       .then((r) => setBlocks(r.domain_blocks))
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load blocks'));
-  }, []);
+      .catch((e) => setError(translateApiError(tErr, e)));
+  }, [tErr]);
 
   useEffect(() => {
     load();
@@ -54,7 +60,7 @@ export default function ModeratorFederationPage() {
       setNewReason('');
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to add block');
+      setError(translateApiError(tErr, e));
     } finally {
       setSubmitting(false);
     }
@@ -65,7 +71,7 @@ export default function ModeratorFederationPage() {
       await deleteDomainBlock(domain);
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to remove block');
+      setError(translateApiError(tErr, e));
     }
   };
 
@@ -81,20 +87,20 @@ export default function ModeratorFederationPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-foreground">Federation</h1>
+      <h1 className="text-2xl font-semibold text-foreground">{t('federationTitle')}</h1>
 
       <section className="mt-8">
-        <h2 className="text-lg font-medium text-foreground">Known instances</h2>
+        <h2 className="text-lg font-medium text-foreground">{t('knownInstances')}</h2>
         <Card className="mt-4">
           <CardContent>
             {instances.length === 0 ? (
-              <EmptyState message="None yet." />
+              <EmptyState message={tEmpty('noInstances')} />
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Domain</TableHead>
-                    <TableHead>Accounts</TableHead>
+                    <TableHead>{t('domainColDomain')}</TableHead>
+                    <TableHead>{t('domainColAccounts')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -112,11 +118,11 @@ export default function ModeratorFederationPage() {
       </section>
 
       <section className="mt-8">
-        <h2 className="text-lg font-medium text-foreground">Domain blocks</h2>
+        <h2 className="text-lg font-medium text-foreground">{t('domainBlocks')}</h2>
         {showAdminActions && (
           <form onSubmit={addBlock} className="mt-4 flex flex-wrap items-end gap-2">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="domain-block-domain">Domain</Label>
+              <Label htmlFor="domain-block-domain">{t('domainBlockDomain')}</Label>
               <Input
                 id="domain-block-domain"
                 type="text"
@@ -127,32 +133,32 @@ export default function ModeratorFederationPage() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="domain-block-reason">Reason (optional)</Label>
+              <Label htmlFor="domain-block-reason">{t('domainBlockReason')}</Label>
               <Input
                 id="domain-block-reason"
                 type="text"
                 value={newReason}
                 onChange={(e) => setNewReason(e.target.value)}
-                placeholder="Reason (optional)"
+                placeholder={t('domainBlockReason')}
                 className="min-w-[200px]"
               />
             </div>
             <Button type="submit" disabled={submitting}>
-              Add block
+              {t('addBlock')}
             </Button>
           </form>
         )}
         <Card className="mt-4">
           <CardContent>
             {blocks.length === 0 ? (
-              <EmptyState message="No domain blocks." />
+              <EmptyState message={tEmpty('noDomainBlocks')} />
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Domain</TableHead>
-                    <TableHead>Severity</TableHead>
-                    {showAdminActions && <TableHead className="text-right">Actions</TableHead>}
+                    <TableHead>{t('domainColDomain')}</TableHead>
+                    <TableHead>{t('domainColSeverity')}</TableHead>
+                    {showAdminActions && <TableHead className="text-right">{t('domainColActions')}</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -163,7 +169,7 @@ export default function ModeratorFederationPage() {
                       {showAdminActions && (
                         <TableCell className="text-right">
                           <Button type="button" variant="ghost" size="sm" onClick={() => removeBlock(b.domain)} className="text-destructive hover:text-destructive">
-                            Remove
+                            {tCommon('remove')}
                           </Button>
                         </TableCell>
                       )}

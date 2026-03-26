@@ -4,6 +4,7 @@ import { getReports, type Report } from '@/lib/api/admin';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import ReportDetailView from './ReportDetailView';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +23,7 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EmptyState } from '@/components/empty-state';
+import { translateApiError } from '@/lib/i18n/errors';
 
 export default function ModeratorReportsPage() {
   const searchParams = useSearchParams();
@@ -37,6 +39,10 @@ export default function ModeratorReportsPage() {
 type ReportState = 'open' | 'resolved' | 'all';
 
 function ReportsList() {
+  const t = useTranslations('moderator');
+  const tCommon = useTranslations('common');
+  const tErr = useTranslations('errors');
+  const tEmpty = useTranslations('empty');
   const [reports, setReports] = useState<Report[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<ReportState>('open');
@@ -46,8 +52,8 @@ function ReportsList() {
   useEffect(() => {
     getReports({ state: apiState, limit: 50 })
       .then((r) => setReports(r.reports))
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
-  }, [apiState]);
+      .catch((e) => setError(translateApiError(tErr, e)));
+  }, [apiState, tErr]);
 
   if (error) {
     return (
@@ -59,27 +65,27 @@ function ReportsList() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-foreground">Reports</h1>
+      <h1 className="text-2xl font-semibold text-foreground">{t('reportsTitle')}</h1>
       <Tabs value={state} onValueChange={(v) => setState(v as ReportState)} className="mt-4">
         <TabsList>
-          <TabsTrigger value="open">Open</TabsTrigger>
-          <TabsTrigger value="resolved">Resolved</TabsTrigger>
-          <TabsTrigger value="all">All</TabsTrigger>
+          <TabsTrigger value="open">{t('reportsTabOpen')}</TabsTrigger>
+          <TabsTrigger value="resolved">{t('reportsTabResolved')}</TabsTrigger>
+          <TabsTrigger value="all">{t('reportsTabAll')}</TabsTrigger>
         </TabsList>
       </Tabs>
       <Card className="mt-6">
         <CardContent>
               {reports.length === 0 ? (
-                <EmptyState message="No reports." />
+                <EmptyState message={tEmpty('noReports')} />
               ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>State</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t('reportsColId')}</TableHead>
+                  <TableHead>{t('reportsColCategory')}</TableHead>
+                  <TableHead>{t('reportsColState')}</TableHead>
+                  <TableHead>{t('reportsColCreated')}</TableHead>
+                  <TableHead className="text-right">{t('reportsColActions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -96,7 +102,7 @@ function ReportsList() {
                     <TableCell className="text-right">
                       <Button variant="link" size="sm" asChild>
                         <Link href={`/moderator/reports?id=${encodeURIComponent(r.id)}`}>
-                          View
+                          {tCommon('view')}
                         </Link>
                       </Button>
                     </TableCell>

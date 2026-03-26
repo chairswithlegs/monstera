@@ -1,5 +1,6 @@
 import { authFetch } from './client';
 import { getConfig } from '@/lib/config';
+import { throwApiError } from '@/lib/api/errors';
 
 const adminPrefix = () => getConfig().then((c) => `${c.server_url}/monstera/api/v1/admin`);
 const moderatorPrefix = () => getConfig().then((c) => `${c.server_url}/monstera/api/v1/moderator`);
@@ -13,7 +14,7 @@ export interface DashboardResponse {
 export async function getDashboard(): Promise<DashboardResponse> {
   const base = await moderatorPrefix();
   const res = await authFetch(`${base}/dashboard`);
-  if (!res.ok) throw new Error('Failed to fetch dashboard');
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -39,39 +40,39 @@ export async function getUsers(params?: { limit?: number; offset?: number }): Pr
   const q = search.toString();
   const url = q ? `${base}/users?${q}` : `${base}/users`;
   const res = await authFetch(url);
-  if (!res.ok) throw new Error('Failed to fetch users');
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
 export async function getUser(id: string): Promise<AdminUser> {
   const base = await moderatorPrefix();
   const res = await authFetch(`${base}/users/${encodeURIComponent(id)}`);
-  if (!res.ok) throw new Error('Failed to fetch user');
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
 export async function suspendUser(id: string): Promise<void> {
   const base = await moderatorPrefix();
   const res = await authFetch(`${base}/users/${encodeURIComponent(id)}/suspend`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to suspend user');
+  if (!res.ok) await throwApiError(res);
 }
 
 export async function unsuspendUser(id: string): Promise<void> {
   const base = await moderatorPrefix();
   const res = await authFetch(`${base}/users/${encodeURIComponent(id)}/unsuspend`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to unsuspend user');
+  if (!res.ok) await throwApiError(res);
 }
 
 export async function silenceUser(id: string): Promise<void> {
   const base = await moderatorPrefix();
   const res = await authFetch(`${base}/users/${encodeURIComponent(id)}/silence`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to silence user');
+  if (!res.ok) await throwApiError(res);
 }
 
 export async function unsilenceUser(id: string): Promise<void> {
   const base = await moderatorPrefix();
   const res = await authFetch(`${base}/users/${encodeURIComponent(id)}/unsilence`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to unsilence user');
+  if (!res.ok) await throwApiError(res);
 }
 
 export async function setUserRole(id: string, role: string): Promise<void> {
@@ -80,13 +81,13 @@ export async function setUserRole(id: string, role: string): Promise<void> {
     method: 'PUT',
     body: JSON.stringify({ role }),
   });
-  if (!res.ok) throw new Error('Failed to set role');
+  if (!res.ok) await throwApiError(res);
 }
 
 export async function deleteUser(id: string): Promise<void> {
   const base = await adminPrefix();
   const res = await authFetch(`${base}/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error('Failed to delete user');
+  if (!res.ok) await throwApiError(res);
 }
 
 export interface PendingRegistration {
@@ -104,14 +105,14 @@ export interface RegistrationsResponse {
 export async function getRegistrations(): Promise<RegistrationsResponse> {
   const base = await moderatorPrefix();
   const res = await authFetch(`${base}/registrations`);
-  if (!res.ok) throw new Error('Failed to fetch registrations');
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
 export async function approveRegistration(id: string): Promise<void> {
   const base = await moderatorPrefix();
   const res = await authFetch(`${base}/registrations/${encodeURIComponent(id)}/approve`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to approve');
+  if (!res.ok) await throwApiError(res);
 }
 
 export async function rejectRegistration(id: string, reason: string): Promise<void> {
@@ -120,7 +121,7 @@ export async function rejectRegistration(id: string, reason: string): Promise<vo
     method: 'POST',
     body: JSON.stringify({ reason }),
   });
-  if (!res.ok) throw new Error('Failed to reject');
+  if (!res.ok) await throwApiError(res);
 }
 
 export interface Invite {
@@ -139,7 +140,7 @@ export interface InvitesResponse {
 export async function getInvites(): Promise<InvitesResponse> {
   const base = await moderatorPrefix();
   const res = await authFetch(`${base}/invites`);
-  if (!res.ok) throw new Error('Failed to fetch invites');
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -149,14 +150,14 @@ export async function createInvite(body?: { max_uses?: number; expires_at?: stri
     method: 'POST',
     body: JSON.stringify(body ?? {}),
   });
-  if (!res.ok) throw new Error('Failed to create invite');
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
 export async function deleteInvite(id: string): Promise<void> {
   const base = await moderatorPrefix();
   const res = await authFetch(`${base}/invites/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error('Failed to delete invite');
+  if (!res.ok) await throwApiError(res);
 }
 
 export interface Report {
@@ -186,14 +187,14 @@ export async function getReports(params?: { state?: string; limit?: number; offs
   const q = search.toString();
   const url = q ? `${base}/reports?${q}` : `${base}/reports`;
   const res = await authFetch(url);
-  if (!res.ok) throw new Error('Failed to fetch reports');
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
 export async function getReport(id: string): Promise<Report> {
   const base = await moderatorPrefix();
   const res = await authFetch(`${base}/reports/${encodeURIComponent(id)}`);
-  if (!res.ok) throw new Error('Failed to fetch report');
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -203,7 +204,7 @@ export async function assignReport(id: string, assigneeId: string | null): Promi
     method: 'POST',
     body: JSON.stringify({ assignee_id: assigneeId }),
   });
-  if (!res.ok) throw new Error('Failed to assign report');
+  if (!res.ok) await throwApiError(res);
 }
 
 export async function resolveReport(id: string, resolution: string): Promise<void> {
@@ -212,7 +213,7 @@ export async function resolveReport(id: string, resolution: string): Promise<voi
     method: 'POST',
     body: JSON.stringify({ resolution }),
   });
-  if (!res.ok) throw new Error('Failed to resolve report');
+  if (!res.ok) await throwApiError(res);
 }
 
 export interface KnownInstance {
@@ -241,14 +242,14 @@ export async function getInstances(params?: { limit?: number; offset?: number })
   const q = search.toString();
   const url = q ? `${base}/federation/instances?${q}` : `${base}/federation/instances`;
   const res = await authFetch(url);
-  if (!res.ok) throw new Error('Failed to fetch instances');
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
 export async function getDomainBlocks(): Promise<{ domain_blocks: DomainBlock[] }> {
   const base = await moderatorPrefix();
   const res = await authFetch(`${base}/federation/domain-blocks`);
-  if (!res.ok) throw new Error('Failed to fetch domain blocks');
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -258,13 +259,13 @@ export async function createDomainBlock(body: { domain: string; severity?: strin
     method: 'POST',
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error('Failed to create domain block');
+  if (!res.ok) await throwApiError(res);
 }
 
 export async function deleteDomainBlock(domain: string): Promise<void> {
   const base = await adminPrefix();
   const res = await authFetch(`${base}/federation/domain-blocks/${encodeURIComponent(domain)}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error('Failed to delete domain block');
+  if (!res.ok) await throwApiError(res);
 }
 
 export interface ServerFilter {
@@ -280,7 +281,7 @@ export interface ServerFilter {
 export async function getFilters(): Promise<{ filters: ServerFilter[] }> {
   const base = await moderatorPrefix();
   const res = await authFetch(`${base}/content/filters`);
-  if (!res.ok) throw new Error('Failed to fetch filters');
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -290,7 +291,7 @@ export async function createFilter(body: { phrase: string; scope?: string; actio
     method: 'POST',
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error('Failed to create filter');
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -300,14 +301,14 @@ export async function updateFilter(id: string, body: { phrase: string; scope?: s
     method: 'PUT',
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error('Failed to update filter');
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
 export async function deleteFilter(id: string): Promise<void> {
   const base = await moderatorPrefix();
   const res = await authFetch(`${base}/content/filters/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error('Failed to delete filter');
+  if (!res.ok) await throwApiError(res);
 }
 
 export interface AdminSettings {
@@ -322,7 +323,7 @@ export interface AdminSettings {
 export async function getSettings(): Promise<AdminSettings> {
   const base = await adminPrefix();
   const res = await authFetch(`${base}/settings`);
-  if (!res.ok) throw new Error('Failed to fetch settings');
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -332,5 +333,5 @@ export async function putSettings(settings: AdminSettings): Promise<void> {
     method: 'PUT',
     body: JSON.stringify(settings),
   });
-  if (!res.ok) throw new Error('Failed to update settings');
+  if (!res.ok) await throwApiError(res);
 }

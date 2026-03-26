@@ -1,10 +1,13 @@
 'use client';
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { generateCodeVerifier, generateCodeChallenge } from '@/lib/auth/pkce';
 import { storeTokens } from '@/lib/auth/tokens';
 import { getConfig } from '@/lib/config';
 import { MONSTERA_UI_OAUTH_APPLICATION_ID, MONSTERA_UI_OAUTH_SCOPES } from '@/lib/auth/oauth';
+import { ApiResponseError } from '@/lib/api/errors';
+import { translateApiError } from '@/lib/i18n/errors';
 
 const uiLoginRedirectPath = '/home';
 
@@ -22,6 +25,7 @@ interface LoginState {
 export function useLogin(): LoginState {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const t = useTranslations('errors');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,20 +54,18 @@ export function useLogin(): LoginState {
       });
 
       if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(
-          (body as { error?: string }).error ?? 'Invalid credentials'
-        );
+        const body = await response.json().catch(() => ({})) as { error?: string; code?: string; params?: Record<string, string> };
+        throw new ApiResponseError(body.code ? body : { ...body, code: 'invalid_credentials' });
       }
 
       const data = (await response.json()) as { redirect_url: string };
       const url = new URL(data.redirect_url);
       const code = url.searchParams.get('code');
-      if (!code) throw new Error('Missing code in redirect URL');
+      if (!code) throw new ApiResponseError({ code: 'missing_code' });
 
       await exchangeCodeForTokens(code);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(translateApiError(t, err));
     } finally {
       setLoading(false);
     }
@@ -72,7 +74,7 @@ export function useLogin(): LoginState {
   async function exchangeCodeForTokens(code: string) {
     const config = await getConfig();
     const verifier = sessionStorage.getItem('pkce_verifier');
-    if (!verifier) throw new Error('Missing PKCE verifier');
+    if (!verifier) throw new ApiResponseError({ code: 'missing_pkce_verifier' });
     sessionStorage.removeItem('pkce_verifier');
 
     const response = await fetch(`${config.server_url}/oauth/token`, {
@@ -87,7 +89,7 @@ export function useLogin(): LoginState {
       }),
     });
 
-    if (!response.ok) throw new Error('Token exchange failed');
+    if (!response.ok) throw new ApiResponseError({ code: 'token_exchange_failed' });
     const { access_token, refresh_token } = await response.json();
     storeTokens(access_token, refresh_token);
     const redirectTo = searchParams.get('redirect');
