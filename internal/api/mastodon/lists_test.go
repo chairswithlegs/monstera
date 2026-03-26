@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/chairswithlegs/monstera/internal/api/middleware"
@@ -598,6 +600,26 @@ func TestListsHandler_POSTListAccounts(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, ids, member.ID)
 	})
+
+	t.Run("form-encoded account_ids[] returns 200", func(t *testing.T) {
+		l, err := listSvc.CreateList(ctx, acc.ID, "FormList", domain.ListRepliesPolicyList, false)
+		require.NoError(t, err)
+		member, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "formmember"})
+		require.NoError(t, err)
+
+		form := url.Values{"account_ids[]": []string{member.ID}}
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/lists/"+l.ID+"/accounts", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", l.ID)
+		rec := httptest.NewRecorder()
+		handler.POSTListAccounts(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		ids, err := st.ListListAccountIDs(ctx, l.ID)
+		require.NoError(t, err)
+		assert.Contains(t, ids, member.ID)
+	})
 }
 
 func TestListsHandler_DELETEListAccounts(t *testing.T) {
@@ -691,6 +713,28 @@ func TestListsHandler_DELETEListAccounts(t *testing.T) {
 		body := bytes.NewBufferString(`{"account_ids":["` + member.ID + `"]}`)
 		req := httptest.NewRequest(http.MethodDelete, "/api/v1/lists/"+l.ID+"/accounts", body)
 		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", l.ID)
+		rec := httptest.NewRecorder()
+		handler.DELETEListAccounts(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		ids, err := st.ListListAccountIDs(ctx, l.ID)
+		require.NoError(t, err)
+		assert.NotContains(t, ids, member.ID)
+	})
+
+	t.Run("form-encoded account_ids[] returns 200", func(t *testing.T) {
+		l, err := listSvc.CreateList(ctx, acc.ID, "FormList", domain.ListRepliesPolicyList, false)
+		require.NoError(t, err)
+		member, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "formtomember"})
+		require.NoError(t, err)
+		err = listSvc.AddAccountsToList(ctx, acc.ID, l.ID, []string{member.ID})
+		require.NoError(t, err)
+
+		form := url.Values{"account_ids[]": []string{member.ID}}
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/lists/"+l.ID+"/accounts", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
 		req = testutil.AddChiURLParam(req, "id", l.ID)
 		rec := httptest.NewRecorder()
