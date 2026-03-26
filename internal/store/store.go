@@ -351,7 +351,6 @@ type PollStore interface {
 type CardStore interface {
 	UpsertStatusCard(ctx context.Context, in UpsertStatusCardInput) error
 	GetStatusCard(ctx context.Context, statusID string) (*domain.Card, error)
-	ListStatusIDsNeedingCards(ctx context.Context, since time.Time, limit int) ([]string, error)
 }
 
 // OutboxStore handles transactional outbox event persistence.

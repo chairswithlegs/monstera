@@ -291,11 +291,6 @@ func registerSchedulerJobs(s *svcs, i *infra) scheduler.Scheduler {
 		Handler:  schedulerjobs.UpdateTrendingIndexes(s.trends),
 	})
 	sched.Register(scheduler.Job{
-		Name:     "fetch-status-cards",
-		Interval: time.Minute,
-		Handler:  schedulerjobs.ProcessPendingCards(s.card),
-	})
-	sched.Register(scheduler.Job{
 		Name:     "cleanup-outbox-events",
 		Interval: time.Hour,
 		Handler:  schedulerjobs.CleanupOutboxEvents(i.store, 24*time.Hour),
@@ -326,6 +321,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 		Accounts:      s.account,
 		Conversations: s.statusRead,
 	})
+	cardSub := events.NewCardSubscriber(i.nats.JS, s.card)
 	backfillWorker := ap.NewBackfillWorker(i.nats.JS, s.account, s.backfill, s.remoteResolver,
 		s.remoteStatusWrite, s.remoteFollow, s.statusRead, cfg.MonsteraInstanceDomain, cfg.BackfillMaxPages, cfg.BackfillCooldown)
 
@@ -335,6 +331,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 		{"sse-subscriber", sseSub},
 		{"sse-hub", hub},
 		{"notification-subscriber", notifSub},
+		{"card-subscriber", cardSub},
 		{"scheduler", sched},
 		{"backfill-worker", backfillWorker},
 	}
