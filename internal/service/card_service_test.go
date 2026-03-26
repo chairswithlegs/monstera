@@ -13,21 +13,9 @@ import (
 	"github.com/chairswithlegs/monstera/internal/testutil"
 )
 
-func TestCardService_ProcessPendingCards_noStatuses(t *testing.T) {
+func TestCardService_FetchAndStoreCard_noURL_plainContent(t *testing.T) {
 	t.Parallel()
 	fs := testutil.NewFakeStore()
-	svc := NewCardService(fs)
-
-	processed, err := svc.ProcessPendingCards(context.Background(), 50)
-	require.NoError(t, err)
-	assert.Equal(t, 0, processed)
-	assert.Empty(t, fs.StatusCards)
-}
-
-func TestCardService_ProcessPendingCards_noURL_plainContent(t *testing.T) {
-	t.Parallel()
-	fs := testutil.NewFakeStore()
-	// Status with no "http" in content — not eligible, no card row written.
 	content := "<p>Just some text, no links here.</p>"
 	fs.SeedStatus(&domain.Status{
 		ID:        "status1",
@@ -36,16 +24,18 @@ func TestCardService_ProcessPendingCards_noURL_plainContent(t *testing.T) {
 	})
 
 	svc := NewCardService(fs)
-	processed, err := svc.ProcessPendingCards(context.Background(), 50)
+	err := svc.FetchAndStoreCard(context.Background(), "status1")
 	require.NoError(t, err)
-	assert.Equal(t, 0, processed)
-	assert.Empty(t, fs.StatusCards)
+
+	card, ok := fs.StatusCards["status1"]
+	require.True(t, ok, "card row should have been written")
+	assert.Equal(t, domain.CardStateNoURL, card.ProcessingState)
 }
 
 // This is a bit of a weird test case that exists to accommodate the limitations of the store lookup logic.
 // In certain situations, the store lookup might return a status with "link-like" content but no external URLs.
 // This test case ensures that we handle this situation correctly.
-func TestCardService_ProcessPendingCards_noURL_withHTTPContent(t *testing.T) {
+func TestCardService_FetchAndStoreCard_noURL_withHTTPContent(t *testing.T) {
 	t.Parallel()
 	fs := testutil.NewFakeStore()
 	// Status with "http" in content but no <a href> links with external URLs.
@@ -57,12 +47,11 @@ func TestCardService_ProcessPendingCards_noURL_withHTTPContent(t *testing.T) {
 	})
 
 	svc := NewCardService(fs)
-	processed, err := svc.ProcessPendingCards(context.Background(), 50)
+	err := svc.FetchAndStoreCard(context.Background(), "status1")
 	require.NoError(t, err)
 
 	card, ok := fs.StatusCards["status1"]
 	require.True(t, ok, "card row should have been written")
-	assert.Equal(t, 1, processed)
 	assert.Equal(t, domain.CardStateNoURL, card.ProcessingState)
 }
 
@@ -130,7 +119,7 @@ func TestCardService_extractFirstURL(t *testing.T) {
 	}
 }
 
-func TestCardService_ProcessPendingCards_httpFetch(t *testing.T) {
+func TestCardService_FetchAndStoreCard_httpFetch(t *testing.T) {
 	t.Parallel()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -161,12 +150,11 @@ func TestCardService_ProcessPendingCards_httpFetch(t *testing.T) {
 	// will block requests to the test server.
 	svc.(*cardService).httpClient = http.DefaultClient
 
-	processed, err := svc.ProcessPendingCards(context.Background(), 50)
+	err := svc.FetchAndStoreCard(context.Background(), "status1")
 	require.NoError(t, err)
 
 	card, ok := fs.StatusCards["status1"]
 	require.True(t, ok)
-	assert.Equal(t, 1, processed)
 	assert.Equal(t, domain.CardStateFetched, card.ProcessingState)
 	assert.Equal(t, "OG Title", card.Title)
 	assert.Equal(t, "OG Description", card.Description)
@@ -174,7 +162,7 @@ func TestCardService_ProcessPendingCards_httpFetch(t *testing.T) {
 	assert.Equal(t, srv.URL, card.URL)
 }
 
-func TestCardService_ProcessPendingCards_mentionOnlyStatus(t *testing.T) {
+func TestCardService_FetchAndStoreCard_mentionOnlyStatus(t *testing.T) {
 	t.Parallel()
 	fs := testutil.NewFakeStore()
 	// Status with only a rel="mention" anchor (remote server style) — no card URL should be found.
@@ -186,16 +174,15 @@ func TestCardService_ProcessPendingCards_mentionOnlyStatus(t *testing.T) {
 	})
 
 	svc := NewCardService(fs)
-	processed, err := svc.ProcessPendingCards(context.Background(), 50)
+	err := svc.FetchAndStoreCard(context.Background(), "status1")
 	require.NoError(t, err)
 
 	card, ok := fs.StatusCards["status1"]
 	require.True(t, ok, "card row should have been written")
-	assert.Equal(t, 1, processed)
 	assert.Equal(t, domain.CardStateNoURL, card.ProcessingState)
 }
 
-func TestCardService_ProcessPendingCards_fetchFailed(t *testing.T) {
+func TestCardService_FetchAndStoreCard_fetchFailed(t *testing.T) {
 	t.Parallel()
 
 	fs := testutil.NewFakeStore()
@@ -207,11 +194,10 @@ func TestCardService_ProcessPendingCards_fetchFailed(t *testing.T) {
 	})
 
 	svc := NewCardService(fs)
-	processed, err := svc.ProcessPendingCards(context.Background(), 50)
-	require.NoError(t, err) // per-status errors are only warned, not returned
+	err := svc.FetchAndStoreCard(context.Background(), "status1")
+	require.NoError(t, err) // FetchAndStoreCard logs the OG fetch error and writes CardStateFetchFailed
 
 	card, ok := fs.StatusCards["status1"]
 	require.True(t, ok)
-	assert.Equal(t, 1, processed)
 	assert.Equal(t, domain.CardStateFetchFailed, card.ProcessingState)
 }

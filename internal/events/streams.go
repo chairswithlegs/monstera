@@ -18,6 +18,7 @@ const (
 	ConsumerSSE           = "domain-events-sse"
 	ConsumerNotifications = "domain-events-notifications"
 	ConsumerPushDelivery  = "domain-events-push-delivery"
+	ConsumerCards         = "domain-events-cards"
 )
 
 // StreamConfigs returns the DOMAIN_EVENTS stream and consumer configurations.
@@ -60,6 +61,13 @@ var StreamConfigs = []natsutil.StreamConfig{
 				MaxAckPending: 50,
 				AckWait:       30 * time.Second,
 				FilterSubject: SubjectPrefix + "notification.>",
+			},
+			{
+				Durable:       ConsumerCards,
+				AckPolicy:     jetstream.AckExplicitPolicy,
+				MaxAckPending: 50,
+				AckWait:       30 * time.Second,
+				FilterSubject: SubjectPrefix + "status.created",
 			},
 		},
 	},

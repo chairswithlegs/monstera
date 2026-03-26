@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"golang.org/x/net/html"
 
@@ -19,14 +18,13 @@ import (
 )
 
 const (
-	cardMaxBodyBytes  = 1 << 20 // 1 MB
-	cardUserAgent     = "Monstera/1.0"
-	cardLookbackHours = 24
+	cardMaxBodyBytes = 1 << 20 // 1 MB
+	cardUserAgent    = "Monstera/1.0"
 )
 
 // CardService fetches and stores link preview cards for statuses.
 type CardService interface {
-	ProcessPendingCards(ctx context.Context, limit int) (int, error)
+	FetchAndStoreCard(ctx context.Context, statusID string) error
 }
 
 type cardService struct {
@@ -41,27 +39,7 @@ func NewCardService(s store.Store) CardService {
 	return &cardService{store: s, httpClient: client}
 }
 
-// ProcessPendingCards processes up to limit statuses that do not yet have card data.
-func (svc *cardService) ProcessPendingCards(ctx context.Context, limit int) (int, error) {
-	since := time.Now().Add(-cardLookbackHours * time.Hour)
-	ids, err := svc.store.ListStatusIDsNeedingCards(ctx, since, limit)
-	if err != nil {
-		return 0, fmt.Errorf("FetchPendingCards: list: %w", err)
-	}
-
-	processed := 0
-	for _, id := range ids {
-		if err := svc.fetchAndStoreCard(ctx, id); err != nil {
-			slog.WarnContext(ctx, "card: failed to process status", slog.String("status_id", id), slog.Any("error", err))
-			continue
-		}
-		processed++
-	}
-
-	return processed, nil
-}
-
-func (svc *cardService) fetchAndStoreCard(ctx context.Context, statusID string) error {
+func (svc *cardService) FetchAndStoreCard(ctx context.Context, statusID string) error {
 	st, err := svc.store.GetStatusByID(ctx, statusID)
 	if err != nil {
 		return fmt.Errorf("GetStatusByID: %w", err)

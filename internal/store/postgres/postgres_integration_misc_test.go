@@ -378,11 +378,6 @@ func TestIntegration_CardStore(t *testing.T) {
 		require.ErrorIs(t, err, domain.ErrNotFound)
 	})
 
-	t.Run("ListStatusIDsNeedingCards", func(t *testing.T) {
-		ids, err := s.ListStatusIDsNeedingCards(ctx, time.Now().Add(-1*time.Hour), 10)
-		require.NoError(t, err)
-		_ = ids
-	})
 }
 
 // ---------------------------------------------------------------------------

@@ -11,7 +11,6 @@ import (
 
 const (
 	scheduledStatusesBatchSize = 100
-	pendingCardsBatchSize      = 100
 )
 
 // ScheduledStatuses returns a handler that publishes all due scheduled statuses,
@@ -29,16 +28,6 @@ func ScheduledStatuses(svc service.ScheduledStatusService) func(context.Context)
 func UpdateTrendingIndexes(svc service.TrendsService) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
 		return svc.RefreshIndexes(ctx)
-	}
-}
-
-// ProcessPendingCards returns a job handler that fetches link preview cards for
-// recent statuses, processing in batches until no more are pending.
-func ProcessPendingCards(svc service.CardService) func(context.Context) error {
-	return func(ctx context.Context) error {
-		return drainBatches(ctx, pendingCardsBatchSize, func(ctx context.Context, limit int) (int, error) {
-			return svc.ProcessPendingCards(ctx, limit)
-		})
 	}
 }
 
