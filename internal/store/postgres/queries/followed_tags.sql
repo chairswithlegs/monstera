@@ -20,3 +20,10 @@ WHERE aft.account_id = $1
   AND ($2::text IS NULL OR aft.id < $2)
 ORDER BY aft.id DESC
 LIMIT $3;
+
+-- name: AreFollowingTagsByName :many
+SELECT h.name
+FROM account_followed_tags aft
+INNER JOIN hashtags h ON h.id = aft.tag_id
+WHERE aft.account_id = $1
+  AND h.name = ANY($2::text[]);

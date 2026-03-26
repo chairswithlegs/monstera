@@ -11,6 +11,39 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const areFollowingTagsByName = `-- name: AreFollowingTagsByName :many
+SELECT h.name
+FROM account_followed_tags aft
+INNER JOIN hashtags h ON h.id = aft.tag_id
+WHERE aft.account_id = $1
+  AND h.name = ANY($2::text[])
+`
+
+type AreFollowingTagsByNameParams struct {
+	AccountID string   `json:"account_id"`
+	Column2   []string `json:"column_2"`
+}
+
+func (q *Queries) AreFollowingTagsByName(ctx context.Context, arg AreFollowingTagsByNameParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, areFollowingTagsByName, arg.AccountID, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const followTag = `-- name: FollowTag :exec
 INSERT INTO account_followed_tags (id, account_id, tag_id)
 VALUES ($1, $2, $3)

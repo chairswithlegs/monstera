@@ -96,7 +96,7 @@ type Tag struct {
 	ID        string       `json:"id,omitempty"`
 	Name      string       `json:"name"`
 	URL       string       `json:"url"`
-	Following bool         `json:"following"`
+	Following *bool        `json:"following,omitempty"`
 	History   []TagHistory `json:"history"`
 }
 

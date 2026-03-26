@@ -151,6 +151,26 @@ func TestIntegration_ContentStore_Hashtags(t *testing.T) {
 		}
 	})
 
+	t.Run("AreFollowingTagsByName", func(t *testing.T) {
+		acc := createTestLocalAccount(t, s, ctx)
+		h1, err := s.GetOrCreateHashtag(ctx, "arefoltest_"+uid.New()[:8])
+		require.NoError(t, err)
+		h2, err := s.GetOrCreateHashtag(ctx, "arefoltest2_"+uid.New()[:8])
+		require.NoError(t, err)
+
+		err = s.FollowTag(ctx, uid.New(), acc.ID, h1.ID)
+		require.NoError(t, err)
+
+		result, err := s.AreFollowingTagsByName(ctx, acc.ID, []string{h1.Name, h2.Name})
+		require.NoError(t, err)
+		assert.True(t, result[h1.Name], "h1 should be followed")
+		assert.False(t, result[h2.Name], "h2 should not be followed")
+
+		empty, err := s.AreFollowingTagsByName(ctx, acc.ID, []string{})
+		require.NoError(t, err)
+		assert.Empty(t, empty)
+	})
+
 	t.Run("FeaturedTag_CRUD", func(t *testing.T) {
 		acc := createTestLocalAccount(t, s, ctx)
 		h, err := s.GetOrCreateHashtag(ctx, "feat_"+uid.New()[:8])
