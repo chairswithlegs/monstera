@@ -1,6 +1,7 @@
 package mastodon
 
 import (
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -49,9 +50,13 @@ func (h *AccountsHandler) GETTag(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	following := false
+	var following *bool
 	if account := middleware.AccountFromContext(r.Context()); account != nil {
-		following, _ = h.tagFollows.IsFollowingTag(r.Context(), account.ID, tag.ID)
+		f, err := h.tagFollows.IsFollowingTag(r.Context(), account.ID, tag.ID)
+		if err != nil {
+			slog.WarnContext(r.Context(), "failed to check tag follow state", slog.String("tag", name), slog.Any("error", err))
+		}
+		following = &f
 	}
 	api.WriteJSON(w, http.StatusOK, apimodel.TagFromDomain(tag, h.instanceDomain, following))
 }
@@ -73,7 +78,8 @@ func (h *AccountsHandler) POSTTagFollow(w http.ResponseWriter, r *http.Request) 
 		api.HandleError(w, r, err)
 		return
 	}
-	api.WriteJSON(w, http.StatusOK, apimodel.TagFromDomain(tag, h.instanceDomain, true))
+	f := true
+	api.WriteJSON(w, http.StatusOK, apimodel.TagFromDomain(tag, h.instanceDomain, &f))
 }
 
 // POSTTagUnfollow handles POST /api/v1/tags/{name}/unfollow. Requires auth.
@@ -93,5 +99,6 @@ func (h *AccountsHandler) POSTTagUnfollow(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, err)
 		return
 	}
-	api.WriteJSON(w, http.StatusOK, apimodel.TagFromDomain(tag, h.instanceDomain, false))
+	f := false
+	api.WriteJSON(w, http.StatusOK, apimodel.TagFromDomain(tag, h.instanceDomain, &f))
 }

@@ -754,6 +754,27 @@ func (s *PostgresStore) ListFollowedTags(ctx context.Context, accountID string, 
 	return out, nextCursor, nil
 }
 
+func (s *PostgresStore) AreFollowingTagsByName(ctx context.Context, accountID string, tagNames []string) (map[string]bool, error) {
+	if len(tagNames) == 0 {
+		return map[string]bool{}, nil
+	}
+	names, err := s.q.AreFollowingTagsByName(ctx, db.AreFollowingTagsByNameParams{
+		AccountID: accountID,
+		Column2:   tagNames,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("AreFollowingTagsByName: %w", mapErr(err))
+	}
+	out := make(map[string]bool, len(tagNames))
+	for _, n := range tagNames {
+		out[n] = false
+	}
+	for _, n := range names {
+		out[n] = true
+	}
+	return out, nil
+}
+
 func featuredTagRowToDomain(r db.ListFeaturedTagsByAccountRow) domain.FeaturedTag {
 	var lastAt *time.Time
 	if r.LastStatusAt != nil {

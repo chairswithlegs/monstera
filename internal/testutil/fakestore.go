@@ -1228,6 +1228,26 @@ func (f *FakeStore) ListFollowedTags(ctx context.Context, accountID string, maxI
 	return out, nextCursor, nil
 }
 
+func (f *FakeStore) AreFollowingTagsByName(_ context.Context, accountID string, tagNames []string) (map[string]bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make(map[string]bool, len(tagNames))
+	for _, n := range tagNames {
+		out[n] = false
+	}
+	for _, e := range f.followedTagsList {
+		if e.AccountID != accountID {
+			continue
+		}
+		if h, ok := f.hashtagsByID[e.TagID]; ok && h != nil {
+			if _, requested := out[h.Name]; requested {
+				out[h.Name] = true
+			}
+		}
+	}
+	return out, nil
+}
+
 func (f *FakeStore) CreateFeaturedTag(ctx context.Context, id, accountID, tagID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

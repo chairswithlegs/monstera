@@ -1,22 +1,25 @@
 package mastodon
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/chairswithlegs/monstera/internal/api"
 	"github.com/chairswithlegs/monstera/internal/api/mastodon/apimodel"
+	"github.com/chairswithlegs/monstera/internal/api/middleware"
 	"github.com/chairswithlegs/monstera/internal/service"
 )
 
 // TrendsHandler handles Mastodon trends API endpoints.
 type TrendsHandler struct {
 	svc            service.TrendsService
+	tagFollows     service.TagFollowService
 	instanceDomain string
 }
 
 // NewTrendsHandler returns a new TrendsHandler.
-func NewTrendsHandler(svc service.TrendsService, instanceDomain string) *TrendsHandler {
-	return &TrendsHandler{svc: svc, instanceDomain: instanceDomain}
+func NewTrendsHandler(svc service.TrendsService, tagFollows service.TagFollowService, instanceDomain string) *TrendsHandler {
+	return &TrendsHandler{svc: svc, tagFollows: tagFollows, instanceDomain: instanceDomain}
 }
 
 // GETTrendsStatuses handles GET /api/v1/trends/statuses.
@@ -60,9 +63,26 @@ func (h *TrendsHandler) GETTrendsTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// For authenticated users, look up which of the trending tag names the user
+	// follows. This is bounded by the trending list size (≤ 40), not follow count.
+	// Unauthenticated requests omit the following field entirely.
+	var followedNames map[string]bool
+	if account := middleware.AccountFromContext(r.Context()); account != nil {
+		names := make([]string, 0, len(tags))
+		for _, t := range tags {
+			names = append(names, t.Hashtag.Name)
+		}
+		fm, err := h.tagFollows.AreFollowingTagsByName(r.Context(), account.ID, names)
+		if err != nil {
+			slog.WarnContext(r.Context(), "failed to fetch followed tags for trends response", slog.Any("error", err))
+		} else {
+			followedNames = fm
+		}
+	}
+
 	out := make([]*apimodel.Tag, 0, len(tags))
 	for _, t := range tags {
-		out = append(out, apimodel.TrendingTagFromDomain(t, h.instanceDomain))
+		out = append(out, apimodel.TrendingTagFromDomain(t, h.instanceDomain, followedNames))
 	}
 	api.WriteJSON(w, http.StatusOK, out)
 }

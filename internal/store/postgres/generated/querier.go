@@ -14,6 +14,7 @@ type Querier interface {
 	AcceptFollow(ctx context.Context, id string) error
 	AddAccountToList(ctx context.Context, arg AddAccountToListParams) error
 	AddAnnouncementReaction(ctx context.Context, arg AddAnnouncementReactionParams) error
+	AreFollowingTagsByName(ctx context.Context, arg AreFollowingTagsByNameParams) ([]string, error)
 	AssignReport(ctx context.Context, arg AssignReportParams) error
 	AttachHashtagsToStatus(ctx context.Context, arg AttachHashtagsToStatusParams) error
 	AttachMediaToStatus(ctx context.Context, arg AttachMediaToStatusParams) error

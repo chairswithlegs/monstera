@@ -114,7 +114,8 @@ func TagFromName(name, instanceDomain string) Tag {
 }
 
 // TagFromDomain builds a Tag from a domain.Hashtag, optionally with following state.
-func TagFromDomain(h *domain.Hashtag, instanceDomain string, following bool) Tag {
+// Pass nil for following to omit the field (unauthenticated requests).
+func TagFromDomain(h *domain.Hashtag, instanceDomain string, following *bool) Tag {
 	return Tag{
 		Name:      h.Name,
 		URL:       "https://" + instanceDomain + "/tags/" + h.Name,
@@ -125,11 +126,12 @@ func TagFromDomain(h *domain.Hashtag, instanceDomain string, following bool) Tag
 
 // FollowedTagFromDomain builds a Tag for the followed_tags list (id, name, url, following: true).
 func FollowedTagFromDomain(h domain.Hashtag, instanceDomain string) Tag {
+	t := true
 	return Tag{
 		ID:        h.ID,
 		Name:      h.Name,
 		URL:       "https://" + instanceDomain + "/tags/" + h.Name,
-		Following: true,
+		Following: &t,
 		History:   []TagHistory{},
 	}
 }
@@ -171,7 +173,9 @@ func StatusEditFromDomain(e domain.StatusEdit, author Account) StatusEdit {
 }
 
 // TrendingTagFromDomain converts a domain.TrendingTag to the Mastodon API Tag shape with history.
-func TrendingTagFromDomain(t domain.TrendingTag, instanceDomain string) *Tag {
+// followedNames is the set of tag names the authenticated user follows; pass nil for unauthenticated
+// requests to omit the following field entirely.
+func TrendingTagFromDomain(t domain.TrendingTag, instanceDomain string, followedNames map[string]bool) *Tag {
 	history := make([]TagHistory, len(t.History))
 	for i, h := range t.History {
 		history[i] = TagHistory{
@@ -180,11 +184,16 @@ func TrendingTagFromDomain(t domain.TrendingTag, instanceDomain string) *Tag {
 			Accounts: strconv.FormatInt(h.Accounts, 10),
 		}
 	}
-	return &Tag{
+	tag := &Tag{
 		Name:    t.Hashtag.Name,
 		URL:     "https://" + instanceDomain + "/tags/" + t.Hashtag.Name,
 		History: history,
 	}
+	if followedNames != nil {
+		f := followedNames[t.Hashtag.Name]
+		tag.Following = &f
+	}
+	return tag
 }
 
 // MediaFromDomain converts a domain media attachment to the API model shape.

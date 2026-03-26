@@ -15,6 +15,7 @@ type TagFollowService interface {
 	GetTagByName(ctx context.Context, name string) (*domain.Hashtag, error)
 	IsFollowingTag(ctx context.Context, accountID, tagID string) (bool, error)
 	ListFollowedTags(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Hashtag, *string, error)
+	AreFollowingTagsByName(ctx context.Context, accountID string, tagNames []string) (map[string]bool, error)
 	FollowTag(ctx context.Context, accountID, tagName string) (*domain.Hashtag, error)
 	UnfollowTag(ctx context.Context, accountID, tagID string) error
 	UnfollowTagByName(ctx context.Context, accountID, tagName string) (*domain.Hashtag, error)
@@ -55,6 +56,14 @@ func (svc *tagFollowService) ListFollowedTags(ctx context.Context, accountID str
 		return nil, nil, fmt.Errorf("ListFollowedTags: %w", err)
 	}
 	return tags, next, nil
+}
+
+func (svc *tagFollowService) AreFollowingTagsByName(ctx context.Context, accountID string, tagNames []string) (map[string]bool, error) {
+	result, err := svc.store.AreFollowingTagsByName(ctx, accountID, tagNames)
+	if err != nil {
+		return nil, fmt.Errorf("AreFollowingTagsByName: %w", err)
+	}
+	return result, nil
 }
 
 func (svc *tagFollowService) FollowTag(ctx context.Context, accountID, tagName string) (*domain.Hashtag, error) {
