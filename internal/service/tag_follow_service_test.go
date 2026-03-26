@@ -213,3 +213,46 @@ func TestTagFollowService_ListFollowedTags_with_results(t *testing.T) {
 	assert.Contains(t, names, "golang")
 	assert.Contains(t, names, "rust")
 }
+
+func TestTagFollowService_AreFollowingTagsByName_empty_input(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	svc := NewTagFollowService(testutil.NewFakeStore())
+
+	result, err := svc.AreFollowingTagsByName(ctx, "acct1", []string{})
+	require.NoError(t, err)
+	assert.Empty(t, result)
+}
+
+func TestTagFollowService_AreFollowingTagsByName_mixed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewTagFollowService(fake)
+
+	_, err := svc.FollowTag(ctx, "acct1", "golang")
+	require.NoError(t, err)
+
+	result, err := svc.AreFollowingTagsByName(ctx, "acct1", []string{"golang", "rust"})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]bool{"golang": true, "rust": false}, result)
+}
+
+func TestTagFollowService_AreFollowingTagsByName_store_error(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	failingStore := &areFollowingTagsByNameFailingStore{FakeStore: testutil.NewFakeStore()}
+	svc := NewTagFollowService(failingStore)
+
+	_, err := svc.AreFollowingTagsByName(ctx, "acct1", []string{"golang"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "AreFollowingTagsByName")
+}
+
+type areFollowingTagsByNameFailingStore struct {
+	*testutil.FakeStore
+}
+
+func (s *areFollowingTagsByNameFailingStore) AreFollowingTagsByName(_ context.Context, _ string, _ []string) (map[string]bool, error) {
+	return nil, errors.New("db read failed")
+}

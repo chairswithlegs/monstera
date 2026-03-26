@@ -190,6 +190,7 @@ type ContentStore interface {
 	UnfollowTag(ctx context.Context, accountID, tagID string) error
 	IsFollowingTag(ctx context.Context, accountID, tagID string) (bool, error)
 	ListFollowedTags(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Hashtag, *string, error)
+	AreFollowingTagsByName(ctx context.Context, accountID string, tagNames []string) (map[string]bool, error)
 	CreatePushSubscription(ctx context.Context, in CreatePushSubscriptionInput) (*domain.PushSubscription, error)
 	GetPushSubscription(ctx context.Context, accessTokenID string) (*domain.PushSubscription, error)
 	UpdatePushSubscription(ctx context.Context, accessTokenID string, alerts domain.PushAlerts, policy string) (*domain.PushSubscription, error)

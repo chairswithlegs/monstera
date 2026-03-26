@@ -217,6 +217,7 @@ func New(deps Deps) http.Handler {
 				r.Get("/timelines/public", deps.Timelines.GETPublic)
 				r.Get("/timelines/tag/{hashtag}", deps.Timelines.GETTag)
 				r.Get("/tags/{name}", deps.Accounts.GETTag)
+				r.Get("/trends", deps.Trends.GETTrendsTags) // legacy alias for /trends/tags (Mastodon < 3.5)
 				r.Get("/trends/statuses", deps.Trends.GETTrendsStatuses)
 				r.Get("/trends/tags", deps.Trends.GETTrendsTags)
 				r.Get("/trends/links", deps.Trends.GETTrendsLinks)
