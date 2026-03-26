@@ -46,6 +46,7 @@ func newTestBackfillWorker(fs *testutil.FakeStore, remoteStatuses service.Remote
 		accounts:       service.NewAccountService(fs, "https://local.example"),
 		backfill:       service.NewBackfillService(fs, nil, time.Hour),
 		remoteStatuses: remoteStatuses,
+		remoteFollows:  service.NewRemoteFollowService(fs),
 		statuses:       statusSvc,
 		instanceDomain: "local.example",
 		maxPages:       2,
@@ -384,4 +385,206 @@ func makeFeaturedItems(t *testing.T, iris ...string) []json.RawMessage {
 		items = append(items, b)
 	}
 	return items
+}
+
+func TestBackfillWorker_fetchAndProcessFollowing_HappyPath(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	fs := testutil.NewFakeStore()
+	account := createTestRemoteAccount(t, ctx, fs)
+
+	// Actor IRIs must point to the test server so the resolver can fetch them.
+	var ts *httptest.Server
+	ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/activity+json")
+		switch r.URL.Path {
+		case "/following":
+			items := makeFeaturedItems(t, ts.URL+"/users/target1", ts.URL+"/users/target2")
+			coll := vocab.NewOrderedCollectionWithItems(ts.URL+"/following", items)
+			_ = json.NewEncoder(w).Encode(coll)
+		default:
+			// Serve a minimal Actor document for any actor IRI.
+			actor := map[string]any{
+				"@context":          "https://www.w3.org/ns/activitystreams",
+				"type":              "Person",
+				"id":                ts.URL + r.URL.Path,
+				"preferredUsername": r.URL.Path[7:], // strip "/users/"
+				"inbox":             ts.URL + r.URL.Path + "/inbox",
+				"outbox":            ts.URL + r.URL.Path + "/outbox",
+				"followers":         ts.URL + r.URL.Path + "/followers",
+				"following":         ts.URL + r.URL.Path + "/following",
+				"publicKey": map[string]any{
+					"id":           ts.URL + r.URL.Path + "#main-key",
+					"owner":        ts.URL + r.URL.Path,
+					"publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAMY\n-----END PUBLIC KEY-----",
+				},
+			}
+			_ = json.NewEncoder(w).Encode(actor)
+		}
+	}))
+	defer ts.Close()
+
+	worker := newTestBackfillWorker(fs, &fakeRemoteStatusWriteService{}, &fakeStatusService{statuses: map[string]*domain.Status{}})
+	worker.remoteResolver = &RemoteAccountResolver{httpClient: ts.Client(), accounts: service.NewAccountService(fs, "https://local.example"), instanceDomain: "local.example"}
+
+	worker.fetchAndProcessFollowing(ctx, &domain.Account{
+		ID:           account.ID,
+		APID:         account.APID,
+		FollowingURL: ts.URL + "/following",
+	})
+
+	follows, err := fs.GetFollowing(ctx, account.ID, nil, 10)
+	require.NoError(t, err)
+	assert.Len(t, follows, 2, "both followed accounts should be stored locally")
+}
+
+func TestBackfillWorker_fetchAndProcessFollowing_SkipsDuplicate(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	fs := testutil.NewFakeStore()
+	account := createTestRemoteAccount(t, ctx, fs)
+
+	// Pre-seed a second remote account and a follow relationship.
+	// The APID must be set after the test server is created so it points to ts.URL.
+	var ts *httptest.Server
+	ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/activity+json")
+		switch r.URL.Path {
+		case "/following":
+			items := makeFeaturedItems(t, ts.URL+"/users/existing")
+			coll := vocab.NewOrderedCollectionWithItems(ts.URL+"/following", items)
+			_ = json.NewEncoder(w).Encode(coll)
+		default:
+			actor := map[string]any{
+				"@context":          "https://www.w3.org/ns/activitystreams",
+				"type":              "Person",
+				"id":                ts.URL + r.URL.Path,
+				"preferredUsername": "existing-target",
+				"inbox":             ts.URL + r.URL.Path + "/inbox",
+				"outbox":            ts.URL + r.URL.Path + "/outbox",
+				"followers":         ts.URL + r.URL.Path + "/followers",
+				"following":         ts.URL + r.URL.Path + "/following",
+				"publicKey": map[string]any{
+					"id":           ts.URL + r.URL.Path + "#main-key",
+					"owner":        ts.URL + r.URL.Path,
+					"publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAMY\n-----END PUBLIC KEY-----",
+				},
+			}
+			_ = json.NewEncoder(w).Encode(actor)
+		}
+	}))
+	defer ts.Close()
+
+	// Pre-seed the existing account with an APID matching the test server URL, then
+	// create the follow so the worker hits ErrConflict on the second attempt.
+	d := "127.0.0.1"
+	existing, err := fs.CreateAccount(ctx, store.CreateAccountInput{
+		ID:       uid.New(),
+		Username: "existing-target",
+		Domain:   &d,
+		APID:     ts.URL + "/users/existing",
+		InboxURL: ts.URL + "/users/existing/inbox",
+	})
+	require.NoError(t, err)
+	_, err = service.NewRemoteFollowService(fs).CreateRemoteFollow(ctx, account.ID, existing.ID, domain.FollowStateAccepted, nil)
+	require.NoError(t, err)
+
+	worker := newTestBackfillWorker(fs, &fakeRemoteStatusWriteService{}, &fakeStatusService{statuses: map[string]*domain.Status{}})
+	worker.remoteResolver = &RemoteAccountResolver{httpClient: ts.Client(), accounts: service.NewAccountService(fs, "https://local.example"), instanceDomain: "local.example"}
+
+	// Should not panic or return error — ErrConflict is silently discarded.
+	worker.fetchAndProcessFollowing(ctx, &domain.Account{
+		ID:           account.ID,
+		APID:         account.APID,
+		FollowingURL: ts.URL + "/following",
+	})
+
+	follows, err := fs.GetFollowing(ctx, account.ID, nil, 10)
+	require.NoError(t, err)
+	assert.Len(t, follows, 1, "duplicate follow should not be stored twice")
+}
+
+func TestBackfillWorker_fetchAndProcessFollowing_EmptyURL(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	fs := testutil.NewFakeStore()
+	account := createTestRemoteAccount(t, ctx, fs)
+
+	called := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	worker := newTestBackfillWorker(fs, &fakeRemoteStatusWriteService{}, &fakeStatusService{statuses: map[string]*domain.Status{}})
+	worker.remoteResolver = &RemoteAccountResolver{httpClient: ts.Client(), accounts: service.NewAccountService(fs, "https://local.example"), instanceDomain: "local.example"}
+
+	worker.fetchAndProcessFollowing(ctx, &domain.Account{
+		ID:           account.ID,
+		APID:         account.APID,
+		FollowingURL: "", // empty — should be a no-op
+	})
+
+	assert.False(t, called, "no HTTP request should be made when FollowingURL is empty")
+}
+
+func TestBackfillWorker_fetchAndProcessFollowing_FetchError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	fs := testutil.NewFakeStore()
+	account := createTestRemoteAccount(t, ctx, fs)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	worker := newTestBackfillWorker(fs, &fakeRemoteStatusWriteService{}, &fakeStatusService{statuses: map[string]*domain.Status{}})
+	worker.remoteResolver = &RemoteAccountResolver{httpClient: ts.Client(), accounts: service.NewAccountService(fs, "https://local.example"), instanceDomain: "local.example"}
+
+	// Should not panic or propagate the error.
+	worker.fetchAndProcessFollowing(ctx, &domain.Account{
+		ID:           account.ID,
+		APID:         account.APID,
+		FollowingURL: ts.URL + "/following",
+	})
+
+	follows, err := fs.GetFollowing(ctx, account.ID, nil, 10)
+	require.NoError(t, err)
+	assert.Empty(t, follows, "no follows should be stored after a fetch error")
+}
+
+func TestBackfillWorker_fetchAndProcessFollowing_SkipsSelf(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	fs := testutil.NewFakeStore()
+	account := createTestRemoteAccount(t, ctx, fs)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/activity+json")
+		// Collection contains only the account's own APID.
+		items := makeFeaturedItems(t, account.APID)
+		coll := vocab.NewOrderedCollectionWithItems("https://remote.example/following", items)
+		_ = json.NewEncoder(w).Encode(coll)
+	}))
+	defer ts.Close()
+
+	worker := newTestBackfillWorker(fs, &fakeRemoteStatusWriteService{}, &fakeStatusService{statuses: map[string]*domain.Status{}})
+	worker.remoteResolver = &RemoteAccountResolver{httpClient: ts.Client(), accounts: service.NewAccountService(fs, "https://local.example"), instanceDomain: "local.example"}
+
+	worker.fetchAndProcessFollowing(ctx, &domain.Account{
+		ID:           account.ID,
+		APID:         account.APID,
+		FollowingURL: ts.URL + "/following",
+	})
+
+	follows, err := fs.GetFollowing(ctx, account.ID, nil, 10)
+	require.NoError(t, err)
+	assert.Empty(t, follows, "self-follow should be skipped")
 }

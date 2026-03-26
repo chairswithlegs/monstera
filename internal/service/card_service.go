@@ -58,10 +58,6 @@ func (svc *cardService) ProcessPendingCards(ctx context.Context, limit int) (int
 		processed++
 	}
 
-	slog.InfoContext(ctx, "card: fetch cycle complete",
-		slog.Int("candidates", len(ids)),
-		slog.Int("processed", processed),
-	)
 	return processed, nil
 }
 

@@ -15,7 +15,7 @@ import (
 func newFollowTestServices(fake *testutil.FakeStore) (AccountService, FollowService, RemoteFollowService) {
 	accountSvc := NewAccountService(fake, "https://example.com")
 	remoteFollowSvc := NewRemoteFollowService(fake)
-	followSvc := NewFollowService(fake, accountSvc, remoteFollowSvc)
+	followSvc := NewFollowService(fake, accountSvc, remoteFollowSvc, nil)
 	return accountSvc, followSvc, remoteFollowSvc
 }
 

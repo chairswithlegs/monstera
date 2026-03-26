@@ -225,13 +225,13 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 	accountSvc := service.NewAccountService(i.store, instanceBaseURL)
 	statusSvc := service.NewStatusService(i.store, instanceBaseURL, cfg.MonsteraInstanceDomain, cfg.MaxStatusChars)
 	conversationSvc := service.NewConversationService(i.store, statusSvc)
+	backfillSvc := service.NewBackfillService(i.store, i.nats.JS, cfg.BackfillCooldown)
 	remoteFollowSvc := service.NewRemoteFollowService(i.store)
-	followSvc := service.NewFollowService(i.store, accountSvc, remoteFollowSvc)
+	followSvc := service.NewFollowService(i.store, accountSvc, remoteFollowSvc, backfillSvc)
 	tagFollowSvc := service.NewTagFollowService(i.store)
 	mediaSvc := service.NewMediaService(i.store, i.mediaStore, cfg.MediaMaxBytes)
 
 	mailer := service.NewRegistrationEmailSender(i.emailSender, i.emailTemplates, cfg.EmailFrom, cfg.EmailFromName)
-	backfillSvc := service.NewBackfillService(i.store, i.nats.JS, cfg.BackfillCooldown)
 	remoteResolver := ap.NewRemoteAccountResolver(accountSvc, cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.MonsteraInstanceDomain)
 	signatureService := ap.NewHTTPSignatureService(cfg.FederationInsecureSkipTLS, instanceBaseURL, i.sharedCache, i.cache, accountSvc)
 
@@ -287,7 +287,7 @@ func registerSchedulerJobs(s *svcs, i *infra) scheduler.Scheduler {
 	})
 	sched.Register(scheduler.Job{
 		Name:     "update-trending",
-		Interval: 15 * time.Minute,
+		Interval: 5 * time.Minute,
 		Handler:  schedulerjobs.UpdateTrendingIndexes(s.trends),
 	})
 	sched.Register(scheduler.Job{
@@ -326,9 +326,8 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 		Accounts:      s.account,
 		Conversations: s.statusRead,
 	})
-
 	backfillWorker := ap.NewBackfillWorker(i.nats.JS, s.account, s.backfill, s.remoteResolver,
-		s.remoteStatusWrite, s.statusRead, cfg.MonsteraInstanceDomain, cfg.BackfillMaxPages, cfg.BackfillCooldown)
+		s.remoteStatusWrite, s.remoteFollow, s.statusRead, cfg.MonsteraInstanceDomain, cfg.BackfillMaxPages, cfg.BackfillCooldown)
 
 	workers := []namedWorker{
 		{"event-poller", i.eventPoller},

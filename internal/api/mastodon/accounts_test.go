@@ -60,7 +60,7 @@ func (f *fakeMediaService) CreateRemote(_ context.Context, _ service.CreateRemot
 func newTestFollowServices(st *testutil.FakeStore) (service.FollowService, service.TagFollowService) {
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	remoteFollowSvc := service.NewRemoteFollowService(st)
-	followSvc := service.NewFollowService(st, accountSvc, remoteFollowSvc)
+	followSvc := service.NewFollowService(st, accountSvc, remoteFollowSvc, nil)
 	tagFollowSvc := service.NewTagFollowService(st)
 	return followSvc, tagFollowSvc
 }
