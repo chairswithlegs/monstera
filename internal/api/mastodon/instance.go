@@ -63,6 +63,9 @@ type InstanceConfig struct {
 		MinExpiration          int `json:"min_expiration"`
 		MaxExpiration          int `json:"max_expiration"`
 	} `json:"polls"`
+	Translation struct {
+		Enabled bool `json:"enabled"`
+	} `json:"translation"`
 }
 
 // InstanceResponse is the Mastodon API v2 instance response.
