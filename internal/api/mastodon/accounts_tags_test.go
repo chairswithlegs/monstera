@@ -68,4 +68,50 @@ func TestAccountsHandler_GETAccountFeaturedTags(t *testing.T) {
 		assert.EqualValues(t, 0, body[0]["statuses_count"])
 		assert.Nil(t, body[0]["last_status_at"])
 	})
+
+	t.Run("suspended account returns empty array", func(t *testing.T) {
+		suspended, err := accountSvc.Register(ctx, service.RegisterInput{
+			Username: "suspended-ftags",
+			Email:    "suspended-ftags@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
+		})
+		require.NoError(t, err)
+		_, err = featuredTagSvc.CreateFeaturedTag(ctx, suspended.ID, "golang")
+		require.NoError(t, err)
+		require.NoError(t, st.SuspendAccount(ctx, suspended.ID))
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+suspended.ID+"/featured_tags", nil)
+		req = testutil.AddChiURLParam(req, "id", suspended.ID)
+		rec := httptest.NewRecorder()
+		handler.GETAccountFeaturedTags(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body []any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Empty(t, body)
+	})
+
+	t.Run("remote account tag URL uses remote domain", func(t *testing.T) {
+		bob, err := accountSvc.CreateOrUpdateRemoteAccount(ctx, service.CreateOrUpdateRemoteInput{
+			APID:      "https://mastodon.social/users/bob",
+			Username:  "bob",
+			Domain:    "mastodon.social",
+			PublicKey: "testkey",
+			InboxURL:  "https://mastodon.social/users/bob/inbox",
+		})
+		require.NoError(t, err)
+		_, err = featuredTagSvc.CreateFeaturedTag(ctx, bob.ID, "rust")
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+bob.ID+"/featured_tags", nil)
+		req = testutil.AddChiURLParam(req, "id", bob.ID)
+		rec := httptest.NewRecorder()
+		handler.GETAccountFeaturedTags(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		var body []map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		require.Len(t, body, 1)
+		assert.Equal(t, "https://mastodon.social/@bob/tagged/rust", body[0]["url"])
+	})
 }

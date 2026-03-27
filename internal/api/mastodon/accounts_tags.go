@@ -122,12 +122,20 @@ func (h *AccountsHandler) GETAccountFeaturedTags(w http.ResponseWriter, r *http.
 		api.HandleError(w, r, err)
 		return
 	}
+	if target.Suspended {
+		api.WriteJSON(w, http.StatusOK, []apimodel.FeaturedTag{})
+		return
+	}
 	list, err := h.featuredTags.ListFeaturedTags(r.Context(), target.ID)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
-	baseURL := "https://" + h.instanceDomain + "/@" + target.Username + "/tagged/"
+	tagDomain := h.instanceDomain
+	if target.Domain != nil {
+		tagDomain = *target.Domain
+	}
+	baseURL := "https://" + tagDomain + "/@" + target.Username + "/tagged/"
 	out := make([]apimodel.FeaturedTag, 0, len(list))
 	for i := range list {
 		out = append(out, apimodel.FeaturedTagFromDomain(list[i], baseURL+list[i].Name))
