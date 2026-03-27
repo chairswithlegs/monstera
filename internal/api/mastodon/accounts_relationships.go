@@ -378,3 +378,37 @@ func (h *AccountsHandler) POSTUnmute(w http.ResponseWriter, r *http.Request) {
 	}
 	api.WriteJSON(w, http.StatusOK, apimodel.ToRelationship(rel))
 }
+
+// familiarFollowersEntry is one entry in the familiar followers response (one per requested account ID).
+type familiarFollowersEntry struct {
+	ID       string             `json:"id"`
+	Accounts []apimodel.Account `json:"accounts"`
+}
+
+// GETFamiliarFollowers handles GET /api/v1/accounts/familiar_followers?id[]=...
+// For each requested account ID, returns the accounts that the viewer follows who also follow that account.
+func (h *AccountsHandler) GETFamiliarFollowers(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	ids := r.URL.Query()["id[]"]
+	out := make([]familiarFollowersEntry, 0, len(ids))
+	for _, targetID := range ids {
+		if targetID == "" {
+			continue
+		}
+		accounts, err := h.follows.GetFamiliarFollowers(r.Context(), account.ID, targetID, 10)
+		if err != nil {
+			api.HandleError(w, r, err)
+			return
+		}
+		apiAccounts := make([]apimodel.Account, 0, len(accounts))
+		for i := range accounts {
+			apiAccounts = append(apiAccounts, apimodel.ToAccount(&accounts[i], h.instanceDomain))
+		}
+		out = append(out, familiarFollowersEntry{ID: targetID, Accounts: apiAccounts})
+	}
+	api.WriteJSON(w, http.StatusOK, out)
+}

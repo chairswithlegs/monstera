@@ -237,6 +237,7 @@ func New(deps Deps) http.Handler {
 				r.Method("POST", "/markers", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Markers.POSTMarkers)))
 				r.Method("PATCH", "/accounts/update_credentials", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.Accounts.PATCHUpdateCredentials)))
 				r.Method("GET", "/accounts/relationships", middleware.RequiredScopes("read:follows")(http.HandlerFunc(deps.Accounts.GETRelationships)))
+				r.Method("GET", "/accounts/familiar_followers", middleware.RequiredScopes("read:follows")(http.HandlerFunc(deps.Accounts.GETFamiliarFollowers)))
 				r.Method("GET", "/accounts/{id}/statuses", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Accounts.GETAccountStatuses)))
 				r.Method("GET", "/accounts/{id}/followers", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Accounts.GETFollowers)))
 				r.Method("GET", "/accounts/{id}/following", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Accounts.GETFollowing)))

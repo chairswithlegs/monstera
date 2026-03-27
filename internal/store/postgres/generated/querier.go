@@ -120,6 +120,8 @@ type Querier interface {
 	GetDistinctFollowerInboxURLsPaginated(ctx context.Context, arg GetDistinctFollowerInboxURLsPaginatedParams) ([]string, error)
 	GetDomainBlock(ctx context.Context, domain string) (DomainBlock, error)
 	GetEmailToken(ctx context.Context, tokenHash string) (EmailToken, error)
+	// Returns accounts that the viewer follows who also follow the given target account.
+	GetFamiliarFollowers(ctx context.Context, arg GetFamiliarFollowersParams) ([]GetFamiliarFollowersRow, error)
 	GetFavouriteByAPID(ctx context.Context, apID *string) (Favourite, error)
 	GetFavouriteByAccountAndStatus(ctx context.Context, arg GetFavouriteByAccountAndStatusParams) (Favourite, error)
 	GetFavouritesTimeline(ctx context.Context, arg GetFavouritesTimelineParams) ([]GetFavouritesTimelineRow, error)
