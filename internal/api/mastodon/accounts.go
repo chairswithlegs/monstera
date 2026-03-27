@@ -31,13 +31,14 @@ type AccountsHandler struct {
 	settings       service.MonsteraSettingsService
 	media          service.MediaService
 	backfill       service.BackfillService
+	featuredTags   service.FeaturedTagService
 	mediaMaxBytes  int64
 	instanceDomain string
 }
 
 // NewAccountsHandler returns a new AccountsHandler. follows may be nil to disable follow endpoints; timeline is required for GET account statuses.
-func NewAccountsHandler(accounts service.AccountService, follows service.FollowService, tagFollows service.TagFollowService, timeline service.TimelineService, statuses service.StatusService, settings service.MonsteraSettingsService, media service.MediaService, backfill service.BackfillService, mediaMaxBytes int64, instanceDomain string) *AccountsHandler {
-	return &AccountsHandler{accounts: accounts, follows: follows, tagFollows: tagFollows, timeline: timeline, statuses: statuses, settings: settings, media: media, backfill: backfill, mediaMaxBytes: mediaMaxBytes, instanceDomain: instanceDomain}
+func NewAccountsHandler(accounts service.AccountService, follows service.FollowService, tagFollows service.TagFollowService, timeline service.TimelineService, statuses service.StatusService, settings service.MonsteraSettingsService, media service.MediaService, backfill service.BackfillService, featuredTags service.FeaturedTagService, mediaMaxBytes int64, instanceDomain string) *AccountsHandler {
+	return &AccountsHandler{accounts: accounts, follows: follows, tagFollows: tagFollows, timeline: timeline, statuses: statuses, settings: settings, media: media, backfill: backfill, featuredTags: featuredTags, mediaMaxBytes: mediaMaxBytes, instanceDomain: instanceDomain}
 }
 
 // GETVerifyCredentials handles GET /api/v1/accounts/verify_credentials.

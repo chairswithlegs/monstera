@@ -207,6 +207,7 @@ func New(deps Deps) http.Handler {
 				}
 				r.Get("/accounts/lookup", deps.Accounts.GETAccountsLookup)
 				r.Get("/accounts/{id}", deps.Accounts.GETAccounts)
+				r.Get("/accounts/{id}/featured_tags", deps.Accounts.GETAccountFeaturedTags)
 				r.Get("/directory", deps.Accounts.GETDirectory)
 				r.Get("/search", deps.Search.GETSearch)
 				r.Get("/statuses/{id}", deps.Statuses.GETStatuses)
