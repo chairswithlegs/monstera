@@ -8,9 +8,68 @@ import (
 	"testing"
 
 	"github.com/chairswithlegs/monstera/internal/api"
+	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMentionFromAccount(t *testing.T) {
+	t.Parallel()
+
+	remoteDomain := "remote.example"
+
+	tests := []struct {
+		name    string
+		account *domain.Account
+		wantURL string
+		wantAcc string
+	}{
+		{
+			name: "local account uses instance URL",
+			account: &domain.Account{
+				ID:       "01LOCAL",
+				Username: "alice",
+				APID:     "https://local.example/ap/users/01LOCAL",
+			},
+			wantURL: "https://local.example/@alice",
+			wantAcc: "alice",
+		},
+		{
+			name: "remote account with ProfileURL uses ProfileURL",
+			account: &domain.Account{
+				ID:         "01REMOTE",
+				Username:   "bob",
+				Domain:     &remoteDomain,
+				APID:       "https://remote.example/users/bob",
+				ProfileURL: "https://remote.example/@bob",
+			},
+			wantURL: "https://remote.example/@bob",
+			wantAcc: "bob@remote.example",
+		},
+		{
+			name: "remote account without ProfileURL falls back to APID",
+			account: &domain.Account{
+				ID:       "01REMOTE2",
+				Username: "carol",
+				Domain:   &remoteDomain,
+				APID:     "https://remote.example/users/carol",
+			},
+			wantURL: "https://remote.example/users/carol",
+			wantAcc: "carol@remote.example",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			m := MentionFromAccount(tc.account, "local.example")
+			assert.Equal(t, tc.account.ID, m.ID)
+			assert.Equal(t, tc.account.Username, m.Username)
+			assert.Equal(t, tc.wantAcc, m.Acct)
+			assert.Equal(t, tc.wantURL, m.URL)
+		})
+	}
+}
 
 func TestCreateStatusRequest_Sanitize(t *testing.T) {
 	t.Parallel()
