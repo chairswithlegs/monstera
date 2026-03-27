@@ -3553,35 +3553,6 @@ func (f *FakeStore) GetStatusCard(_ context.Context, statusID string) (*domain.C
 	return &copy, nil
 }
 
-// ListStatusIDsNeedingCards returns status IDs that have no card row and whose content contains "http".
-func (f *FakeStore) ListStatusIDsNeedingCards(_ context.Context, since time.Time, limit int) ([]string, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var out []string
-	for id, s := range f.statusesByID {
-		if _, hasCard := f.StatusCards[id]; hasCard {
-			continue
-		}
-		if s.DeletedAt != nil {
-			continue
-		}
-		if s.ReblogOfID != nil {
-			continue
-		}
-		if s.Content == nil || !strings.Contains(*s.Content, "http") {
-			continue
-		}
-		if s.CreatedAt.Before(since) {
-			continue
-		}
-		out = append(out, id)
-		if len(out) >= limit {
-			break
-		}
-	}
-	return out, nil
-}
-
 // --- Transactional outbox ---
 
 func (f *FakeStore) InsertOutboxEvent(_ context.Context, in store.InsertOutboxEventInput) error {

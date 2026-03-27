@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/store"
@@ -67,39 +65,4 @@ func (s *PostgresStore) GetStatusCard(ctx context.Context, statusID string) (*do
 	c.Width = int(width)
 	c.Height = int(height)
 	return &c, nil
-}
-
-// ListStatusIDsNeedingCards returns status IDs that have no status_cards row,
-// were created on or after since, are not reblogs, are not deleted, and have URLs in their content.
-func (s *PostgresStore) ListStatusIDsNeedingCards(ctx context.Context, since time.Time, limit int) ([]string, error) {
-	const q = `
-		SELECT s.id
-		FROM statuses s
-		LEFT JOIN status_cards sc ON sc.status_id = s.id
-		WHERE sc.status_id IS NULL
-		  AND s.deleted_at IS NULL
-		  AND s.reblog_of_id IS NULL
-		  AND s.content LIKE '%http%'
-		  AND s.created_at >= $1
-		ORDER BY s.created_at DESC
-		LIMIT $2`
-
-	rows, err := s.pool.Query(ctx, q, pgtype.Timestamptz{Time: since, Valid: true}, int64(limit))
-	if err != nil {
-		return nil, fmt.Errorf("ListStatusIDsNeedingCards: %w", err)
-	}
-	defer rows.Close()
-
-	var out []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("ListStatusIDsNeedingCards scan: %w", err)
-		}
-		out = append(out, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("ListStatusIDsNeedingCards rows: %w", err)
-	}
-	return out, nil
 }
