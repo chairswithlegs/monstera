@@ -1635,3 +1635,36 @@ func TestStatusesHandler_PUTInteractionPolicy(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, rec.Code)
 	})
 }
+
+func TestStatusesHandler_POSTTranslate(t *testing.T) {
+	t.Parallel()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
+	conversationSvc := service.NewConversationService(st, statusSvc)
+	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
+	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
+	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	acc := &domain.Account{ID: "01H0000000000000000000001", Username: "alice"}
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/01H0000000000000000000000/translate", nil)
+		req = testutil.AddChiURLParam(req, "id", "01H0000000000000000000000")
+		rec := httptest.NewRecorder()
+		handler.POSTTranslate(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("authenticated returns 501 not implemented", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/statuses/01H0000000000000000000000/translate", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), acc))
+		req = testutil.AddChiURLParam(req, "id", "01H0000000000000000000000")
+		rec := httptest.NewRecorder()
+		handler.POSTTranslate(rec, req)
+		assert.Equal(t, http.StatusNotImplemented, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.NotEmpty(t, body["error"])
+	})
+}
