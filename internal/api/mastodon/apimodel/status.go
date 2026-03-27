@@ -82,6 +82,7 @@ func ToStatus(s *domain.Status, author Account, mentions []Mention, tags []Tag, 
 		Muted:               false,
 		Bookmarked:          false,
 		Pinned:              false,
+		Filtered:            []any{},
 	}
 	return st
 }
