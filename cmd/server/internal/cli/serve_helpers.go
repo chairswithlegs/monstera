@@ -79,7 +79,7 @@ type svcs struct {
 	moderation        service.ModerationService
 	list              service.ListService
 	userFilter        service.UserFilterService
-	userFilterV2      service.UserFilterV2Service
+	filterSvc         service.FilterService
 	marker            service.MarkerService
 	featuredTag       service.FeaturedTagService
 	registration      service.RegistrationService
@@ -265,7 +265,7 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 		moderation:        service.NewModerationService(i.store),
 		list:              service.NewListService(i.store),
 		userFilter:        service.NewUserFilterService(i.store),
-		userFilterV2:      service.NewUserFilterV2Service(i.store),
+		filterSvc:         service.NewFilterService(i.store),
 		marker:            service.NewMarkerService(i.store),
 		featuredTag:       service.NewFeaturedTagService(i.store),
 		registration:      service.NewRegistrationService(i.store, mailer, mailer, instanceBaseURL, cfg.InstanceName),
@@ -405,7 +405,7 @@ func createRouter(cfg *config.Config, s *svcs, i *infra, sseHub *sse.Hub) http.H
 		FollowRequests:         mastodon.NewFollowRequestsHandler(s.follow, s.account, cfg.MonsteraInstanceDomain),
 		Lists:                  mastodon.NewListsHandler(s.list, s.account, cfg.MonsteraInstanceDomain),
 		Filters:                mastodon.NewFiltersHandler(s.userFilter),
-		FiltersV2:              mastodon.NewFiltersV2Handler(s.userFilterV2),
+		FiltersV2:              mastodon.NewFiltersV2Handler(s.filterSvc),
 		Preferences:            mastodon.NewPreferencesHandler(s.account),
 		Markers:                mastodon.NewMarkersHandler(s.marker),
 		FeaturedTags:           mastodon.NewFeaturedTagsHandler(s.featuredTag, s.account, cfg.MonsteraInstanceDomain),

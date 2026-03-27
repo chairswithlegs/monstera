@@ -192,8 +192,8 @@ type UpdateUserFilterInput struct {
 	Irreversible bool
 }
 
-// CreateUserFilterV2Input is the input for creating a v2 user filter.
-type CreateUserFilterV2Input struct {
+// CreateFilterInput is the input for creating a keyword-based user filter.
+type CreateFilterInput struct {
 	ID           string
 	AccountID    string
 	Title        string
@@ -202,8 +202,8 @@ type CreateUserFilterV2Input struct {
 	FilterAction string
 }
 
-// UpdateUserFilterV2Input is the input for updating a v2 user filter.
-type UpdateUserFilterV2Input struct {
+// UpdateFilterInput is the input for updating a keyword-based user filter.
+type UpdateFilterInput struct {
 	ID           string
 	Title        string
 	Context      []string

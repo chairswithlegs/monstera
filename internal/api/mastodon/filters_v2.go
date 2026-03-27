@@ -15,11 +15,11 @@ import (
 
 // FiltersV2Handler handles /api/v2/filters and /api/v2/filter_keywords and /api/v2/filter_statuses endpoints.
 type FiltersV2Handler struct {
-	filters service.UserFilterV2Service
+	filters service.FilterService
 }
 
 // NewFiltersV2Handler returns a new FiltersV2Handler.
-func NewFiltersV2Handler(filters service.UserFilterV2Service) *FiltersV2Handler {
+func NewFiltersV2Handler(filters service.FilterService) *FiltersV2Handler {
 	return &FiltersV2Handler{filters: filters}
 }
 

@@ -37,8 +37,8 @@ type FilterResult struct {
 	StatusMatches  []string `json:"status_matches"`
 }
 
-// ToFilterV2 converts a domain UserFilterV2 to the Mastodon API FilterV2 shape.
-func ToFilterV2(f *domain.UserFilterV2) FilterV2 {
+// ToFilterV2 converts a domain UserFilter to the Mastodon API v2 FilterV2 shape.
+func ToFilterV2(f *domain.UserFilter) FilterV2 {
 	out := FilterV2{
 		ID:           f.ID,
 		Title:        f.Title,

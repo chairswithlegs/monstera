@@ -54,7 +54,7 @@ type FakeStore struct {
 
 	userFiltersByID map[string]*domain.UserFilter
 
-	userFiltersV2ByID  map[string]*domain.UserFilterV2
+	userFiltersV2ByID  map[string]*domain.UserFilter
 	filterKeywordsByID map[string]*domain.FilterKeyword
 	filterStatusesByID map[string]*domain.FilterStatus
 
@@ -172,7 +172,7 @@ func NewFakeStore() *FakeStore {
 		authCodes:                 make(map[string]*domain.OAuthAuthorizationCode),
 		tokens:                    make(map[string]*domain.OAuthAccessToken),
 		userFiltersByID:           make(map[string]*domain.UserFilter),
-		userFiltersV2ByID:         make(map[string]*domain.UserFilterV2),
+		userFiltersV2ByID:         make(map[string]*domain.UserFilter),
 		filterKeywordsByID:        make(map[string]*domain.FilterKeyword),
 		filterStatusesByID:        make(map[string]*domain.FilterStatus),
 		listsByID:                 make(map[string]*domain.List),
@@ -2365,11 +2365,11 @@ func (f *FakeStore) GetActiveUserFiltersByContext(ctx context.Context, accountID
 	return nil, nil
 }
 
-func (f *FakeStore) CreateUserFilterV2(ctx context.Context, in store.CreateUserFilterV2Input) (*domain.UserFilterV2, error) {
+func (f *FakeStore) CreateFilter(ctx context.Context, in store.CreateFilterInput) (*domain.UserFilter, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	now := time.Now().UTC()
-	uf := &domain.UserFilterV2{
+	uf := &domain.UserFilter{
 		ID:           in.ID,
 		AccountID:    in.AccountID,
 		Title:        in.Title,
@@ -2381,32 +2381,32 @@ func (f *FakeStore) CreateUserFilterV2(ctx context.Context, in store.CreateUserF
 		CreatedAt:    now,
 	}
 	f.userFiltersV2ByID[in.ID] = uf
-	return copyUserFilterV2(uf), nil
+	return copyFilter(uf), nil
 }
 
-func (f *FakeStore) GetUserFilterV2ByID(ctx context.Context, id string) (*domain.UserFilterV2, error) {
+func (f *FakeStore) GetFilterByID(ctx context.Context, id string) (*domain.UserFilter, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	uf, ok := f.userFiltersV2ByID[id]
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
-	return copyUserFilterV2(uf), nil
+	return copyFilter(uf), nil
 }
 
-func (f *FakeStore) ListUserFiltersV2(ctx context.Context, accountID string) ([]domain.UserFilterV2, error) {
+func (f *FakeStore) ListFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var out []domain.UserFilterV2
+	var out []domain.UserFilter
 	for _, uf := range f.userFiltersV2ByID {
 		if uf.AccountID == accountID {
-			out = append(out, *copyUserFilterV2(uf))
+			out = append(out, *copyFilter(uf))
 		}
 	}
 	return out, nil
 }
 
-func (f *FakeStore) UpdateUserFilterV2(ctx context.Context, in store.UpdateUserFilterV2Input) (*domain.UserFilterV2, error) {
+func (f *FakeStore) UpdateFilter(ctx context.Context, in store.UpdateFilterInput) (*domain.UserFilter, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	uf, ok := f.userFiltersV2ByID[in.ID]
@@ -2417,10 +2417,10 @@ func (f *FakeStore) UpdateUserFilterV2(ctx context.Context, in store.UpdateUserF
 	uf.Context = in.Context
 	uf.ExpiresAt = in.ExpiresAt
 	uf.FilterAction = in.FilterAction
-	return copyUserFilterV2(uf), nil
+	return copyFilter(uf), nil
 }
 
-func (f *FakeStore) DeleteUserFilterV2(ctx context.Context, id string) error {
+func (f *FakeStore) DeleteFilter(ctx context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	delete(f.userFiltersV2ByID, id)
@@ -2437,11 +2437,11 @@ func (f *FakeStore) DeleteUserFilterV2(ctx context.Context, id string) error {
 	return nil
 }
 
-func (f *FakeStore) GetActiveUserFiltersV2(ctx context.Context, accountID string) ([]domain.UserFilterV2, error) {
+func (f *FakeStore) GetActiveFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	now := time.Now().UTC()
-	var out []domain.UserFilterV2
+	var out []domain.UserFilter
 	for _, uf := range f.userFiltersV2ByID {
 		if uf.AccountID != accountID {
 			continue
@@ -2449,7 +2449,7 @@ func (f *FakeStore) GetActiveUserFiltersV2(ctx context.Context, accountID string
 		if uf.ExpiresAt != nil && uf.ExpiresAt.Before(now) {
 			continue
 		}
-		out = append(out, *copyUserFilterV2(uf))
+		out = append(out, *copyFilter(uf))
 	}
 	return out, nil
 }
@@ -2592,7 +2592,7 @@ func (f *FakeStore) DeleteFilterStatus(ctx context.Context, id string) error {
 	return nil
 }
 
-func copyUserFilterV2(uf *domain.UserFilterV2) *domain.UserFilterV2 {
+func copyFilter(uf *domain.UserFilter) *domain.UserFilter {
 	if uf == nil {
 		return nil
 	}

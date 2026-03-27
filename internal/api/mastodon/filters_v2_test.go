@@ -18,10 +18,10 @@ import (
 	"github.com/chairswithlegs/monstera/internal/testutil"
 )
 
-func newFiltersV2Handler(t *testing.T) (*FiltersV2Handler, service.UserFilterV2Service) {
+func newFiltersV2Handler(t *testing.T) (*FiltersV2Handler, service.FilterService) {
 	t.Helper()
 	fake := testutil.NewFakeStore()
-	svc := service.NewUserFilterV2Service(fake)
+	svc := service.NewFilterService(fake)
 	return NewFiltersV2Handler(svc), svc
 }
 
