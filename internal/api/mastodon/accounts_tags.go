@@ -1,6 +1,7 @@
 package mastodon
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/chairswithlegs/monstera/internal/api"
 	"github.com/chairswithlegs/monstera/internal/api/mastodon/apimodel"
 	"github.com/chairswithlegs/monstera/internal/api/middleware"
+	"github.com/chairswithlegs/monstera/internal/domain"
 )
 
 // GETFollowedTags handles GET /api/v1/followed_tags.
@@ -101,4 +103,34 @@ func (h *AccountsHandler) POSTTagUnfollow(w http.ResponseWriter, r *http.Request
 	}
 	f := false
 	api.WriteJSON(w, http.StatusOK, apimodel.TagFromDomain(tag, h.instanceDomain, &f))
+}
+
+// GETAccountFeaturedTags handles GET /api/v1/accounts/:id/featured_tags.
+// Returns the featured hashtags for the given account. No authentication required.
+func (h *AccountsHandler) GETAccountFeaturedTags(w http.ResponseWriter, r *http.Request) {
+	targetID := chi.URLParam(r, "id")
+	if targetID == "" {
+		api.HandleError(w, r, api.ErrNotFound)
+		return
+	}
+	target, err := h.accounts.GetByID(r.Context(), targetID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	list, err := h.featuredTags.ListFeaturedTags(r.Context(), target.ID)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	baseURL := "https://" + h.instanceDomain + "/@" + target.Username + "/tagged/"
+	out := make([]apimodel.FeaturedTag, 0, len(list))
+	for i := range list {
+		out = append(out, apimodel.FeaturedTagFromDomain(list[i], baseURL+list[i].Name))
+	}
+	api.WriteJSON(w, http.StatusOK, out)
 }
