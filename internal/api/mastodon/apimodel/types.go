@@ -4,26 +4,29 @@ import "encoding/json"
 
 // Account is the Mastodon API account response shape.
 type Account struct {
-	ID             string  `json:"id"`
-	Username       string  `json:"username"`
-	Acct           string  `json:"acct"`
-	DisplayName    string  `json:"display_name"`
-	Locked         bool    `json:"locked"`
-	Bot            bool    `json:"bot"`
-	CreatedAt      string  `json:"created_at"`
-	Note           string  `json:"note"`
-	URL            string  `json:"url"`
-	Avatar         string  `json:"avatar"`
-	AvatarStatic   string  `json:"avatar_static"`
-	Header         string  `json:"header"`
-	HeaderStatic   string  `json:"header_static"`
-	FollowersCount int     `json:"followers_count"`
-	FollowingCount int     `json:"following_count"`
-	StatusesCount  int     `json:"statuses_count"`
-	LastStatusAt   *string `json:"last_status_at"`
-	Emojis         []any   `json:"emojis"`
-	Fields         []Field `json:"fields"`
-	Source         *Source `json:"source,omitempty"`
+	ID              string  `json:"id"`
+	Username        string  `json:"username"`
+	Acct            string  `json:"acct"`
+	DisplayName     string  `json:"display_name"`
+	Locked          bool    `json:"locked"`
+	Bot             bool    `json:"bot"`
+	CreatedAt       string  `json:"created_at"`
+	Note            string  `json:"note"`
+	URL             string  `json:"url"`
+	Avatar          string  `json:"avatar"`
+	AvatarStatic    string  `json:"avatar_static"`
+	Header          string  `json:"header"`
+	HeaderStatic    string  `json:"header_static"`
+	FollowersCount  int     `json:"followers_count"`
+	FollowingCount  int     `json:"following_count"`
+	StatusesCount   int     `json:"statuses_count"`
+	LastStatusAt    *string `json:"last_status_at"`
+	Emojis          []any   `json:"emojis"`
+	Fields          []Field `json:"fields"`
+	Roles           []any   `json:"roles"`
+	Indexable       bool    `json:"indexable"`
+	HideCollections bool    `json:"hide_collections"`
+	Source          *Source `json:"source,omitempty"`
 }
 
 // Field is a profile metadata field.
@@ -75,6 +78,7 @@ type Status struct {
 	Muted               bool              `json:"muted"`
 	Bookmarked          bool              `json:"bookmarked"`
 	Pinned              bool              `json:"pinned"`
+	Filtered            []any             `json:"filtered"`
 }
 
 // QuoteApproval is the quote approval state and optional quoted status (Mastodon API entity).

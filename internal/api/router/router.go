@@ -286,6 +286,7 @@ func New(deps Deps) http.Handler {
 				r.Method("POST", "/statuses/{id}/unpin", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.POSTUnpin)))
 				r.Method("POST", "/statuses/{id}/mute", middleware.RequiredScopes("write:mutes")(http.HandlerFunc(deps.Statuses.POSTMuteConversation)))
 				r.Method("POST", "/statuses/{id}/unmute", middleware.RequiredScopes("write:mutes")(http.HandlerFunc(deps.Statuses.POSTUnmuteConversation)))
+				r.Method("POST", "/statuses/{id}/translate", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.Statuses.POSTTranslate)))
 				r.Method("GET", "/scheduled_statuses", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.ScheduledStatuses.GETScheduledStatuses)))
 				r.Method("GET", "/scheduled_statuses/{id}", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.ScheduledStatuses.GETScheduledStatus)))
 				r.Method("POST", "/polls/{id}/votes", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Polls.POSTVotes)))
