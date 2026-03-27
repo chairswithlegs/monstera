@@ -1986,6 +1986,29 @@ func (f *FakeStore) GetFollowing(ctx context.Context, accountID string, maxID *s
 	return out, nil
 }
 
+func (f *FakeStore) GetFamiliarFollowers(ctx context.Context, viewerID, targetID string, limit int) ([]domain.Account, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.Account
+	for _, follow := range f.followsByKey {
+		if follow.AccountID != viewerID || follow.State != domain.FollowStateAccepted {
+			continue
+		}
+		// Check if the account the viewer follows also follows the target.
+		if _, ok := f.followsByKey[followKey(follow.TargetID, targetID)]; !ok {
+			continue
+		}
+		if a, ok := f.accountsByID[follow.TargetID]; ok && a != nil {
+			acc := *a
+			out = append(out, acc)
+		}
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
 func (f *FakeStore) GetPendingFollowRequests(ctx context.Context, targetID string, maxID *string, limit int) ([]domain.Account, *string, error) {
 	return nil, nil, nil
 }

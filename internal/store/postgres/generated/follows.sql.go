@@ -139,6 +139,77 @@ func (q *Queries) GetDistinctFollowerInboxURLsPaginated(ctx context.Context, arg
 	return items, nil
 }
 
+const getFamiliarFollowers = `-- name: GetFamiliarFollowers :many
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at, a.featured_url
+FROM accounts a
+INNER JOIN follows f1 ON f1.target_id = a.id AND f1.account_id = $1 AND f1.state = 'accepted'
+INNER JOIN follows f2 ON f2.account_id = a.id AND f2.target_id = $2 AND f2.state = 'accepted'
+ORDER BY f2.id DESC
+LIMIT $3
+`
+
+type GetFamiliarFollowersParams struct {
+	AccountID string `json:"account_id"`
+	TargetID  string `json:"target_id"`
+	Limit     int32  `json:"limit"`
+}
+
+type GetFamiliarFollowersRow struct {
+	Account Account `json:"account"`
+}
+
+// Returns accounts that the viewer follows who also follow the given target account.
+func (q *Queries) GetFamiliarFollowers(ctx context.Context, arg GetFamiliarFollowersParams) ([]GetFamiliarFollowersRow, error) {
+	rows, err := q.db.Query(ctx, getFamiliarFollowers, arg.AccountID, arg.TargetID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetFamiliarFollowersRow{}
+	for rows.Next() {
+		var i GetFamiliarFollowersRow
+		if err := rows.Scan(
+			&i.Account.ID,
+			&i.Account.Username,
+			&i.Account.Domain,
+			&i.Account.DisplayName,
+			&i.Account.Note,
+			&i.Account.PublicKey,
+			&i.Account.PrivateKey,
+			&i.Account.InboxUrl,
+			&i.Account.OutboxUrl,
+			&i.Account.FollowersUrl,
+			&i.Account.FollowingUrl,
+			&i.Account.ApID,
+			&i.Account.Bot,
+			&i.Account.Locked,
+			&i.Account.Suspended,
+			&i.Account.Silenced,
+			&i.Account.CreatedAt,
+			&i.Account.UpdatedAt,
+			&i.Account.AvatarMediaID,
+			&i.Account.HeaderMediaID,
+			&i.Account.FollowersCount,
+			&i.Account.FollowingCount,
+			&i.Account.StatusesCount,
+			&i.Account.Fields,
+			&i.Account.LastStatusAt,
+			&i.Account.Url,
+			&i.Account.AvatarUrl,
+			&i.Account.HeaderUrl,
+			&i.Account.LastBackfilledAt,
+			&i.Account.FeaturedUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getFollow = `-- name: GetFollow :one
 SELECT id, account_id, target_id, state, ap_id, created_at FROM follows WHERE account_id = $1 AND target_id = $2
 `

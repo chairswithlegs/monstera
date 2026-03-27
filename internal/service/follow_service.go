@@ -28,6 +28,7 @@ type FollowService interface {
 	ListMutedAccounts(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, *string, error)
 	AuthorizeFollowRequest(ctx context.Context, targetAccountID, requesterAccountID string) error
 	RejectFollowRequest(ctx context.Context, targetAccountID, requesterAccountID string) error
+	GetFamiliarFollowers(ctx context.Context, viewerID, targetID string, limit int) ([]domain.Account, error)
 }
 
 type followService struct {
@@ -358,6 +359,15 @@ func (svc *followService) GetFollowing(ctx context.Context, accountID string, ma
 	list, err := svc.store.GetFollowing(ctx, accountID, maxID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("GetFollowing: %w", err)
+	}
+	return list, nil
+}
+
+// GetFamiliarFollowers returns accounts that the viewer follows who also follow the given target account.
+func (svc *followService) GetFamiliarFollowers(ctx context.Context, viewerID, targetID string, limit int) ([]domain.Account, error) {
+	list, err := svc.store.GetFamiliarFollowers(ctx, viewerID, targetID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("GetFamiliarFollowers: %w", err)
 	}
 	return list, nil
 }

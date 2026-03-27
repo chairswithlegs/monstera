@@ -226,3 +226,15 @@ func (h *StatusesHandler) POSTUnmuteConversation(w http.ResponseWriter, r *http.
 	out.Muted = false
 	api.WriteJSON(w, http.StatusOK, out)
 }
+
+// POSTTranslate handles POST /api/v1/statuses/:id/translate.
+// Translation is not currently supported; clients should check configuration.translation.enabled
+// in GET /api/v2/instance before calling this endpoint.
+func (h *StatusesHandler) POSTTranslate(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	api.WriteJSON(w, http.StatusNotImplemented, api.ErrorResponse{Error: "Translation is not supported by this server"})
+}

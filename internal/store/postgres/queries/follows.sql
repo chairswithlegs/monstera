@@ -90,3 +90,12 @@ WHERE f.target_id = $1
 DELETE FROM follows
 WHERE account_id IN (SELECT a.id FROM accounts a WHERE a.domain = $1)
    OR target_id IN (SELECT a.id FROM accounts a WHERE a.domain = $1);
+
+-- name: GetFamiliarFollowers :many
+-- Returns accounts that the viewer follows who also follow the given target account.
+SELECT sqlc.embed(a)
+FROM accounts a
+INNER JOIN follows f1 ON f1.target_id = a.id AND f1.account_id = $1 AND f1.state = 'accepted'
+INNER JOIN follows f2 ON f2.account_id = a.id AND f2.target_id = $2 AND f2.state = 'accepted'
+ORDER BY f2.id DESC
+LIMIT $3;
