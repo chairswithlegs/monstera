@@ -346,7 +346,7 @@ func TestAccountsHandler_GETFamiliarFollowers(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	followSvc, tagFollowSvc := newTestFollowServices(st)
-	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, 0, "example.com")
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, nil, 0, "example.com")
 
 	alice, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice-ff",
