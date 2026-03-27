@@ -192,6 +192,25 @@ type UpdateUserFilterInput struct {
 	Irreversible bool
 }
 
+// CreateUserFilterV2Input is the input for creating a v2 user filter.
+type CreateUserFilterV2Input struct {
+	ID           string
+	AccountID    string
+	Title        string
+	Context      []string
+	ExpiresAt    *time.Time
+	FilterAction string
+}
+
+// UpdateUserFilterV2Input is the input for updating a v2 user filter.
+type UpdateUserFilterV2Input struct {
+	ID           string
+	Title        string
+	Context      []string
+	ExpiresAt    *time.Time
+	FilterAction string
+}
+
 // UpdateUserPreferencesInput is the input for updating a user's post preferences.
 type UpdateUserPreferencesInput struct {
 	UserID             string

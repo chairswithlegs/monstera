@@ -2328,6 +2328,237 @@ func (s *PostgresStore) GetActiveUserFiltersByContext(ctx context.Context, accou
 	return out, nil
 }
 
+// getUserFilterV2WithRelated loads a filter row and its keywords + statuses.
+func (s *PostgresStore) getUserFilterV2WithRelated(ctx context.Context, id string) (*domain.UserFilterV2, error) {
+	row, err := s.q.GetUserFilterV2(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainUserFilterV2(row)
+	kws, err := s.q.ListFilterKeywords(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("ListFilterKeywords(%s): %w", id, err)
+	}
+	for _, k := range kws {
+		d.Keywords = append(d.Keywords, ToDomainFilterKeyword(k))
+	}
+	fsts, err := s.q.ListFilterStatuses(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("ListFilterStatuses(%s): %w", id, err)
+	}
+	for _, fs := range fsts {
+		d.Statuses = append(d.Statuses, ToDomainFilterStatus(fs))
+	}
+	return &d, nil
+}
+
+func (s *PostgresStore) CreateUserFilterV2(ctx context.Context, in store.CreateUserFilterV2Input) (*domain.UserFilterV2, error) {
+	_, err := s.q.CreateUserFilterV2(ctx, db.CreateUserFilterV2Params{
+		ID:           in.ID,
+		AccountID:    in.AccountID,
+		Title:        in.Title,
+		Context:      in.Context,
+		ExpiresAt:    timePtrToPg(in.ExpiresAt),
+		FilterAction: in.FilterAction,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateUserFilterV2: %w", mapErr(err))
+	}
+	return s.getUserFilterV2WithRelated(ctx, in.ID)
+}
+
+func (s *PostgresStore) GetUserFilterV2ByID(ctx context.Context, id string) (*domain.UserFilterV2, error) {
+	return s.getUserFilterV2WithRelated(ctx, id)
+}
+
+func (s *PostgresStore) ListUserFiltersV2(ctx context.Context, accountID string) ([]domain.UserFilterV2, error) {
+	rows, err := s.q.ListUserFiltersV2(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("ListUserFiltersV2: %w", mapErr(err))
+	}
+	if len(rows) == 0 {
+		return []domain.UserFilterV2{}, nil
+	}
+	ids := make([]string, len(rows))
+	filtersByID := make(map[string]*domain.UserFilterV2, len(rows))
+	for i, r := range rows {
+		d := ToDomainUserFilterV2(r)
+		ids[i] = d.ID
+		filtersByID[d.ID] = &d
+	}
+	kws, err := s.q.GetFilterKeywordsByFilterIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("GetFilterKeywordsByFilterIDs: %w", mapErr(err))
+	}
+	for _, k := range kws {
+		if f, ok := filtersByID[k.FilterID]; ok {
+			f.Keywords = append(f.Keywords, ToDomainFilterKeyword(k))
+		}
+	}
+	fsts, err := s.q.GetFilterStatusesByFilterIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("GetFilterStatusesByFilterIDs: %w", mapErr(err))
+	}
+	for _, fs := range fsts {
+		if f, ok := filtersByID[fs.FilterID]; ok {
+			f.Statuses = append(f.Statuses, ToDomainFilterStatus(fs))
+		}
+	}
+	out := make([]domain.UserFilterV2, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, *filtersByID[id])
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) UpdateUserFilterV2(ctx context.Context, in store.UpdateUserFilterV2Input) (*domain.UserFilterV2, error) {
+	_, err := s.q.UpdateUserFilterV2(ctx, db.UpdateUserFilterV2Params{
+		ID:           in.ID,
+		Title:        in.Title,
+		Context:      in.Context,
+		ExpiresAt:    timePtrToPg(in.ExpiresAt),
+		FilterAction: in.FilterAction,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("UpdateUserFilterV2: %w", mapErr(err))
+	}
+	return s.getUserFilterV2WithRelated(ctx, in.ID)
+}
+
+func (s *PostgresStore) DeleteUserFilterV2(ctx context.Context, id string) error {
+	return mapErr(s.q.DeleteUserFilterV2(ctx, id))
+}
+
+func (s *PostgresStore) GetActiveUserFiltersV2(ctx context.Context, accountID string) ([]domain.UserFilterV2, error) {
+	rows, err := s.q.GetActiveUserFiltersV2(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("GetActiveUserFiltersV2: %w", mapErr(err))
+	}
+	if len(rows) == 0 {
+		return []domain.UserFilterV2{}, nil
+	}
+	ids := make([]string, len(rows))
+	filtersByID := make(map[string]*domain.UserFilterV2, len(rows))
+	for i, r := range rows {
+		d := ToDomainUserFilterV2(r)
+		ids[i] = d.ID
+		filtersByID[d.ID] = &d
+	}
+	kws, err := s.q.GetFilterKeywordsByFilterIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("GetFilterKeywordsByFilterIDs: %w", mapErr(err))
+	}
+	for _, k := range kws {
+		if f, ok := filtersByID[k.FilterID]; ok {
+			f.Keywords = append(f.Keywords, ToDomainFilterKeyword(k))
+		}
+	}
+	fsts, err := s.q.GetFilterStatusesByFilterIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("GetFilterStatusesByFilterIDs: %w", mapErr(err))
+	}
+	for _, fs := range fsts {
+		if f, ok := filtersByID[fs.FilterID]; ok {
+			f.Statuses = append(f.Statuses, ToDomainFilterStatus(fs))
+		}
+	}
+	out := make([]domain.UserFilterV2, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, *filtersByID[id])
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) AddFilterKeyword(ctx context.Context, filterID, id, keyword string, wholeWord bool) (*domain.FilterKeyword, error) {
+	k, err := s.q.CreateFilterKeyword(ctx, db.CreateFilterKeywordParams{
+		ID:        id,
+		FilterID:  filterID,
+		Keyword:   keyword,
+		WholeWord: wholeWord,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateFilterKeyword: %w", mapErr(err))
+	}
+	d := ToDomainFilterKeyword(k)
+	return &d, nil
+}
+
+func (s *PostgresStore) GetFilterKeywordByID(ctx context.Context, id string) (*domain.FilterKeyword, error) {
+	k, err := s.q.GetFilterKeyword(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainFilterKeyword(k)
+	return &d, nil
+}
+
+func (s *PostgresStore) ListFilterKeywords(ctx context.Context, filterID string) ([]domain.FilterKeyword, error) {
+	rows, err := s.q.ListFilterKeywords(ctx, filterID)
+	if err != nil {
+		return nil, fmt.Errorf("ListFilterKeywords: %w", mapErr(err))
+	}
+	out := make([]domain.FilterKeyword, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainFilterKeyword(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) UpdateFilterKeyword(ctx context.Context, id, keyword string, wholeWord bool) (*domain.FilterKeyword, error) {
+	k, err := s.q.UpdateFilterKeyword(ctx, db.UpdateFilterKeywordParams{
+		ID:        id,
+		Keyword:   keyword,
+		WholeWord: wholeWord,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("UpdateFilterKeyword: %w", mapErr(err))
+	}
+	d := ToDomainFilterKeyword(k)
+	return &d, nil
+}
+
+func (s *PostgresStore) DeleteFilterKeyword(ctx context.Context, id string) error {
+	return mapErr(s.q.DeleteFilterKeyword(ctx, id))
+}
+
+func (s *PostgresStore) AddFilterStatus(ctx context.Context, id, filterID, statusID string) (*domain.FilterStatus, error) {
+	fs, err := s.q.CreateFilterStatus(ctx, db.CreateFilterStatusParams{
+		ID:       id,
+		FilterID: filterID,
+		StatusID: statusID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("CreateFilterStatus: %w", mapErr(err))
+	}
+	d := ToDomainFilterStatus(fs)
+	return &d, nil
+}
+
+func (s *PostgresStore) GetFilterStatusByID(ctx context.Context, id string) (*domain.FilterStatus, error) {
+	fs, err := s.q.GetFilterStatus(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainFilterStatus(fs)
+	return &d, nil
+}
+
+func (s *PostgresStore) ListFilterStatuses(ctx context.Context, filterID string) ([]domain.FilterStatus, error) {
+	rows, err := s.q.ListFilterStatuses(ctx, filterID)
+	if err != nil {
+		return nil, fmt.Errorf("ListFilterStatuses: %w", mapErr(err))
+	}
+	out := make([]domain.FilterStatus, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainFilterStatus(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) DeleteFilterStatus(ctx context.Context, id string) error {
+	return mapErr(s.q.DeleteFilterStatus(ctx, id))
+}
+
 func (s *PostgresStore) DeleteFollowsByDomain(ctx context.Context, domain string) error {
 	return mapErr(s.q.DeleteFollowsByDomain(ctx, &domain))
 }

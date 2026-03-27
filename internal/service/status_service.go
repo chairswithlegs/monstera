@@ -245,6 +245,16 @@ func (svc *statusService) GetByIDsEnriched(ctx context.Context, ids []string, vi
 
 // EnrichStatuses loads author, mentions, tags, media, and optionally card, poll, and viewer flags for each status.
 func (svc *statusService) EnrichStatuses(ctx context.Context, statuses []*domain.Status, opts EnrichOpts) ([]EnrichedStatus, error) {
+	// Load viewer's active v2 filters once for the whole batch (avoids per-status DB queries).
+	var viewerFiltersV2 []domain.UserFilterV2
+	if opts.ViewerID != nil {
+		if f, err := svc.store.GetActiveUserFiltersV2(ctx, *opts.ViewerID); err == nil {
+			viewerFiltersV2 = f
+		} else {
+			slog.WarnContext(ctx, "enrich status: get active v2 filters", slog.Any("error", err))
+		}
+	}
+
 	out := make([]EnrichedStatus, 0, len(statuses))
 	for _, st := range statuses {
 		author, err := svc.store.GetAccountByID(ctx, st.AccountID)
@@ -315,6 +325,17 @@ func (svc *statusService) EnrichStatuses(ctx context.Context, statuses []*domain
 			}
 			if muted, err := svc.IsConversationMutedForViewer(ctx, *opts.ViewerID, st.ID); err == nil {
 				e.Muted = muted
+			}
+			if len(viewerFiltersV2) > 0 {
+				content := ""
+				if st.Content != nil {
+					content = *st.Content
+				}
+				cw := ""
+				if st.ContentWarning != nil {
+					cw = *st.ContentWarning
+				}
+				e.FilterResults = computeFilterResults(viewerFiltersV2, st.ID, content, cw)
 			}
 		}
 		if st.ReblogOfID != nil {

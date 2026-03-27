@@ -309,12 +309,34 @@ type ListStore interface {
 
 // FilterStore handles user filter persistence.
 type FilterStore interface {
+	// v1 filter CRUD
 	CreateUserFilter(ctx context.Context, in CreateUserFilterInput) (*domain.UserFilter, error)
 	GetUserFilterByID(ctx context.Context, id string) (*domain.UserFilter, error)
 	ListUserFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error)
 	UpdateUserFilter(ctx context.Context, in UpdateUserFilterInput) (*domain.UserFilter, error)
 	DeleteUserFilter(ctx context.Context, id string) error
 	GetActiveUserFiltersByContext(ctx context.Context, accountID, context string) ([]domain.UserFilter, error)
+
+	// v2 filter CRUD
+	CreateUserFilterV2(ctx context.Context, in CreateUserFilterV2Input) (*domain.UserFilterV2, error)
+	GetUserFilterV2ByID(ctx context.Context, id string) (*domain.UserFilterV2, error)
+	ListUserFiltersV2(ctx context.Context, accountID string) ([]domain.UserFilterV2, error)
+	UpdateUserFilterV2(ctx context.Context, in UpdateUserFilterV2Input) (*domain.UserFilterV2, error)
+	DeleteUserFilterV2(ctx context.Context, id string) error
+	GetActiveUserFiltersV2(ctx context.Context, accountID string) ([]domain.UserFilterV2, error)
+
+	// v2 filter keywords
+	AddFilterKeyword(ctx context.Context, filterID, id, keyword string, wholeWord bool) (*domain.FilterKeyword, error)
+	GetFilterKeywordByID(ctx context.Context, id string) (*domain.FilterKeyword, error)
+	ListFilterKeywords(ctx context.Context, filterID string) ([]domain.FilterKeyword, error)
+	UpdateFilterKeyword(ctx context.Context, id, keyword string, wholeWord bool) (*domain.FilterKeyword, error)
+	DeleteFilterKeyword(ctx context.Context, id string) error
+
+	// v2 filter statuses
+	AddFilterStatus(ctx context.Context, id, filterID, statusID string) (*domain.FilterStatus, error)
+	GetFilterStatusByID(ctx context.Context, id string) (*domain.FilterStatus, error)
+	ListFilterStatuses(ctx context.Context, filterID string) ([]domain.FilterStatus, error)
+	DeleteFilterStatus(ctx context.Context, id string) error
 }
 
 // MarkerStore handles timeline marker persistence.
