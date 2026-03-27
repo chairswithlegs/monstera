@@ -379,6 +379,10 @@ func (h *AccountsHandler) POSTUnmute(w http.ResponseWriter, r *http.Request) {
 	api.WriteJSON(w, http.StatusOK, apimodel.ToRelationship(rel))
 }
 
+// familiarFollowersLimit is the maximum number of familiar followers returned per requested account.
+// Matches Mastodon's default sample size.
+const familiarFollowersLimit = 10
+
 // familiarFollowersEntry is one entry in the familiar followers response (one per requested account ID).
 type familiarFollowersEntry struct {
 	ID       string             `json:"id"`
@@ -399,7 +403,7 @@ func (h *AccountsHandler) GETFamiliarFollowers(w http.ResponseWriter, r *http.Re
 		if targetID == "" {
 			continue
 		}
-		accounts, err := h.follows.GetFamiliarFollowers(r.Context(), account.ID, targetID, 10)
+		accounts, err := h.follows.GetFamiliarFollowers(r.Context(), account.ID, targetID, familiarFollowersLimit)
 		if err != nil {
 			api.HandleError(w, r, err)
 			return
