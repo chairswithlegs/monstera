@@ -68,15 +68,22 @@ type InstanceConfig struct {
 	} `json:"translation"`
 }
 
+// InstanceAPIVersions holds the api_versions sub-object in the v2 instance response.
+// Clients use api_versions.mastodon to gate features introduced in specific Mastodon releases.
+type InstanceAPIVersions struct {
+	Mastodon int `json:"mastodon"`
+}
+
 // InstanceResponse is the Mastodon API v2 instance response.
 type InstanceResponse struct {
-	Domain        string         `json:"domain"`
-	Title         string         `json:"title"`
-	Version       string         `json:"version"`
-	SourceURL     string         `json:"source_url"`
-	Description   string         `json:"description"`
-	Languages     []string       `json:"languages"`
-	Configuration InstanceConfig `json:"configuration"`
+	Domain        string              `json:"domain"`
+	Title         string              `json:"title"`
+	Version       string              `json:"version"`
+	SourceURL     string              `json:"source_url"`
+	Description   string              `json:"description"`
+	Languages     []string            `json:"languages"`
+	Configuration InstanceConfig      `json:"configuration"`
+	APIVersions   InstanceAPIVersions `json:"api_versions"`
 	Registrations struct {
 		Enabled bool `json:"enabled"`
 	} `json:"registrations"`
@@ -108,7 +115,7 @@ func NewInstanceHandler(instanceDomain, instanceName string, maxStatusChars int,
 	}
 }
 
-const instanceVersion = "4.1.0"
+const instanceVersion = "4.3.0"
 
 // GETInstanceV1 handles GET /api/v1/instance (Mastodon v1 entity shape).
 func (h *InstanceHandler) GETInstanceV1(w http.ResponseWriter, r *http.Request) {
@@ -167,6 +174,7 @@ func (h *InstanceHandler) GETInstance(w http.ResponseWriter, r *http.Request) {
 	resp.Configuration.Polls.MaxCharactersPerOption = 50
 	resp.Configuration.Polls.MinExpiration = 300
 	resp.Configuration.Polls.MaxExpiration = 2629746
+	resp.APIVersions = InstanceAPIVersions{Mastodon: 1}
 	resp.Registrations.Enabled = true
 	api.WriteJSON(w, http.StatusOK, resp)
 }
