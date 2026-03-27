@@ -243,7 +243,7 @@ func (p *inbox) handleUpdate(ctx context.Context, activity *vocab.Activity) erro
 			sanitized := bluemonday.StrictPolicy().Sanitize(*note.Summary)
 			cw = &sanitized
 		}
-		content := bluemonday.UGCPolicy().Sanitize(note.Content)
+		content := remoteContentPolicy().Sanitize(note.Content)
 		text := noteSourceText(note, content)
 		if updateErr := p.remoteStatusWrites.UpdateRemote(ctx, status.ID, status, service.UpdateRemoteStatusInput{
 			Text:           &text,
