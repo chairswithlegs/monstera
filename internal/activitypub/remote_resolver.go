@@ -199,11 +199,11 @@ func (r *RemoteAccountResolver) SyncActorToStore(ctx context.Context, actor *voc
 		return nil, errors.New("SyncActorToStore: username is missing")
 	}
 
-	// Sanitize username strictly
-	// Sanitize display name and note using UGC policy to retain formatting elements.
+	// Sanitize username and display name strictly (plain text only).
+	// Sanitize note using remote content policy to retain formatting elements.
 	username = bluemonday.StrictPolicy().Sanitize(username)
-	displayName := bluemonday.UGCPolicy().Sanitize(actor.Name)
-	note := bluemonday.UGCPolicy().Sanitize(actor.Summary)
+	displayName := bluemonday.StrictPolicy().Sanitize(actor.Name)
+	note := remoteContentPolicy().Sanitize(actor.Summary)
 
 	sanitized := *actor
 	sanitized.PreferredUsername = username

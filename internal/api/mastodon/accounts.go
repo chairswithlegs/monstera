@@ -202,7 +202,7 @@ func (h *AccountsHandler) parseUpdateCredentialsRequest(w http.ResponseWriter, r
 	}
 
 	form := r.Form
-	displayName := bluemonday.UGCPolicy().Sanitize(api.FormValue(form, "display_name"))
+	displayName := bluemonday.StrictPolicy().Sanitize(api.FormValue(form, "display_name"))
 	note := bluemonday.UGCPolicy().Sanitize(api.FormValue(form, "note"))
 	locked := api.FormValueIsTruthy(form, "locked")
 	bot := api.FormValueIsTruthy(form, "bot")

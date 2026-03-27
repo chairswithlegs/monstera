@@ -10,6 +10,18 @@ import (
 	"github.com/chairswithlegs/monstera/internal/service"
 )
 
+// remoteContentPolicy returns a bluemonday policy for sanitizing HTML content
+// received from remote ActivityPub servers. It extends the standard UGC policy
+// to preserve CSS classes on <a> and <span> elements that Mastodon clients use
+// to identify mention and hashtag links (e.g. class="u-url mention",
+// class="mention hashtag", class="h-card").
+func remoteContentPolicy() *bluemonday.Policy {
+	p := bluemonday.UGCPolicy()
+	p.AllowAttrs("href", "rel", "class").OnElements("a")
+	p.AllowAttrs("class").OnElements("span")
+	return p
+}
+
 // buildCreateStatusInput builds a CreateRemoteStatusInput from an AP Note.
 // Used by both inbox handlers and the backfill worker.
 func buildCreateStatusInput(ctx context.Context, note *vocab.Note, author *domain.Account,
@@ -27,7 +39,7 @@ func buildCreateStatusInput(ctx context.Context, note *vocab.Note, author *domai
 		contentWarning = &cw
 	}
 
-	content := bluemonday.UGCPolicy().Sanitize(note.Content)
+	content := remoteContentPolicy().Sanitize(note.Content)
 	text := noteSourceText(note, content)
 	hashtagNames, mentionIRIs := extractTagsFromNote(note)
 
