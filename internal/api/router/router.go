@@ -229,6 +229,7 @@ func New(deps Deps) http.Handler {
 				}
 				r.Get("/accounts/lookup", deps.Accounts.GETAccountsLookup)
 				r.Get("/accounts/{id}", deps.Accounts.GETAccounts)
+				r.Get("/accounts/{id}/featured_tags", deps.Accounts.GETAccountFeaturedTags)
 				r.Get("/directory", deps.Accounts.GETDirectory)
 				r.Get("/search", deps.Search.GETSearch)
 				r.Get("/statuses/{id}", deps.Statuses.GETStatuses)
@@ -259,6 +260,7 @@ func New(deps Deps) http.Handler {
 				r.Method("POST", "/markers", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Markers.POSTMarkers)))
 				r.Method("PATCH", "/accounts/update_credentials", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.Accounts.PATCHUpdateCredentials)))
 				r.Method("GET", "/accounts/relationships", middleware.RequiredScopes("read:follows")(http.HandlerFunc(deps.Accounts.GETRelationships)))
+				r.Method("GET", "/accounts/familiar_followers", middleware.RequiredScopes("read:follows")(http.HandlerFunc(deps.Accounts.GETFamiliarFollowers)))
 				r.Method("GET", "/accounts/{id}/statuses", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Accounts.GETAccountStatuses)))
 				r.Method("GET", "/accounts/{id}/followers", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Accounts.GETFollowers)))
 				r.Method("GET", "/accounts/{id}/following", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Accounts.GETFollowing)))
@@ -307,6 +309,7 @@ func New(deps Deps) http.Handler {
 				r.Method("POST", "/statuses/{id}/unpin", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Statuses.POSTUnpin)))
 				r.Method("POST", "/statuses/{id}/mute", middleware.RequiredScopes("write:mutes")(http.HandlerFunc(deps.Statuses.POSTMuteConversation)))
 				r.Method("POST", "/statuses/{id}/unmute", middleware.RequiredScopes("write:mutes")(http.HandlerFunc(deps.Statuses.POSTUnmuteConversation)))
+				r.Method("POST", "/statuses/{id}/translate", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.Statuses.POSTTranslate)))
 				r.Method("GET", "/scheduled_statuses", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.ScheduledStatuses.GETScheduledStatuses)))
 				r.Method("GET", "/scheduled_statuses/{id}", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.ScheduledStatuses.GETScheduledStatus)))
 				r.Method("POST", "/polls/{id}/votes", middleware.RequiredScopes("write:statuses")(http.HandlerFunc(deps.Polls.POSTVotes)))

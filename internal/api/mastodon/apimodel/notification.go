@@ -13,6 +13,7 @@ type Notification struct {
 	CreatedAt string  `json:"created_at"`
 	Account   Account `json:"account"`
 	Status    *Status `json:"status,omitempty"`
+	GroupKey  string  `json:"group_key"`
 }
 
 // ToNotification converts a domain notification with resolved account (and optional status) to the API shape.
@@ -31,6 +32,7 @@ func ToNotification(n *domain.Notification, fromAccount *domain.Account, status 
 	if n != nil {
 		out.ID = n.ID
 		out.Type = n.Type
+		out.GroupKey = "ungrouped-" + n.ID
 	}
 	if fromAccount != nil {
 		out.Account = ToAccount(fromAccount, instanceDomain)
