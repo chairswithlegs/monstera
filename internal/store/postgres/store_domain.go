@@ -2662,3 +2662,127 @@ func (s *PostgresStore) DeletePublishedOutboxEventsBefore(ctx context.Context, b
 	}
 	return nil
 }
+
+// ─── Notification Policy ─────────────────────────────────────────────────────
+
+func (s *PostgresStore) UpsertNotificationPolicy(ctx context.Context, accountID string) (*domain.NotificationPolicy, error) {
+	p, err := s.q.UpsertNotificationPolicy(ctx, db.UpsertNotificationPolicyParams{
+		ID:        uid.New(),
+		AccountID: accountID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("UpsertNotificationPolicy(%s): %w", accountID, mapErr(err))
+	}
+	d := ToDomainNotificationPolicy(p)
+	return &d, nil
+}
+
+func (s *PostgresStore) GetNotificationPolicyByAccountID(ctx context.Context, accountID string) (*domain.NotificationPolicy, error) {
+	p, err := s.q.GetNotificationPolicyByAccountID(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("GetNotificationPolicyByAccountID(%s): %w", accountID, mapErr(err))
+	}
+	d := ToDomainNotificationPolicy(p)
+	return &d, nil
+}
+
+func (s *PostgresStore) UpdateNotificationPolicy(ctx context.Context, in store.UpdateNotificationPolicyInput) (*domain.NotificationPolicy, error) {
+	p, err := s.q.UpdateNotificationPolicy(ctx, db.UpdateNotificationPolicyParams{
+		AccountID:             in.AccountID,
+		FilterNotFollowing:    in.FilterNotFollowing,
+		FilterNotFollowers:    in.FilterNotFollowers,
+		FilterNewAccounts:     in.FilterNewAccounts,
+		FilterPrivateMentions: in.FilterPrivateMentions,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("UpdateNotificationPolicy(%s): %w", in.AccountID, mapErr(err))
+	}
+	d := ToDomainNotificationPolicy(p)
+	return &d, nil
+}
+
+func (s *PostgresStore) CountPendingNotificationRequests(ctx context.Context, accountID string) (int64, error) {
+	count, err := s.q.CountPendingNotificationRequests(ctx, accountID)
+	if err != nil {
+		return 0, fmt.Errorf("CountPendingNotificationRequests(%s): %w", accountID, mapErr(err))
+	}
+	return count, nil
+}
+
+func (s *PostgresStore) CountPendingNotifications(ctx context.Context, accountID string) (int64, error) {
+	raw, err := s.q.CountPendingNotifications(ctx, accountID)
+	if err != nil {
+		return 0, fmt.Errorf("CountPendingNotifications(%s): %w", accountID, mapErr(err))
+	}
+	switch v := raw.(type) {
+	case int64:
+		return v, nil
+	case int32:
+		return int64(v), nil
+	default:
+		return 0, nil
+	}
+}
+
+func (s *PostgresStore) UpsertNotificationRequest(ctx context.Context, in store.UpsertNotificationRequestInput) (*domain.NotificationRequest, error) {
+	r, err := s.q.UpsertNotificationRequest(ctx, db.UpsertNotificationRequestParams{
+		ID:            in.ID,
+		AccountID:     in.AccountID,
+		FromAccountID: in.FromAccountID,
+		LastStatusID:  in.LastStatusID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("UpsertNotificationRequest: %w", mapErr(err))
+	}
+	d := ToDomainNotificationRequest(r)
+	return &d, nil
+}
+
+func (s *PostgresStore) GetNotificationRequestByID(ctx context.Context, id string) (*domain.NotificationRequest, error) {
+	r, err := s.q.GetNotificationRequestByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("GetNotificationRequestByID(%s): %w", id, mapErr(err))
+	}
+	d := ToDomainNotificationRequest(r)
+	return &d, nil
+}
+
+func (s *PostgresStore) ListNotificationRequests(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.NotificationRequest, error) {
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	rows, err := s.q.ListNotificationRequests(ctx, db.ListNotificationRequestsParams{
+		AccountID: accountID,
+		Column2:   cursor,
+		Limit:     int32(limit), //nolint:gosec // limit clamped by caller
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ListNotificationRequests: %w", mapErr(err))
+	}
+	out := make([]domain.NotificationRequest, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainNotificationRequest(r))
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) DeleteNotificationRequest(ctx context.Context, id, accountID string) error {
+	if err := s.q.DeleteNotificationRequest(ctx, db.DeleteNotificationRequestParams{
+		ID:        id,
+		AccountID: accountID,
+	}); err != nil {
+		return fmt.Errorf("DeleteNotificationRequest(%s): %w", id, mapErr(err))
+	}
+	return nil
+}
+
+func (s *PostgresStore) DeleteNotificationRequestsByIDs(ctx context.Context, accountID string, ids []string) error {
+	if err := s.q.DeleteNotificationRequestsByIDs(ctx, db.DeleteNotificationRequestsByIDsParams{
+		AccountID: accountID,
+		Column2:   ids,
+	}); err != nil {
+		return fmt.Errorf("DeleteNotificationRequestsByIDs(%s): %w", accountID, mapErr(err))
+	}
+	return nil
+}

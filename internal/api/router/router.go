@@ -46,28 +46,29 @@ type Deps struct {
 	OAuthHandler *oauthhandlers.Handler
 
 	// Mastodon API handlers
-	Accounts          *mastodon.AccountsHandler
-	Statuses          *mastodon.StatusesHandler
-	ScheduledStatuses *mastodon.ScheduledStatusesHandler
-	Polls             *mastodon.PollsHandler
-	Timelines         *mastodon.TimelinesHandler
-	Instance          *mastodon.InstanceHandler
-	Trends            *mastodon.TrendsHandler
-	Conversations     *mastodon.ConversationsHandler
-	Suggestions       *mastodon.SuggestionsHandler
-	Notifications     *mastodon.NotificationsHandler
-	Media             *mastodon.MediaHandler
-	Search            *mastodon.SearchHandler
-	Streaming         *mastodon.StreamingHandler
-	Reports           *mastodon.ReportsHandler
-	FollowRequests    *mastodon.FollowRequestsHandler
-	Lists             *mastodon.ListsHandler
-	Filters           *mastodon.FiltersHandler
-	Preferences       *mastodon.PreferencesHandler
-	Markers           *mastodon.MarkersHandler
-	FeaturedTags      *mastodon.FeaturedTagsHandler
-	Announcements     *mastodon.AnnouncementsHandler
-	Push              *mastodon.PushHandler
+	Accounts            *mastodon.AccountsHandler
+	Statuses            *mastodon.StatusesHandler
+	ScheduledStatuses   *mastodon.ScheduledStatusesHandler
+	Polls               *mastodon.PollsHandler
+	Timelines           *mastodon.TimelinesHandler
+	Instance            *mastodon.InstanceHandler
+	Trends              *mastodon.TrendsHandler
+	Conversations       *mastodon.ConversationsHandler
+	Suggestions         *mastodon.SuggestionsHandler
+	Notifications       *mastodon.NotificationsHandler
+	NotificationsPolicy *mastodon.NotificationsPolicyHandler
+	Media               *mastodon.MediaHandler
+	Search              *mastodon.SearchHandler
+	Streaming           *mastodon.StreamingHandler
+	Reports             *mastodon.ReportsHandler
+	FollowRequests      *mastodon.FollowRequestsHandler
+	Lists               *mastodon.ListsHandler
+	Filters             *mastodon.FiltersHandler
+	Preferences         *mastodon.PreferencesHandler
+	Markers             *mastodon.MarkersHandler
+	FeaturedTags        *mastodon.FeaturedTagsHandler
+	Announcements       *mastodon.AnnouncementsHandler
+	Push                *mastodon.PushHandler
 
 	// ActivityPub handlers
 	WebFinger   *activitypub.WebFingerHandler
@@ -319,6 +320,17 @@ func New(deps Deps) http.Handler {
 				r.Method("GET", "/notifications/{id}", middleware.RequiredScopes("read:notifications")(http.HandlerFunc(deps.Notifications.GETNotification)))
 				r.Method("POST", "/notifications/clear", middleware.RequiredScopes("write:notifications")(http.HandlerFunc(deps.Notifications.POSTClear)))
 				r.Method("POST", "/notifications/{id}/dismiss", middleware.RequiredScopes("write:notifications")(http.HandlerFunc(deps.Notifications.POSTDismiss)))
+				r.Method("GET", "/notifications/policy", middleware.RequiredScopes("read:notifications")(http.HandlerFunc(deps.NotificationsPolicy.GETPolicy)))
+				r.Method("PATCH", "/notifications/policy", middleware.RequiredScopes("write:notifications")(http.HandlerFunc(deps.NotificationsPolicy.PATCHPolicy)))
+				r.Method("GET", "/notifications/requests/merged", middleware.RequiredScopes("read:notifications")(http.HandlerFunc(deps.NotificationsPolicy.GETMerged)))
+				r.Method("POST", "/notifications/requests/accept", middleware.RequiredScopes("write:notifications")(http.HandlerFunc(deps.NotificationsPolicy.POSTAcceptRequests)))
+				r.Method("POST", "/notifications/requests/dismiss", middleware.RequiredScopes("write:notifications")(http.HandlerFunc(deps.NotificationsPolicy.POSTDismissRequests)))
+				r.Method("GET", "/notifications/requests", middleware.RequiredScopes("read:notifications")(http.HandlerFunc(deps.NotificationsPolicy.GETRequests)))
+				r.Route("/notifications/requests/{id}", func(r chi.Router) {
+					r.Method("GET", "/", middleware.RequiredScopes("read:notifications")(http.HandlerFunc(deps.NotificationsPolicy.GETRequest)))
+					r.Method("POST", "/accept", middleware.RequiredScopes("write:notifications")(http.HandlerFunc(deps.NotificationsPolicy.POSTAcceptRequest)))
+					r.Method("POST", "/dismiss", middleware.RequiredScopes("write:notifications")(http.HandlerFunc(deps.NotificationsPolicy.POSTDismissRequest)))
+				})
 				r.Method("POST", "/reports", middleware.RequiredScopes("write:reports")(http.HandlerFunc(deps.Reports.POSTReports)))
 				r.Method("POST", "/push/subscription", middleware.RequiredScopes("push")(http.HandlerFunc(deps.Push.POSTSubscription)))
 				r.Method("GET", "/push/subscription", middleware.RequiredScopes("push")(http.HandlerFunc(deps.Push.GETSubscription)))

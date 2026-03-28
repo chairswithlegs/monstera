@@ -389,6 +389,23 @@ type UpsertStatusCardInput struct {
 	Height          int
 }
 
+// UpdateNotificationPolicyInput is the input for updating a notification policy.
+type UpdateNotificationPolicyInput struct {
+	AccountID             string
+	FilterNotFollowing    bool
+	FilterNotFollowers    bool
+	FilterNewAccounts     bool
+	FilterPrivateMentions bool
+}
+
+// UpsertNotificationRequestInput is the input for upserting a notification request.
+type UpsertNotificationRequestInput struct {
+	ID            string
+	AccountID     string
+	FromAccountID string
+	LastStatusID  *string
+}
+
 // CreatePushSubscriptionInput is the input for creating a push subscription.
 type CreatePushSubscriptionInput struct {
 	ID            string

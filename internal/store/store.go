@@ -19,6 +19,7 @@ type Store interface {
 	InteractionStore
 	ContentStore
 	NotificationStore
+	NotificationPolicyStore
 	OAuthStore
 	MediaStore
 	ModerationStore
@@ -227,6 +228,20 @@ type NotificationStore interface {
 	GetNotification(ctx context.Context, id, accountID string) (*domain.Notification, error)
 	ClearNotifications(ctx context.Context, accountID string) error
 	DismissNotification(ctx context.Context, id, accountID string) error
+}
+
+// NotificationPolicyStore handles notification policy and request persistence.
+type NotificationPolicyStore interface {
+	UpsertNotificationPolicy(ctx context.Context, accountID string) (*domain.NotificationPolicy, error)
+	GetNotificationPolicyByAccountID(ctx context.Context, accountID string) (*domain.NotificationPolicy, error)
+	UpdateNotificationPolicy(ctx context.Context, in UpdateNotificationPolicyInput) (*domain.NotificationPolicy, error)
+	CountPendingNotificationRequests(ctx context.Context, accountID string) (int64, error)
+	CountPendingNotifications(ctx context.Context, accountID string) (int64, error)
+	UpsertNotificationRequest(ctx context.Context, in UpsertNotificationRequestInput) (*domain.NotificationRequest, error)
+	GetNotificationRequestByID(ctx context.Context, id string) (*domain.NotificationRequest, error)
+	ListNotificationRequests(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.NotificationRequest, error)
+	DeleteNotificationRequest(ctx context.Context, id, accountID string) error
+	DeleteNotificationRequestsByIDs(ctx context.Context, accountID string, ids []string) error
 }
 
 // OAuthStore handles OAuth application, authorization code, and access token persistence.

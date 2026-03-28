@@ -272,6 +272,27 @@ type Notification struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type NotificationPolicy struct {
+	ID                    string             `json:"id"`
+	AccountID             string             `json:"account_id"`
+	FilterNotFollowing    bool               `json:"filter_not_following"`
+	FilterNotFollowers    bool               `json:"filter_not_followers"`
+	FilterNewAccounts     bool               `json:"filter_new_accounts"`
+	FilterPrivateMentions bool               `json:"filter_private_mentions"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+}
+
+type NotificationRequest struct {
+	ID                 string             `json:"id"`
+	AccountID          string             `json:"account_id"`
+	FromAccountID      string             `json:"from_account_id"`
+	LastStatusID       *string            `json:"last_status_id"`
+	NotificationsCount int32              `json:"notifications_count"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+}
+
 type OauthAccessToken struct {
 	ID            string             `json:"id"`
 	ApplicationID string             `json:"application_id"`

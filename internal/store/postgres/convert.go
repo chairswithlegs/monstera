@@ -456,6 +456,33 @@ func ToDomainOAuthAuthorizationCode(c db.OauthAuthorizationCode) domain.OAuthAut
 	}
 }
 
+// ToDomainNotificationPolicy converts a sqlc db.NotificationPolicy to a domain.NotificationPolicy.
+func ToDomainNotificationPolicy(p db.NotificationPolicy) domain.NotificationPolicy {
+	return domain.NotificationPolicy{
+		ID:                    p.ID,
+		AccountID:             p.AccountID,
+		FilterNotFollowing:    p.FilterNotFollowing,
+		FilterNotFollowers:    p.FilterNotFollowers,
+		FilterNewAccounts:     p.FilterNewAccounts,
+		FilterPrivateMentions: p.FilterPrivateMentions,
+		CreatedAt:             pgTime(p.CreatedAt),
+		UpdatedAt:             pgTime(p.UpdatedAt),
+	}
+}
+
+// ToDomainNotificationRequest converts a sqlc db.NotificationRequest to a domain.NotificationRequest.
+func ToDomainNotificationRequest(r db.NotificationRequest) domain.NotificationRequest {
+	return domain.NotificationRequest{
+		ID:                 r.ID,
+		AccountID:          r.AccountID,
+		FromAccountID:      r.FromAccountID,
+		LastStatusID:       r.LastStatusID,
+		NotificationsCount: r.NotificationsCount,
+		CreatedAt:          pgTime(r.CreatedAt),
+		UpdatedAt:          pgTime(r.UpdatedAt),
+	}
+}
+
 // ToDomainNotification converts a sqlc db.Notification to a domain.Notification.
 func ToDomainNotification(n db.Notification) domain.Notification {
 	return domain.Notification{
