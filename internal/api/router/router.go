@@ -64,6 +64,7 @@ type Deps struct {
 	FollowRequests      *mastodon.FollowRequestsHandler
 	Lists               *mastodon.ListsHandler
 	Filters             *mastodon.FiltersHandler
+	FiltersV2           *mastodon.FiltersV2Handler
 	Preferences         *mastodon.PreferencesHandler
 	Markers             *mastodon.MarkersHandler
 	FeaturedTags        *mastodon.FeaturedTagsHandler
@@ -167,6 +168,27 @@ func New(deps Deps) http.Handler {
 				r.Method("POST", "/media", middleware.RequiredScopes("write:media")(http.HandlerFunc(deps.Media.POSTMedia)))
 			})
 			r.Method("GET", "/suggestions", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Suggestions.GETSuggestions)))
+			// v2 filters
+			r.Method("GET", "/filters", middleware.RequiredScopes("read:filters")(http.HandlerFunc(deps.FiltersV2.GETFiltersV2)))
+			r.Method("POST", "/filters", middleware.RequiredScopes("write:filters")(http.HandlerFunc(deps.FiltersV2.POSTFiltersV2)))
+			r.Route("/filters/{id}", func(r chi.Router) {
+				r.Method("GET", "/", middleware.RequiredScopes("read:filters")(http.HandlerFunc(deps.FiltersV2.GETFilterV2)))
+				r.Method("PUT", "/", middleware.RequiredScopes("write:filters")(http.HandlerFunc(deps.FiltersV2.PUTFilterV2)))
+				r.Method("DELETE", "/", middleware.RequiredScopes("write:filters")(http.HandlerFunc(deps.FiltersV2.DELETEFilterV2)))
+				r.Method("GET", "/keywords", middleware.RequiredScopes("read:filters")(http.HandlerFunc(deps.FiltersV2.GETFilterKeywords)))
+				r.Method("POST", "/keywords", middleware.RequiredScopes("write:filters")(http.HandlerFunc(deps.FiltersV2.POSTFilterKeyword)))
+				r.Method("GET", "/statuses", middleware.RequiredScopes("read:filters")(http.HandlerFunc(deps.FiltersV2.GETFilterStatuses)))
+				r.Method("POST", "/statuses", middleware.RequiredScopes("write:filters")(http.HandlerFunc(deps.FiltersV2.POSTFilterStatus)))
+			})
+			r.Route("/filter_keywords/{id}", func(r chi.Router) {
+				r.Method("GET", "/", middleware.RequiredScopes("read:filters")(http.HandlerFunc(deps.FiltersV2.GETFilterKeyword)))
+				r.Method("PUT", "/", middleware.RequiredScopes("write:filters")(http.HandlerFunc(deps.FiltersV2.PUTFilterKeyword)))
+				r.Method("DELETE", "/", middleware.RequiredScopes("write:filters")(http.HandlerFunc(deps.FiltersV2.DELETEFilterKeyword)))
+			})
+			r.Route("/filter_statuses/{id}", func(r chi.Router) {
+				r.Method("GET", "/", middleware.RequiredScopes("read:filters")(http.HandlerFunc(deps.FiltersV2.GETFilterStatus)))
+				r.Method("DELETE", "/", middleware.RequiredScopes("write:filters")(http.HandlerFunc(deps.FiltersV2.DELETEFilterStatus)))
+			})
 		})
 	})
 

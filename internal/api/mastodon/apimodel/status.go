@@ -82,7 +82,7 @@ func ToStatus(s *domain.Status, author Account, mentions []Mention, tags []Tag, 
 		Muted:               false,
 		Bookmarked:          false,
 		Pinned:              false,
-		Filtered:            []any{},
+		Filtered:            []FilterResult{},
 	}
 	return st
 }
@@ -388,6 +388,9 @@ func StatusFromEnriched(result service.EnrichedStatus, instanceDomain string) St
 	out.Bookmarked = result.Bookmarked
 	out.Pinned = result.Pinned
 	out.Muted = result.Muted
+	if len(result.FilterResults) > 0 {
+		out.Filtered = ToFilterResults(result.FilterResults)
+	}
 	if result.ReblogOf != nil {
 		reblogAPI := StatusFromEnriched(*result.ReblogOf, instanceDomain)
 		out.Reblog = &reblogAPI

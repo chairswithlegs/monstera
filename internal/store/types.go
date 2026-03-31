@@ -192,6 +192,25 @@ type UpdateUserFilterInput struct {
 	Irreversible bool
 }
 
+// CreateFilterInput is the input for creating a keyword-based user filter.
+type CreateFilterInput struct {
+	ID           string
+	AccountID    string
+	Title        string
+	Context      []string
+	ExpiresAt    *time.Time
+	FilterAction string
+}
+
+// UpdateFilterInput is the input for updating a keyword-based user filter.
+type UpdateFilterInput struct {
+	ID           string
+	Title        string
+	Context      []string
+	ExpiresAt    *time.Time
+	FilterAction string
+}
+
 // UpdateUserPreferencesInput is the input for updating a user's post preferences.
 type UpdateUserPreferencesInput struct {
 	UserID             string

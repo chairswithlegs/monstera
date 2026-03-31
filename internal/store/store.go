@@ -325,12 +325,34 @@ type ListStore interface {
 
 // FilterStore handles user filter persistence.
 type FilterStore interface {
+	// v1 filter CRUD (phrase-based, legacy)
 	CreateUserFilter(ctx context.Context, in CreateUserFilterInput) (*domain.UserFilter, error)
 	GetUserFilterByID(ctx context.Context, id string) (*domain.UserFilter, error)
 	ListUserFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error)
 	UpdateUserFilter(ctx context.Context, in UpdateUserFilterInput) (*domain.UserFilter, error)
 	DeleteUserFilter(ctx context.Context, id string) error
 	GetActiveUserFiltersByContext(ctx context.Context, accountID, context string) ([]domain.UserFilter, error)
+
+	// filter CRUD (keyword-based, v2 API)
+	CreateFilter(ctx context.Context, in CreateFilterInput) (*domain.UserFilter, error)
+	GetFilterByID(ctx context.Context, id string) (*domain.UserFilter, error)
+	ListFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error)
+	UpdateFilter(ctx context.Context, in UpdateFilterInput) (*domain.UserFilter, error)
+	DeleteFilter(ctx context.Context, id string) error
+	GetActiveFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error)
+
+	// filter keywords
+	AddFilterKeyword(ctx context.Context, filterID, id, keyword string, wholeWord bool) (*domain.FilterKeyword, error)
+	GetFilterKeywordByID(ctx context.Context, id string) (*domain.FilterKeyword, error)
+	ListFilterKeywords(ctx context.Context, filterID string) ([]domain.FilterKeyword, error)
+	UpdateFilterKeyword(ctx context.Context, id, keyword string, wholeWord bool) (*domain.FilterKeyword, error)
+	DeleteFilterKeyword(ctx context.Context, id string) error
+
+	// filter statuses
+	AddFilterStatus(ctx context.Context, id, filterID, statusID string) (*domain.FilterStatus, error)
+	GetFilterStatusByID(ctx context.Context, id string) (*domain.FilterStatus, error)
+	ListFilterStatuses(ctx context.Context, filterID string) ([]domain.FilterStatus, error)
+	DeleteFilterStatus(ctx context.Context, id string) error
 }
 
 // MarkerStore handles timeline marker persistence.
