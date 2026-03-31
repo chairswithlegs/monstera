@@ -2,6 +2,7 @@ package mastodon
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -12,6 +13,8 @@ import (
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
 )
+
+const maxNotificationRequestBulkLimit = 40
 
 // NotificationsPolicyHandler handles notification policy and request Mastodon API endpoints.
 type NotificationsPolicyHandler struct {
@@ -57,11 +60,12 @@ func (h *NotificationsPolicyHandler) GETPolicy(w http.ResponseWriter, r *http.Re
 }
 
 // patchPolicyRequest is the request body for PATCH /api/v1/notifications/policy.
+// Pointer fields implement partial-update semantics: omitted fields are left unchanged.
 type patchPolicyRequest struct {
-	FilterNotFollowing    bool `json:"filter_not_following"`
-	FilterNotFollowers    bool `json:"filter_not_followers"`
-	FilterNewAccounts     bool `json:"filter_new_accounts"`
-	FilterPrivateMentions bool `json:"filter_private_mentions"`
+	FilterNotFollowing    *bool `json:"filter_not_following"`
+	FilterNotFollowers    *bool `json:"filter_not_followers"`
+	FilterNewAccounts     *bool `json:"filter_new_accounts"`
+	FilterPrivateMentions *bool `json:"filter_private_mentions"`
 }
 
 // PATCHPolicy handles PATCH /api/v1/notifications/policy.
@@ -216,6 +220,10 @@ func (h *NotificationsPolicyHandler) POSTAcceptRequests(w http.ResponseWriter, r
 		api.HandleError(w, r, err)
 		return
 	}
+	if len(body.IDs) > maxNotificationRequestBulkLimit {
+		api.HandleError(w, r, fmt.Errorf("too many ids: %w", api.ErrBadRequest))
+		return
+	}
 	if err := h.policy.AcceptRequestsByIDs(r.Context(), account.ID, body.IDs); err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -233,6 +241,10 @@ func (h *NotificationsPolicyHandler) POSTDismissRequests(w http.ResponseWriter, 
 	var body bulkRequestsBody
 	if err := api.DecodeJSONBody(r, &body); err != nil {
 		api.HandleError(w, r, err)
+		return
+	}
+	if len(body.IDs) > maxNotificationRequestBulkLimit {
+		api.HandleError(w, r, fmt.Errorf("too many ids: %w", api.ErrBadRequest))
 		return
 	}
 	if err := h.policy.DismissRequestsByIDs(r.Context(), account.ID, body.IDs); err != nil {

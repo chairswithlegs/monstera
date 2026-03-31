@@ -21,14 +21,14 @@ func (q *Queries) CountPendingNotificationRequests(ctx context.Context, accountI
 }
 
 const countPendingNotifications = `-- name: CountPendingNotifications :one
-SELECT COALESCE(SUM(notifications_count), 0) FROM notification_requests WHERE account_id = $1
+SELECT COALESCE(SUM(notifications_count), 0)::bigint FROM notification_requests WHERE account_id = $1
 `
 
-func (q *Queries) CountPendingNotifications(ctx context.Context, accountID string) (interface{}, error) {
+func (q *Queries) CountPendingNotifications(ctx context.Context, accountID string) (int64, error) {
 	row := q.db.QueryRow(ctx, countPendingNotifications, accountID)
-	var coalesce interface{}
-	err := row.Scan(&coalesce)
-	return coalesce, err
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const deleteNotificationRequest = `-- name: DeleteNotificationRequest :exec
@@ -80,11 +80,16 @@ func (q *Queries) GetNotificationPolicyByAccountID(ctx context.Context, accountI
 }
 
 const getNotificationRequestByID = `-- name: GetNotificationRequestByID :one
-SELECT id, account_id, from_account_id, last_status_id, notifications_count, created_at, updated_at FROM notification_requests WHERE id = $1
+SELECT id, account_id, from_account_id, last_status_id, notifications_count, created_at, updated_at FROM notification_requests WHERE id = $1 AND account_id = $2
 `
 
-func (q *Queries) GetNotificationRequestByID(ctx context.Context, id string) (NotificationRequest, error) {
-	row := q.db.QueryRow(ctx, getNotificationRequestByID, id)
+type GetNotificationRequestByIDParams struct {
+	ID        string `json:"id"`
+	AccountID string `json:"account_id"`
+}
+
+func (q *Queries) GetNotificationRequestByID(ctx context.Context, arg GetNotificationRequestByIDParams) (NotificationRequest, error) {
+	row := q.db.QueryRow(ctx, getNotificationRequestByID, arg.ID, arg.AccountID)
 	var i NotificationRequest
 	err := row.Scan(
 		&i.ID,

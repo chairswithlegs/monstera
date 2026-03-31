@@ -23,7 +23,7 @@ RETURNING *;
 SELECT COUNT(*) FROM notification_requests WHERE account_id = $1;
 
 -- name: CountPendingNotifications :one
-SELECT COALESCE(SUM(notifications_count), 0) FROM notification_requests WHERE account_id = $1;
+SELECT COALESCE(SUM(notifications_count), 0)::bigint FROM notification_requests WHERE account_id = $1;
 
 -- ─── Notification requests ────────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ SET last_status_id      = EXCLUDED.last_status_id,
 RETURNING *;
 
 -- name: GetNotificationRequestByID :one
-SELECT * FROM notification_requests WHERE id = $1;
+SELECT * FROM notification_requests WHERE id = $1 AND account_id = $2;
 
 -- name: ListNotificationRequests :many
 SELECT * FROM notification_requests

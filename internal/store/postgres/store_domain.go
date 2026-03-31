@@ -2941,18 +2941,11 @@ func (s *PostgresStore) CountPendingNotificationRequests(ctx context.Context, ac
 }
 
 func (s *PostgresStore) CountPendingNotifications(ctx context.Context, accountID string) (int64, error) {
-	raw, err := s.q.CountPendingNotifications(ctx, accountID)
+	count, err := s.q.CountPendingNotifications(ctx, accountID)
 	if err != nil {
 		return 0, fmt.Errorf("CountPendingNotifications(%s): %w", accountID, mapErr(err))
 	}
-	switch v := raw.(type) {
-	case int64:
-		return v, nil
-	case int32:
-		return int64(v), nil
-	default:
-		return 0, nil
-	}
+	return count, nil
 }
 
 func (s *PostgresStore) UpsertNotificationRequest(ctx context.Context, in store.UpsertNotificationRequestInput) (*domain.NotificationRequest, error) {
@@ -2969,8 +2962,8 @@ func (s *PostgresStore) UpsertNotificationRequest(ctx context.Context, in store.
 	return &d, nil
 }
 
-func (s *PostgresStore) GetNotificationRequestByID(ctx context.Context, id string) (*domain.NotificationRequest, error) {
-	r, err := s.q.GetNotificationRequestByID(ctx, id)
+func (s *PostgresStore) GetNotificationRequestByID(ctx context.Context, id, accountID string) (*domain.NotificationRequest, error) {
+	r, err := s.q.GetNotificationRequestByID(ctx, db.GetNotificationRequestByIDParams{ID: id, AccountID: accountID})
 	if err != nil {
 		return nil, fmt.Errorf("GetNotificationRequestByID(%s): %w", id, mapErr(err))
 	}

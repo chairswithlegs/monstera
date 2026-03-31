@@ -54,7 +54,7 @@ func ToNotificationRequestResponse(r *domain.NotificationRequest, fromAccount *d
 		ID:                 r.ID,
 		CreatedAt:          r.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:          r.UpdatedAt.UTC().Format(time.RFC3339),
-		NotificationsCount: strconv.Itoa(int(r.NotificationsCount)),
+		NotificationsCount: strconv.FormatInt(int64(r.NotificationsCount), 10),
 		LastStatus:         lastStatus,
 	}
 	if fromAccount != nil {

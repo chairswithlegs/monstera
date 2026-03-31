@@ -238,7 +238,7 @@ type NotificationPolicyStore interface {
 	CountPendingNotificationRequests(ctx context.Context, accountID string) (int64, error)
 	CountPendingNotifications(ctx context.Context, accountID string) (int64, error)
 	UpsertNotificationRequest(ctx context.Context, in UpsertNotificationRequestInput) (*domain.NotificationRequest, error)
-	GetNotificationRequestByID(ctx context.Context, id string) (*domain.NotificationRequest, error)
+	GetNotificationRequestByID(ctx context.Context, id, accountID string) (*domain.NotificationRequest, error)
 	ListNotificationRequests(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.NotificationRequest, error)
 	DeleteNotificationRequest(ctx context.Context, id, accountID string) error
 	DeleteNotificationRequestsByIDs(ctx context.Context, accountID string, ids []string) error

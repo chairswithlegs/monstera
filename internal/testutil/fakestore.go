@@ -10,6 +10,7 @@ import (
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/store"
+	"github.com/chairswithlegs/monstera/internal/uid"
 )
 
 // FakeStore implements store.Store for unit tests using in-memory domain types.
@@ -3883,7 +3884,7 @@ func (f *FakeStore) UpsertNotificationPolicy(_ context.Context, accountID string
 		return p, nil
 	}
 	p := &domain.NotificationPolicy{
-		ID:        "policy-" + accountID,
+		ID:        uid.New(),
 		AccountID: accountID,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -3966,11 +3967,11 @@ func (f *FakeStore) UpsertNotificationRequest(_ context.Context, in store.Upsert
 	return r, nil
 }
 
-func (f *FakeStore) GetNotificationRequestByID(_ context.Context, id string) (*domain.NotificationRequest, error) {
+func (f *FakeStore) GetNotificationRequestByID(_ context.Context, id, accountID string) (*domain.NotificationRequest, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	r, ok := f.notificationRequestsByID[id]
-	if !ok {
+	if !ok || r.AccountID != accountID {
 		return nil, domain.ErrNotFound
 	}
 	return r, nil
