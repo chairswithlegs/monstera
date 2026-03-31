@@ -108,6 +108,70 @@ func TestFiltersV2Handler_POSTFiltersV2(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
 	assert.Equal(t, "my filter", out["title"])
 	assert.Equal(t, "warn", out["filter_action"])
+	assert.Nil(t, out["expires_at"])
+}
+
+func TestFiltersV2Handler_POSTFiltersV2_WithExpiresIn(t *testing.T) {
+	t.Parallel()
+	h, _ := newFiltersV2Handler(t)
+	account := &domain.Account{ID: "acc1"}
+	ctx := middleware.WithAccount(context.Background(), account)
+
+	body, _ := json.Marshal(map[string]any{
+		"title":         "expiring filter",
+		"context":       []string{"home"},
+		"filter_action": "warn",
+		"expires_in":    3600,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v2/filters", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.POSTFiltersV2(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+	assert.NotNil(t, out["expires_at"], "expires_at should be set when expires_in is provided")
+}
+
+func TestFiltersV2Handler_POSTFiltersV2_InvalidFilterAction(t *testing.T) {
+	t.Parallel()
+	h, _ := newFiltersV2Handler(t)
+	account := &domain.Account{ID: "acc1"}
+	ctx := middleware.WithAccount(context.Background(), account)
+
+	body, _ := json.Marshal(map[string]any{
+		"title":         "my filter",
+		"context":       []string{"home"},
+		"filter_action": "delete",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v2/filters", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.POSTFiltersV2(w, req)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+}
+
+func TestFiltersV2Handler_POSTFiltersV2_InvalidContext(t *testing.T) {
+	t.Parallel()
+	h, _ := newFiltersV2Handler(t)
+	account := &domain.Account{ID: "acc1"}
+	ctx := middleware.WithAccount(context.Background(), account)
+
+	body, _ := json.Marshal(map[string]any{
+		"title":   "my filter",
+		"context": []string{"home", "invalid_ctx"},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v2/filters", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.POSTFiltersV2(w, req)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
 }
 
 func TestFiltersV2Handler_POSTFiltersV2_MissingTitle(t *testing.T) {
@@ -181,7 +245,8 @@ func TestFiltersV2Handler_DELETEFilterV2(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.JSONEq(t, `{}`, w.Body.String())
 }
 
 func TestFiltersV2Handler_KeywordCRUD(t *testing.T) {
@@ -235,7 +300,8 @@ func TestFiltersV2Handler_KeywordCRUD(t *testing.T) {
 	req = req.WithContext(ctx)
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.JSONEq(t, `{}`, w.Body.String())
 }
 
 func TestFiltersV2Handler_FilterStatusCRUD(t *testing.T) {
@@ -281,5 +347,6 @@ func TestFiltersV2Handler_FilterStatusCRUD(t *testing.T) {
 	req = req.WithContext(ctx)
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.JSONEq(t, `{}`, w.Body.String())
 }

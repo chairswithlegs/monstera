@@ -92,7 +92,7 @@ func (h *FiltersV2Handler) POSTFiltersV2(w http.ResponseWriter, r *http.Request)
 		api.HandleError(w, r, err)
 		return
 	}
-	f, err := h.filters.CreateFilter(r.Context(), account.ID, body.Title, body.Context, nil, body.FilterAction)
+	f, err := h.filters.CreateFilter(r.Context(), account.ID, body.Title, body.Context, body.ExpiresIn, body.FilterAction)
 	if err != nil {
 		if errors.Is(err, domain.ErrValidation) {
 			api.HandleError(w, r, api.NewMissingRequiredFieldError("title"))
@@ -133,7 +133,7 @@ func (h *FiltersV2Handler) PUTFilterV2(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	f, err := h.filters.UpdateFilter(r.Context(), account.ID, id, body.Title, body.Context, nil, body.FilterAction)
+	f, err := h.filters.UpdateFilter(r.Context(), account.ID, id, body.Title, body.Context, body.ExpiresIn, body.FilterAction)
 	if err != nil {
 		if errors.Is(err, domain.ErrForbidden) || errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)
@@ -165,7 +165,7 @@ func (h *FiltersV2Handler) DELETEFilterV2(w http.ResponseWriter, r *http.Request
 		api.HandleError(w, r, err)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	api.WriteJSON(w, http.StatusOK, struct{}{})
 }
 
 // ─── Filter keywords ─────────────────────────────────────────────────────────
@@ -320,7 +320,7 @@ func (h *FiltersV2Handler) DELETEFilterKeyword(w http.ResponseWriter, r *http.Re
 		api.HandleError(w, r, err)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	api.WriteJSON(w, http.StatusOK, struct{}{})
 }
 
 // ─── Filter statuses ─────────────────────────────────────────────────────────
@@ -435,5 +435,5 @@ func (h *FiltersV2Handler) DELETEFilterStatus(w http.ResponseWriter, r *http.Req
 		api.HandleError(w, r, err)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	api.WriteJSON(w, http.StatusOK, struct{}{})
 }

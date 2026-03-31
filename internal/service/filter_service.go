@@ -12,13 +12,23 @@ import (
 	"github.com/chairswithlegs/monstera/internal/uid"
 )
 
+var validFilterActions = map[string]bool{"warn": true, "hide": true}
+
+var validFilterContexts = map[string]bool{
+	domain.FilterContextHome:          true,
+	domain.FilterContextNotifications: true,
+	domain.FilterContextPublic:        true,
+	domain.FilterContextThread:        true,
+	domain.FilterContextAccount:       true,
+}
+
 // FilterService manages per-account content filters (multi-keyword, filter_action).
 type FilterService interface {
 	// Filter CRUD
-	CreateFilter(ctx context.Context, accountID, title string, context []string, expiresAt *string, filterAction string) (*domain.UserFilter, error)
+	CreateFilter(ctx context.Context, accountID, title string, context []string, expiresIn *int, filterAction string) (*domain.UserFilter, error)
 	GetFilter(ctx context.Context, accountID, filterID string) (*domain.UserFilter, error)
 	ListFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error)
-	UpdateFilter(ctx context.Context, accountID, filterID, title string, context []string, expiresAt *string, filterAction string) (*domain.UserFilter, error)
+	UpdateFilter(ctx context.Context, accountID, filterID, title string, context []string, expiresIn *int, filterAction string) (*domain.UserFilter, error)
 	DeleteFilter(ctx context.Context, accountID, filterID string) error
 
 	// Keyword CRUD
@@ -47,37 +57,55 @@ func NewFilterService(s store.Store) FilterService {
 	return &filterService{store: s}
 }
 
-func (svc *filterService) parseExpiresAt(expiresAt *string) (*time.Time, error) {
-	if expiresAt == nil || *expiresAt == "" {
-		return nil, nil
+// expiresInToTime converts a seconds-from-now value to a *time.Time.
+func expiresInToTime(expiresIn *int) *time.Time {
+	if expiresIn == nil {
+		return nil
 	}
-	t, err := time.Parse(time.RFC3339, *expiresAt)
-	if err != nil {
-		return nil, fmt.Errorf("expires_at: %w", err)
-	}
-	return &t, nil
+	t := time.Now().Add(time.Duration(*expiresIn) * time.Second)
+	return &t
 }
 
-func (svc *filterService) CreateFilter(ctx context.Context, accountID, title string, context []string, expiresAt *string, filterAction string) (*domain.UserFilter, error) {
+// validateFilterAction returns ErrUnprocessable if the value is not "warn" or "hide".
+func validateFilterAction(filterAction string) error {
+	if !validFilterActions[filterAction] {
+		return fmt.Errorf("filter_action %q: %w", filterAction, domain.ErrUnprocessable)
+	}
+	return nil
+}
+
+// validateFilterContext returns ErrUnprocessable for any unknown context value.
+func validateFilterContext(ctx []string) error {
+	for _, c := range ctx {
+		if !validFilterContexts[c] {
+			return fmt.Errorf("context %q: %w", c, domain.ErrUnprocessable)
+		}
+	}
+	return nil
+}
+
+func (svc *filterService) CreateFilter(ctx context.Context, accountID, title string, filterContext []string, expiresIn *int, filterAction string) (*domain.UserFilter, error) {
 	if title == "" {
 		return nil, fmt.Errorf("CreateFilter: %w", domain.ErrValidation)
 	}
-	if len(context) == 0 {
-		context = []string{domain.FilterContextHome}
+	if len(filterContext) == 0 {
+		filterContext = []string{domain.FilterContextHome}
+	}
+	if err := validateFilterContext(filterContext); err != nil {
+		return nil, fmt.Errorf("CreateFilter: %w", err)
 	}
 	if filterAction == "" {
 		filterAction = "warn"
 	}
-	exp, err := svc.parseExpiresAt(expiresAt)
-	if err != nil {
+	if err := validateFilterAction(filterAction); err != nil {
 		return nil, fmt.Errorf("CreateFilter: %w", err)
 	}
 	f, err := svc.store.CreateFilter(ctx, store.CreateFilterInput{
 		ID:           uid.New(),
 		AccountID:    accountID,
 		Title:        title,
-		Context:      context,
-		ExpiresAt:    exp,
+		Context:      filterContext,
+		ExpiresAt:    expiresInToTime(expiresIn),
 		FilterAction: filterAction,
 	})
 	if err != nil {
@@ -105,7 +133,7 @@ func (svc *filterService) ListFilters(ctx context.Context, accountID string) ([]
 	return list, nil
 }
 
-func (svc *filterService) UpdateFilter(ctx context.Context, accountID, filterID, title string, context []string, expiresAt *string, filterAction string) (*domain.UserFilter, error) {
+func (svc *filterService) UpdateFilter(ctx context.Context, accountID, filterID, title string, filterContext []string, expiresIn *int, filterAction string) (*domain.UserFilter, error) {
 	existing, err := svc.store.GetFilterByID(ctx, filterID)
 	if err != nil {
 		return nil, fmt.Errorf("UpdateFilter: %w", err)
@@ -116,23 +144,28 @@ func (svc *filterService) UpdateFilter(ctx context.Context, accountID, filterID,
 	if title == "" {
 		title = existing.Title
 	}
-	if len(context) == 0 {
-		context = existing.Context
+	if len(filterContext) == 0 {
+		filterContext = existing.Context
+	} else {
+		if err := validateFilterContext(filterContext); err != nil {
+			return nil, fmt.Errorf("UpdateFilter: %w", err)
+		}
 	}
 	if filterAction == "" {
 		filterAction = existing.FilterAction
+	} else {
+		if err := validateFilterAction(filterAction); err != nil {
+			return nil, fmt.Errorf("UpdateFilter: %w", err)
+		}
 	}
-	exp, err := svc.parseExpiresAt(expiresAt)
-	if err != nil {
-		return nil, fmt.Errorf("UpdateFilter: %w", err)
-	}
-	if expiresAt == nil {
-		exp = existing.ExpiresAt
+	exp := existing.ExpiresAt
+	if expiresIn != nil {
+		exp = expiresInToTime(expiresIn)
 	}
 	f, err := svc.store.UpdateFilter(ctx, store.UpdateFilterInput{
 		ID:           filterID,
 		Title:        title,
-		Context:      context,
+		Context:      filterContext,
 		ExpiresAt:    exp,
 		FilterAction: filterAction,
 	})
@@ -275,42 +308,79 @@ func (svc *filterService) ComputeFilterResults(ctx context.Context, accountID, s
 	return computeFilterResults(filters, statusID, content, cw), nil
 }
 
-// computeFilterResults matches a set of active filters against a status and returns
-// the list of FilterResult entries. It is a pure function for testability.
+// computeFilterResults is a convenience wrapper for single-status use.
+// For batch enrichment, use compileFilters + matchCompiledFilters to avoid re-compiling per status.
 func computeFilterResults(filters []domain.UserFilter, statusID, content, cw string) []domain.FilterResult {
-	text := cw + " " + content
-	var out []domain.FilterResult
+	return matchCompiledFilters(compileFilters(filters), statusID, content, cw)
+}
+
+// compiledFilter holds a filter with its whole-word keywords pre-compiled into regexes.
+type compiledFilter struct {
+	filter   domain.UserFilter
+	keywords []compiledKeyword
+}
+
+type compiledKeyword struct {
+	keyword string
+	re      *regexp.Regexp // non-nil for whole_word keywords; nil uses case-insensitive substring
+}
+
+// compileFilters pre-compiles whole-word keyword regexes for a set of filters.
+// Call this once per request batch and reuse across multiple statuses via matchCompiledFilters.
+func compileFilters(filters []domain.UserFilter) []compiledFilter {
+	out := make([]compiledFilter, 0, len(filters))
 	for _, f := range filters {
-		var kwMatches []string
+		cf := compiledFilter{
+			filter:   f,
+			keywords: make([]compiledKeyword, 0, len(f.Keywords)),
+		}
 		for _, kw := range f.Keywords {
-			if matchesKeyword(text, kw.Keyword, kw.WholeWord) {
-				kwMatches = append(kwMatches, kw.Keyword)
+			ck := compiledKeyword{keyword: kw.Keyword}
+			if kw.WholeWord {
+				re, err := regexp.Compile(`(?i)\b` + regexp.QuoteMeta(kw.Keyword) + `\b`)
+				if err == nil {
+					ck.re = re
+				}
+			}
+			cf.keywords = append(cf.keywords, ck)
+		}
+		out = append(out, cf)
+	}
+	return out
+}
+
+// matchCompiledFilters checks a status against a pre-compiled filter set and returns
+// the list of FilterResult entries for any matching filters.
+func matchCompiledFilters(compiled []compiledFilter, statusID, content, cw string) []domain.FilterResult {
+	text := cw + " " + content
+	lowerText := strings.ToLower(text)
+	var out []domain.FilterResult
+	for _, cf := range compiled {
+		var kwMatches []string
+		for _, ck := range cf.keywords {
+			var matched bool
+			if ck.re != nil {
+				matched = ck.re.MatchString(text)
+			} else {
+				matched = strings.Contains(lowerText, strings.ToLower(ck.keyword))
+			}
+			if matched {
+				kwMatches = append(kwMatches, ck.keyword)
 			}
 		}
 		var stMatches []string
-		for _, fs := range f.Statuses {
+		for _, fs := range cf.filter.Statuses {
 			if fs.StatusID == statusID {
 				stMatches = append(stMatches, statusID)
 			}
 		}
 		if len(kwMatches) > 0 || len(stMatches) > 0 {
 			out = append(out, domain.FilterResult{
-				Filter:         f,
+				Filter:         cf.filter,
 				KeywordMatches: kwMatches,
 				StatusMatches:  stMatches,
 			})
 		}
 	}
 	return out
-}
-
-func matchesKeyword(text, keyword string, wholeWord bool) bool {
-	if wholeWord {
-		re, err := regexp.Compile(`(?i)\b` + regexp.QuoteMeta(keyword) + `\b`)
-		if err != nil {
-			return false
-		}
-		return re.MatchString(text)
-	}
-	return strings.Contains(strings.ToLower(text), strings.ToLower(keyword))
 }

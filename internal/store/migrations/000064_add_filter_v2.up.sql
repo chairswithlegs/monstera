@@ -26,6 +26,6 @@ CREATE INDEX idx_user_filter_statuses_filter ON user_filter_statuses (filter_id)
 
 -- Migrate existing v1 filter phrases into the keywords table.
 INSERT INTO user_filter_keywords (id, filter_id, keyword, whole_word, created_at)
-SELECT 'k' || id, id, phrase, whole_word, created_at
+SELECT gen_random_uuid()::text, id, phrase, whole_word, created_at
 FROM user_filters
 WHERE phrase != '';
