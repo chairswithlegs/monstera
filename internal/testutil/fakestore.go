@@ -54,6 +54,10 @@ type FakeStore struct {
 
 	userFiltersByID map[string]*domain.UserFilter
 
+	userFiltersV2ByID  map[string]*domain.UserFilter
+	filterKeywordsByID map[string]*domain.FilterKeyword
+	filterStatusesByID map[string]*domain.FilterStatus
+
 	listsByID      map[string]*domain.List
 	listAccountIDs map[string][]string
 
@@ -168,6 +172,9 @@ func NewFakeStore() *FakeStore {
 		authCodes:                 make(map[string]*domain.OAuthAuthorizationCode),
 		tokens:                    make(map[string]*domain.OAuthAccessToken),
 		userFiltersByID:           make(map[string]*domain.UserFilter),
+		userFiltersV2ByID:         make(map[string]*domain.UserFilter),
+		filterKeywordsByID:        make(map[string]*domain.FilterKeyword),
+		filterStatusesByID:        make(map[string]*domain.FilterStatus),
 		listsByID:                 make(map[string]*domain.List),
 		listAccountIDs:            make(map[string][]string),
 		mentionsByStatusID:        make(map[string][]string),
@@ -2379,6 +2386,247 @@ func (f *FakeStore) DeleteUserFilter(ctx context.Context, id string) error {
 
 func (f *FakeStore) GetActiveUserFiltersByContext(ctx context.Context, accountID, filterContext string) ([]domain.UserFilter, error) {
 	return nil, nil
+}
+
+func (f *FakeStore) CreateFilter(ctx context.Context, in store.CreateFilterInput) (*domain.UserFilter, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	now := time.Now().UTC()
+	uf := &domain.UserFilter{
+		ID:           in.ID,
+		AccountID:    in.AccountID,
+		Title:        in.Title,
+		Context:      in.Context,
+		ExpiresAt:    in.ExpiresAt,
+		FilterAction: in.FilterAction,
+		Keywords:     []domain.FilterKeyword{},
+		Statuses:     []domain.FilterStatus{},
+		CreatedAt:    now,
+	}
+	f.userFiltersV2ByID[in.ID] = uf
+	return copyFilter(uf), nil
+}
+
+func (f *FakeStore) GetFilterByID(ctx context.Context, id string) (*domain.UserFilter, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	uf, ok := f.userFiltersV2ByID[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return copyFilter(uf), nil
+}
+
+func (f *FakeStore) ListFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.UserFilter
+	for _, uf := range f.userFiltersV2ByID {
+		if uf.AccountID == accountID {
+			out = append(out, *copyFilter(uf))
+		}
+	}
+	return out, nil
+}
+
+func (f *FakeStore) UpdateFilter(ctx context.Context, in store.UpdateFilterInput) (*domain.UserFilter, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	uf, ok := f.userFiltersV2ByID[in.ID]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	uf.Title = in.Title
+	uf.Context = in.Context
+	uf.ExpiresAt = in.ExpiresAt
+	uf.FilterAction = in.FilterAction
+	return copyFilter(uf), nil
+}
+
+func (f *FakeStore) DeleteFilter(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.userFiltersV2ByID, id)
+	for kwID, kw := range f.filterKeywordsByID {
+		if kw.FilterID == id {
+			delete(f.filterKeywordsByID, kwID)
+		}
+	}
+	for fsID, fs := range f.filterStatusesByID {
+		if fs.FilterID == id {
+			delete(f.filterStatusesByID, fsID)
+		}
+	}
+	return nil
+}
+
+func (f *FakeStore) GetActiveFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	now := time.Now().UTC()
+	var out []domain.UserFilter
+	for _, uf := range f.userFiltersV2ByID {
+		if uf.AccountID != accountID {
+			continue
+		}
+		if uf.ExpiresAt != nil && uf.ExpiresAt.Before(now) {
+			continue
+		}
+		out = append(out, *copyFilter(uf))
+	}
+	return out, nil
+}
+
+func (f *FakeStore) AddFilterKeyword(ctx context.Context, filterID, id, keyword string, wholeWord bool) (*domain.FilterKeyword, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	kw := &domain.FilterKeyword{
+		ID:        id,
+		FilterID:  filterID,
+		Keyword:   keyword,
+		WholeWord: wholeWord,
+	}
+	f.filterKeywordsByID[id] = kw
+	if uf, ok := f.userFiltersV2ByID[filterID]; ok {
+		uf.Keywords = append(uf.Keywords, *kw)
+	}
+	return kw, nil
+}
+
+func (f *FakeStore) GetFilterKeywordByID(ctx context.Context, id string) (*domain.FilterKeyword, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	kw, ok := f.filterKeywordsByID[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	cp := *kw
+	return &cp, nil
+}
+
+func (f *FakeStore) ListFilterKeywords(ctx context.Context, filterID string) ([]domain.FilterKeyword, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.FilterKeyword
+	for _, kw := range f.filterKeywordsByID {
+		if kw.FilterID == filterID {
+			out = append(out, *kw)
+		}
+	}
+	return out, nil
+}
+
+func (f *FakeStore) UpdateFilterKeyword(ctx context.Context, id, keyword string, wholeWord bool) (*domain.FilterKeyword, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	kw, ok := f.filterKeywordsByID[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	kw.Keyword = keyword
+	kw.WholeWord = wholeWord
+	// Sync into parent filter's Keywords slice.
+	if uf, ok := f.userFiltersV2ByID[kw.FilterID]; ok {
+		for i := range uf.Keywords {
+			if uf.Keywords[i].ID == id {
+				uf.Keywords[i].Keyword = keyword
+				uf.Keywords[i].WholeWord = wholeWord
+				break
+			}
+		}
+	}
+	cp := *kw
+	return &cp, nil
+}
+
+func (f *FakeStore) DeleteFilterKeyword(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	kw, ok := f.filterKeywordsByID[id]
+	if !ok {
+		return nil
+	}
+	if uf, ok := f.userFiltersV2ByID[kw.FilterID]; ok {
+		for i := range uf.Keywords {
+			if uf.Keywords[i].ID == id {
+				uf.Keywords = append(uf.Keywords[:i], uf.Keywords[i+1:]...)
+				break
+			}
+		}
+	}
+	delete(f.filterKeywordsByID, id)
+	return nil
+}
+
+func (f *FakeStore) AddFilterStatus(ctx context.Context, id, filterID, statusID string) (*domain.FilterStatus, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	fs := &domain.FilterStatus{
+		ID:       id,
+		FilterID: filterID,
+		StatusID: statusID,
+	}
+	f.filterStatusesByID[id] = fs
+	if uf, ok := f.userFiltersV2ByID[filterID]; ok {
+		uf.Statuses = append(uf.Statuses, *fs)
+	}
+	return fs, nil
+}
+
+func (f *FakeStore) GetFilterStatusByID(ctx context.Context, id string) (*domain.FilterStatus, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	fs, ok := f.filterStatusesByID[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	cp := *fs
+	return &cp, nil
+}
+
+func (f *FakeStore) ListFilterStatuses(ctx context.Context, filterID string) ([]domain.FilterStatus, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.FilterStatus
+	for _, fs := range f.filterStatusesByID {
+		if fs.FilterID == filterID {
+			out = append(out, *fs)
+		}
+	}
+	return out, nil
+}
+
+func (f *FakeStore) DeleteFilterStatus(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	fs, ok := f.filterStatusesByID[id]
+	if !ok {
+		return nil
+	}
+	if uf, ok := f.userFiltersV2ByID[fs.FilterID]; ok {
+		for i := range uf.Statuses {
+			if uf.Statuses[i].ID == id {
+				uf.Statuses = append(uf.Statuses[:i], uf.Statuses[i+1:]...)
+				break
+			}
+		}
+	}
+	delete(f.filterStatusesByID, id)
+	return nil
+}
+
+func copyFilter(uf *domain.UserFilter) *domain.UserFilter {
+	if uf == nil {
+		return nil
+	}
+	cp := *uf
+	if uf.ExpiresAt != nil {
+		t := *uf.ExpiresAt
+		cp.ExpiresAt = &t
+	}
+	cp.Keywords = append([]domain.FilterKeyword{}, uf.Keywords...)
+	cp.Statuses = append([]domain.FilterStatus{}, uf.Statuses...)
+	return &cp
 }
 
 func (f *FakeStore) GetMarkers(ctx context.Context, accountID string, timelines []string) (map[string]domain.Marker, error) {

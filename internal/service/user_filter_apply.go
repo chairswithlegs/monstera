@@ -7,20 +7,20 @@ import (
 	"github.com/chairswithlegs/monstera/internal/domain"
 )
 
-// compiledFilter holds a pre-compiled matcher for one filter (regex for whole-word, or phrase for substring).
-type compiledFilter struct {
+// compiledPhraseFilter holds a pre-compiled matcher for one v1 phrase filter (regex for whole-word, or phrase for substring).
+type compiledPhraseFilter struct {
 	re          *regexp.Regexp // non-nil when whole-word
 	phraseLower string         // for substring match fallback
 }
 
-func compileFilters(filters []domain.UserFilter) []compiledFilter {
-	out := make([]compiledFilter, 0, len(filters))
+func compilePhraseFilters(filters []domain.UserFilter) []compiledPhraseFilter {
+	out := make([]compiledPhraseFilter, 0, len(filters))
 	for _, f := range filters {
 		phrase := strings.TrimSpace(f.Phrase)
 		if phrase == "" {
 			continue
 		}
-		cf := compiledFilter{phraseLower: strings.ToLower(phrase)}
+		cf := compiledPhraseFilter{phraseLower: strings.ToLower(phrase)}
 		if f.WholeWord {
 			cf.re, _ = regexp.Compile(`(?i)\b` + regexp.QuoteMeta(phrase) + `\b`)
 		}
@@ -43,7 +43,7 @@ func ApplyUserFiltersToEnriched(enriched []EnrichedStatus, filters []domain.User
 	if len(filters) == 0 {
 		return enriched
 	}
-	compiled := compileFilters(filters)
+	compiled := compilePhraseFilters(filters)
 	if len(compiled) == 0 {
 		return enriched
 	}
@@ -56,7 +56,7 @@ func ApplyUserFiltersToEnriched(enriched []EnrichedStatus, filters []domain.User
 	return out
 }
 
-func statusMatchesAnyFilter(s *domain.Status, compiled []compiledFilter) bool {
+func statusMatchesAnyFilter(s *domain.Status, compiled []compiledPhraseFilter) bool {
 	content := ""
 	if s.Content != nil {
 		content = *s.Content

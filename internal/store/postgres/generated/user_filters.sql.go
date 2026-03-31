@@ -14,7 +14,7 @@ import (
 const createUserFilter = `-- name: CreateUserFilter :one
 INSERT INTO user_filters (id, account_id, phrase, context, whole_word, expires_at, irreversible)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, account_id, phrase, context, whole_word, expires_at, irreversible, created_at
+RETURNING id, account_id, phrase, context, whole_word, expires_at, irreversible, created_at, title, filter_action
 `
 
 type CreateUserFilterParams struct {
@@ -47,6 +47,8 @@ func (q *Queries) CreateUserFilter(ctx context.Context, arg CreateUserFilterPara
 		&i.ExpiresAt,
 		&i.Irreversible,
 		&i.CreatedAt,
+		&i.Title,
+		&i.FilterAction,
 	)
 	return i, err
 }
@@ -61,7 +63,7 @@ func (q *Queries) DeleteUserFilter(ctx context.Context, id string) error {
 }
 
 const getActiveUserFiltersByContext = `-- name: GetActiveUserFiltersByContext :many
-SELECT id, account_id, phrase, context, whole_word, expires_at, irreversible, created_at FROM user_filters
+SELECT id, account_id, phrase, context, whole_word, expires_at, irreversible, created_at, title, filter_action FROM user_filters
 WHERE account_id = $1
   AND $2::text = ANY(context)
   AND (expires_at IS NULL OR expires_at > NOW())
@@ -91,6 +93,8 @@ func (q *Queries) GetActiveUserFiltersByContext(ctx context.Context, arg GetActi
 			&i.ExpiresAt,
 			&i.Irreversible,
 			&i.CreatedAt,
+			&i.Title,
+			&i.FilterAction,
 		); err != nil {
 			return nil, err
 		}
@@ -103,7 +107,7 @@ func (q *Queries) GetActiveUserFiltersByContext(ctx context.Context, arg GetActi
 }
 
 const getUserFilter = `-- name: GetUserFilter :one
-SELECT id, account_id, phrase, context, whole_word, expires_at, irreversible, created_at FROM user_filters WHERE id = $1
+SELECT id, account_id, phrase, context, whole_word, expires_at, irreversible, created_at, title, filter_action FROM user_filters WHERE id = $1
 `
 
 func (q *Queries) GetUserFilter(ctx context.Context, id string) (UserFilter, error) {
@@ -118,12 +122,14 @@ func (q *Queries) GetUserFilter(ctx context.Context, id string) (UserFilter, err
 		&i.ExpiresAt,
 		&i.Irreversible,
 		&i.CreatedAt,
+		&i.Title,
+		&i.FilterAction,
 	)
 	return i, err
 }
 
 const listUserFilters = `-- name: ListUserFilters :many
-SELECT id, account_id, phrase, context, whole_word, expires_at, irreversible, created_at FROM user_filters WHERE account_id = $1 ORDER BY created_at DESC
+SELECT id, account_id, phrase, context, whole_word, expires_at, irreversible, created_at, title, filter_action FROM user_filters WHERE account_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListUserFilters(ctx context.Context, accountID string) ([]UserFilter, error) {
@@ -144,6 +150,8 @@ func (q *Queries) ListUserFilters(ctx context.Context, accountID string) ([]User
 			&i.ExpiresAt,
 			&i.Irreversible,
 			&i.CreatedAt,
+			&i.Title,
+			&i.FilterAction,
 		); err != nil {
 			return nil, err
 		}
@@ -157,7 +165,7 @@ func (q *Queries) ListUserFilters(ctx context.Context, accountID string) ([]User
 
 const updateUserFilter = `-- name: UpdateUserFilter :one
 UPDATE user_filters SET phrase = $2, context = $3, whole_word = $4, expires_at = $5, irreversible = $6
-WHERE id = $1 RETURNING id, account_id, phrase, context, whole_word, expires_at, irreversible, created_at
+WHERE id = $1 RETURNING id, account_id, phrase, context, whole_word, expires_at, irreversible, created_at, title, filter_action
 `
 
 type UpdateUserFilterParams struct {
@@ -188,6 +196,8 @@ func (q *Queries) UpdateUserFilter(ctx context.Context, arg UpdateUserFilterPara
 		&i.ExpiresAt,
 		&i.Irreversible,
 		&i.CreatedAt,
+		&i.Title,
+		&i.FilterAction,
 	)
 	return i, err
 }

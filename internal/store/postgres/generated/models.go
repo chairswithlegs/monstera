@@ -493,4 +493,21 @@ type UserFilter struct {
 	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
 	Irreversible bool               `json:"irreversible"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	Title        string             `json:"title"`
+	FilterAction string             `json:"filter_action"`
+}
+
+type UserFilterKeyword struct {
+	ID        string             `json:"id"`
+	FilterID  string             `json:"filter_id"`
+	Keyword   string             `json:"keyword"`
+	WholeWord bool               `json:"whole_word"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type UserFilterStatus struct {
+	ID        string             `json:"id"`
+	FilterID  string             `json:"filter_id"`
+	StatusID  string             `json:"status_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }

@@ -78,7 +78,7 @@ type Status struct {
 	Muted               bool              `json:"muted"`
 	Bookmarked          bool              `json:"bookmarked"`
 	Pinned              bool              `json:"pinned"`
-	Filtered            []any             `json:"filtered"`
+	Filtered            []FilterResult    `json:"filtered"`
 }
 
 // QuoteApproval is the quote approval state and optional quoted status (Mastodon API entity).
