@@ -175,7 +175,7 @@ func TestComputeGroupKey(t *testing.T) {
 			if tc.ungrouped {
 				assert.Equal(t, "ungrouped-"+notifID, key)
 			} else {
-				assert.True(t, len(key) > len(tc.wantPrefix), "key should be longer than prefix")
+				assert.Greater(t, len(key), len(tc.wantPrefix), "key should be longer than prefix")
 				assert.Equal(t, tc.wantPrefix, key[:len(tc.wantPrefix)])
 			}
 		})
