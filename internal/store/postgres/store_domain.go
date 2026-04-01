@@ -1063,6 +1063,9 @@ func (s *PostgresStore) ListGroupedNotifications(ctx context.Context, accountID 
 		if v, ok := r.PageMaxID.(string); ok {
 			g.PageMaxID = v
 		}
+		if v, ok := r.LatestPageNotificationAt.(time.Time); ok {
+			g.LatestPageNotificationAt = v
+		}
 		if v, ok := r.SampleAccountIds.([]any); ok {
 			ids := make([]string, 0, len(v))
 			for _, id := range v {
@@ -3004,10 +3007,11 @@ func (s *PostgresStore) GetNotificationPolicyByAccountID(ctx context.Context, ac
 func (s *PostgresStore) UpdateNotificationPolicy(ctx context.Context, in store.UpdateNotificationPolicyInput) (*domain.NotificationPolicy, error) {
 	p, err := s.q.UpdateNotificationPolicy(ctx, db.UpdateNotificationPolicyParams{
 		AccountID:             in.AccountID,
-		FilterNotFollowing:    in.FilterNotFollowing,
-		FilterNotFollowers:    in.FilterNotFollowers,
-		FilterNewAccounts:     in.FilterNewAccounts,
-		FilterPrivateMentions: in.FilterPrivateMentions,
+		FilterNotFollowing:    string(in.FilterNotFollowing),
+		FilterNotFollowers:    string(in.FilterNotFollowers),
+		FilterNewAccounts:     string(in.FilterNewAccounts),
+		FilterPrivateMentions: string(in.FilterPrivateMentions),
+		ForLimitedAccounts:    string(in.ForLimitedAccounts),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("UpdateNotificationPolicy(%s): %w", in.AccountID, mapErr(err))

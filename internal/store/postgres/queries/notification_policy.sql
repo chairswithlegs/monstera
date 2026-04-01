@@ -15,6 +15,7 @@ SET filter_not_following    = $2,
     filter_not_followers    = $3,
     filter_new_accounts     = $4,
     filter_private_mentions = $5,
+    for_limited_accounts    = $6,
     updated_at              = NOW()
 WHERE account_id = $1
 RETURNING *;

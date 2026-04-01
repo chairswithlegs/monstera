@@ -1,12 +1,13 @@
 CREATE TABLE notification_policies (
-    id                     TEXT        NOT NULL PRIMARY KEY,
-    account_id             TEXT        NOT NULL UNIQUE REFERENCES accounts(id) ON DELETE CASCADE,
-    filter_not_following   BOOLEAN     NOT NULL DEFAULT FALSE,
-    filter_not_followers   BOOLEAN     NOT NULL DEFAULT FALSE,
-    filter_new_accounts    BOOLEAN     NOT NULL DEFAULT FALSE,
-    filter_private_mentions BOOLEAN    NOT NULL DEFAULT FALSE,
-    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id                      TEXT        NOT NULL PRIMARY KEY,
+    account_id              TEXT        NOT NULL UNIQUE REFERENCES accounts(id) ON DELETE CASCADE,
+    filter_not_following    TEXT        NOT NULL DEFAULT 'accept',
+    filter_not_followers    TEXT        NOT NULL DEFAULT 'accept',
+    filter_new_accounts     TEXT        NOT NULL DEFAULT 'accept',
+    filter_private_mentions TEXT        NOT NULL DEFAULT 'accept',
+    for_limited_accounts    TEXT        NOT NULL DEFAULT 'accept',
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE notification_requests (

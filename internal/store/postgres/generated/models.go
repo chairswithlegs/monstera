@@ -276,10 +276,11 @@ type Notification struct {
 type NotificationPolicy struct {
 	ID                    string             `json:"id"`
 	AccountID             string             `json:"account_id"`
-	FilterNotFollowing    bool               `json:"filter_not_following"`
-	FilterNotFollowers    bool               `json:"filter_not_followers"`
-	FilterNewAccounts     bool               `json:"filter_new_accounts"`
-	FilterPrivateMentions bool               `json:"filter_private_mentions"`
+	FilterNotFollowing    string             `json:"filter_not_following"`
+	FilterNotFollowers    string             `json:"filter_not_followers"`
+	FilterNewAccounts     string             `json:"filter_new_accounts"`
+	FilterPrivateMentions string             `json:"filter_private_mentions"`
+	ForLimitedAccounts    string             `json:"for_limited_accounts"`
 	CreatedAt             pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
 }

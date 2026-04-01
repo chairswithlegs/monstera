@@ -60,7 +60,7 @@ func (q *Queries) DeleteNotificationRequestsByIDs(ctx context.Context, arg Delet
 }
 
 const getNotificationPolicyByAccountID = `-- name: GetNotificationPolicyByAccountID :one
-SELECT id, account_id, filter_not_following, filter_not_followers, filter_new_accounts, filter_private_mentions, created_at, updated_at FROM notification_policies WHERE account_id = $1
+SELECT id, account_id, filter_not_following, filter_not_followers, filter_new_accounts, filter_private_mentions, for_limited_accounts, created_at, updated_at FROM notification_policies WHERE account_id = $1
 `
 
 func (q *Queries) GetNotificationPolicyByAccountID(ctx context.Context, accountID string) (NotificationPolicy, error) {
@@ -73,6 +73,7 @@ func (q *Queries) GetNotificationPolicyByAccountID(ctx context.Context, accountI
 		&i.FilterNotFollowers,
 		&i.FilterNewAccounts,
 		&i.FilterPrivateMentions,
+		&i.ForLimitedAccounts,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -151,17 +152,19 @@ SET filter_not_following    = $2,
     filter_not_followers    = $3,
     filter_new_accounts     = $4,
     filter_private_mentions = $5,
+    for_limited_accounts    = $6,
     updated_at              = NOW()
 WHERE account_id = $1
-RETURNING id, account_id, filter_not_following, filter_not_followers, filter_new_accounts, filter_private_mentions, created_at, updated_at
+RETURNING id, account_id, filter_not_following, filter_not_followers, filter_new_accounts, filter_private_mentions, for_limited_accounts, created_at, updated_at
 `
 
 type UpdateNotificationPolicyParams struct {
 	AccountID             string `json:"account_id"`
-	FilterNotFollowing    bool   `json:"filter_not_following"`
-	FilterNotFollowers    bool   `json:"filter_not_followers"`
-	FilterNewAccounts     bool   `json:"filter_new_accounts"`
-	FilterPrivateMentions bool   `json:"filter_private_mentions"`
+	FilterNotFollowing    string `json:"filter_not_following"`
+	FilterNotFollowers    string `json:"filter_not_followers"`
+	FilterNewAccounts     string `json:"filter_new_accounts"`
+	FilterPrivateMentions string `json:"filter_private_mentions"`
+	ForLimitedAccounts    string `json:"for_limited_accounts"`
 }
 
 func (q *Queries) UpdateNotificationPolicy(ctx context.Context, arg UpdateNotificationPolicyParams) (NotificationPolicy, error) {
@@ -171,6 +174,7 @@ func (q *Queries) UpdateNotificationPolicy(ctx context.Context, arg UpdateNotifi
 		arg.FilterNotFollowers,
 		arg.FilterNewAccounts,
 		arg.FilterPrivateMentions,
+		arg.ForLimitedAccounts,
 	)
 	var i NotificationPolicy
 	err := row.Scan(
@@ -180,6 +184,7 @@ func (q *Queries) UpdateNotificationPolicy(ctx context.Context, arg UpdateNotifi
 		&i.FilterNotFollowers,
 		&i.FilterNewAccounts,
 		&i.FilterPrivateMentions,
+		&i.ForLimitedAccounts,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -191,7 +196,7 @@ const upsertNotificationPolicy = `-- name: UpsertNotificationPolicy :one
 INSERT INTO notification_policies (id, account_id)
 VALUES ($1, $2)
 ON CONFLICT (account_id) DO UPDATE SET id = notification_policies.id
-RETURNING id, account_id, filter_not_following, filter_not_followers, filter_new_accounts, filter_private_mentions, created_at, updated_at
+RETURNING id, account_id, filter_not_following, filter_not_followers, filter_new_accounts, filter_private_mentions, for_limited_accounts, created_at, updated_at
 `
 
 type UpsertNotificationPolicyParams struct {
@@ -210,6 +215,7 @@ func (q *Queries) UpsertNotificationPolicy(ctx context.Context, arg UpsertNotifi
 		&i.FilterNotFollowers,
 		&i.FilterNewAccounts,
 		&i.FilterPrivateMentions,
+		&i.ForLimitedAccounts,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

@@ -412,10 +412,11 @@ type UpsertStatusCardInput struct {
 // UpdateNotificationPolicyInput is the input for updating a notification policy.
 type UpdateNotificationPolicyInput struct {
 	AccountID             string
-	FilterNotFollowing    bool
-	FilterNotFollowers    bool
-	FilterNewAccounts     bool
-	FilterPrivateMentions bool
+	FilterNotFollowing    domain.NotificationFilterPolicy
+	FilterNotFollowers    domain.NotificationFilterPolicy
+	FilterNewAccounts     domain.NotificationFilterPolicy
+	FilterPrivateMentions domain.NotificationFilterPolicy
+	ForLimitedAccounts    domain.NotificationFilterPolicy
 }
 
 // UpsertNotificationRequestInput is the input for upserting a notification request.

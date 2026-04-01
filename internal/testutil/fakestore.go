@@ -1787,7 +1787,7 @@ func (f *FakeStore) ListGroupedNotifications(ctx context.Context, accountID stri
 				break
 			}
 		}
-		if !found {
+		if !found && len(g.SampleAccountIDs) < 8 {
 			g.SampleAccountIDs = append(g.SampleAccountIDs, n.FromID)
 		}
 	}
@@ -3981,10 +3981,15 @@ func (f *FakeStore) UpsertNotificationPolicy(_ context.Context, accountID string
 		return p, nil
 	}
 	p := &domain.NotificationPolicy{
-		ID:        uid.New(),
-		AccountID: accountID,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:                    uid.New(),
+		AccountID:             accountID,
+		FilterNotFollowing:    domain.NotificationFilterAccept,
+		FilterNotFollowers:    domain.NotificationFilterAccept,
+		FilterNewAccounts:     domain.NotificationFilterAccept,
+		FilterPrivateMentions: domain.NotificationFilterAccept,
+		ForLimitedAccounts:    domain.NotificationFilterAccept,
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 	f.notificationPoliciesByAccountID[accountID] = p
 	return p, nil
@@ -4011,6 +4016,7 @@ func (f *FakeStore) UpdateNotificationPolicy(_ context.Context, in store.UpdateN
 	p.FilterNotFollowers = in.FilterNotFollowers
 	p.FilterNewAccounts = in.FilterNewAccounts
 	p.FilterPrivateMentions = in.FilterPrivateMentions
+	p.ForLimitedAccounts = in.ForLimitedAccounts
 	p.UpdatedAt = time.Now()
 	return p, nil
 }

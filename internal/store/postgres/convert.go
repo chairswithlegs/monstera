@@ -485,10 +485,11 @@ func ToDomainNotificationPolicy(p db.NotificationPolicy) domain.NotificationPoli
 	return domain.NotificationPolicy{
 		ID:                    p.ID,
 		AccountID:             p.AccountID,
-		FilterNotFollowing:    p.FilterNotFollowing,
-		FilterNotFollowers:    p.FilterNotFollowers,
-		FilterNewAccounts:     p.FilterNewAccounts,
-		FilterPrivateMentions: p.FilterPrivateMentions,
+		FilterNotFollowing:    domain.NotificationFilterPolicy(p.FilterNotFollowing),
+		FilterNotFollowers:    domain.NotificationFilterPolicy(p.FilterNotFollowers),
+		FilterNewAccounts:     domain.NotificationFilterPolicy(p.FilterNewAccounts),
+		FilterPrivateMentions: domain.NotificationFilterPolicy(p.FilterPrivateMentions),
+		ForLimitedAccounts:    domain.NotificationFilterPolicy(p.ForLimitedAccounts),
 		CreatedAt:             pgTime(p.CreatedAt),
 		UpdatedAt:             pgTime(p.UpdatedAt),
 	}

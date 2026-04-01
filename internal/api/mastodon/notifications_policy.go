@@ -61,11 +61,13 @@ func (h *NotificationsPolicyHandler) GETPolicy(w http.ResponseWriter, r *http.Re
 
 // patchPolicyRequest is the request body for PATCH /api/v1/notifications/policy.
 // Pointer fields implement partial-update semantics: omitted fields are left unchanged.
+// Values must be "accept", "filter", or "drop".
 type patchPolicyRequest struct {
-	FilterNotFollowing    *bool `json:"filter_not_following"`
-	FilterNotFollowers    *bool `json:"filter_not_followers"`
-	FilterNewAccounts     *bool `json:"filter_new_accounts"`
-	FilterPrivateMentions *bool `json:"filter_private_mentions"`
+	FilterNotFollowing    *domain.NotificationFilterPolicy `json:"filter_not_following"`
+	FilterNotFollowers    *domain.NotificationFilterPolicy `json:"filter_not_followers"`
+	FilterNewAccounts     *domain.NotificationFilterPolicy `json:"filter_new_accounts"`
+	FilterPrivateMentions *domain.NotificationFilterPolicy `json:"filter_private_mentions"`
+	ForLimitedAccounts    *domain.NotificationFilterPolicy `json:"for_limited_accounts"`
 }
 
 // PATCHPolicy handles PATCH /api/v1/notifications/policy.
@@ -86,6 +88,7 @@ func (h *NotificationsPolicyHandler) PATCHPolicy(w http.ResponseWriter, r *http.
 		FilterNotFollowers:    body.FilterNotFollowers,
 		FilterNewAccounts:     body.FilterNewAccounts,
 		FilterPrivateMentions: body.FilterPrivateMentions,
+		ForLimitedAccounts:    body.ForLimitedAccounts,
 	})
 	if err != nil {
 		api.HandleError(w, r, err)

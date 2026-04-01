@@ -384,7 +384,7 @@ func TestShouldFilter_FilterNotFollowing(t *testing.T) {
 
 	pp.policies["recipient-1"] = &domain.NotificationPolicy{
 		AccountID:          "recipient-1",
-		FilterNotFollowing: true,
+		FilterNotFollowing: domain.NotificationFilterFilter,
 	}
 	author := localAccount("recipient-1", "bob")
 	al.accounts[author.ID] = author
@@ -432,7 +432,7 @@ func TestShouldFilter_FilterNotFollowers(t *testing.T) {
 
 	pp.policies["recipient-1"] = &domain.NotificationPolicy{
 		AccountID:          "recipient-1",
-		FilterNotFollowers: true,
+		FilterNotFollowers: domain.NotificationFilterFilter,
 	}
 	author := localAccount("recipient-1", "bob")
 	al.accounts[author.ID] = author
@@ -479,7 +479,7 @@ func TestShouldFilter_FilterNewAccounts(t *testing.T) {
 
 	pp.policies["recipient-1"] = &domain.NotificationPolicy{
 		AccountID:         "recipient-1",
-		FilterNewAccounts: true,
+		FilterNewAccounts: domain.NotificationFilterFilter,
 	}
 	recipient := localAccount("recipient-1", "bob")
 	al.accounts[recipient.ID] = recipient
@@ -520,11 +520,11 @@ func TestShouldFilter_FilterNewAccounts(t *testing.T) {
 
 func TestShouldFilter_FilterPrivateMentions(t *testing.T) {
 	t.Parallel()
-	sub, nc, _, _, pp := newTestSubWithPolicy()
+	sub, nc, _, fc, pp := newTestSubWithPolicy()
 
 	pp.policies["mentioned-1"] = &domain.NotificationPolicy{
 		AccountID:             "mentioned-1",
-		FilterPrivateMentions: true,
+		FilterPrivateMentions: domain.NotificationFilterFilter,
 	}
 
 	author := localAccount("author-1", "alice")
@@ -549,6 +549,24 @@ func TestShouldFilter_FilterPrivateMentions(t *testing.T) {
 
 	t.Run("allowed for public mention", func(t *testing.T) {
 		status := &domain.Status{ID: "status-2", AccountID: author.ID, Visibility: domain.VisibilityPublic}
+		event := makeEvent(t, domain.EventStatusCreated, domain.StatusCreatedPayload{
+			Status:   status,
+			Author:   author,
+			Mentions: []*domain.Account{mentioned},
+		})
+		sub.handleStatusCreatedMentions(context.Background(), event)
+
+		require.Len(t, nc.calls, 1)
+		assert.Empty(t, pp.requests)
+	})
+
+	nc.calls = nil
+	pp.requests = nil
+
+	t.Run("allowed for direct mention when recipient follows sender", func(t *testing.T) {
+		fc.follows["mentioned-1:author-1"] = acceptedFollow("mentioned-1", "author-1")
+
+		status := &domain.Status{ID: "status-3", AccountID: author.ID, Visibility: domain.VisibilityDirect}
 		event := makeEvent(t, domain.EventStatusCreated, domain.StatusCreatedPayload{
 			Status:   status,
 			Author:   author,

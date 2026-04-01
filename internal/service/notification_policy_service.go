@@ -45,10 +45,11 @@ type NotificationPolicyService interface {
 // Nil pointer fields are left unchanged (partial-update semantics).
 type UpdateNotificationPolicyInput struct {
 	AccountID             string
-	FilterNotFollowing    *bool
-	FilterNotFollowers    *bool
-	FilterNewAccounts     *bool
-	FilterPrivateMentions *bool
+	FilterNotFollowing    *domain.NotificationFilterPolicy
+	FilterNotFollowers    *domain.NotificationFilterPolicy
+	FilterNewAccounts     *domain.NotificationFilterPolicy
+	FilterPrivateMentions *domain.NotificationFilterPolicy
+	ForLimitedAccounts    *domain.NotificationFilterPolicy
 }
 
 type notificationPolicyService struct {
@@ -94,12 +95,16 @@ func (svc *notificationPolicyService) UpdatePolicy(ctx context.Context, in Updat
 	if in.FilterPrivateMentions != nil {
 		current.FilterPrivateMentions = *in.FilterPrivateMentions
 	}
+	if in.ForLimitedAccounts != nil {
+		current.ForLimitedAccounts = *in.ForLimitedAccounts
+	}
 	p, err := svc.store.UpdateNotificationPolicy(ctx, store.UpdateNotificationPolicyInput{
 		AccountID:             in.AccountID,
 		FilterNotFollowing:    current.FilterNotFollowing,
 		FilterNotFollowers:    current.FilterNotFollowers,
 		FilterNewAccounts:     current.FilterNewAccounts,
 		FilterPrivateMentions: current.FilterPrivateMentions,
+		ForLimitedAccounts:    current.ForLimitedAccounts,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("UpdatePolicy: %w", err)

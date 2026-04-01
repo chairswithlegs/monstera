@@ -15,11 +15,12 @@ type NotificationPolicySummary struct {
 
 // NotificationPolicyResponse is the Mastodon API notification policy response shape.
 type NotificationPolicyResponse struct {
-	FilterNotFollowing    bool                      `json:"filter_not_following"`
-	FilterNotFollowers    bool                      `json:"filter_not_followers"`
-	FilterNewAccounts     bool                      `json:"filter_new_accounts"`
-	FilterPrivateMentions bool                      `json:"filter_private_mentions"`
-	Summary               NotificationPolicySummary `json:"summary"`
+	FilterNotFollowing    domain.NotificationFilterPolicy `json:"filter_not_following"`
+	FilterNotFollowers    domain.NotificationFilterPolicy `json:"filter_not_followers"`
+	FilterNewAccounts     domain.NotificationFilterPolicy `json:"filter_new_accounts"`
+	FilterPrivateMentions domain.NotificationFilterPolicy `json:"filter_private_mentions"`
+	ForLimitedAccounts    domain.NotificationFilterPolicy `json:"for_limited_accounts"`
+	Summary               NotificationPolicySummary       `json:"summary"`
 }
 
 // ToNotificationPolicyResponse converts a domain policy + summary counts to the API shape.
@@ -29,6 +30,7 @@ func ToNotificationPolicyResponse(p *domain.NotificationPolicy, pendingRequests,
 		FilterNotFollowers:    p.FilterNotFollowers,
 		FilterNewAccounts:     p.FilterNewAccounts,
 		FilterPrivateMentions: p.FilterPrivateMentions,
+		ForLimitedAccounts:    p.ForLimitedAccounts,
 		Summary: NotificationPolicySummary{
 			PendingRequestsCount:      pendingRequests,
 			PendingNotificationsCount: pendingNotifications,

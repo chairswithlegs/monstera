@@ -119,6 +119,65 @@ func TestGroupedNotificationsHandler_GETUnreadCount(t *testing.T) {
 	assert.Equal(t, int64(2), body.Count) // 2 distinct group keys
 }
 
+func TestGroupedNotificationsHandler_GETNotificationGroup(t *testing.T) {
+	t.Parallel()
+	handler, st, acc := newGroupedNotifHandler(t)
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("group_key", "favourite-status-1")
+		req := httptest.NewRequest(http.MethodGet, "/api/v2/notifications/favourite-status-1", nil)
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		rec := httptest.NewRecorder()
+		handler.GETNotificationGroup(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("returns 404 for unknown group key", func(t *testing.T) {
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("group_key", "nonexistent-group")
+		req := httptest.NewRequest(http.MethodGet, "/api/v2/notifications/nonexistent-group", nil)
+		req = req.WithContext(context.WithValue(middleware.WithAccount(req.Context(), acc), chi.RouteCtxKey, rctx))
+		rec := httptest.NewRecorder()
+		handler.GETNotificationGroup(rec, req)
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("returns 404 when group_key param is empty", func(t *testing.T) {
+		rctx := chi.NewRouteContext()
+		req := httptest.NewRequest(http.MethodGet, "/api/v2/notifications/", nil)
+		req = req.WithContext(context.WithValue(middleware.WithAccount(req.Context(), acc), chi.RouteCtxKey, rctx))
+		rec := httptest.NewRecorder()
+		handler.GETNotificationGroup(rec, req)
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("returns group envelope for existing group", func(t *testing.T) {
+		statusID := testStatusID
+		createNotification(t, st, acc.ID, "from-a", domain.NotificationTypeFavourite, "fav-group-1", &statusID)
+		createNotification(t, st, acc.ID, "from-b", domain.NotificationTypeFavourite, "fav-group-1", &statusID)
+
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("group_key", "fav-group-1")
+		req := httptest.NewRequest(http.MethodGet, "/api/v2/notifications/fav-group-1", nil)
+		req = req.WithContext(context.WithValue(middleware.WithAccount(req.Context(), acc), chi.RouteCtxKey, rctx))
+		rec := httptest.NewRecorder()
+		handler.GETNotificationGroup(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		var body apimodel.GroupedNotificationsResponse
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		require.Len(t, body.NotificationGroups, 1)
+		g := body.NotificationGroups[0]
+		assert.Equal(t, "fav-group-1", g.GroupKey)
+		assert.Equal(t, 2, g.NotificationsCount)
+		assert.Equal(t, domain.NotificationTypeFavourite, g.Type)
+		assert.Len(t, g.SampleAccountIDs, 2)
+		require.NotNil(t, g.StatusID)
+		assert.Equal(t, testStatusID, *g.StatusID)
+	})
+}
+
 func TestGroupedNotificationsHandler_POSTDismissNotificationGroup(t *testing.T) {
 	t.Parallel()
 	handler, st, acc := newGroupedNotifHandler(t)

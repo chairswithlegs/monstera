@@ -59,10 +59,11 @@ func TestNotificationsPolicyHandler_GETPolicy(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 		var body map[string]any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
-		assert.Equal(t, false, body["filter_not_following"])
-		assert.Equal(t, false, body["filter_not_followers"])
-		assert.Equal(t, false, body["filter_new_accounts"])
-		assert.Equal(t, false, body["filter_private_mentions"])
+		assert.Equal(t, "accept", body["filter_not_following"])
+		assert.Equal(t, "accept", body["filter_not_followers"])
+		assert.Equal(t, "accept", body["filter_new_accounts"])
+		assert.Equal(t, "accept", body["filter_private_mentions"])
+		assert.Equal(t, "accept", body["for_limited_accounts"])
 		summary, ok := body["summary"].(map[string]any)
 		require.True(t, ok)
 		assert.InDelta(t, float64(0), summary["pending_requests_count"], 0)
@@ -88,10 +89,10 @@ func TestNotificationsPolicyHandler_PATCHPolicy(t *testing.T) {
 		st := testutil.NewFakeStore()
 		handler, acc := newPolicyHandler(t, st)
 		body := map[string]any{
-			"filter_not_following":    true,
-			"filter_not_followers":    false,
-			"filter_new_accounts":     true,
-			"filter_private_mentions": false,
+			"filter_not_following":    "filter",
+			"filter_not_followers":    "accept",
+			"filter_new_accounts":     "filter",
+			"filter_private_mentions": "accept",
 		}
 		bodyJSON, _ := json.Marshal(body)
 		req := httptest.NewRequest(http.MethodPatch, "/api/v1/notifications/policy", bytes.NewReader(bodyJSON))
@@ -102,10 +103,10 @@ func TestNotificationsPolicyHandler_PATCHPolicy(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 		var resp map[string]any
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
-		assert.Equal(t, true, resp["filter_not_following"])
-		assert.Equal(t, false, resp["filter_not_followers"])
-		assert.Equal(t, true, resp["filter_new_accounts"])
-		assert.Equal(t, false, resp["filter_private_mentions"])
+		assert.Equal(t, "filter", resp["filter_not_following"])
+		assert.Equal(t, "accept", resp["filter_not_followers"])
+		assert.Equal(t, "filter", resp["filter_new_accounts"])
+		assert.Equal(t, "accept", resp["filter_private_mentions"])
 	})
 }
 

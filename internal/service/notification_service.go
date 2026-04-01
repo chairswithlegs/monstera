@@ -4,11 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/uid"
 )
+
+// groupKeyWindowDuration is the time window for grouping notifications.
+// Notifications of the same type for the same target within this window share a group_key.
+const groupKeyWindowDuration = time.Hour
 
 const (
 	defaultNotificationLimit = 20
@@ -81,19 +87,27 @@ func (svc *notificationService) Dismiss(ctx context.Context, id, accountID strin
 	return nil
 }
 
+// groupKeyTimeBucket returns a truncated unix timestamp for time-windowed grouping.
+func groupKeyTimeBucket() string {
+	return strconv.FormatInt(time.Now().Unix()/int64(groupKeyWindowDuration.Seconds()), 10)
+}
+
 // computeGroupKey returns the group_key for a notification based on its type.
-func computeGroupKey(notifID, notifType string, statusID *string) string {
+func computeGroupKey(notifID, notifType string, statusID *string, recipientID string) string {
+	bucket := groupKeyTimeBucket()
 	switch notifType {
 	case domain.NotificationTypeFavourite:
 		if statusID != nil {
-			return "favourite-" + *statusID
+			return "favourite-" + *statusID + "-" + bucket
 		}
 	case domain.NotificationTypeReblog:
 		if statusID != nil {
-			return "reblog-" + *statusID
+			return "reblog-" + *statusID + "-" + bucket
 		}
+	case domain.NotificationTypeFollow:
+		return "follow-" + recipientID + "-" + bucket
 	}
-	// Follow, mention, poll, etc.: each notification is its own group.
+	// Mention, poll, etc.: each notification is its own group.
 	return "ungrouped-" + notifID
 }
 
@@ -101,7 +115,7 @@ func computeGroupKey(notifID, notifType string, statusID *string) string {
 // event within a single transaction.
 func (svc *notificationService) CreateAndEmit(ctx context.Context, recipientID, fromAccountID, notifType string, statusID *string) error {
 	notifID := uid.New()
-	groupKey := computeGroupKey(notifID, notifType, statusID)
+	groupKey := computeGroupKey(notifID, notifType, statusID, recipientID)
 	if err := svc.store.WithTx(ctx, func(tx store.Store) error {
 		notif, err := tx.CreateNotification(ctx, store.CreateNotificationInput{
 			ID:        notifID,

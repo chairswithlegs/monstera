@@ -268,11 +268,14 @@ func (n *NotificationSubscriber) shouldFilter(ctx context.Context, recipientID, 
 	}
 
 	// Quick check: if no filters are enabled, skip all lookups.
-	if !policy.FilterNotFollowing && !policy.FilterNotFollowers && !policy.FilterNewAccounts && !policy.FilterPrivateMentions {
+	if !policy.FilterNotFollowing.ShouldFilter() &&
+		!policy.FilterNotFollowers.ShouldFilter() &&
+		!policy.FilterNewAccounts.ShouldFilter() &&
+		!policy.FilterPrivateMentions.ShouldFilter() {
 		return false, nil
 	}
 
-	if policy.FilterNotFollowing {
+	if policy.FilterNotFollowing.ShouldFilter() {
 		following, err := n.isFollowing(ctx, recipientID, fromAccountID)
 		if err != nil {
 			return false, fmt.Errorf("check following: %w", err)
@@ -282,7 +285,7 @@ func (n *NotificationSubscriber) shouldFilter(ctx context.Context, recipientID, 
 		}
 	}
 
-	if policy.FilterNotFollowers {
+	if policy.FilterNotFollowers.ShouldFilter() {
 		followedBy, err := n.isFollowing(ctx, fromAccountID, recipientID)
 		if err != nil {
 			return false, fmt.Errorf("check followers: %w", err)
@@ -292,7 +295,7 @@ func (n *NotificationSubscriber) shouldFilter(ctx context.Context, recipientID, 
 		}
 	}
 
-	if policy.FilterNewAccounts {
+	if policy.FilterNewAccounts.ShouldFilter() {
 		from := fc.fromAccount
 		if from == nil {
 			from, err = n.deps.Accounts.GetByID(ctx, fromAccountID)
@@ -305,9 +308,16 @@ func (n *NotificationSubscriber) shouldFilter(ctx context.Context, recipientID, 
 		}
 	}
 
-	if policy.FilterPrivateMentions {
+	if policy.FilterPrivateMentions.ShouldFilter() {
 		if notifType == domain.NotificationTypeMention && fc.statusVisibility == domain.VisibilityDirect {
-			return true, nil
+			// Exception: allow through if recipient follows the sender.
+			following, err := n.isFollowing(ctx, recipientID, fromAccountID)
+			if err != nil {
+				return false, fmt.Errorf("check following for private mention: %w", err)
+			}
+			if !following {
+				return true, nil
+			}
 		}
 	}
 
