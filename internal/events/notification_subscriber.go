@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/nats-io/nats.go/jetstream"
 
@@ -13,11 +14,17 @@ import (
 	"github.com/chairswithlegs/monstera/internal/natsutil"
 )
 
+// newAccountThreshold is the age below which an account is considered "new"
+// for the FilterNewAccounts notification policy filter.
+const newAccountThreshold = 30 * 24 * time.Hour
+
 // NotificationDeps groups the service dependencies needed by the notification subscriber.
 type NotificationDeps struct {
-	Notifications NotificationCreator
-	Accounts      AccountLookup
-	Conversations ConversationMuteChecker
+	Notifications      NotificationCreator
+	Accounts           AccountLookup
+	Conversations      ConversationMuteChecker
+	Follows            FollowChecker
+	NotificationPolicy NotificationPolicyProvider
 }
 
 // NotificationCreator is the service interface for creating notifications with events.
@@ -33,6 +40,17 @@ type AccountLookup interface {
 // ConversationMuteChecker checks if a viewer has muted the conversation containing a status.
 type ConversationMuteChecker interface {
 	IsConversationMutedForViewer(ctx context.Context, viewerAccountID, statusID string) (bool, error)
+}
+
+// FollowChecker checks follow relationships between accounts.
+type FollowChecker interface {
+	GetFollow(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Follow, error)
+}
+
+// NotificationPolicyProvider retrieves notification policies and creates notification requests.
+type NotificationPolicyProvider interface {
+	GetOrCreatePolicy(ctx context.Context, accountID string) (*domain.NotificationPolicy, error)
+	UpsertNotificationRequest(ctx context.Context, accountID, fromAccountID string, lastStatusID *string) error
 }
 
 // NotificationSubscriber consumes domain events from DOMAIN_EVENTS and creates
@@ -101,7 +119,8 @@ func (n *NotificationSubscriber) handleFollowCreated(ctx context.Context, event 
 	if payload.Actor == nil {
 		return
 	}
-	n.createNotification(ctx, payload.Target.ID, payload.Actor.ID, domain.NotificationTypeFollow, nil)
+	fc := filterContext{fromAccount: payload.Actor}
+	n.createOrFilterNotification(ctx, payload.Target.ID, payload.Actor.ID, domain.NotificationTypeFollow, nil, fc)
 }
 
 func (n *NotificationSubscriber) handleFollowRequested(ctx context.Context, event domain.DomainEvent) {
@@ -116,7 +135,8 @@ func (n *NotificationSubscriber) handleFollowRequested(ctx context.Context, even
 	if payload.Actor == nil {
 		return
 	}
-	n.createNotification(ctx, payload.Target.ID, payload.Actor.ID, domain.NotificationTypeFollowRequest, nil)
+	fc := filterContext{fromAccount: payload.Actor}
+	n.createOrFilterNotification(ctx, payload.Target.ID, payload.Actor.ID, domain.NotificationTypeFollowRequest, nil, fc)
 }
 
 func (n *NotificationSubscriber) handleFavouriteCreated(ctx context.Context, event domain.DomainEvent) {
@@ -140,7 +160,8 @@ func (n *NotificationSubscriber) handleFavouriteCreated(ctx context.Context, eve
 		return
 	}
 	statusID := payload.StatusID
-	n.createNotification(ctx, payload.StatusAuthorID, payload.AccountID, domain.NotificationTypeFavourite, &statusID)
+	fc := filterContext{fromAccount: payload.FromAccount}
+	n.createOrFilterNotification(ctx, payload.StatusAuthorID, payload.AccountID, domain.NotificationTypeFavourite, &statusID, fc)
 }
 
 func (n *NotificationSubscriber) handleReblogCreated(ctx context.Context, event domain.DomainEvent) {
@@ -164,7 +185,8 @@ func (n *NotificationSubscriber) handleReblogCreated(ctx context.Context, event 
 		return
 	}
 	statusID := payload.OriginalStatusID
-	n.createNotification(ctx, payload.OriginalAuthorID, payload.AccountID, domain.NotificationTypeReblog, &statusID)
+	fc := filterContext{fromAccount: payload.FromAccount}
+	n.createOrFilterNotification(ctx, payload.OriginalAuthorID, payload.AccountID, domain.NotificationTypeReblog, &statusID, fc)
 }
 
 func (n *NotificationSubscriber) handleStatusCreatedMentions(ctx context.Context, event domain.DomainEvent) {
@@ -177,6 +199,10 @@ func (n *NotificationSubscriber) handleStatusCreatedMentions(ctx context.Context
 		return
 	}
 	statusID := payload.Status.ID
+	fc := filterContext{
+		fromAccount:      payload.Author,
+		statusVisibility: payload.Status.Visibility,
+	}
 	for _, mentioned := range payload.Mentions {
 		if mentioned == nil || mentioned.IsRemote() {
 			continue
@@ -192,11 +218,39 @@ func (n *NotificationSubscriber) handleStatusCreatedMentions(ctx context.Context
 		if muted {
 			continue
 		}
-		n.createNotification(ctx, mentioned.ID, payload.Author.ID, domain.NotificationTypeMention, &statusID)
+		n.createOrFilterNotification(ctx, mentioned.ID, payload.Author.ID, domain.NotificationTypeMention, &statusID, fc)
 	}
 }
 
-func (n *NotificationSubscriber) createNotification(ctx context.Context, recipientID, fromAccountID, notifType string, statusID *string) {
+// filterContext carries optional context needed for notification policy filtering.
+type filterContext struct {
+	// fromAccount is the sender account (used for FilterNewAccounts).
+	// If nil, the account will be fetched from deps.Accounts.
+	fromAccount *domain.Account
+	// statusVisibility is the visibility of the related status (used for FilterPrivateMentions).
+	statusVisibility string
+}
+
+func (n *NotificationSubscriber) createOrFilterNotification(ctx context.Context, recipientID, fromAccountID, notifType string, statusID *string, fc filterContext) {
+	if n.deps.NotificationPolicy != nil {
+		filtered, err := n.shouldFilter(ctx, recipientID, fromAccountID, notifType, fc)
+		if err != nil {
+			slog.WarnContext(ctx, "notification subscriber: policy check failed, allowing notification",
+				slog.String("type", notifType),
+				slog.String("recipient", recipientID),
+				slog.Any("error", err),
+			)
+		} else if filtered {
+			if err := n.deps.NotificationPolicy.UpsertNotificationRequest(ctx, recipientID, fromAccountID, statusID); err != nil {
+				slog.WarnContext(ctx, "notification subscriber: upsert notification request failed",
+					slog.String("type", notifType),
+					slog.String("recipient", recipientID),
+					slog.Any("error", err),
+				)
+			}
+			return
+		}
+	}
 	if err := n.deps.Notifications.CreateAndEmit(ctx, recipientID, fromAccountID, notifType, statusID); err != nil {
 		slog.WarnContext(ctx, "notification subscriber: create notification failed",
 			slog.String("type", notifType),
@@ -204,4 +258,70 @@ func (n *NotificationSubscriber) createNotification(ctx context.Context, recipie
 			slog.Any("error", err),
 		)
 	}
+}
+
+// shouldFilter checks whether the notification should be filtered by the recipient's policy.
+func (n *NotificationSubscriber) shouldFilter(ctx context.Context, recipientID, fromAccountID, notifType string, fc filterContext) (bool, error) {
+	policy, err := n.deps.NotificationPolicy.GetOrCreatePolicy(ctx, recipientID)
+	if err != nil {
+		return false, fmt.Errorf("get policy: %w", err)
+	}
+
+	// Quick check: if no filters are enabled, skip all lookups.
+	if !policy.FilterNotFollowing && !policy.FilterNotFollowers && !policy.FilterNewAccounts && !policy.FilterPrivateMentions {
+		return false, nil
+	}
+
+	if policy.FilterNotFollowing {
+		following, err := n.isFollowing(ctx, recipientID, fromAccountID)
+		if err != nil {
+			return false, fmt.Errorf("check following: %w", err)
+		}
+		if !following {
+			return true, nil
+		}
+	}
+
+	if policy.FilterNotFollowers {
+		followedBy, err := n.isFollowing(ctx, fromAccountID, recipientID)
+		if err != nil {
+			return false, fmt.Errorf("check followers: %w", err)
+		}
+		if !followedBy {
+			return true, nil
+		}
+	}
+
+	if policy.FilterNewAccounts {
+		from := fc.fromAccount
+		if from == nil {
+			from, err = n.deps.Accounts.GetByID(ctx, fromAccountID)
+			if err != nil {
+				return false, fmt.Errorf("get from account: %w", err)
+			}
+		}
+		if time.Since(from.CreatedAt) < newAccountThreshold {
+			return true, nil
+		}
+	}
+
+	if policy.FilterPrivateMentions {
+		if notifType == domain.NotificationTypeMention && fc.statusVisibility == domain.VisibilityDirect {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// isFollowing checks whether actor follows target with an accepted follow.
+func (n *NotificationSubscriber) isFollowing(ctx context.Context, actorID, targetID string) (bool, error) {
+	f, err := n.deps.Follows.GetFollow(ctx, actorID, targetID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return f.State == domain.FollowStateAccepted, nil
 }

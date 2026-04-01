@@ -174,7 +174,7 @@ func (h *InstanceHandler) GETInstance(w http.ResponseWriter, r *http.Request) {
 	resp.Configuration.Polls.MaxCharactersPerOption = 50
 	resp.Configuration.Polls.MinExpiration = 300
 	resp.Configuration.Polls.MaxExpiration = 2629746
-	resp.APIVersions = InstanceAPIVersions{Mastodon: 1}
+	resp.APIVersions = InstanceAPIVersions{Mastodon: 2}
 	resp.Registrations.Enabled = true
 	api.WriteJSON(w, http.StatusOK, resp)
 }

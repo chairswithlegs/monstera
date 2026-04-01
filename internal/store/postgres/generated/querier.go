@@ -26,6 +26,7 @@ type Querier interface {
 	CountAccountPublicStatuses(ctx context.Context, accountID string) (int64, error)
 	CountFollowers(ctx context.Context, targetID string) (int64, error)
 	CountFollowing(ctx context.Context, accountID string) (int64, error)
+	CountGroupedNotifications(ctx context.Context, accountID string) (int64, error)
 	CountKnownInstances(ctx context.Context) (int64, error)
 	CountLocalAccounts(ctx context.Context) (int64, error)
 	CountLocalStatuses(ctx context.Context) (int64, error)
@@ -113,6 +114,7 @@ type Querier interface {
 	DeleteUserFilterV2(ctx context.Context, id string) error
 	DismissAnnouncement(ctx context.Context, arg DismissAnnouncementParams) error
 	DismissNotification(ctx context.Context, arg DismissNotificationParams) error
+	DismissNotificationGroup(ctx context.Context, arg DismissNotificationGroupParams) error
 	FollowTag(ctx context.Context, arg FollowTagParams) error
 	GetAccessToken(ctx context.Context, token string) (OauthAccessToken, error)
 	GetAccountByAPID(ctx context.Context, apID string) (Account, error)
@@ -165,6 +167,7 @@ type Querier interface {
 	GetMonsteraSettings(ctx context.Context) (MonsteraSetting, error)
 	GetMute(ctx context.Context, arg GetMuteParams) (Mute, error)
 	GetNotification(ctx context.Context, arg GetNotificationParams) (Notification, error)
+	GetNotificationGroup(ctx context.Context, arg GetNotificationGroupParams) ([]Notification, error)
 	GetNotificationPolicyByAccountID(ctx context.Context, accountID string) (NotificationPolicy, error)
 	GetNotificationRequestByID(ctx context.Context, arg GetNotificationRequestByIDParams) (NotificationRequest, error)
 	GetOrCreateHashtag(ctx context.Context, arg GetOrCreateHashtagParams) (Hashtag, error)
@@ -235,6 +238,7 @@ type Querier interface {
 	ListFilterKeywords(ctx context.Context, filterID string) ([]UserFilterKeyword, error)
 	ListFilterStatuses(ctx context.Context, filterID string) ([]UserFilterStatus, error)
 	ListFollowedTagsPaginated(ctx context.Context, arg ListFollowedTagsPaginatedParams) ([]ListFollowedTagsPaginatedRow, error)
+	ListGroupedNotifications(ctx context.Context, arg ListGroupedNotificationsParams) ([]ListGroupedNotificationsRow, error)
 	ListInvitesByCreator(ctx context.Context, createdBy string) ([]Invite, error)
 	ListKnownInstances(ctx context.Context, arg ListKnownInstancesParams) ([]ListKnownInstancesRow, error)
 	ListListAccountIDs(ctx context.Context, listID string) ([]string, error)

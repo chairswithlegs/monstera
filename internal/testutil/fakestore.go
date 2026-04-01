@@ -1701,6 +1701,7 @@ func (f *FakeStore) CreateNotification(ctx context.Context, in store.CreateNotif
 		FromID:    in.FromID,
 		Type:      in.Type,
 		StatusID:  in.StatusID,
+		GroupKey:  in.GroupKey,
 		CreatedAt: time.Now(),
 	}
 	f.notificationsByAccount[in.AccountID] = append(f.notificationsByAccount[in.AccountID], n)
@@ -1742,6 +1743,102 @@ func (f *FakeStore) ClearNotifications(ctx context.Context, accountID string) er
 }
 func (f *FakeStore) DismissNotification(ctx context.Context, id, accountID string) error {
 	return nil
+}
+func (f *FakeStore) ListGroupedNotifications(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.NotificationGroup, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	list := f.notificationsByAccount[accountID]
+	groups := make(map[string]*domain.NotificationGroup)
+	var order []string
+	for i := len(list) - 1; i >= 0; i-- {
+		n := list[i]
+		if n.GroupKey == "" {
+			continue
+		}
+		if maxID != nil && *maxID != "" && n.ID >= *maxID {
+			continue
+		}
+		g, exists := groups[n.GroupKey]
+		if !exists {
+			g = &domain.NotificationGroup{
+				GroupKey:                 n.GroupKey,
+				Type:                     n.Type,
+				MostRecentNotificationID: n.ID,
+				PageMinID:                n.ID,
+				PageMaxID:                n.ID,
+				LatestPageNotificationAt: n.CreatedAt,
+				StatusID:                 n.StatusID,
+			}
+			groups[n.GroupKey] = g
+			order = append(order, n.GroupKey)
+		}
+		g.NotificationsCount++
+		if n.ID < g.PageMinID {
+			g.PageMinID = n.ID
+		}
+		if n.ID > g.PageMaxID {
+			g.PageMaxID = n.ID
+			g.MostRecentNotificationID = n.ID
+		}
+		found := false
+		for _, id := range g.SampleAccountIDs {
+			if id == n.FromID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			g.SampleAccountIDs = append(g.SampleAccountIDs, n.FromID)
+		}
+	}
+	out := make([]domain.NotificationGroup, 0, len(order))
+	for _, key := range order {
+		if len(out) >= limit {
+			break
+		}
+		out = append(out, *groups[key])
+	}
+	return out, nil
+}
+func (f *FakeStore) GetNotificationGroup(ctx context.Context, accountID, groupKey string) ([]domain.Notification, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	list := f.notificationsByAccount[accountID]
+	var out []domain.Notification
+	for i := len(list) - 1; i >= 0; i-- {
+		n := list[i]
+		if n.GroupKey == groupKey {
+			out = append(out, *n)
+		}
+	}
+	if len(out) == 0 {
+		return nil, domain.ErrNotFound
+	}
+	return out, nil
+}
+func (f *FakeStore) DismissNotificationGroup(ctx context.Context, accountID, groupKey string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	list := f.notificationsByAccount[accountID]
+	var remaining []*domain.Notification
+	for _, n := range list {
+		if n.GroupKey != groupKey {
+			remaining = append(remaining, n)
+		}
+	}
+	f.notificationsByAccount[accountID] = remaining
+	return nil
+}
+func (f *FakeStore) CountUnreadGroupedNotifications(ctx context.Context, accountID string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	seen := make(map[string]bool)
+	for _, n := range f.notificationsByAccount[accountID] {
+		if n.GroupKey != "" && !n.Read {
+			seen[n.GroupKey] = true
+		}
+	}
+	return int64(len(seen)), nil
 }
 func (f *FakeStore) GetStatusAttachments(ctx context.Context, statusID string) ([]domain.MediaAttachment, error) {
 	f.mu.Lock()

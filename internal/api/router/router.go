@@ -46,30 +46,31 @@ type Deps struct {
 	OAuthHandler *oauthhandlers.Handler
 
 	// Mastodon API handlers
-	Accounts            *mastodon.AccountsHandler
-	Statuses            *mastodon.StatusesHandler
-	ScheduledStatuses   *mastodon.ScheduledStatusesHandler
-	Polls               *mastodon.PollsHandler
-	Timelines           *mastodon.TimelinesHandler
-	Instance            *mastodon.InstanceHandler
-	Trends              *mastodon.TrendsHandler
-	Conversations       *mastodon.ConversationsHandler
-	Suggestions         *mastodon.SuggestionsHandler
-	Notifications       *mastodon.NotificationsHandler
-	NotificationsPolicy *mastodon.NotificationsPolicyHandler
-	Media               *mastodon.MediaHandler
-	Search              *mastodon.SearchHandler
-	Streaming           *mastodon.StreamingHandler
-	Reports             *mastodon.ReportsHandler
-	FollowRequests      *mastodon.FollowRequestsHandler
-	Lists               *mastodon.ListsHandler
-	Filters             *mastodon.FiltersHandler
-	FiltersV2           *mastodon.FiltersV2Handler
-	Preferences         *mastodon.PreferencesHandler
-	Markers             *mastodon.MarkersHandler
-	FeaturedTags        *mastodon.FeaturedTagsHandler
-	Announcements       *mastodon.AnnouncementsHandler
-	Push                *mastodon.PushHandler
+	Accounts             *mastodon.AccountsHandler
+	Statuses             *mastodon.StatusesHandler
+	ScheduledStatuses    *mastodon.ScheduledStatusesHandler
+	Polls                *mastodon.PollsHandler
+	Timelines            *mastodon.TimelinesHandler
+	Instance             *mastodon.InstanceHandler
+	Trends               *mastodon.TrendsHandler
+	Conversations        *mastodon.ConversationsHandler
+	Suggestions          *mastodon.SuggestionsHandler
+	Notifications        *mastodon.NotificationsHandler
+	NotificationsPolicy  *mastodon.NotificationsPolicyHandler
+	Media                *mastodon.MediaHandler
+	Search               *mastodon.SearchHandler
+	Streaming            *mastodon.StreamingHandler
+	Reports              *mastodon.ReportsHandler
+	FollowRequests       *mastodon.FollowRequestsHandler
+	Lists                *mastodon.ListsHandler
+	Filters              *mastodon.FiltersHandler
+	FiltersV2            *mastodon.FiltersV2Handler
+	Preferences          *mastodon.PreferencesHandler
+	Markers              *mastodon.MarkersHandler
+	FeaturedTags         *mastodon.FeaturedTagsHandler
+	Announcements        *mastodon.AnnouncementsHandler
+	Push                 *mastodon.PushHandler
+	GroupedNotifications *mastodon.GroupedNotificationsHandler
 
 	// ActivityPub handlers
 	WebFinger   *activitypub.WebFingerHandler
@@ -188,6 +189,13 @@ func New(deps Deps) http.Handler {
 			r.Route("/filter_statuses/{id}", func(r chi.Router) {
 				r.Method("GET", "/", middleware.RequiredScopes("read:filters")(http.HandlerFunc(deps.FiltersV2.GETFilterStatus)))
 				r.Method("DELETE", "/", middleware.RequiredScopes("write:filters")(http.HandlerFunc(deps.FiltersV2.DELETEFilterStatus)))
+			})
+			// v2 grouped notifications
+			r.Method("GET", "/notifications", middleware.RequiredScopes("read:notifications")(http.HandlerFunc(deps.GroupedNotifications.GETGroupedNotifications)))
+			r.Method("GET", "/notifications/unread_count", middleware.RequiredScopes("read:notifications")(http.HandlerFunc(deps.GroupedNotifications.GETUnreadCount)))
+			r.Route("/notifications/{group_key}", func(r chi.Router) {
+				r.Method("GET", "/", middleware.RequiredScopes("read:notifications")(http.HandlerFunc(deps.GroupedNotifications.GETNotificationGroup)))
+				r.Method("POST", "/dismiss", middleware.RequiredScopes("write:notifications")(http.HandlerFunc(deps.GroupedNotifications.POSTDismissNotificationGroup)))
 			})
 		})
 	})

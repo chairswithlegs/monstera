@@ -104,6 +104,7 @@ type CreateNotificationInput struct {
 	FromID    string
 	Type      string
 	StatusID  *string
+	GroupKey  string
 }
 
 // CreateFollowInput is the input for creating a follow.

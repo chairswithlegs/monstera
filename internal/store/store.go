@@ -228,6 +228,10 @@ type NotificationStore interface {
 	GetNotification(ctx context.Context, id, accountID string) (*domain.Notification, error)
 	ClearNotifications(ctx context.Context, accountID string) error
 	DismissNotification(ctx context.Context, id, accountID string) error
+	ListGroupedNotifications(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.NotificationGroup, error)
+	GetNotificationGroup(ctx context.Context, accountID, groupKey string) ([]domain.Notification, error)
+	DismissNotificationGroup(ctx context.Context, accountID, groupKey string) error
+	CountUnreadGroupedNotifications(ctx context.Context, accountID string) (int64, error)
 }
 
 // NotificationPolicyStore handles notification policy and request persistence.

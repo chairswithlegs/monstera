@@ -515,6 +515,7 @@ func ToDomainNotification(n db.Notification) domain.Notification {
 		FromID:    n.FromID,
 		Type:      n.Type,
 		StatusID:  n.StatusID,
+		GroupKey:  n.GroupKey,
 		Read:      n.Read,
 		CreatedAt: pgTime(n.CreatedAt),
 	}

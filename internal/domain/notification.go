@@ -9,8 +9,22 @@ type Notification struct {
 	FromID    string
 	Type      string
 	StatusID  *string
+	GroupKey  string
 	Read      bool
 	CreatedAt time.Time
+}
+
+// NotificationGroup is a group of notifications with the same group_key.
+type NotificationGroup struct {
+	GroupKey                 string
+	NotificationsCount       int
+	Type                     string
+	MostRecentNotificationID string
+	PageMinID                string
+	PageMaxID                string
+	LatestPageNotificationAt time.Time
+	SampleAccountIDs         []string
+	StatusID                 *string
 }
 
 const (

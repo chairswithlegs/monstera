@@ -321,9 +321,11 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 	fedSub := ap.NewFederationSubscriber(i.nats.JS, s.remoteFollow, i.blocklist, s.signatureService,
 		instanceBaseURL, cfg.MonsteraUIURL.String(), cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.FederationWorkerConcurrency)
 	notifSub := events.NewNotificationSubscriber(i.nats.JS, events.NotificationDeps{
-		Notifications: s.notification,
-		Accounts:      s.account,
-		Conversations: s.statusRead,
+		Notifications:      s.notification,
+		Accounts:           s.account,
+		Conversations:      s.statusRead,
+		Follows:            s.follow,
+		NotificationPolicy: s.notificationPolicy,
 	})
 	cardSub := events.NewCardSubscriber(i.nats.JS, s.card)
 	backfillWorker := ap.NewBackfillWorker(i.nats.JS, s.account, s.backfill, s.remoteResolver,
@@ -401,6 +403,7 @@ func createRouter(cfg *config.Config, s *svcs, i *infra, sseHub *sse.Hub) http.H
 		Suggestions:            mastodon.NewSuggestionsHandler(),
 		Notifications:          mastodon.NewNotificationsHandler(s.notification, s.account, s.statusRead, cfg.MonsteraInstanceDomain),
 		NotificationsPolicy:    mastodon.NewNotificationsPolicyHandler(s.notificationPolicy, s.account, s.statusRead, cfg.MonsteraInstanceDomain),
+		GroupedNotifications:   mastodon.NewGroupedNotificationsHandler(s.notification, s.account, s.statusRead, cfg.MonsteraInstanceDomain),
 		Media:                  mastodon.NewMediaHandler(s.media),
 		Search:                 mastodon.NewSearchHandler(s.search, cfg.MonsteraInstanceDomain),
 		Streaming:              mastodon.NewStreamingHandler(sseHub, s.list),

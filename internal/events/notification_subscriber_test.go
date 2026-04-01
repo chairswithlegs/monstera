@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -292,4 +293,287 @@ func TestHandleStatusCreatedMentions_SkipsMutedConversation(t *testing.T) {
 	sub.handleStatusCreatedMentions(context.Background(), event)
 
 	assert.Empty(t, nc.calls)
+}
+
+// ── Fakes for policy filtering ──────────────────────────────────────────────
+
+type fakeFollowChecker struct {
+	// follows maps "actorID:targetID" → *domain.Follow
+	follows map[string]*domain.Follow
+}
+
+func (f *fakeFollowChecker) GetFollow(_ context.Context, actorID, targetID string) (*domain.Follow, error) {
+	fol, ok := f.follows[actorID+":"+targetID]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return fol, nil
+}
+
+type fakeNotifPolicyProvider struct {
+	policies map[string]*domain.NotificationPolicy
+	requests []notifRequestCall
+}
+
+type notifRequestCall struct {
+	AccountID     string
+	FromAccountID string
+	LastStatusID  *string
+}
+
+func (f *fakeNotifPolicyProvider) GetOrCreatePolicy(_ context.Context, accountID string) (*domain.NotificationPolicy, error) {
+	p, ok := f.policies[accountID]
+	if !ok {
+		return &domain.NotificationPolicy{AccountID: accountID}, nil
+	}
+	return p, nil
+}
+
+func (f *fakeNotifPolicyProvider) UpsertNotificationRequest(_ context.Context, accountID, fromAccountID string, lastStatusID *string) error {
+	f.requests = append(f.requests, notifRequestCall{
+		AccountID:     accountID,
+		FromAccountID: fromAccountID,
+		LastStatusID:  lastStatusID,
+	})
+	return nil
+}
+
+func newTestSubWithPolicy() (*NotificationSubscriber, *fakeNotifCreator, *fakeAccountLookup, *fakeFollowChecker, *fakeNotifPolicyProvider) {
+	nc := &fakeNotifCreator{}
+	al := &fakeAccountLookup{accounts: make(map[string]*domain.Account)}
+	cm := &fakeConversationMuteChecker{muted: make(map[string]bool)}
+	fc := &fakeFollowChecker{follows: make(map[string]*domain.Follow)}
+	pp := &fakeNotifPolicyProvider{policies: make(map[string]*domain.NotificationPolicy)}
+	sub := &NotificationSubscriber{deps: NotificationDeps{
+		Notifications:      nc,
+		Accounts:           al,
+		Conversations:      cm,
+		Follows:            fc,
+		NotificationPolicy: pp,
+	}}
+	return sub, nc, al, fc, pp
+}
+
+func acceptedFollow(actorID, targetID string) *domain.Follow {
+	return &domain.Follow{ID: "f-1", AccountID: actorID, TargetID: targetID, State: domain.FollowStateAccepted}
+}
+
+// ── Policy filtering tests ──────────────────────────────────────────────────
+
+func TestShouldFilter_NoFiltersEnabled(t *testing.T) {
+	t.Parallel()
+	sub, nc, _, _, pp := newTestSubWithPolicy()
+	pp.policies["recipient-1"] = &domain.NotificationPolicy{AccountID: "recipient-1"}
+
+	actor := localAccount("actor-1", "alice")
+	target := localAccount("recipient-1", "bob")
+	event := makeEvent(t, domain.EventFollowCreated, domain.FollowCreatedPayload{
+		Follow: &domain.Follow{ID: "f-1", AccountID: actor.ID, TargetID: target.ID, State: "accepted"},
+		Actor:  actor,
+		Target: target,
+	})
+	sub.handleFollowCreated(context.Background(), event)
+
+	require.Len(t, nc.calls, 1, "notification should be created when no filters are enabled")
+	assert.Empty(t, pp.requests)
+}
+
+func TestShouldFilter_FilterNotFollowing(t *testing.T) {
+	t.Parallel()
+	sub, nc, al, fc, pp := newTestSubWithPolicy()
+
+	pp.policies["recipient-1"] = &domain.NotificationPolicy{
+		AccountID:          "recipient-1",
+		FilterNotFollowing: true,
+	}
+	author := localAccount("recipient-1", "bob")
+	al.accounts[author.ID] = author
+	faver := localAccount("faver-1", "alice")
+	al.accounts[faver.ID] = faver
+
+	t.Run("filtered when recipient does not follow sender", func(t *testing.T) {
+		event := makeEvent(t, domain.EventFavouriteCreated, domain.FavouriteCreatedPayload{
+			AccountID:      faver.ID,
+			StatusID:       "status-1",
+			StatusAuthorID: author.ID,
+			FromAccount:    faver,
+		})
+		sub.handleFavouriteCreated(context.Background(), event)
+
+		assert.Empty(t, nc.calls)
+		require.Len(t, pp.requests, 1)
+		assert.Equal(t, author.ID, pp.requests[0].AccountID)
+		assert.Equal(t, faver.ID, pp.requests[0].FromAccountID)
+	})
+
+	// Reset
+	nc.calls = nil
+	pp.requests = nil
+
+	t.Run("allowed when recipient follows sender", func(t *testing.T) {
+		fc.follows["recipient-1:faver-1"] = acceptedFollow("recipient-1", "faver-1")
+
+		event := makeEvent(t, domain.EventFavouriteCreated, domain.FavouriteCreatedPayload{
+			AccountID:      faver.ID,
+			StatusID:       "status-2",
+			StatusAuthorID: author.ID,
+			FromAccount:    faver,
+		})
+		sub.handleFavouriteCreated(context.Background(), event)
+
+		require.Len(t, nc.calls, 1)
+		assert.Empty(t, pp.requests)
+	})
+}
+
+func TestShouldFilter_FilterNotFollowers(t *testing.T) {
+	t.Parallel()
+	sub, nc, al, fc, pp := newTestSubWithPolicy()
+
+	pp.policies["recipient-1"] = &domain.NotificationPolicy{
+		AccountID:          "recipient-1",
+		FilterNotFollowers: true,
+	}
+	author := localAccount("recipient-1", "bob")
+	al.accounts[author.ID] = author
+	reblogger := localAccount("reblogger-1", "alice")
+	al.accounts[reblogger.ID] = reblogger
+
+	t.Run("filtered when sender does not follow recipient", func(t *testing.T) {
+		event := makeEvent(t, domain.EventReblogCreated, domain.ReblogCreatedPayload{
+			AccountID:        reblogger.ID,
+			ReblogStatusID:   "reblog-1",
+			OriginalStatusID: "status-1",
+			OriginalAuthorID: author.ID,
+			FromAccount:      reblogger,
+		})
+		sub.handleReblogCreated(context.Background(), event)
+
+		assert.Empty(t, nc.calls)
+		require.Len(t, pp.requests, 1)
+	})
+
+	nc.calls = nil
+	pp.requests = nil
+
+	t.Run("allowed when sender follows recipient", func(t *testing.T) {
+		fc.follows["reblogger-1:recipient-1"] = acceptedFollow("reblogger-1", "recipient-1")
+
+		event := makeEvent(t, domain.EventReblogCreated, domain.ReblogCreatedPayload{
+			AccountID:        reblogger.ID,
+			ReblogStatusID:   "reblog-2",
+			OriginalStatusID: "status-2",
+			OriginalAuthorID: author.ID,
+			FromAccount:      reblogger,
+		})
+		sub.handleReblogCreated(context.Background(), event)
+
+		require.Len(t, nc.calls, 1)
+		assert.Empty(t, pp.requests)
+	})
+}
+
+func TestShouldFilter_FilterNewAccounts(t *testing.T) {
+	t.Parallel()
+	sub, nc, al, _, pp := newTestSubWithPolicy()
+
+	pp.policies["recipient-1"] = &domain.NotificationPolicy{
+		AccountID:         "recipient-1",
+		FilterNewAccounts: true,
+	}
+	recipient := localAccount("recipient-1", "bob")
+	al.accounts[recipient.ID] = recipient
+
+	t.Run("filtered when sender account is new", func(t *testing.T) {
+		newActor := &domain.Account{ID: "new-1", Username: "newbie", CreatedAt: time.Now().Add(-7 * 24 * time.Hour)}
+		al.accounts[newActor.ID] = newActor
+
+		event := makeEvent(t, domain.EventFollowCreated, domain.FollowCreatedPayload{
+			Follow: &domain.Follow{ID: "f-1", AccountID: newActor.ID, TargetID: recipient.ID, State: "accepted"},
+			Actor:  newActor,
+			Target: recipient,
+		})
+		sub.handleFollowCreated(context.Background(), event)
+
+		assert.Empty(t, nc.calls)
+		require.Len(t, pp.requests, 1)
+	})
+
+	nc.calls = nil
+	pp.requests = nil
+
+	t.Run("allowed when sender account is old", func(t *testing.T) {
+		oldActor := &domain.Account{ID: "old-1", Username: "veteran", CreatedAt: time.Now().Add(-90 * 24 * time.Hour)}
+		al.accounts[oldActor.ID] = oldActor
+
+		event := makeEvent(t, domain.EventFollowCreated, domain.FollowCreatedPayload{
+			Follow: &domain.Follow{ID: "f-2", AccountID: oldActor.ID, TargetID: recipient.ID, State: "accepted"},
+			Actor:  oldActor,
+			Target: recipient,
+		})
+		sub.handleFollowCreated(context.Background(), event)
+
+		require.Len(t, nc.calls, 1)
+		assert.Empty(t, pp.requests)
+	})
+}
+
+func TestShouldFilter_FilterPrivateMentions(t *testing.T) {
+	t.Parallel()
+	sub, nc, _, _, pp := newTestSubWithPolicy()
+
+	pp.policies["mentioned-1"] = &domain.NotificationPolicy{
+		AccountID:             "mentioned-1",
+		FilterPrivateMentions: true,
+	}
+
+	author := localAccount("author-1", "alice")
+	mentioned := localAccount("mentioned-1", "bob")
+
+	t.Run("filtered for direct mention", func(t *testing.T) {
+		status := &domain.Status{ID: "status-1", AccountID: author.ID, Visibility: domain.VisibilityDirect}
+		event := makeEvent(t, domain.EventStatusCreated, domain.StatusCreatedPayload{
+			Status:   status,
+			Author:   author,
+			Mentions: []*domain.Account{mentioned},
+		})
+		sub.handleStatusCreatedMentions(context.Background(), event)
+
+		assert.Empty(t, nc.calls)
+		require.Len(t, pp.requests, 1)
+		assert.Equal(t, mentioned.ID, pp.requests[0].AccountID)
+	})
+
+	nc.calls = nil
+	pp.requests = nil
+
+	t.Run("allowed for public mention", func(t *testing.T) {
+		status := &domain.Status{ID: "status-2", AccountID: author.ID, Visibility: domain.VisibilityPublic}
+		event := makeEvent(t, domain.EventStatusCreated, domain.StatusCreatedPayload{
+			Status:   status,
+			Author:   author,
+			Mentions: []*domain.Account{mentioned},
+		})
+		sub.handleStatusCreatedMentions(context.Background(), event)
+
+		require.Len(t, nc.calls, 1)
+		assert.Empty(t, pp.requests)
+	})
+}
+
+func TestShouldFilter_NoPolicyProvider_AllowsNotification(t *testing.T) {
+	t.Parallel()
+	// Use newTestSub which doesn't set NotificationPolicy
+	sub, nc, _, _ := newTestSub()
+
+	actor := localAccount("actor-1", "alice")
+	target := localAccount("target-1", "bob")
+	event := makeEvent(t, domain.EventFollowCreated, domain.FollowCreatedPayload{
+		Follow: &domain.Follow{ID: "f-1", AccountID: actor.ID, TargetID: target.ID, State: "accepted"},
+		Actor:  actor,
+		Target: target,
+	})
+	sub.handleFollowCreated(context.Background(), event)
+
+	require.Len(t, nc.calls, 1, "notification should be created when no policy provider is set")
 }

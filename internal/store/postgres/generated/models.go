@@ -270,6 +270,7 @@ type Notification struct {
 	StatusID  *string            `json:"status_id"`
 	Read      bool               `json:"read"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	GroupKey  string             `json:"group_key"`
 }
 
 type NotificationPolicy struct {
