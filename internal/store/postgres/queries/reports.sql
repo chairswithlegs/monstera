@@ -17,3 +17,6 @@ UPDATE reports SET assigned_to_id = $2 WHERE id = $1;
 
 -- name: ResolveReport :exec
 UPDATE reports SET state = 'resolved', action_taken = $2, resolved_at = NOW() WHERE id = $1;
+
+-- name: CountReportsByState :one
+SELECT COUNT(*) FROM reports WHERE state = $1;

@@ -46,6 +46,7 @@ type AccountStore interface {
 	GetLocalAccountByUsername(ctx context.Context, username string) (*domain.Account, error)
 	GetRemoteAccountByUsername(ctx context.Context, username string, domain *string) (*domain.Account, error)
 	CountLocalAccounts(ctx context.Context) (int64, error)
+	CountRemoteAccounts(ctx context.Context) (int64, error)
 	UpdateAccount(ctx context.Context, in UpdateAccountInput) error
 	UpdateAccountKeys(ctx context.Context, id, publicKey string) error
 	UpdateAccountURLs(ctx context.Context, id, inboxURL, outboxURL, followersURL, followingURL string) error
@@ -94,6 +95,7 @@ type StatusStore interface {
 	GetAccountStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error)
 	GetAccountPublicStatuses(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error)
 	CountLocalStatuses(ctx context.Context) (int64, error)
+	CountRemoteStatuses(ctx context.Context) (int64, error)
 	CountAccountPublicStatuses(ctx context.Context, accountID string) (int64, error)
 	SoftDeleteStatus(ctx context.Context, id string) error
 	UpdateStatus(ctx context.Context, in UpdateStatusInput) error
@@ -290,6 +292,7 @@ type ModerationStore interface {
 	UpsertKnownInstance(ctx context.Context, id, domain string) error
 	ListKnownInstances(ctx context.Context, limit, offset int) ([]domain.KnownInstance, error)
 	CountKnownInstances(ctx context.Context) (int64, error)
+	CountReportsByState(ctx context.Context, state string) (int64, error)
 }
 
 // AnnouncementStore handles announcement persistence.
