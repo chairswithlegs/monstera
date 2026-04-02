@@ -335,3 +335,21 @@ export async function putSettings(settings: AdminSettings): Promise<void> {
   });
   if (!res.ok) await throwApiError(res);
 }
+
+export interface AdminMetricsResponse {
+  local_accounts: number;
+  remote_accounts: number;
+  local_statuses: number;
+  remote_statuses: number;
+  known_instances: number;
+  open_reports: number;
+  delivery_dlq_depth: number;
+  fanout_dlq_depth: number;
+}
+
+export async function getAdminMetrics(): Promise<AdminMetricsResponse> {
+  const base = await adminPrefix();
+  const res = await authFetch(`${base}/metrics`);
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}

@@ -34,6 +34,7 @@ type ModerationService interface {
 	DeleteAccount(ctx context.Context, moderatorID, targetID string) error
 	CreateReport(ctx context.Context, in CreateReportInput) (*domain.Report, error)
 	ListReports(ctx context.Context, state string, limit, offset int) ([]domain.Report, error)
+	CountReportsByState(ctx context.Context, state string) (int64, error)
 	GetReport(ctx context.Context, id string) (*domain.Report, error)
 	AssignReport(ctx context.Context, moderatorID, reportID string, assigneeID *string) error
 	ResolveReport(ctx context.Context, moderatorID, reportID string, resolution string) error
@@ -195,6 +196,14 @@ func (svc *moderationService) ListReports(ctx context.Context, state string, lim
 		return nil, fmt.Errorf("ListReports: %w", err)
 	}
 	return reports, nil
+}
+
+func (svc *moderationService) CountReportsByState(ctx context.Context, state string) (int64, error) {
+	n, err := svc.store.CountReportsByState(ctx, state)
+	if err != nil {
+		return 0, fmt.Errorf("CountReportsByState(%s): %w", state, err)
+	}
+	return n, nil
 }
 
 func (svc *moderationService) GetReport(ctx context.Context, id string) (*domain.Report, error) {

@@ -88,6 +88,7 @@ type svcs struct {
 	announcement       service.AnnouncementService
 	pushSubscription   service.PushSubscriptionService
 	backfill           service.BackfillService
+	adminMetrics       service.AdminMetricsService
 
 	oauthServer      *oauth.Server
 	remoteResolver   *ap.RemoteAccountResolver
@@ -265,6 +266,7 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 		auth:               service.NewAuthService(i.store, monsteraUIHost, oauth.MONSTERA_UI_APPLICATION_ID),
 		monsteraSettings:   service.NewMonsteraSettingsService(i.store),
 		moderation:         service.NewModerationService(i.store),
+		adminMetrics:       service.NewAdminMetricsService(i.store, i.nats.JS, i.cache, ap.StreamOutboxDeliveryDLQ, ap.StreamOutboxFanoutDLQ),
 		list:               service.NewListService(i.store),
 		userFilter:         service.NewUserFilterService(i.store),
 		filter:             service.NewFilterService(i.store),
@@ -434,5 +436,6 @@ func createRouter(cfg *config.Config, s *svcs, i *infra, sseHub *sse.Hub) http.H
 		ModeratorContent:       monstera.NewModeratorContentHandler(s.serverFilter),
 		AdminSettings:          monstera.NewAdminSettingsHandler(s.monsteraSettings),
 		AdminAnnouncements:     monstera.NewAdminAnnouncementsHandler(s.announcement),
+		AdminMetrics:           monstera.NewAdminMetricsHandler(s.adminMetrics),
 	})
 }

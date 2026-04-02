@@ -33,6 +33,8 @@ type Querier interface {
 	CountPendingNotificationRequests(ctx context.Context, accountID string) (int64, error)
 	CountPendingNotifications(ctx context.Context, accountID string) (int64, error)
 	CountRemoteAccounts(ctx context.Context) (int64, error)
+	CountRemoteStatuses(ctx context.Context) (int64, error)
+	CountReportsByState(ctx context.Context, state string) (int64, error)
 	CreateAccessToken(ctx context.Context, arg CreateAccessTokenParams) (OauthAccessToken, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
 	CreateAccountPin(ctx context.Context, arg CreateAccountPinParams) error

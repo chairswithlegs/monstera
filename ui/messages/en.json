@@ -151,7 +151,20 @@
     "deleteAccountDescription": "This action cannot be undone. This will permanently delete the account and all associated data.",
     "selfActionDisabled": "Role and delete actions are disabled for your own account.",
     "accountId": "Account ID: {id}",
-    "role": "Role: {role}"
+    "role": "Role: {role}",
+    "navMetrics": "Metrics",
+    "metricsTitle": "Server Metrics",
+    "metricsInstanceActivity": "Instance Activity",
+    "metricsModeration": "Moderation",
+    "metricsFederation": "Federation",
+    "localAccounts": "Local accounts",
+    "remoteAccounts": "Remote accounts",
+    "localStatuses": "Local statuses",
+    "remoteStatuses": "Remote statuses",
+    "knownInstances": "Known instances",
+    "openReports": "Open reports",
+    "deliveryDlqDepth": "Failed deliveries",
+    "fanoutDlqDepth": "Failed fanouts"
   },
   "moderator": {
     "navDashboard": "Dashboard",

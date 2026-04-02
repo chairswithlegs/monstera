@@ -100,6 +100,7 @@ type Deps struct {
 	ModeratorContent       *monstera.ModeratorContentHandler
 	AdminSettings          *monstera.AdminSettingsHandler
 	AdminAnnouncements     *monstera.AdminAnnouncementsHandler
+	AdminMetrics           *monstera.AdminMetricsHandler
 }
 
 // New builds the chi router with global middleware and P1–P2 routes.
@@ -423,6 +424,7 @@ func New(deps Deps) http.Handler {
 		// Admin API (requires admin role)
 		r.Route("/admin", func(r chi.Router) {
 			r.Use(middleware.RequireAdmin())
+			r.Get("/metrics", deps.AdminMetrics.GETMetrics)
 			r.Put("/users/{id}/role", deps.AdminUsers.PUTRole)
 			r.Delete("/users/{id}", deps.AdminUsers.DELETEUser)
 			r.Post("/federation/domain-blocks", deps.AdminFederation.POSTDomainBlocks)

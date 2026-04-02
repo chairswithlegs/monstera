@@ -378,6 +378,18 @@ func (f *FakeStore) CountLocalAccounts(ctx context.Context) (int64, error) {
 	return n, nil
 }
 
+func (f *FakeStore) CountRemoteAccounts(ctx context.Context) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for _, a := range f.accountsByID {
+		if a.Domain != nil {
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (f *FakeStore) GetLocalAccountByUsername(ctx context.Context, username string) (*domain.Account, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -618,6 +630,18 @@ func (f *FakeStore) CountLocalStatuses(ctx context.Context) (int64, error) {
 	var n int64
 	for _, s := range f.statusesByID {
 		if s.Local && s.DeletedAt == nil {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (f *FakeStore) CountRemoteStatuses(ctx context.Context) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for _, s := range f.statusesByID {
+		if !s.Local && s.DeletedAt == nil {
 			n++
 		}
 	}
@@ -3472,6 +3496,9 @@ func (f *FakeStore) GetReportByID(ctx context.Context, id string) (*domain.Repor
 }
 func (f *FakeStore) ListReports(ctx context.Context, state string, limit, offset int) ([]domain.Report, error) {
 	return nil, nil
+}
+func (f *FakeStore) CountReportsByState(ctx context.Context, state string) (int64, error) {
+	return 0, nil
 }
 func (f *FakeStore) AssignReport(ctx context.Context, reportID string, assigneeID *string) error {
 	return nil

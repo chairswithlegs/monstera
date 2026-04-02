@@ -56,6 +56,9 @@ LIMIT $3;
 -- name: CountLocalStatuses :one
 SELECT COUNT(*) FROM statuses WHERE local = TRUE AND deleted_at IS NULL;
 
+-- name: CountRemoteStatuses :one
+SELECT COUNT(*) FROM statuses WHERE local = FALSE AND deleted_at IS NULL;
+
 -- name: CountAccountPublicStatuses :one
 SELECT COUNT(*) FROM statuses
 WHERE account_id = $1 AND deleted_at IS NULL AND visibility = 'public' AND reblog_of_id IS NULL;

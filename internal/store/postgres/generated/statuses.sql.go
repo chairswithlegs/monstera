@@ -34,6 +34,17 @@ func (q *Queries) CountLocalStatuses(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const countRemoteStatuses = `-- name: CountRemoteStatuses :one
+SELECT COUNT(*) FROM statuses WHERE local = FALSE AND deleted_at IS NULL
+`
+
+func (q *Queries) CountRemoteStatuses(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countRemoteStatuses)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createStatus = `-- name: CreateStatus :one
 INSERT INTO statuses (
     id, uri, account_id, text, content, content_warning,

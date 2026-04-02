@@ -6,7 +6,7 @@ import { useEffect } from 'react';
 export default function AdminIndexPage() {
   const router = useRouter();
   useEffect(() => {
-    router.replace('/admin/settings');
+    router.replace('/admin/metrics');
   }, [router]);
   return null;
 }

@@ -203,6 +203,11 @@ func (s *PostgresStore) CountLocalAccounts(ctx context.Context) (int64, error) {
 	return n, mapErr(err)
 }
 
+func (s *PostgresStore) CountRemoteAccounts(ctx context.Context) (int64, error) {
+	n, err := s.q.CountRemoteAccounts(ctx)
+	return n, mapErr(err)
+}
+
 func (s *PostgresStore) CreateUser(ctx context.Context, in store.CreateUserInput) (*domain.User, error) {
 	dbUser, err := s.q.CreateUser(ctx, toDbCreateUserParams(in))
 	if err != nil {
@@ -285,6 +290,11 @@ func (s *PostgresStore) GetAccountPublicStatuses(ctx context.Context, accountID 
 
 func (s *PostgresStore) CountLocalStatuses(ctx context.Context) (int64, error) {
 	n, err := s.q.CountLocalStatuses(ctx)
+	return n, mapErr(err)
+}
+
+func (s *PostgresStore) CountRemoteStatuses(ctx context.Context) (int64, error) {
+	n, err := s.q.CountRemoteStatuses(ctx)
 	return n, mapErr(err)
 }
 
@@ -2217,6 +2227,11 @@ func (s *PostgresStore) CountKnownInstances(ctx context.Context) (int64, error) 
 		return 0, mapErr(err)
 	}
 	return n, nil
+}
+
+func (s *PostgresStore) CountReportsByState(ctx context.Context, state string) (int64, error) {
+	n, err := s.q.CountReportsByState(ctx, state)
+	return n, mapErr(err)
 }
 
 func (s *PostgresStore) CreateServerFilter(ctx context.Context, in store.CreateServerFilterInput) (*domain.ServerFilter, error) {
