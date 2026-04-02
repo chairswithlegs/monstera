@@ -33,6 +33,7 @@ func TestToAccount_remote_account_includes_avatar_header_and_counts(t *testing.T
 
 	result := ToAccount(acc, "local.example")
 
+	assertJSONShape(t, "Account", result, accountFields)
 	assert.Equal(t, "kevin@remote.example", result.Acct)
 	assert.Equal(t, "https://remote.example/@kevin", result.URL)
 	assert.Equal(t, "https://remote.example/avatars/kevin.jpg", result.Avatar)
@@ -61,6 +62,7 @@ func TestToAccount_local_account(t *testing.T) {
 
 	result := ToAccount(acc, "local.example")
 
+	assertJSONShape(t, "Account", result, accountFields)
 	assert.Equal(t, "alice", result.Acct)
 	assert.Equal(t, "https://local.example/@alice", result.URL)
 	assert.Equal(t, "https://local.example/media/avatar.jpg", result.Avatar)
@@ -77,6 +79,7 @@ func TestToAccount_empty_avatar_header(t *testing.T) {
 
 	result := ToAccount(acc, "local.example")
 
+	assertJSONShape(t, "Account", result, accountFields)
 	assert.Empty(t, result.Avatar)
 	assert.Empty(t, result.AvatarStatic)
 	assert.Empty(t, result.Header)
