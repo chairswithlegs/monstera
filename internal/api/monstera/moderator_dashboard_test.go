@@ -70,6 +70,6 @@ func TestModeratorDashboardHandler_GETDashboard(t *testing.T) {
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
 		assert.Equal(t, int64(1), body.LocalUsersCount)
 		assert.GreaterOrEqual(t, body.LocalStatusesCount, int64(0))
-		assert.GreaterOrEqual(t, body.OpenReportsCount, 0)
+		assert.GreaterOrEqual(t, body.OpenReportsCount, int64(0))
 	})
 }

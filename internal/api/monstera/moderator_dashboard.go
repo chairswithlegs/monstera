@@ -27,7 +27,7 @@ func (h *ModeratorDashboardHandler) GETDashboard(w http.ResponseWriter, r *http.
 		api.HandleError(w, r, err)
 		return
 	}
-	reports, err := h.moderation.ListReports(ctx, "open", 10000, 0)
+	openReports, err := h.moderation.CountReportsByState(ctx, "open")
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -35,7 +35,7 @@ func (h *ModeratorDashboardHandler) GETDashboard(w http.ResponseWriter, r *http.
 	resp := apimodel.AdminDashboard{
 		LocalUsersCount:    stats.UserCount,
 		LocalStatusesCount: stats.LocalPostCount,
-		OpenReportsCount:   len(reports),
+		OpenReportsCount:   openReports,
 	}
 	api.WriteJSON(w, http.StatusOK, resp)
 }

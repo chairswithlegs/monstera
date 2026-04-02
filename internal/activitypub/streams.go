@@ -10,6 +10,8 @@ var StreamConfigs []natsutil.StreamConfig = internal.StreamConfigs
 
 // Stream and consumer names re-exported for wiring.
 const (
-	StreamBackfill   = internal.StreamBackfill
-	ConsumerBackfill = internal.ConsumerBackfill
+	StreamBackfill          = internal.StreamBackfill
+	ConsumerBackfill        = internal.ConsumerBackfill
+	StreamOutboxDeliveryDLQ = internal.StreamOutboxDeliveryDLQ
+	StreamOutboxFanoutDLQ   = internal.StreamOutboxFanoutDLQ
 )

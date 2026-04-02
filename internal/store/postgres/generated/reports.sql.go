@@ -23,6 +23,17 @@ func (q *Queries) AssignReport(ctx context.Context, arg AssignReportParams) erro
 	return err
 }
 
+const countReportsByState = `-- name: CountReportsByState :one
+SELECT COUNT(*) FROM reports WHERE state = $1
+`
+
+func (q *Queries) CountReportsByState(ctx context.Context, state string) (int64, error) {
+	row := q.db.QueryRow(ctx, countReportsByState, state)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createReport = `-- name: CreateReport :one
 INSERT INTO reports (id, account_id, target_id, status_ids, comment, category)
 VALUES ($1, $2, $3, $4, $5, $6)

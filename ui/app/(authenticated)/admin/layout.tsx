@@ -37,6 +37,7 @@ export default function AdminLayout({
   }
 
   const navItems = [
+    { href: '/admin/metrics', label: t('navMetrics') },
     { href: '/admin/settings', label: t('navSettings') },
     { href: '/admin/users', label: t('navUsers') },
   ];
