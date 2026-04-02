@@ -57,36 +57,37 @@ type infra struct {
 
 // svcs bundles all domain and subsystem services.
 type svcs struct {
-	account           service.AccountService
-	statusRead        service.StatusService
-	statusWrite       service.StatusWriteService
-	statusInteraction service.StatusInteractionService
-	remoteStatusWrite service.RemoteStatusWriteService
-	scheduled         service.ScheduledStatusService
-	timeline          service.TimelineService
-	conversation      service.ConversationService
-	instance          service.InstanceService
-	follow            service.FollowService
-	remoteFollow      service.RemoteFollowService
-	tagFollow         service.TagFollowService
-	notification      service.NotificationService
-	media             service.MediaService
-	search            service.SearchService
-	trends            service.TrendsService
-	card              service.CardService
-	auth              service.AuthService
-	monsteraSettings  service.MonsteraSettingsService
-	moderation        service.ModerationService
-	list              service.ListService
-	userFilter        service.UserFilterService
-	filter            service.FilterService
-	marker            service.MarkerService
-	featuredTag       service.FeaturedTagService
-	registration      service.RegistrationService
-	serverFilter      service.ServerFilterService
-	announcement      service.AnnouncementService
-	pushSubscription  service.PushSubscriptionService
-	backfill          service.BackfillService
+	account            service.AccountService
+	statusRead         service.StatusService
+	statusWrite        service.StatusWriteService
+	statusInteraction  service.StatusInteractionService
+	remoteStatusWrite  service.RemoteStatusWriteService
+	scheduled          service.ScheduledStatusService
+	timeline           service.TimelineService
+	conversation       service.ConversationService
+	instance           service.InstanceService
+	follow             service.FollowService
+	remoteFollow       service.RemoteFollowService
+	tagFollow          service.TagFollowService
+	notification       service.NotificationService
+	notificationPolicy service.NotificationPolicyService
+	media              service.MediaService
+	search             service.SearchService
+	trends             service.TrendsService
+	card               service.CardService
+	auth               service.AuthService
+	monsteraSettings   service.MonsteraSettingsService
+	moderation         service.ModerationService
+	list               service.ListService
+	userFilter         service.UserFilterService
+	filter             service.FilterService
+	marker             service.MarkerService
+	featuredTag        service.FeaturedTagService
+	registration       service.RegistrationService
+	serverFilter       service.ServerFilterService
+	announcement       service.AnnouncementService
+	pushSubscription   service.PushSubscriptionService
+	backfill           service.BackfillService
 
 	oauthServer      *oauth.Server
 	remoteResolver   *ap.RemoteAccountResolver
@@ -242,36 +243,37 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 	scheduledSvc := service.NewScheduledStatusService(i.store, statusWriteSvc)
 
 	return &svcs{
-		account:           accountSvc,
-		statusRead:        statusSvc,
-		statusWrite:       statusWriteSvc,
-		statusInteraction: interactionSvc,
-		remoteStatusWrite: remoteStatusWriteSvc,
-		scheduled:         scheduledSvc,
-		timeline:          service.NewTimelineService(i.store, accountSvc, statusSvc),
-		conversation:      conversationSvc,
-		instance:          service.NewInstanceService(i.store),
-		follow:            followSvc,
-		remoteFollow:      remoteFollowSvc,
-		tagFollow:         tagFollowSvc,
-		notification:      service.NewNotificationService(i.store),
-		media:             mediaSvc,
-		search:            service.NewSearchService(i.store, remoteResolver, backfillSvc),
-		backfill:          backfillSvc,
-		trends:            service.NewTrendsService(i.store, statusSvc),
-		card:              service.NewCardService(i.store),
-		auth:              service.NewAuthService(i.store, monsteraUIHost, oauth.MONSTERA_UI_APPLICATION_ID),
-		monsteraSettings:  service.NewMonsteraSettingsService(i.store),
-		moderation:        service.NewModerationService(i.store),
-		list:              service.NewListService(i.store),
-		userFilter:        service.NewUserFilterService(i.store),
-		filter:            service.NewFilterService(i.store),
-		marker:            service.NewMarkerService(i.store),
-		featuredTag:       service.NewFeaturedTagService(i.store),
-		registration:      service.NewRegistrationService(i.store, mailer, mailer, instanceBaseURL, cfg.InstanceName),
-		serverFilter:      service.NewServerFilterService(i.store),
-		announcement:      service.NewAnnouncementService(i.store),
-		pushSubscription:  service.NewPushSubscriptionService(i.store),
+		account:            accountSvc,
+		statusRead:         statusSvc,
+		statusWrite:        statusWriteSvc,
+		statusInteraction:  interactionSvc,
+		remoteStatusWrite:  remoteStatusWriteSvc,
+		scheduled:          scheduledSvc,
+		timeline:           service.NewTimelineService(i.store, accountSvc, statusSvc),
+		conversation:       conversationSvc,
+		instance:           service.NewInstanceService(i.store),
+		follow:             followSvc,
+		remoteFollow:       remoteFollowSvc,
+		tagFollow:          tagFollowSvc,
+		notification:       service.NewNotificationService(i.store),
+		notificationPolicy: service.NewNotificationPolicyService(i.store),
+		media:              mediaSvc,
+		search:             service.NewSearchService(i.store, remoteResolver, backfillSvc),
+		backfill:           backfillSvc,
+		trends:             service.NewTrendsService(i.store, statusSvc),
+		card:               service.NewCardService(i.store),
+		auth:               service.NewAuthService(i.store, monsteraUIHost, oauth.MONSTERA_UI_APPLICATION_ID),
+		monsteraSettings:   service.NewMonsteraSettingsService(i.store),
+		moderation:         service.NewModerationService(i.store),
+		list:               service.NewListService(i.store),
+		userFilter:         service.NewUserFilterService(i.store),
+		filter:             service.NewFilterService(i.store),
+		marker:             service.NewMarkerService(i.store),
+		featuredTag:        service.NewFeaturedTagService(i.store),
+		registration:       service.NewRegistrationService(i.store, mailer, mailer, instanceBaseURL, cfg.InstanceName),
+		serverFilter:       service.NewServerFilterService(i.store),
+		announcement:       service.NewAnnouncementService(i.store),
+		pushSubscription:   service.NewPushSubscriptionService(i.store),
 
 		oauthServer:      oauth.NewServer(i.store, i.sharedCache, cfg.VAPIDPublicKey),
 		remoteResolver:   remoteResolver,
@@ -319,9 +321,11 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 	fedSub := ap.NewFederationSubscriber(i.nats.JS, s.remoteFollow, i.blocklist, s.signatureService,
 		instanceBaseURL, cfg.MonsteraUIURL.String(), cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.FederationWorkerConcurrency)
 	notifSub := events.NewNotificationSubscriber(i.nats.JS, events.NotificationDeps{
-		Notifications: s.notification,
-		Accounts:      s.account,
-		Conversations: s.statusRead,
+		Notifications:      s.notification,
+		Accounts:           s.account,
+		Conversations:      s.statusRead,
+		Follows:            s.follow,
+		NotificationPolicy: s.notificationPolicy,
 	})
 	cardSub := events.NewCardSubscriber(i.nats.JS, s.card)
 	backfillWorker := ap.NewBackfillWorker(i.nats.JS, s.account, s.backfill, s.remoteResolver,
@@ -398,6 +402,8 @@ func createRouter(cfg *config.Config, s *svcs, i *infra, sseHub *sse.Hub) http.H
 		Conversations:          mastodon.NewConversationsHandler(s.conversation, cfg.MonsteraInstanceDomain),
 		Suggestions:            mastodon.NewSuggestionsHandler(),
 		Notifications:          mastodon.NewNotificationsHandler(s.notification, s.account, s.statusRead, cfg.MonsteraInstanceDomain),
+		NotificationsPolicy:    mastodon.NewNotificationsPolicyHandler(s.notificationPolicy, s.account, s.statusRead, cfg.MonsteraInstanceDomain),
+		GroupedNotifications:   mastodon.NewGroupedNotificationsHandler(s.notification, s.account, s.statusRead, cfg.MonsteraInstanceDomain),
 		Media:                  mastodon.NewMediaHandler(s.media),
 		Search:                 mastodon.NewSearchHandler(s.search, cfg.MonsteraInstanceDomain),
 		Streaming:              mastodon.NewStreamingHandler(sseHub, s.list),

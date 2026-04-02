@@ -109,3 +109,84 @@ func TestNotificationService_List_clamps_to_max_limit(t *testing.T) {
 	// Limit is clamped to maxNotificationLimit (40); no error and empty result for unknown account
 	assert.Empty(t, list)
 }
+
+func TestComputeGroupKey(t *testing.T) {
+	t.Parallel()
+
+	statusID := "status-99"
+
+	tests := []struct {
+		name        string
+		notifType   string
+		statusID    *string
+		recipientID string
+		wantPrefix  string
+		ungrouped   bool
+	}{
+		{
+			name:        "favourite with status groups by status",
+			notifType:   domain.NotificationTypeFavourite,
+			statusID:    &statusID,
+			recipientID: "recipient-1",
+			wantPrefix:  "favourite-status-99-",
+		},
+		{
+			name:        "favourite without status falls through to ungrouped",
+			notifType:   domain.NotificationTypeFavourite,
+			statusID:    nil,
+			recipientID: "recipient-1",
+			ungrouped:   true,
+		},
+		{
+			name:        "reblog with status groups by status",
+			notifType:   domain.NotificationTypeReblog,
+			statusID:    &statusID,
+			recipientID: "recipient-1",
+			wantPrefix:  "reblog-status-99-",
+		},
+		{
+			name:        "follow groups by recipient",
+			notifType:   domain.NotificationTypeFollow,
+			statusID:    nil,
+			recipientID: "recipient-1",
+			wantPrefix:  "follow-recipient-1-",
+		},
+		{
+			name:        "mention is ungrouped",
+			notifType:   domain.NotificationTypeMention,
+			statusID:    &statusID,
+			recipientID: "recipient-1",
+			ungrouped:   true,
+		},
+		{
+			name:        "follow_request is ungrouped",
+			notifType:   domain.NotificationTypeFollowRequest,
+			statusID:    nil,
+			recipientID: "recipient-1",
+			ungrouped:   true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			notifID := "notif-abc"
+			key := computeGroupKey(notifID, tc.notifType, tc.statusID, tc.recipientID)
+			if tc.ungrouped {
+				assert.Equal(t, "ungrouped-"+notifID, key)
+			} else {
+				assert.Greater(t, len(key), len(tc.wantPrefix), "key should be longer than prefix")
+				assert.Equal(t, tc.wantPrefix, key[:len(tc.wantPrefix)])
+			}
+		})
+	}
+}
+
+func TestComputeGroupKey_SameWindowSameKey(t *testing.T) {
+	t.Parallel()
+	// Two calls within the same time window must produce the same key.
+	statusID := "status-1"
+	key1 := computeGroupKey("n1", domain.NotificationTypeFavourite, &statusID, "r1")
+	key2 := computeGroupKey("n2", domain.NotificationTypeFavourite, &statusID, "r1")
+	assert.Equal(t, key1, key2, "notifications in the same window should share a group key")
+}

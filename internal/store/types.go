@@ -104,6 +104,7 @@ type CreateNotificationInput struct {
 	FromID    string
 	Type      string
 	StatusID  *string
+	GroupKey  string
 }
 
 // CreateFollowInput is the input for creating a follow.
@@ -406,6 +407,24 @@ type UpsertStatusCardInput struct {
 	ImageURL        string
 	Width           int
 	Height          int
+}
+
+// UpdateNotificationPolicyInput is the input for updating a notification policy.
+type UpdateNotificationPolicyInput struct {
+	AccountID             string
+	FilterNotFollowing    domain.NotificationFilterPolicy
+	FilterNotFollowers    domain.NotificationFilterPolicy
+	FilterNewAccounts     domain.NotificationFilterPolicy
+	FilterPrivateMentions domain.NotificationFilterPolicy
+	ForLimitedAccounts    domain.NotificationFilterPolicy
+}
+
+// UpsertNotificationRequestInput is the input for upserting a notification request.
+type UpsertNotificationRequestInput struct {
+	ID            string
+	AccountID     string
+	FromAccountID string
+	LastStatusID  *string
 }
 
 // CreatePushSubscriptionInput is the input for creating a push subscription.

@@ -18,10 +18,22 @@ func (q *Queries) ClearNotifications(ctx context.Context, accountID string) erro
 	return err
 }
 
+const countGroupedNotifications = `-- name: CountGroupedNotifications :one
+SELECT COUNT(DISTINCT group_key)::bigint FROM notifications
+WHERE account_id = $1 AND group_key != '' AND read = FALSE
+`
+
+func (q *Queries) CountGroupedNotifications(ctx context.Context, accountID string) (int64, error) {
+	row := q.db.QueryRow(ctx, countGroupedNotifications, accountID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createNotification = `-- name: CreateNotification :one
-INSERT INTO notifications (id, account_id, from_id, type, status_id)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, account_id, from_id, type, status_id, read, created_at
+INSERT INTO notifications (id, account_id, from_id, type, status_id, group_key)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, account_id, from_id, type, status_id, read, created_at, group_key
 `
 
 type CreateNotificationParams struct {
@@ -30,6 +42,7 @@ type CreateNotificationParams struct {
 	FromID    string  `json:"from_id"`
 	Type      string  `json:"type"`
 	StatusID  *string `json:"status_id"`
+	GroupKey  string  `json:"group_key"`
 }
 
 func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotificationParams) (Notification, error) {
@@ -39,6 +52,7 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 		arg.FromID,
 		arg.Type,
 		arg.StatusID,
+		arg.GroupKey,
 	)
 	var i Notification
 	err := row.Scan(
@@ -49,6 +63,7 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 		&i.StatusID,
 		&i.Read,
 		&i.CreatedAt,
+		&i.GroupKey,
 	)
 	return i, err
 }
@@ -67,8 +82,22 @@ func (q *Queries) DismissNotification(ctx context.Context, arg DismissNotificati
 	return err
 }
 
+const dismissNotificationGroup = `-- name: DismissNotificationGroup :exec
+DELETE FROM notifications WHERE account_id = $1 AND group_key = $2
+`
+
+type DismissNotificationGroupParams struct {
+	AccountID string `json:"account_id"`
+	GroupKey  string `json:"group_key"`
+}
+
+func (q *Queries) DismissNotificationGroup(ctx context.Context, arg DismissNotificationGroupParams) error {
+	_, err := q.db.Exec(ctx, dismissNotificationGroup, arg.AccountID, arg.GroupKey)
+	return err
+}
+
 const getNotification = `-- name: GetNotification :one
-SELECT id, account_id, from_id, type, status_id, read, created_at FROM notifications WHERE id = $1 AND account_id = $2
+SELECT id, account_id, from_id, type, status_id, read, created_at, group_key FROM notifications WHERE id = $1 AND account_id = $2
 `
 
 type GetNotificationParams struct {
@@ -87,12 +116,140 @@ func (q *Queries) GetNotification(ctx context.Context, arg GetNotificationParams
 		&i.StatusID,
 		&i.Read,
 		&i.CreatedAt,
+		&i.GroupKey,
 	)
 	return i, err
 }
 
+const getNotificationGroup = `-- name: GetNotificationGroup :many
+SELECT id, account_id, from_id, type, status_id, read, created_at, group_key FROM notifications
+WHERE account_id = $1 AND group_key = $2
+ORDER BY id DESC
+`
+
+type GetNotificationGroupParams struct {
+	AccountID string `json:"account_id"`
+	GroupKey  string `json:"group_key"`
+}
+
+func (q *Queries) GetNotificationGroup(ctx context.Context, arg GetNotificationGroupParams) ([]Notification, error) {
+	rows, err := q.db.Query(ctx, getNotificationGroup, arg.AccountID, arg.GroupKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Notification{}
+	for rows.Next() {
+		var i Notification
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.FromID,
+			&i.Type,
+			&i.StatusID,
+			&i.Read,
+			&i.CreatedAt,
+			&i.GroupKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGroupedNotifications = `-- name: ListGroupedNotifications :many
+SELECT
+  g.group_key,
+  g.notifications_count,
+  g.type,
+  g.most_recent_notification_id,
+  g.page_min_id,
+  g.page_max_id,
+  g.latest_page_notification_at,
+  (SELECT ARRAY_AGG(sub.from_id)
+   FROM (
+     SELECT DISTINCT ON (n2.from_id) n2.from_id, n2.id
+     FROM notifications n2
+     WHERE n2.account_id = $1 AND n2.group_key = g.group_key
+     ORDER BY n2.from_id, n2.id DESC
+     LIMIT 8
+   ) sub
+  ) AS sample_account_ids,
+  g.status_id
+FROM (
+  SELECT
+    group_key,
+    COUNT(*)::int AS notifications_count,
+    MIN(type) AS type,
+    MAX(id) AS most_recent_notification_id,
+    MIN(id) AS page_min_id,
+    MAX(id) AS page_max_id,
+    MAX(created_at) AS latest_page_notification_at,
+    (ARRAY_AGG(status_id ORDER BY id DESC))[1] AS status_id
+  FROM notifications
+  WHERE account_id = $1
+    AND group_key != ''
+    AND ($2::text IS NULL OR id < $2)
+  GROUP BY group_key
+  ORDER BY MAX(id) DESC
+  LIMIT $3
+) g
+`
+
+type ListGroupedNotificationsParams struct {
+	AccountID string `json:"account_id"`
+	Column2   string `json:"column_2"`
+	Limit     int32  `json:"limit"`
+}
+
+type ListGroupedNotificationsRow struct {
+	GroupKey                 string      `json:"group_key"`
+	NotificationsCount       int32       `json:"notifications_count"`
+	Type                     interface{} `json:"type"`
+	MostRecentNotificationID interface{} `json:"most_recent_notification_id"`
+	PageMinID                interface{} `json:"page_min_id"`
+	PageMaxID                interface{} `json:"page_max_id"`
+	LatestPageNotificationAt interface{} `json:"latest_page_notification_at"`
+	SampleAccountIds         interface{} `json:"sample_account_ids"`
+	StatusID                 interface{} `json:"status_id"`
+}
+
+func (q *Queries) ListGroupedNotifications(ctx context.Context, arg ListGroupedNotificationsParams) ([]ListGroupedNotificationsRow, error) {
+	rows, err := q.db.Query(ctx, listGroupedNotifications, arg.AccountID, arg.Column2, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListGroupedNotificationsRow{}
+	for rows.Next() {
+		var i ListGroupedNotificationsRow
+		if err := rows.Scan(
+			&i.GroupKey,
+			&i.NotificationsCount,
+			&i.Type,
+			&i.MostRecentNotificationID,
+			&i.PageMinID,
+			&i.PageMaxID,
+			&i.LatestPageNotificationAt,
+			&i.SampleAccountIds,
+			&i.StatusID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listNotifications = `-- name: ListNotifications :many
-SELECT id, account_id, from_id, type, status_id, read, created_at FROM notifications
+SELECT id, account_id, from_id, type, status_id, read, created_at, group_key FROM notifications
 WHERE account_id = $1
   AND ($2::text IS NULL OR id < $2)
 ORDER BY id DESC
@@ -122,6 +279,7 @@ func (q *Queries) ListNotifications(ctx context.Context, arg ListNotificationsPa
 			&i.StatusID,
 			&i.Read,
 			&i.CreatedAt,
+			&i.GroupKey,
 		); err != nil {
 			return nil, err
 		}

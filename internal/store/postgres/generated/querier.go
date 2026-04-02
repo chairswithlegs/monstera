@@ -26,9 +26,12 @@ type Querier interface {
 	CountAccountPublicStatuses(ctx context.Context, accountID string) (int64, error)
 	CountFollowers(ctx context.Context, targetID string) (int64, error)
 	CountFollowing(ctx context.Context, accountID string) (int64, error)
+	CountGroupedNotifications(ctx context.Context, accountID string) (int64, error)
 	CountKnownInstances(ctx context.Context) (int64, error)
 	CountLocalAccounts(ctx context.Context) (int64, error)
 	CountLocalStatuses(ctx context.Context) (int64, error)
+	CountPendingNotificationRequests(ctx context.Context, accountID string) (int64, error)
+	CountPendingNotifications(ctx context.Context, accountID string) (int64, error)
 	CountRemoteAccounts(ctx context.Context) (int64, error)
 	CreateAccessToken(ctx context.Context, arg CreateAccessTokenParams) (OauthAccessToken, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
@@ -97,6 +100,8 @@ type Querier interface {
 	DeleteInvite(ctx context.Context, id string) error
 	DeleteList(ctx context.Context, id string) error
 	DeleteMute(ctx context.Context, arg DeleteMuteParams) error
+	DeleteNotificationRequest(ctx context.Context, arg DeleteNotificationRequestParams) error
+	DeleteNotificationRequestsByIDs(ctx context.Context, arg DeleteNotificationRequestsByIDsParams) error
 	DeletePollVotesByAccount(ctx context.Context, arg DeletePollVotesByAccountParams) error
 	DeletePublishedOutboxEventsBefore(ctx context.Context, publishedAt pgtype.Timestamptz) error
 	DeletePushSubscription(ctx context.Context, accessTokenID string) error
@@ -109,6 +114,7 @@ type Querier interface {
 	DeleteUserFilterV2(ctx context.Context, id string) error
 	DismissAnnouncement(ctx context.Context, arg DismissAnnouncementParams) error
 	DismissNotification(ctx context.Context, arg DismissNotificationParams) error
+	DismissNotificationGroup(ctx context.Context, arg DismissNotificationGroupParams) error
 	FollowTag(ctx context.Context, arg FollowTagParams) error
 	GetAccessToken(ctx context.Context, token string) (OauthAccessToken, error)
 	GetAccountByAPID(ctx context.Context, apID string) (Account, error)
@@ -161,6 +167,9 @@ type Querier interface {
 	GetMonsteraSettings(ctx context.Context) (MonsteraSetting, error)
 	GetMute(ctx context.Context, arg GetMuteParams) (Mute, error)
 	GetNotification(ctx context.Context, arg GetNotificationParams) (Notification, error)
+	GetNotificationGroup(ctx context.Context, arg GetNotificationGroupParams) ([]Notification, error)
+	GetNotificationPolicyByAccountID(ctx context.Context, accountID string) (NotificationPolicy, error)
+	GetNotificationRequestByID(ctx context.Context, arg GetNotificationRequestByIDParams) (NotificationRequest, error)
 	GetOrCreateHashtag(ctx context.Context, arg GetOrCreateHashtagParams) (Hashtag, error)
 	GetOwnVoteOptionIDs(ctx context.Context, arg GetOwnVoteOptionIDsParams) ([]string, error)
 	GetPendingFollowRequests(ctx context.Context, targetID string) ([]GetPendingFollowRequestsRow, error)
@@ -229,6 +238,7 @@ type Querier interface {
 	ListFilterKeywords(ctx context.Context, filterID string) ([]UserFilterKeyword, error)
 	ListFilterStatuses(ctx context.Context, filterID string) ([]UserFilterStatus, error)
 	ListFollowedTagsPaginated(ctx context.Context, arg ListFollowedTagsPaginatedParams) ([]ListFollowedTagsPaginatedRow, error)
+	ListGroupedNotifications(ctx context.Context, arg ListGroupedNotificationsParams) ([]ListGroupedNotificationsRow, error)
 	ListInvitesByCreator(ctx context.Context, createdBy string) ([]Invite, error)
 	ListKnownInstances(ctx context.Context, arg ListKnownInstancesParams) ([]ListKnownInstancesRow, error)
 	ListListAccountIDs(ctx context.Context, listID string) ([]string, error)
@@ -238,6 +248,7 @@ type Querier interface {
 	ListMutedAccountsPaginated(ctx context.Context, arg ListMutedAccountsPaginatedParams) ([]ListMutedAccountsPaginatedRow, error)
 	ListMutedConversationIDs(ctx context.Context, accountID string) ([]string, error)
 	ListMutes(ctx context.Context, arg ListMutesParams) ([]Mute, error)
+	ListNotificationRequests(ctx context.Context, arg ListNotificationRequestsParams) ([]NotificationRequest, error)
 	ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]Notification, error)
 	ListPinnedStatusIDs(ctx context.Context, accountID string) ([]string, error)
 	ListPollOptions(ctx context.Context, pollID string) ([]PollOption, error)
@@ -285,6 +296,7 @@ type Querier interface {
 	UpdateList(ctx context.Context, arg UpdateListParams) (List, error)
 	UpdateMediaAttachment(ctx context.Context, arg UpdateMediaAttachmentParams) (MediaAttachment, error)
 	UpdateMonsteraSettings(ctx context.Context, arg UpdateMonsteraSettingsParams) error
+	UpdateNotificationPolicy(ctx context.Context, arg UpdateNotificationPolicyParams) (NotificationPolicy, error)
 	UpdatePushSubscriptionAlerts(ctx context.Context, arg UpdatePushSubscriptionAlertsParams) (PushSubscription, error)
 	UpdateRemoteAccountMeta(ctx context.Context, arg UpdateRemoteAccountMetaParams) error
 	UpdateScheduledStatus(ctx context.Context, arg UpdateScheduledStatusParams) (ScheduledStatus, error)
@@ -300,6 +312,10 @@ type Querier interface {
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error
 	UpsertAccountConversation(ctx context.Context, arg UpsertAccountConversationParams) error
 	UpsertKnownInstance(ctx context.Context, arg UpsertKnownInstanceParams) error
+	// ─── Notification policy ─────────────────────────────────────────────────────
+	UpsertNotificationPolicy(ctx context.Context, arg UpsertNotificationPolicyParams) (NotificationPolicy, error)
+	// ─── Notification requests ────────────────────────────────────────────────────
+	UpsertNotificationRequest(ctx context.Context, arg UpsertNotificationRequestParams) (NotificationRequest, error)
 	UpsertTrendingTagHistory(ctx context.Context, arg UpsertTrendingTagHistoryParams) error
 }
 

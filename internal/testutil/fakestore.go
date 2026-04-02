@@ -10,6 +10,7 @@ import (
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/store"
+	"github.com/chairswithlegs/monstera/internal/uid"
 )
 
 // FakeStore implements store.Store for unit tests using in-memory domain types.
@@ -97,6 +98,9 @@ type FakeStore struct {
 	OutboxEvents []domain.DomainEvent // transactional outbox events
 
 	pushSubscriptions []*domain.PushSubscription
+
+	notificationPoliciesByAccountID map[string]*domain.NotificationPolicy
+	notificationRequestsByID        map[string]*domain.NotificationRequest
 }
 
 type quoteApprovalEntry struct {
@@ -152,57 +156,59 @@ type announcementReactionEntry struct {
 // NewFakeStore returns a new FakeStore for use in tests.
 func NewFakeStore() *FakeStore {
 	return &FakeStore{
-		accountsByID:              make(map[string]*domain.Account),
-		accountsByUsername:        make(map[string]*domain.Account),
-		usersByAccountID:          make(map[string]*domain.User),
-		statusesByID:              make(map[string]*domain.Status),
-		statusesByAPID:            make(map[string]*domain.Status),
-		statusesCount:             make(map[string]int),
-		homeTimeline:              make(map[string][]*domain.Status),
-		followsByKey:              make(map[string]*domain.Follow),
-		blocksByKey:               make(map[string]struct{}),
-		mutesByKey:                make(map[string]struct{}),
-		suspendedAccountIDs:       make(map[string]struct{}),
-		mediaByID:                 make(map[string]*domain.MediaAttachment),
-		notificationsByAccount:    make(map[string][]*domain.Notification),
-		hashtagsByName:            make(map[string]*domain.Hashtag),
-		hashtagsByID:              make(map[string]*domain.Hashtag),
-		applications:              make(map[string]*domain.OAuthApplication),
-		applicationsByID:          make(map[string]*domain.OAuthApplication),
-		authCodes:                 make(map[string]*domain.OAuthAuthorizationCode),
-		tokens:                    make(map[string]*domain.OAuthAccessToken),
-		userFiltersByID:           make(map[string]*domain.UserFilter),
-		userFiltersV2ByID:         make(map[string]*domain.UserFilter),
-		filterKeywordsByID:        make(map[string]*domain.FilterKeyword),
-		filterStatusesByID:        make(map[string]*domain.FilterStatus),
-		listsByID:                 make(map[string]*domain.List),
-		listAccountIDs:            make(map[string][]string),
-		mentionsByStatusID:        make(map[string][]string),
-		hashtagsByStatusID:        make(map[string][]string),
-		markersByKey:              make(map[string]*domain.Marker),
-		lastStatusAtByAccount:     make(map[string]time.Time),
-		accountPins:               nil,
-		statusEdits:               nil,
-		scheduledStatuses:         make(map[string]*domain.ScheduledStatus),
-		pollsByID:                 make(map[string]*domain.Poll),
-		pollsByStatusID:           make(map[string]*domain.Poll),
-		pollOptions:               make(map[string][]domain.PollOption),
-		pollVotes:                 nil,
-		quoteApprovalsByQuoting:   make(map[string]*quoteApprovalEntry),
-		domainBlocksByDomain:      make(map[string]*domain.DomainBlock),
-		bookmarksByKey:            make(map[string]struct{}),
-		favouritesByID:            make(map[string]*domain.Favourite),
-		favouritesByAPID:          make(map[string]*domain.Favourite),
-		favouritesByAccountStatus: make(map[string]*domain.Favourite),
-		conversationMutesByKey:    make(map[string]struct{}),
-		conversationMutesList:     nil,
-		conversationIDs:           make(map[string]struct{}),
-		statusConversationIDs:     make(map[string]string),
-		accountConversations:      nil,
-		announcementsByID:         make(map[string]*domain.Announcement),
-		announcementReads:         make(map[string]struct{}),
-		announcementReactions:     nil,
-		StatusCards:               make(map[string]*domain.Card),
+		accountsByID:                    make(map[string]*domain.Account),
+		accountsByUsername:              make(map[string]*domain.Account),
+		usersByAccountID:                make(map[string]*domain.User),
+		statusesByID:                    make(map[string]*domain.Status),
+		statusesByAPID:                  make(map[string]*domain.Status),
+		statusesCount:                   make(map[string]int),
+		homeTimeline:                    make(map[string][]*domain.Status),
+		followsByKey:                    make(map[string]*domain.Follow),
+		blocksByKey:                     make(map[string]struct{}),
+		mutesByKey:                      make(map[string]struct{}),
+		suspendedAccountIDs:             make(map[string]struct{}),
+		mediaByID:                       make(map[string]*domain.MediaAttachment),
+		notificationsByAccount:          make(map[string][]*domain.Notification),
+		hashtagsByName:                  make(map[string]*domain.Hashtag),
+		hashtagsByID:                    make(map[string]*domain.Hashtag),
+		applications:                    make(map[string]*domain.OAuthApplication),
+		applicationsByID:                make(map[string]*domain.OAuthApplication),
+		authCodes:                       make(map[string]*domain.OAuthAuthorizationCode),
+		tokens:                          make(map[string]*domain.OAuthAccessToken),
+		userFiltersByID:                 make(map[string]*domain.UserFilter),
+		userFiltersV2ByID:               make(map[string]*domain.UserFilter),
+		filterKeywordsByID:              make(map[string]*domain.FilterKeyword),
+		filterStatusesByID:              make(map[string]*domain.FilterStatus),
+		listsByID:                       make(map[string]*domain.List),
+		listAccountIDs:                  make(map[string][]string),
+		mentionsByStatusID:              make(map[string][]string),
+		hashtagsByStatusID:              make(map[string][]string),
+		markersByKey:                    make(map[string]*domain.Marker),
+		lastStatusAtByAccount:           make(map[string]time.Time),
+		accountPins:                     nil,
+		statusEdits:                     nil,
+		scheduledStatuses:               make(map[string]*domain.ScheduledStatus),
+		pollsByID:                       make(map[string]*domain.Poll),
+		pollsByStatusID:                 make(map[string]*domain.Poll),
+		pollOptions:                     make(map[string][]domain.PollOption),
+		pollVotes:                       nil,
+		quoteApprovalsByQuoting:         make(map[string]*quoteApprovalEntry),
+		domainBlocksByDomain:            make(map[string]*domain.DomainBlock),
+		bookmarksByKey:                  make(map[string]struct{}),
+		favouritesByID:                  make(map[string]*domain.Favourite),
+		favouritesByAPID:                make(map[string]*domain.Favourite),
+		favouritesByAccountStatus:       make(map[string]*domain.Favourite),
+		conversationMutesByKey:          make(map[string]struct{}),
+		conversationMutesList:           nil,
+		conversationIDs:                 make(map[string]struct{}),
+		statusConversationIDs:           make(map[string]string),
+		accountConversations:            nil,
+		announcementsByID:               make(map[string]*domain.Announcement),
+		announcementReads:               make(map[string]struct{}),
+		announcementReactions:           nil,
+		StatusCards:                     make(map[string]*domain.Card),
+		notificationPoliciesByAccountID: make(map[string]*domain.NotificationPolicy),
+		notificationRequestsByID:        make(map[string]*domain.NotificationRequest),
 	}
 }
 
@@ -1695,6 +1701,7 @@ func (f *FakeStore) CreateNotification(ctx context.Context, in store.CreateNotif
 		FromID:    in.FromID,
 		Type:      in.Type,
 		StatusID:  in.StatusID,
+		GroupKey:  in.GroupKey,
 		CreatedAt: time.Now(),
 	}
 	f.notificationsByAccount[in.AccountID] = append(f.notificationsByAccount[in.AccountID], n)
@@ -1736,6 +1743,102 @@ func (f *FakeStore) ClearNotifications(ctx context.Context, accountID string) er
 }
 func (f *FakeStore) DismissNotification(ctx context.Context, id, accountID string) error {
 	return nil
+}
+func (f *FakeStore) ListGroupedNotifications(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.NotificationGroup, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	list := f.notificationsByAccount[accountID]
+	groups := make(map[string]*domain.NotificationGroup)
+	var order []string
+	for i := len(list) - 1; i >= 0; i-- {
+		n := list[i]
+		if n.GroupKey == "" {
+			continue
+		}
+		if maxID != nil && *maxID != "" && n.ID >= *maxID {
+			continue
+		}
+		g, exists := groups[n.GroupKey]
+		if !exists {
+			g = &domain.NotificationGroup{
+				GroupKey:                 n.GroupKey,
+				Type:                     n.Type,
+				MostRecentNotificationID: n.ID,
+				PageMinID:                n.ID,
+				PageMaxID:                n.ID,
+				LatestPageNotificationAt: n.CreatedAt,
+				StatusID:                 n.StatusID,
+			}
+			groups[n.GroupKey] = g
+			order = append(order, n.GroupKey)
+		}
+		g.NotificationsCount++
+		if n.ID < g.PageMinID {
+			g.PageMinID = n.ID
+		}
+		if n.ID > g.PageMaxID {
+			g.PageMaxID = n.ID
+			g.MostRecentNotificationID = n.ID
+		}
+		found := false
+		for _, id := range g.SampleAccountIDs {
+			if id == n.FromID {
+				found = true
+				break
+			}
+		}
+		if !found && len(g.SampleAccountIDs) < 8 {
+			g.SampleAccountIDs = append(g.SampleAccountIDs, n.FromID)
+		}
+	}
+	out := make([]domain.NotificationGroup, 0, len(order))
+	for _, key := range order {
+		if len(out) >= limit {
+			break
+		}
+		out = append(out, *groups[key])
+	}
+	return out, nil
+}
+func (f *FakeStore) GetNotificationGroup(ctx context.Context, accountID, groupKey string) ([]domain.Notification, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	list := f.notificationsByAccount[accountID]
+	var out []domain.Notification
+	for i := len(list) - 1; i >= 0; i-- {
+		n := list[i]
+		if n.GroupKey == groupKey {
+			out = append(out, *n)
+		}
+	}
+	if len(out) == 0 {
+		return nil, domain.ErrNotFound
+	}
+	return out, nil
+}
+func (f *FakeStore) DismissNotificationGroup(ctx context.Context, accountID, groupKey string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	list := f.notificationsByAccount[accountID]
+	var remaining []*domain.Notification
+	for _, n := range list {
+		if n.GroupKey != groupKey {
+			remaining = append(remaining, n)
+		}
+	}
+	f.notificationsByAccount[accountID] = remaining
+	return nil
+}
+func (f *FakeStore) CountUnreadGroupedNotifications(ctx context.Context, accountID string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	seen := make(map[string]bool)
+	for _, n := range f.notificationsByAccount[accountID] {
+		if n.GroupKey != "" && !n.Read {
+			seen[n.GroupKey] = true
+		}
+	}
+	return int64(len(seen)), nil
 }
 func (f *FakeStore) GetStatusAttachments(ctx context.Context, statusID string) ([]domain.MediaAttachment, error) {
 	f.mu.Lock()
@@ -3866,5 +3969,160 @@ func (f *FakeStore) MarkOutboxEventsPublished(_ context.Context, ids []string) e
 }
 
 func (f *FakeStore) DeletePublishedOutboxEventsBefore(_ context.Context, _ time.Time) error {
+	return nil
+}
+
+// ─── Notification Policy ─────────────────────────────────────────────────────
+
+func (f *FakeStore) UpsertNotificationPolicy(_ context.Context, accountID string) (*domain.NotificationPolicy, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if p, ok := f.notificationPoliciesByAccountID[accountID]; ok {
+		return p, nil
+	}
+	p := &domain.NotificationPolicy{
+		ID:                    uid.New(),
+		AccountID:             accountID,
+		FilterNotFollowing:    domain.NotificationFilterAccept,
+		FilterNotFollowers:    domain.NotificationFilterAccept,
+		FilterNewAccounts:     domain.NotificationFilterAccept,
+		FilterPrivateMentions: domain.NotificationFilterAccept,
+		ForLimitedAccounts:    domain.NotificationFilterAccept,
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
+	}
+	f.notificationPoliciesByAccountID[accountID] = p
+	return p, nil
+}
+
+func (f *FakeStore) GetNotificationPolicyByAccountID(_ context.Context, accountID string) (*domain.NotificationPolicy, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, ok := f.notificationPoliciesByAccountID[accountID]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return p, nil
+}
+
+func (f *FakeStore) UpdateNotificationPolicy(_ context.Context, in store.UpdateNotificationPolicyInput) (*domain.NotificationPolicy, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, ok := f.notificationPoliciesByAccountID[in.AccountID]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	p.FilterNotFollowing = in.FilterNotFollowing
+	p.FilterNotFollowers = in.FilterNotFollowers
+	p.FilterNewAccounts = in.FilterNewAccounts
+	p.FilterPrivateMentions = in.FilterPrivateMentions
+	p.ForLimitedAccounts = in.ForLimitedAccounts
+	p.UpdatedAt = time.Now()
+	return p, nil
+}
+
+func (f *FakeStore) CountPendingNotificationRequests(_ context.Context, accountID string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var count int64
+	for _, r := range f.notificationRequestsByID {
+		if r.AccountID == accountID {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (f *FakeStore) CountPendingNotifications(_ context.Context, accountID string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var total int64
+	for _, r := range f.notificationRequestsByID {
+		if r.AccountID == accountID {
+			total += int64(r.NotificationsCount)
+		}
+	}
+	return total, nil
+}
+
+func (f *FakeStore) UpsertNotificationRequest(_ context.Context, in store.UpsertNotificationRequestInput) (*domain.NotificationRequest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// Check if one exists for account+from_account
+	for _, r := range f.notificationRequestsByID {
+		if r.AccountID == in.AccountID && r.FromAccountID == in.FromAccountID {
+			r.LastStatusID = in.LastStatusID
+			r.NotificationsCount++
+			r.UpdatedAt = time.Now()
+			return r, nil
+		}
+	}
+	r := &domain.NotificationRequest{
+		ID:                 in.ID,
+		AccountID:          in.AccountID,
+		FromAccountID:      in.FromAccountID,
+		LastStatusID:       in.LastStatusID,
+		NotificationsCount: 1,
+		CreatedAt:          time.Now(),
+		UpdatedAt:          time.Now(),
+	}
+	f.notificationRequestsByID[in.ID] = r
+	return r, nil
+}
+
+func (f *FakeStore) GetNotificationRequestByID(_ context.Context, id, accountID string) (*domain.NotificationRequest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	r, ok := f.notificationRequestsByID[id]
+	if !ok || r.AccountID != accountID {
+		return nil, domain.ErrNotFound
+	}
+	return r, nil
+}
+
+func (f *FakeStore) ListNotificationRequests(_ context.Context, accountID string, maxID *string, limit int) ([]domain.NotificationRequest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cursor := "ZZZZZZZZZZZZZZZZZZZZZZZZZZ"
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	var all []domain.NotificationRequest
+	for _, r := range f.notificationRequestsByID {
+		if r.AccountID == accountID && r.ID < cursor {
+			all = append(all, *r)
+		}
+	}
+	// Sort descending by ID.
+	sort.Slice(all, func(i, j int) bool { return all[i].ID > all[j].ID })
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	return all, nil
+}
+
+func (f *FakeStore) DeleteNotificationRequest(_ context.Context, id, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if r, ok := f.notificationRequestsByID[id]; ok && r.AccountID == accountID {
+		delete(f.notificationRequestsByID, id)
+	}
+	return nil
+}
+
+func (f *FakeStore) DeleteNotificationRequestsByIDs(_ context.Context, accountID string, ids []string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	idSet := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		idSet[id] = struct{}{}
+	}
+	for id, r := range f.notificationRequestsByID {
+		if r.AccountID == accountID {
+			if _, ok := idSet[id]; ok {
+				delete(f.notificationRequestsByID, id)
+			}
+		}
+	}
 	return nil
 }
