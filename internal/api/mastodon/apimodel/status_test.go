@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/chairswithlegs/monstera/internal/api"
 	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -63,6 +65,7 @@ func TestMentionFromAccount(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			m := MentionFromAccount(tc.account, "local.example")
+			assertJSONShape(t, "Mention", m, mentionFields)
 			assert.Equal(t, tc.account.ID, m.ID)
 			assert.Equal(t, tc.account.Username, m.Username)
 			assert.Equal(t, tc.wantAcc, m.Acct)
@@ -298,4 +301,141 @@ func TestParseCreateStatusRequest(t *testing.T) {
 		assert.True(t, parsed.Sensitive)
 		assert.Equal(t, "en", parsed.Language)
 	})
+}
+
+func TestToStatus_shape(t *testing.T) {
+	t.Parallel()
+	acc := &domain.Account{
+		ID:        "01ACC",
+		Username:  "alice",
+		CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	content := "<p>Hello</p>"
+	lang := "en"
+	s := &domain.Status{
+		ID:         "01STATUS",
+		URI:        "https://example.com/statuses/01STATUS",
+		AccountID:  acc.ID,
+		Content:    &content,
+		Visibility: "public",
+		Language:   &lang,
+		Local:      true,
+		CreatedAt:  time.Date(2024, 3, 15, 10, 0, 0, 0, time.UTC),
+	}
+	author := ToAccount(acc, "example.com")
+	st := ToStatus(s, author, []Mention{}, []Tag{}, []MediaAttachment{}, nil, "example.com")
+	assertJSONShape(t, "Status", st, statusFields)
+}
+
+func TestStatusFromEnriched_shape(t *testing.T) {
+	t.Parallel()
+	acc := &domain.Account{
+		ID:        "01ACC",
+		Username:  "alice",
+		CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	content := "<p>Hello</p>"
+	s := &domain.Status{
+		ID:         "01STATUS",
+		URI:        "https://example.com/statuses/01STATUS",
+		AccountID:  acc.ID,
+		Content:    &content,
+		Visibility: "public",
+		Local:      true,
+		CreatedAt:  time.Date(2024, 3, 15, 10, 0, 0, 0, time.UTC),
+	}
+	enriched := service.EnrichedStatus{
+		Status:   s,
+		Author:   acc,
+		Mentions: []*domain.Account{},
+		Tags:     []domain.Hashtag{},
+		Media:    []domain.MediaAttachment{},
+	}
+	st := StatusFromEnriched(enriched, "example.com")
+	assertJSONShape(t, "Status", st, statusFields)
+}
+
+func TestMediaFromDomain_shape(t *testing.T) {
+	t.Parallel()
+	m := &domain.MediaAttachment{
+		ID:   "01MEDIA",
+		Type: "image",
+		URL:  "https://example.com/image.jpg",
+	}
+	out := MediaFromDomain(m)
+	assertJSONShape(t, "MediaAttachment", out, mediaAttachmentFields)
+}
+
+func TestPollFromEnriched_shape(t *testing.T) {
+	t.Parallel()
+	expires := time.Date(2024, 4, 1, 0, 0, 0, 0, time.UTC)
+	enriched := &service.EnrichedPoll{
+		Poll: domain.Poll{
+			ID:        "01POLL",
+			Multiple:  false,
+			ExpiresAt: &expires,
+		},
+		Options: []service.PollOptionWithCount{
+			{Title: "Yes", VotesCount: 3},
+			{Title: "No", VotesCount: 1},
+		},
+		OwnVotes: []int{},
+	}
+	out := PollFromEnriched(enriched)
+	assertJSONShape(t, "Poll", out, pollFields)
+}
+
+func TestCardFromDomain_shape(t *testing.T) {
+	t.Parallel()
+	c := &domain.Card{
+		URL:             "https://example.com/article",
+		Title:           "Test Article",
+		Description:     "An article",
+		Type:            "link",
+		ProcessingState: domain.CardStateFetched,
+	}
+	out := CardFromDomain(c)
+	require.NotNil(t, out)
+	assertJSONShape(t, "PreviewCard", *out, cardFields)
+}
+
+func TestToRelationship_shape(t *testing.T) {
+	t.Parallel()
+
+	t.Run("with values", func(t *testing.T) {
+		t.Parallel()
+		r := &domain.Relationship{
+			TargetID:       "01TARGET",
+			Following:      true,
+			FollowedBy:     true,
+			ShowingReblogs: true,
+		}
+		out := ToRelationship(r)
+		assertJSONShape(t, "Relationship", out, relationshipFields)
+	})
+
+	t.Run("nil relationship", func(t *testing.T) {
+		t.Parallel()
+		out := ToRelationship(nil)
+		assertJSONShape(t, "Relationship", out, relationshipFields)
+	})
+}
+
+func TestToNotification_shape(t *testing.T) {
+	t.Parallel()
+	acc := &domain.Account{
+		ID:        "01FROM",
+		Username:  "bob",
+		CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	n := &domain.Notification{
+		ID:        "01NOTIF",
+		AccountID: "01ACC",
+		FromID:    acc.ID,
+		Type:      "follow",
+		GroupKey:  "follow-01FROM",
+		CreatedAt: time.Date(2024, 3, 15, 10, 0, 0, 0, time.UTC),
+	}
+	out := ToNotification(n, acc, nil, "example.com")
+	assertJSONShape(t, "Notification", out, notificationFields)
 }
