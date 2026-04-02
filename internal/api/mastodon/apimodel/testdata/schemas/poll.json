@@ -1,0 +1,16 @@
+{
+  "entity": "Poll",
+  "doc": "https://docs.joinmastodon.org/entities/Poll/",
+  "fields": {
+    "id":           "string",
+    "expires_at":   "string|null",
+    "expired":      "bool",
+    "multiple":     "bool",
+    "votes_count":  "number",
+    "voters_count": "number|null",
+    "voted":        "bool",
+    "own_votes":    "array",
+    "options":      "array",
+    "emojis":       "array"
+  }
+}

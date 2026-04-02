@@ -1,0 +1,11 @@
+{
+  "entity": "Notification",
+  "doc": "https://docs.joinmastodon.org/entities/Notification/",
+  "fields": {
+    "id":         "string",
+    "type":       "string",
+    "created_at": "string",
+    "account":    "$account",
+    "group_key":  "string"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "entity": "List",
+  "doc": "https://docs.joinmastodon.org/entities/List/",
+  "fields": {
+    "id":             "string",
+    "title":          "string",
+    "replies_policy": "string",
+    "exclusive":      "bool"
+  }
+}

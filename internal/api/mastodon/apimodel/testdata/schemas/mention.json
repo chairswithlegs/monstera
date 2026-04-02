@@ -1,0 +1,10 @@
+{
+  "entity": "Mention",
+  "doc": "https://docs.joinmastodon.org/entities/Status/#Mention",
+  "fields": {
+    "id":       "string",
+    "username": "string",
+    "acct":     "string",
+    "url":      "string"
+  }
+}

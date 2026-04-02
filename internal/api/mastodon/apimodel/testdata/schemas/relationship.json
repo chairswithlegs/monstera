@@ -1,0 +1,21 @@
+{
+  "entity": "Relationship",
+  "doc": "https://docs.joinmastodon.org/entities/Relationship/",
+  "fields": {
+    "id":                   "string",
+    "following":            "bool",
+    "showing_reblogs":      "bool",
+    "notifying":            "bool",
+    "followed_by":          "bool",
+    "blocking":             "bool",
+    "blocked_by":           "bool",
+    "muting":               "bool",
+    "muting_notifications": "bool",
+    "requested":            "bool",
+    "requested_by":         "bool",
+    "domain_blocking":      "bool",
+    "endorsed":             "bool",
+    "note":                 "string",
+    "languages":            "array"
+  }
+}
