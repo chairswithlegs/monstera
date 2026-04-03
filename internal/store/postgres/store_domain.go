@@ -182,10 +182,29 @@ func (s *PostgresStore) GetRemoteAccountByUsername(ctx context.Context, username
 	return &acc, nil
 }
 
-func (s *PostgresStore) SearchAccounts(ctx context.Context, query string, limit int) ([]*domain.Account, error) {
+func (s *PostgresStore) SearchAccounts(ctx context.Context, query string, limit, offset int) ([]*domain.Account, error) {
 	rows, err := s.q.SearchAccounts(ctx, db.SearchAccountsParams{
-		Lower: query,
-		Limit: int32(limit), //nolint:gosec // limit clamped by caller
+		Lower:  query,
+		Limit:  int32(limit),  //nolint:gosec // limit clamped by caller
+		Offset: int32(offset), //nolint:gosec // offset validated by caller
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]*domain.Account, 0, len(rows))
+	for _, row := range rows {
+		acc := ToDomainAccount(row)
+		out = append(out, &acc)
+	}
+	return out, nil
+}
+
+func (s *PostgresStore) SearchAccountsFollowing(ctx context.Context, viewerID, query string, limit, offset int) ([]*domain.Account, error) {
+	rows, err := s.q.SearchAccountsFollowing(ctx, db.SearchAccountsFollowingParams{
+		AccountID: viewerID,
+		Lower:     query,
+		Limit:     int32(limit),  //nolint:gosec // limit clamped by caller
+		Offset:    int32(offset), //nolint:gosec // offset validated by caller
 	})
 	if err != nil {
 		return nil, mapErr(err)

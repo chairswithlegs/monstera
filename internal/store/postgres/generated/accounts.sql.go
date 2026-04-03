@@ -570,15 +570,95 @@ WHERE suspended = FALSE
   )
 ORDER BY (domain IS NOT NULL), username
 LIMIT $2
+OFFSET $3
 `
 
 type SearchAccountsParams struct {
-	Lower string `json:"lower"`
-	Limit int32  `json:"limit"`
+	Lower  string `json:"lower"`
+	Limit  int32  `json:"limit"`
+	Offset int32  `json:"offset"`
 }
 
 func (q *Queries) SearchAccounts(ctx context.Context, arg SearchAccountsParams) ([]Account, error) {
-	rows, err := q.db.Query(ctx, searchAccounts, arg.Lower, arg.Limit)
+	rows, err := q.db.Query(ctx, searchAccounts, arg.Lower, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Account{}
+	for rows.Next() {
+		var i Account
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.Domain,
+			&i.DisplayName,
+			&i.Note,
+			&i.PublicKey,
+			&i.PrivateKey,
+			&i.InboxUrl,
+			&i.OutboxUrl,
+			&i.FollowersUrl,
+			&i.FollowingUrl,
+			&i.ApID,
+			&i.Bot,
+			&i.Locked,
+			&i.Suspended,
+			&i.Silenced,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AvatarMediaID,
+			&i.HeaderMediaID,
+			&i.FollowersCount,
+			&i.FollowingCount,
+			&i.StatusesCount,
+			&i.Fields,
+			&i.LastStatusAt,
+			&i.Url,
+			&i.AvatarUrl,
+			&i.HeaderUrl,
+			&i.LastBackfilledAt,
+			&i.FeaturedUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchAccountsFollowing = `-- name: SearchAccountsFollowing :many
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at, a.featured_url FROM accounts a
+INNER JOIN follows f ON f.target_id = a.id
+WHERE f.account_id = $1
+  AND a.suspended = FALSE
+  AND f.state = 'accepted'
+  AND (
+    LOWER(a.username) LIKE LOWER($2) || '%'
+    OR (a.domain IS NOT NULL AND LOWER(a.username) || '@' || LOWER(COALESCE(a.domain, '')) LIKE LOWER($2) || '%')
+  )
+ORDER BY (a.domain IS NOT NULL), a.username
+LIMIT $3
+OFFSET $4
+`
+
+type SearchAccountsFollowingParams struct {
+	AccountID string `json:"account_id"`
+	Lower     string `json:"lower"`
+	Limit     int32  `json:"limit"`
+	Offset    int32  `json:"offset"`
+}
+
+func (q *Queries) SearchAccountsFollowing(ctx context.Context, arg SearchAccountsFollowingParams) ([]Account, error) {
+	rows, err := q.db.Query(ctx, searchAccountsFollowing,
+		arg.AccountID,
+		arg.Lower,
+		arg.Limit,
+		arg.Offset,
+	)
 	if err != nil {
 		return nil, err
 	}

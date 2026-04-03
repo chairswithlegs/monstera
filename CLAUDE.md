@@ -1,7 +1,3 @@
-# Task tracking
-
-At the start of each session, check TaskList for pending work items. If such a task exists, ask the user if you should begin working on it.
-
 # Monstera Project
 
 Monstera is a self-hosted **ActivityPub server** written in Go 1.26 that exposes a **Mastodon-compatible REST API**. Any Mastodon client (Ivory, Tusky, Elk, Mona, etc.) connects without modification.
@@ -181,13 +177,6 @@ api.WriteJSON(w, http.StatusOK, result)
 
 ---
 
-### Other rules
-
-- Follow existing project rules in this file and in the relevant subdirectory CLAUDE.md files.
-- When in doubt, match the plan's **Convention** and **Steps** for that section.
-
----
-
 ## Skills and Commands
 
 Available custom commands (invoke with `/command-name`):
@@ -203,16 +192,4 @@ Available custom commands (invoke with `/command-name`):
 | `/repository-documentation` | Create or update documentation |
 | `/vercel-react-best-practices` | React/Next.js performance optimization |
 
-Check the table above before outlining steps or writing code. If a command matches, invoke it early. Do not mention a command without using it.
-
----
-
-## Subdirectory Rules
-
-- `internal/CLAUDE.md` — interface/implementation pattern
-- `internal/store/CLAUDE.md` — database store layer
-- `internal/service/CLAUDE.md` — service layer
-- `internal/api/CLAUDE.md` — API handler patterns
-- `internal/api/mastodon/CLAUDE.md` — Mastodon REST API handlers
-- `internal/activitypub/CLAUDE.md` — ActivityPub & federation
-- `ui/CLAUDE.md` — Next.js development
+Check the table above before outlining steps or writing code. If a command matches, invoke it early.

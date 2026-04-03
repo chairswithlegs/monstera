@@ -73,9 +73,11 @@ func (h *SearchHandler) GETAccountsSearch(w http.ResponseWriter, r *http.Request
 		return
 	}
 	resolve := api.QueryParamIsTrue(r, "resolve")
+	following := api.QueryParamIsTrue(r, "following")
 	limit := parseLimitParam(r, DefaultListLimit, MaxListLimit)
+	offset := parseOffsetParam(r)
 	viewer := middleware.AccountFromContext(r.Context())
-	res, err := h.search.Search(r.Context(), viewer, q, service.SearchTypeAccounts, resolve, limit)
+	res, err := h.search.Search(r.Context(), viewer, q, service.SearchTypeAccounts, resolve, following, limit, offset)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -96,7 +98,7 @@ func (h *SearchHandler) GETSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	viewer := middleware.AccountFromContext(r.Context())
 	filter := mapTypeToSearchType(req.Type)
-	res, err := h.search.Search(r.Context(), viewer, req.Q, filter, req.Resolve, req.Limit)
+	res, err := h.search.Search(r.Context(), viewer, req.Q, filter, req.Resolve, false, req.Limit, 0)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return

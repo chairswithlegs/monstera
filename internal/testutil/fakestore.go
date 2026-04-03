@@ -418,7 +418,7 @@ func (f *FakeStore) GetRemoteAccountByUsername(ctx context.Context, username str
 	return &out, nil
 }
 
-func (f *FakeStore) SearchAccounts(ctx context.Context, query string, limit int) ([]*domain.Account, error) {
+func (f *FakeStore) SearchAccounts(ctx context.Context, query string, limit, offset int) ([]*domain.Account, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	query = strings.ToLower(query)
@@ -441,21 +441,61 @@ func (f *FakeStore) SearchAccounts(ctx context.Context, query string, limit int)
 			}
 		}
 	}
+	local = append(local, remote...)
+	if offset >= len(local) {
+		return []*domain.Account{}, nil
+	}
+	local = local[offset:]
 	out := make([]*domain.Account, 0, limit)
 	for _, a := range local {
 		if len(out) >= limit {
 			break
 		}
 		acc := *a
-
 		out = append(out, &acc)
 	}
-	for _, a := range remote {
+	return out, nil
+}
+
+func (f *FakeStore) SearchAccountsFollowing(ctx context.Context, viewerID, query string, limit, offset int) ([]*domain.Account, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	query = strings.ToLower(query)
+	var local, remote []*domain.Account
+	for _, a := range f.accountsByID {
+		if _, suspended := f.suspendedAccountIDs[a.ID]; suspended {
+			continue
+		}
+		key := viewerID + ":" + a.ID
+		fol, ok := f.followsByKey[key]
+		if !ok || fol.State != domain.FollowStateAccepted {
+			continue
+		}
+		var acct string
+		if a.Domain != nil && *a.Domain != "" {
+			acct = strings.ToLower(a.Username + "@" + *a.Domain)
+		} else {
+			acct = strings.ToLower(a.Username)
+		}
+		if strings.HasPrefix(acct, query) {
+			if a.Domain == nil || *a.Domain == "" {
+				local = append(local, a)
+			} else {
+				remote = append(remote, a)
+			}
+		}
+	}
+	local = append(local, remote...)
+	if offset >= len(local) {
+		return []*domain.Account{}, nil
+	}
+	local = local[offset:]
+	out := make([]*domain.Account, 0, limit)
+	for _, a := range local {
 		if len(out) >= limit {
 			break
 		}
 		acc := *a
-
 		out = append(out, &acc)
 	}
 	return out, nil
