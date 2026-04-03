@@ -64,7 +64,6 @@ All configuration is via environment variables (12-factor).
 | `APP_ENV` | `development` or `production` | `development` |
 | `APP_PORT` | HTTP listen port | `8080` |
 | `MONSTERA_SERVER_URL` | Base URL for ActivityPub IRIs (e.g. `https://api.example.com`). Defaults to `https://{MONSTERA_INSTANCE_DOMAIN}`. Set this when your API server lives on a different hostname than your handle domain. | — |
-| `INSTANCE_NAME` | Instance display name | `Monstera` |
 | `LOG_LEVEL` | `debug`, `info`, `warn`, or `error` | `info` |
 | `METRICS_TOKEN` | Bearer token for `/metrics` endpoint (empty = no auth) | — |
 | `VERSION` | App version string | `0.0.0-dev` |

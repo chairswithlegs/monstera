@@ -28,6 +28,7 @@ type searchRequest struct {
 	Type    string
 	Resolve bool
 	Limit   int
+	Offset  int
 }
 
 func parseSearchRequest(r *http.Request) (*searchRequest, error) {
@@ -48,7 +49,8 @@ func parseSearchRequest(r *http.Request) (*searchRequest, error) {
 		}
 		limit = n
 	}
-	return &searchRequest{Q: q, Type: typ, Resolve: resolve, Limit: limit}, nil
+	offset := parseOffsetParam(r)
+	return &searchRequest{Q: q, Type: typ, Resolve: resolve, Limit: limit, Offset: offset}, nil
 }
 
 func mapTypeToSearchType(typ string) service.SearchType {
@@ -73,9 +75,11 @@ func (h *SearchHandler) GETAccountsSearch(w http.ResponseWriter, r *http.Request
 		return
 	}
 	resolve := api.QueryParamIsTrue(r, "resolve")
+	following := api.QueryParamIsTrue(r, "following")
 	limit := parseLimitParam(r, DefaultListLimit, MaxListLimit)
+	offset := parseOffsetParam(r)
 	viewer := middleware.AccountFromContext(r.Context())
-	res, err := h.search.Search(r.Context(), viewer, q, service.SearchTypeAccounts, resolve, limit)
+	res, err := h.search.Search(r.Context(), viewer, q, service.SearchTypeAccounts, resolve, following, limit, offset)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -96,7 +100,7 @@ func (h *SearchHandler) GETSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	viewer := middleware.AccountFromContext(r.Context())
 	filter := mapTypeToSearchType(req.Type)
-	res, err := h.search.Search(r.Context(), viewer, req.Q, filter, req.Resolve, req.Limit)
+	res, err := h.search.Search(r.Context(), viewer, req.Q, filter, req.Resolve, false, req.Limit, req.Offset)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return

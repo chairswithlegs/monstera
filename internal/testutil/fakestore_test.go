@@ -182,7 +182,7 @@ func TestAccountSearch(t *testing.T) {
 	_, err = f.CreateAccount(ctx, makeAccountInput("beta"))
 	require.NoError(t, err)
 
-	results, err := f.SearchAccounts(ctx, "alpha", 10)
+	results, err := f.SearchAccounts(ctx, "alpha", 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, results, 2)
 }

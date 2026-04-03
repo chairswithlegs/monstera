@@ -80,7 +80,7 @@ func TestIntegration_AccountStore(t *testing.T) {
 
 	t.Run("SearchAccounts", func(t *testing.T) {
 		acc := createTestLocalAccount(t, s, ctx)
-		results, err := s.SearchAccounts(ctx, acc.Username, 10)
+		results, err := s.SearchAccounts(ctx, acc.Username, 10, 0)
 		require.NoError(t, err)
 		assert.NotEmpty(t, results)
 
@@ -92,6 +92,36 @@ func TestIntegration_AccountStore(t *testing.T) {
 			}
 		}
 		assert.True(t, found, "expected account %s in search results", acc.ID)
+
+		// offset skips past the first result
+		skipped, err := s.SearchAccounts(ctx, acc.Username, 10, 1000)
+		require.NoError(t, err)
+		assert.Empty(t, skipped)
+	})
+
+	t.Run("SearchAccountsFollowing", func(t *testing.T) {
+		viewer := createTestLocalAccount(t, s, ctx)
+		followed := createTestLocalAccount(t, s, ctx)
+		notFollowed := createTestLocalAccount(t, s, ctx)
+
+		_, err := s.CreateFollow(ctx, store.CreateFollowInput{
+			ID:        uid.New(),
+			AccountID: viewer.ID,
+			TargetID:  followed.ID,
+			State:     domain.FollowStateAccepted,
+		})
+		require.NoError(t, err)
+
+		// Search by a prefix that matches both followed and notFollowed
+		results, err := s.SearchAccountsFollowing(ctx, viewer.ID, followed.Username, 10, 0)
+		require.NoError(t, err)
+
+		ids := make([]string, 0, len(results))
+		for _, r := range results {
+			ids = append(ids, r.ID)
+		}
+		assert.Contains(t, ids, followed.ID, "expected followed account in results")
+		assert.NotContains(t, ids, notFollowed.ID, "expected non-followed account excluded")
 	})
 
 	t.Run("UpdateAccount", func(t *testing.T) {

@@ -1,6 +1,7 @@
 package mastodon
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/chairswithlegs/monstera/internal/api"
@@ -96,22 +97,22 @@ type InstanceResponse struct {
 // InstanceHandler handles instance metadata endpoints.
 type InstanceHandler struct {
 	instanceDomain     string
-	instanceName       string
 	maxStatusChars     int
 	mediaMaxBytes      int64
 	supportedMimeTypes []string
 	instanceSvc        service.InstanceService
+	settingsSvc        service.MonsteraSettingsService
 }
 
 // NewInstanceHandler returns a new InstanceHandler. instanceSvc is used for v1 stats; may be nil for tests that only need v2.
-func NewInstanceHandler(instanceDomain, instanceName string, maxStatusChars int, mediaMaxBytes int64, supportedMimeTypes []string, instanceSvc service.InstanceService) *InstanceHandler {
+func NewInstanceHandler(instanceDomain string, maxStatusChars int, mediaMaxBytes int64, supportedMimeTypes []string, instanceSvc service.InstanceService, settingsSvc service.MonsteraSettingsService) *InstanceHandler {
 	return &InstanceHandler{
 		instanceDomain:     instanceDomain,
-		instanceName:       instanceName,
 		maxStatusChars:     maxStatusChars,
 		mediaMaxBytes:      mediaMaxBytes,
 		supportedMimeTypes: supportedMimeTypes,
 		instanceSvc:        instanceSvc,
+		settingsSvc:        settingsSvc,
 	}
 }
 
@@ -128,9 +129,17 @@ func (h *InstanceHandler) GETInstanceV1(w http.ResponseWriter, r *http.Request) 
 			stats.DomainCount = s.DomainCount
 		}
 	}
+
+	settings, err := h.settingsSvc.Get(r.Context())
+	if err != nil {
+		slog.WarnContext(r.Context(), "failed to get settings", slog.Any("error", err))
+		api.HandleError(w, r, api.ErrInternalServerError)
+		return
+	}
+
 	resp := InstanceV1Response{
 		URI:              h.instanceDomain,
-		Title:            h.instanceName,
+		Title:            *settings.ServerName,
 		ShortDescription: "",
 		Description:      "",
 		Email:            "",
@@ -152,9 +161,17 @@ func (h *InstanceHandler) GETInstance(w http.ResponseWriter, r *http.Request) {
 	if mimeTypes == nil {
 		mimeTypes = []string{"image/jpeg", "image/png", "image/gif", "image/webp"}
 	}
+
+	settings, err := h.settingsSvc.Get(r.Context())
+	if err != nil {
+		slog.WarnContext(r.Context(), "failed to get settings", slog.Any("error", err))
+		api.HandleError(w, r, api.ErrInternalServerError)
+		return
+	}
+
 	resp := InstanceResponse{
 		Domain:      h.instanceDomain,
-		Title:       h.instanceName,
+		Title:       *settings.ServerName,
 		Version:     instanceVersion,
 		SourceURL:   "",
 		Description: "",

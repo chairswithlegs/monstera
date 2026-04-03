@@ -1,7 +1,3 @@
-# Task tracking
-
-At the start of each session, check TaskList for pending work items. If such a task exists, ask the user if you should begin working on it.
-
 # Monstera Project
 
 Monstera is a self-hosted **ActivityPub server** written in Go 1.26 that exposes a **Mastodon-compatible REST API**. Any Mastodon client (Ivory, Tusky, Elk, Mona, etc.) connects without modification.
@@ -95,7 +91,7 @@ Use the standard library `log/slog` **exported package-level functions** only. D
 
 ## Lint, Test, and Format After Code Changes
 
-After editing code, run the linter and unit tests before considering the change done.
+After finishing a code change, run the linter and unit tests before considering the change done.
 
 If the changes touch any integration points, run the integration tests as well.
 
@@ -136,7 +132,7 @@ Fix all linter findings and failing tests before considering the change done. Do
 - Call `t.Helper()` in any helper that calls `t.Fatal`/`t.Error`/`require`/`assert`.
 - Mark tests with no shared mutable state as `t.Parallel()`.
 - HTTP handler tests use `net/http/httptest`.
-- Prefer hand-written fakes for simple interfaces; use testify mock when asserting call order or arguments.
+- Prefer hand-written fakes for simple interfaces; use testify mock when mocking non-trivial interfaces.
 - Do not use `t.Skip()` — all unit tests must run under `make test`; all integration tests must run under `make test-integration`.
 
 ---
@@ -181,13 +177,6 @@ api.WriteJSON(w, http.StatusOK, result)
 
 ---
 
-### Other rules
-
-- Follow existing project rules in this file and in the relevant subdirectory CLAUDE.md files.
-- When in doubt, match the plan's **Convention** and **Steps** for that section.
-
----
-
 ## Skills and Commands
 
 Available custom commands (invoke with `/command-name`):
@@ -203,16 +192,4 @@ Available custom commands (invoke with `/command-name`):
 | `/repository-documentation` | Create or update documentation |
 | `/vercel-react-best-practices` | React/Next.js performance optimization |
 
-Check the table above before outlining steps or writing code. If a command matches, invoke it early. Do not mention a command without using it.
-
----
-
-## Subdirectory Rules
-
-- `internal/CLAUDE.md` — interface/implementation pattern
-- `internal/store/CLAUDE.md` — database store layer
-- `internal/service/CLAUDE.md` — service layer
-- `internal/api/CLAUDE.md` — API handler patterns
-- `internal/api/mastodon/CLAUDE.md` — Mastodon REST API handlers
-- `internal/activitypub/CLAUDE.md` — ActivityPub & federation
-- `ui/CLAUDE.md` — Next.js development
+Check the table above before outlining steps or writing code. If a command matches, invoke it early.

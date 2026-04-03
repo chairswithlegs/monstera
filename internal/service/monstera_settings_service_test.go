@@ -21,7 +21,7 @@ func TestMonsteraSettingsService_Get_default(t *testing.T) {
 
 	settings, err := svc.Get(ctx)
 	require.NoError(t, err)
-	expected := domain.MonsteraSettings{RegistrationMode: domain.MonsteraRegistrationModeOpen}
+	expected := domain.MonsteraSettings{RegistrationMode: domain.MonsteraRegistrationModeOpen, ServerName: ptr("Monstera")}
 	assert.Equal(t, expected, settings)
 }
 
@@ -36,7 +36,7 @@ func TestMonsteraSettingsService_Get_after_update(t *testing.T) {
 
 	settings, err := svc.Get(ctx)
 	require.NoError(t, err)
-	expected := domain.MonsteraSettings{RegistrationMode: domain.MonsteraRegistrationModeApproval}
+	expected := domain.MonsteraSettings{RegistrationMode: domain.MonsteraRegistrationModeApproval, ServerName: ptr("Monstera")}
 	assert.Equal(t, expected, settings)
 }
 
@@ -64,11 +64,11 @@ func TestMonsteraSettingsService_Update_all_modes(t *testing.T) {
 		domain.MonsteraRegistrationModeClosed,
 	}
 	for _, mode := range modes {
-		expected := domain.MonsteraSettings{RegistrationMode: mode}
-		err := svc.Update(ctx, expected)
+		err := svc.Update(ctx, domain.MonsteraSettings{RegistrationMode: mode})
 		require.NoError(t, err)
 		settings, err := svc.Get(ctx)
 		require.NoError(t, err)
+		expected := domain.MonsteraSettings{RegistrationMode: mode, ServerName: ptr("Monstera")}
 		assert.Equal(t, expected, settings)
 	}
 }
@@ -85,7 +85,7 @@ func TestMonsteraSettingsService_Update_server_name_validation(t *testing.T) {
 		wantErr    bool
 	}{
 		{"nil", nil, false},
-		{"empty", ptr(""), false},
+		{"empty", ptr(""), true},
 		{"short", ptr("My Server"), false},
 		{"exactly 24 chars", ptr(exactly24), false},
 		{"25 chars", ptr(tooLong), true},

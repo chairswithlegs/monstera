@@ -242,6 +242,7 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 	interactionSvc := service.NewStatusInteractionService(i.store, statusSvc, instanceBaseURL)
 	remoteStatusWriteSvc := service.NewRemoteStatusWriteService(i.store, conversationSvc, mediaSvc, instanceBaseURL)
 	scheduledSvc := service.NewScheduledStatusService(i.store, statusWriteSvc)
+	monsteraSettingsSvc := service.NewMonsteraSettingsService(i.store)
 
 	return &svcs{
 		account:            accountSvc,
@@ -264,7 +265,7 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 		trends:             service.NewTrendsService(i.store, statusSvc),
 		card:               service.NewCardService(i.store),
 		auth:               service.NewAuthService(i.store, monsteraUIHost, oauth.MONSTERA_UI_APPLICATION_ID),
-		monsteraSettings:   service.NewMonsteraSettingsService(i.store),
+		monsteraSettings:   monsteraSettingsSvc,
 		moderation:         service.NewModerationService(i.store),
 		adminMetrics:       service.NewAdminMetricsService(i.store, i.nats.JS, i.cache, ap.StreamOutboxDeliveryDLQ, ap.StreamOutboxFanoutDLQ),
 		list:               service.NewListService(i.store),
@@ -272,7 +273,7 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 		filter:             service.NewFilterService(i.store),
 		marker:             service.NewMarkerService(i.store),
 		featuredTag:        service.NewFeaturedTagService(i.store),
-		registration:       service.NewRegistrationService(i.store, mailer, mailer, instanceBaseURL, cfg.InstanceName),
+		registration:       service.NewRegistrationService(i.store, mailer, mailer, instanceBaseURL, monsteraSettingsSvc),
 		serverFilter:       service.NewServerFilterService(i.store),
 		announcement:       service.NewAnnouncementService(i.store),
 		pushSubscription:   service.NewPushSubscriptionService(i.store),
@@ -399,7 +400,7 @@ func createRouter(cfg *config.Config, s *svcs, i *infra, sseHub *sse.Hub) http.H
 		ScheduledStatuses:      mastodon.NewScheduledStatusesHandler(s.statusRead, s.scheduled, cfg.MonsteraInstanceDomain),
 		Polls:                  mastodon.NewPollsHandler(s.statusRead, s.statusInteraction),
 		Timelines:              mastodon.NewTimelinesHandler(s.timeline, cfg.MonsteraInstanceDomain),
-		Instance:               mastodon.NewInstanceHandler(cfg.MonsteraInstanceDomain, cfg.InstanceName, cfg.MaxStatusChars, cfg.MediaMaxBytes, nil, s.instance),
+		Instance:               mastodon.NewInstanceHandler(cfg.MonsteraInstanceDomain, cfg.MaxStatusChars, cfg.MediaMaxBytes, nil, s.instance, s.monsteraSettings),
 		Trends:                 mastodon.NewTrendsHandler(s.trends, s.tagFollow, cfg.MonsteraInstanceDomain),
 		Conversations:          mastodon.NewConversationsHandler(s.conversation, cfg.MonsteraInstanceDomain),
 		Suggestions:            mastodon.NewSuggestionsHandler(),

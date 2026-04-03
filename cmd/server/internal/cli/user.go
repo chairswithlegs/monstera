@@ -58,7 +58,7 @@ func runUserCreate(cmd *cobra.Command, args []string) error {
 	s := postgres.New(pool)
 	instanceBaseURL := "https://" + cfg.MonsteraInstanceDomain
 	accountSvc := service.NewAccountService(s, instanceBaseURL)
-	registrationSvc := service.NewRegistrationService(s, nil, nil, instanceBaseURL, cfg.InstanceName)
+	registrationSvc := service.NewRegistrationService(s, nil, nil, instanceBaseURL, nil)
 
 	// Validate that the user doesn't already exist
 	acc, err := accountSvc.GetByUsername(ctx, username, nil)

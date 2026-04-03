@@ -9,8 +9,19 @@ import (
 	"github.com/chairswithlegs/monstera/internal/store"
 )
 
+const defaultServerName = "Monstera"
+
 var defaultMonsteraSettings = domain.MonsteraSettings{
 	RegistrationMode: domain.MonsteraRegistrationModeClosed,
+}
+
+// applyServerNameDefault fills in the default server name when none has been configured.
+func applyServerNameDefault(s domain.MonsteraSettings) domain.MonsteraSettings {
+	if s.ServerName == nil {
+		name := defaultServerName
+		s.ServerName = &name
+	}
+	return s
 }
 
 // MonsteraSettingsService provides read/write access to server-wide Monstera settings.
@@ -28,16 +39,17 @@ func NewMonsteraSettingsService(s store.Store) MonsteraSettingsService {
 	return &monsteraSettingsService{store: s}
 }
 
-// Get returns the current Monstera settings. If none exist, returns a default (open registration).
+// Get returns the current Monstera settings. If none exist, returns a default.
+// ServerName is always non-nil; if unset in the store it defaults to "Monstera".
 func (svc *monsteraSettingsService) Get(ctx context.Context) (domain.MonsteraSettings, error) {
 	settings, err := svc.store.GetMonsteraSettings(ctx)
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
-		return defaultMonsteraSettings, fmt.Errorf("GetMonsteraSettings: %w", err)
+		return applyServerNameDefault(defaultMonsteraSettings), fmt.Errorf("GetMonsteraSettings: %w", err)
 	}
 	if settings == nil {
-		return defaultMonsteraSettings, nil
+		return applyServerNameDefault(defaultMonsteraSettings), nil
 	}
-	return *settings, nil
+	return applyServerNameDefault(*settings), nil
 }
 
 // Update validates and persists the given settings.
@@ -58,8 +70,13 @@ func validateMonsteraSettings(s domain.MonsteraSettings) error {
 	default:
 		return fmt.Errorf("invalid registration_mode %q: %w", s.RegistrationMode, domain.ErrValidation)
 	}
-	if s.ServerName != nil && len(*s.ServerName) > 24 {
-		return fmt.Errorf("server_name must be 24 characters or fewer: %w", domain.ErrValidation)
+	if s.ServerName != nil {
+		if *s.ServerName == "" {
+			return fmt.Errorf("server_name must not be empty: %w", domain.ErrValidation)
+		}
+		if len(*s.ServerName) > 24 {
+			return fmt.Errorf("server_name must be 24 characters or fewer: %w", domain.ErrValidation)
+		}
 	}
 	return nil
 }

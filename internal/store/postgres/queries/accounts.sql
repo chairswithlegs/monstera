@@ -104,7 +104,22 @@ WHERE suspended = FALSE
     OR (domain IS NOT NULL AND LOWER(username) || '@' || LOWER(COALESCE(domain, '')) LIKE LOWER($1) || '%')
   )
 ORDER BY (domain IS NOT NULL), username
-LIMIT $2;
+LIMIT $2
+OFFSET $3;
+
+-- name: SearchAccountsFollowing :many
+SELECT a.* FROM accounts a
+INNER JOIN follows f ON f.target_id = a.id
+WHERE f.account_id = $1
+  AND a.suspended = FALSE
+  AND f.state = 'accepted'
+  AND (
+    LOWER(a.username) LIKE LOWER($2) || '%'
+    OR (a.domain IS NOT NULL AND LOWER(a.username) || '@' || LOWER(COALESCE(a.domain, '')) LIKE LOWER($2) || '%')
+  )
+ORDER BY (a.domain IS NOT NULL), a.username
+LIMIT $3
+OFFSET $4;
 
 -- name: ListDirectoryAccounts :many
 SELECT * FROM accounts

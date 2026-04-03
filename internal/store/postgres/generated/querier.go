@@ -276,6 +276,7 @@ type Querier interface {
 	RevokeAllAccessTokensForAccount(ctx context.Context, accountID *string) error
 	RevokeQuote(ctx context.Context, arg RevokeQuoteParams) (string, error)
 	SearchAccounts(ctx context.Context, arg SearchAccountsParams) ([]Account, error)
+	SearchAccountsFollowing(ctx context.Context, arg SearchAccountsFollowingParams) ([]Account, error)
 	SearchHashtagsByPrefix(ctx context.Context, arg SearchHashtagsByPrefixParams) ([]Hashtag, error)
 	SetMarker(ctx context.Context, arg SetMarkerParams) error
 	SetStatusConversationID(ctx context.Context, arg SetStatusConversationIDParams) error

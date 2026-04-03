@@ -37,7 +37,7 @@ type WebFingerResolver interface {
 
 // SearchService orchestrates account search, hashtag search, and optional remote account resolution.
 type SearchService interface {
-	Search(ctx context.Context, viewer *domain.Account, q string, filter SearchType, resolve bool, limit int) (*SearchResult, error)
+	Search(ctx context.Context, viewer *domain.Account, q string, filter SearchType, resolve bool, following bool, limit, offset int) (*SearchResult, error)
 }
 
 type searchService struct {
@@ -56,7 +56,8 @@ var acctPattern = regexp.MustCompile(`^[a-zA-Z0-9_]+@[a-zA-Z0-9][a-zA-Z0-9.-]*[a
 
 // Search runs account and/or hashtag search and optionally resolves a remote account by acct.
 // viewer may be nil (unauthenticated). limit is clamped by the handler; Phase 1 statuses are always empty.
-func (svc *searchService) Search(ctx context.Context, viewer *domain.Account, q string, filter SearchType, resolve bool, limit int) (*SearchResult, error) {
+// When following is true and viewer is non-nil, results are restricted to accounts the viewer follows.
+func (svc *searchService) Search(ctx context.Context, viewer *domain.Account, q string, filter SearchType, resolve bool, following bool, limit, offset int) (*SearchResult, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
 		return &SearchResult{
@@ -77,13 +78,22 @@ func (svc *searchService) Search(ctx context.Context, viewer *domain.Account, q 
 	wantHashtags := filter == SearchTypeHashtags || filter == SearchTypeAll
 
 	if wantAccounts {
-		accounts, err := svc.searchAccounts(ctx, q, limit)
-		if err != nil {
-			return nil, err
+		var accounts []*domain.Account
+		var err error
+		if following && viewer != nil {
+			accounts, err = svc.store.SearchAccountsFollowing(ctx, viewer.ID, q, limit, offset)
+			if err != nil {
+				return nil, fmt.Errorf("SearchAccountsFollowing: %w", err)
+			}
+		} else {
+			accounts, err = svc.searchAccounts(ctx, q, limit, offset)
+			if err != nil {
+				return nil, err
+			}
 		}
 		out.Accounts = accounts
 
-		if resolve && acctPattern.MatchString(q) {
+		if !following && resolve && acctPattern.MatchString(q) {
 			out.Accounts = svc.resolveAndMergeAccount(ctx, q, out.Accounts, limit)
 		}
 	}
@@ -100,8 +110,8 @@ func (svc *searchService) Search(ctx context.Context, viewer *domain.Account, q 
 }
 
 // searchAccounts queries the store for accounts matching q.
-func (svc *searchService) searchAccounts(ctx context.Context, q string, limit int) ([]*domain.Account, error) {
-	accounts, err := svc.store.SearchAccounts(ctx, q, limit)
+func (svc *searchService) searchAccounts(ctx context.Context, q string, limit, offset int) ([]*domain.Account, error) {
+	accounts, err := svc.store.SearchAccounts(ctx, q, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("SearchAccounts: %w", err)
 	}

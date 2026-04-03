@@ -24,7 +24,7 @@ const testInstanceURL = "https://example.com"
 func TestModeratorRegistrationsHandler_GETRegistrations(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
-	regSvc := service.NewRegistrationService(st, nil, nil, testInstanceURL, "Example")
+	regSvc := service.NewRegistrationService(st, nil, nil, testInstanceURL, nil)
 	handler := NewModeratorRegistrationsHandler(regSvc)
 
 	t.Run("returns 200 and pending list", func(t *testing.T) {
@@ -42,7 +42,7 @@ func TestModeratorRegistrationsHandler_POSTApprove(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
-	regSvc := service.NewRegistrationService(st, nil, nil, testInstanceURL, "Example")
+	regSvc := service.NewRegistrationService(st, nil, nil, testInstanceURL, nil)
 	handler := NewModeratorRegistrationsHandler(regSvc)
 	adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
 	adminUser := getUserByAccountID(t, st, adminAcc.ID)
@@ -92,7 +92,7 @@ func TestModeratorRegistrationsHandler_POSTReject(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
-	regSvc := service.NewRegistrationService(st, nil, nil, testInstanceURL, "Example")
+	regSvc := service.NewRegistrationService(st, nil, nil, testInstanceURL, nil)
 	handler := NewModeratorRegistrationsHandler(regSvc)
 	adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
 	adminUser := getUserByAccountID(t, st, adminAcc.ID)
