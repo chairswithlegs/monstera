@@ -29,7 +29,7 @@ func (s *stubSettingsService) Update(_ context.Context, _ domain.MonsteraSetting
 
 func TestInstanceHandler_GetInstance(t *testing.T) {
 	t.Parallel()
-	name := "Example Instance"
+	name := "Example Instance" //nolint:goconst
 	handler := NewInstanceHandler("example.com", 500, 10<<20, []string{"image/jpeg", "image/png"}, nil, &stubSettingsService{serverName: &name})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v2/instance", nil)
@@ -51,7 +51,7 @@ func TestInstanceHandler_GetInstance(t *testing.T) {
 
 func TestInstanceHandler_GetInstance_default_mime_types(t *testing.T) {
 	t.Parallel()
-	name := "Test Instance"
+	name := "Test Instance" //nolint:goconst
 	handler := NewInstanceHandler("test.com", 500, 5<<20, nil, nil, &stubSettingsService{serverName: &name})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v2/instance", nil)
@@ -67,7 +67,7 @@ func TestInstanceHandler_GetInstance_default_mime_types(t *testing.T) {
 
 func TestInstanceHandler_GETInstanceV1(t *testing.T) {
 	t.Parallel()
-	name := "Example Instance"
+	name := "Example Instance" //nolint:goconst
 	handler := NewInstanceHandler("example.com", 500, 10<<20, nil, nil, &stubSettingsService{serverName: &name})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/instance", nil)
@@ -112,7 +112,7 @@ func TestInstanceHandler_GETInstanceV1_with_stats(t *testing.T) {
 		StatusCount: 100,
 		DomainCount: 5,
 	}}
-	name := "Example Instance"
+	name := "Example Instance" //nolint:goconst
 	handler := NewInstanceHandler("example.com", 500, 10<<20, nil, svc, &stubSettingsService{serverName: &name})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/instance", nil)

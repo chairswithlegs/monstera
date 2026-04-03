@@ -112,7 +112,7 @@ func (svc *registrationService) Approve(ctx context.Context, moderatorID, userID
 	if svc.approvedMail != nil {
 		settings, err := svc.settingsSvc.Get(ctx)
 		if err != nil {
-			return fmt.Errorf("Error getting settings: %w", err)
+			return fmt.Errorf("error getting settings: %w", err)
 		}
 		if err := svc.approvedMail.SendAccountApproved(ctx, u.Email, acc.Username, *settings.ServerName, svc.instanceURL); err != nil {
 			return fmt.Errorf("SendAccountApproved: %w", err)
@@ -134,7 +134,7 @@ func (svc *registrationService) Reject(ctx context.Context, moderatorID, userID,
 	if svc.rejectedMail != nil {
 		settings, err := svc.settingsSvc.Get(ctx)
 		if err != nil {
-			return fmt.Errorf("Error getting settings: %w", err)
+			return fmt.Errorf("error getting settings: %w", err)
 		}
 		if err := svc.rejectedMail.SendRegistrationRejected(ctx, u.Email, acc.Username, *settings.ServerName, reason); err != nil {
 			return fmt.Errorf("SendRegistrationRejected: %w", err)
