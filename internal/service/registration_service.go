@@ -49,7 +49,6 @@ type registrationService struct {
 
 // NewRegistrationService returns a RegistrationService that uses the given store.
 // approvedMail and rejectedMail can be nil to skip sending emails.
-// settingsSvc is used to resolve the instance title for emails; may be nil to fall back to the default name.
 func NewRegistrationService(s store.Store, approvedMail AccountApprovedMailer, rejectedMail RegistrationRejectedMailer, instanceURL string, settingsSvc MonsteraSettingsService) RegistrationService {
 	return &registrationService{
 		store:        s,
@@ -58,17 +57,6 @@ func NewRegistrationService(s store.Store, approvedMail AccountApprovedMailer, r
 		instanceURL:  instanceURL,
 		settingsSvc:  settingsSvc,
 	}
-}
-
-// resolveInstanceName returns the configured server name, falling back to the default.
-func (svc *registrationService) resolveInstanceName(ctx context.Context) string {
-	if svc.settingsSvc != nil {
-		settings, err := svc.settingsSvc.Get(ctx)
-		if err == nil {
-			return *settings.ServerName
-		}
-	}
-	return defaultServerName
 }
 
 // Confirm marks a user as confirmed.
@@ -122,7 +110,11 @@ func (svc *registrationService) Approve(ctx context.Context, moderatorID, userID
 		return fmt.Errorf("CreateAdminAction: %w", err)
 	}
 	if svc.approvedMail != nil {
-		if err := svc.approvedMail.SendAccountApproved(ctx, u.Email, acc.Username, svc.resolveInstanceName(ctx), svc.instanceURL); err != nil {
+		settings, err := svc.settingsSvc.Get(ctx)
+		if err != nil {
+			return fmt.Errorf("Error getting settings: %w", err)
+		}
+		if err := svc.approvedMail.SendAccountApproved(ctx, u.Email, acc.Username, *settings.ServerName, svc.instanceURL); err != nil {
 			return fmt.Errorf("SendAccountApproved: %w", err)
 		}
 	}
@@ -140,7 +132,11 @@ func (svc *registrationService) Reject(ctx context.Context, moderatorID, userID,
 		return fmt.Errorf("GetAccountByID(%s): %w", u.AccountID, err)
 	}
 	if svc.rejectedMail != nil {
-		if err := svc.rejectedMail.SendRegistrationRejected(ctx, u.Email, acc.Username, svc.resolveInstanceName(ctx), reason); err != nil {
+		settings, err := svc.settingsSvc.Get(ctx)
+		if err != nil {
+			return fmt.Errorf("Error getting settings: %w", err)
+		}
+		if err := svc.rejectedMail.SendRegistrationRejected(ctx, u.Email, acc.Username, *settings.ServerName, reason); err != nil {
 			return fmt.Errorf("SendRegistrationRejected: %w", err)
 		}
 	}

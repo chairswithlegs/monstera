@@ -51,7 +51,8 @@ func TestInstanceHandler_GetInstance(t *testing.T) {
 
 func TestInstanceHandler_GetInstance_default_mime_types(t *testing.T) {
 	t.Parallel()
-	handler := NewInstanceHandler("test.com", 500, 5<<20, nil, nil, nil)
+	name := "Test Instance"
+	handler := NewInstanceHandler("test.com", 500, 5<<20, nil, nil, &stubSettingsService{serverName: &name})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v2/instance", nil)
 	rec := httptest.NewRecorder()
@@ -111,7 +112,8 @@ func TestInstanceHandler_GETInstanceV1_with_stats(t *testing.T) {
 		StatusCount: 100,
 		DomainCount: 5,
 	}}
-	handler := NewInstanceHandler("example.com", 500, 10<<20, nil, svc, nil)
+	name := "Example Instance"
+	handler := NewInstanceHandler("example.com", 500, 10<<20, nil, svc, &stubSettingsService{serverName: &name})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/instance", nil)
 	rec := httptest.NewRecorder()

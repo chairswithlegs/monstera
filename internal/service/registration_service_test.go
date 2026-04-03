@@ -99,7 +99,8 @@ func TestRegistrationService_Approve(t *testing.T) {
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
 		mailer := &fakeApprovedMailer{}
-		svc := NewRegistrationService(fake, mailer, nil, "https://example.com", nil)
+		settingsSvc := NewMonsteraSettingsService(fake)
+		svc := NewRegistrationService(fake, mailer, nil, "https://example.com", settingsSvc)
 
 		u, _ := seedUnconfirmedUser(t, fake)
 		moderatorAcc := seedModerator(t, fake)
@@ -118,7 +119,8 @@ func TestRegistrationService_Approve(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
-		svc := NewRegistrationService(fake, nil, nil, "https://example.com", nil)
+		settingsSvc := NewMonsteraSettingsService(fake)
+		svc := NewRegistrationService(fake, nil, nil, "https://example.com", settingsSvc)
 
 		u, _ := seedUnconfirmedUser(t, fake)
 		moderatorAcc := seedModerator(t, fake)
@@ -151,7 +153,8 @@ func TestRegistrationService_Reject(t *testing.T) {
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
 		mailer := &fakeRejectedMailer{}
-		svc := NewRegistrationService(fake, nil, mailer, "https://example.com", nil)
+		settingsSvc := NewMonsteraSettingsService(fake)
+		svc := NewRegistrationService(fake, nil, mailer, "https://example.com", settingsSvc)
 
 		u, acc := seedUnconfirmedUser(t, fake)
 		moderatorAcc := seedModerator(t, fake)
@@ -173,7 +176,8 @@ func TestRegistrationService_Reject(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
-		svc := NewRegistrationService(fake, nil, nil, "https://example.com", nil)
+		settingsSvc := NewMonsteraSettingsService(fake)
+		svc := NewRegistrationService(fake, nil, nil, "https://example.com", settingsSvc)
 
 		u, _ := seedUnconfirmedUser(t, fake)
 		moderatorAcc := seedModerator(t, fake)
@@ -190,7 +194,8 @@ func TestRegistrationService_CreateInvite(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
-		svc := NewRegistrationService(fake, nil, nil, "https://example.com", nil)
+		settingsSvc := NewMonsteraSettingsService(fake)
+		svc := NewRegistrationService(fake, nil, nil, "https://example.com", settingsSvc)
 
 		inv, err := svc.CreateInvite(ctx, "user-1", nil, nil)
 		require.NoError(t, err)
@@ -219,7 +224,8 @@ func TestRegistrationService_CreateInvite(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
-		svc := NewRegistrationService(fake, nil, nil, "https://example.com", nil)
+		settingsSvc := NewMonsteraSettingsService(fake)
+		svc := NewRegistrationService(fake, nil, nil, "https://example.com", settingsSvc)
 
 		exp := time.Now().Add(24 * time.Hour)
 		inv, err := svc.CreateInvite(ctx, "user-1", nil, &exp)
