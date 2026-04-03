@@ -40,23 +40,32 @@ type RegistrationRejectedMailer interface {
 }
 
 type registrationService struct {
-	store        store.Store
-	approvedMail AccountApprovedMailer
-	rejectedMail RegistrationRejectedMailer
-	instanceURL  string
-	instanceName string
+	store          store.Store
+	approvedMail   AccountApprovedMailer
+	rejectedMail   RegistrationRejectedMailer
+	instanceURL    string
+	instanceDomain string
 }
 
 // NewRegistrationService returns a RegistrationService that uses the given store.
 // approvedMail and rejectedMail can be nil to skip sending emails.
-func NewRegistrationService(s store.Store, approvedMail AccountApprovedMailer, rejectedMail RegistrationRejectedMailer, instanceURL, instanceName string) RegistrationService {
+func NewRegistrationService(s store.Store, approvedMail AccountApprovedMailer, rejectedMail RegistrationRejectedMailer, instanceURL, instanceDomain string) RegistrationService {
 	return &registrationService{
-		store:        s,
-		approvedMail: approvedMail,
-		rejectedMail: rejectedMail,
-		instanceURL:  instanceURL,
-		instanceName: instanceName,
+		store:          s,
+		approvedMail:   approvedMail,
+		rejectedMail:   rejectedMail,
+		instanceURL:    instanceURL,
+		instanceDomain: instanceDomain,
 	}
+}
+
+// resolveInstanceName fetches the server name from settings, falling back to the instance domain.
+func (svc *registrationService) resolveInstanceName(ctx context.Context) string {
+	settings, err := svc.store.GetMonsteraSettings(ctx)
+	if err == nil && settings != nil && settings.ServerName != nil && *settings.ServerName != "" {
+		return *settings.ServerName
+	}
+	return svc.instanceDomain
 }
 
 // Confirm marks a user as confirmed.
@@ -110,7 +119,7 @@ func (svc *registrationService) Approve(ctx context.Context, moderatorID, userID
 		return fmt.Errorf("CreateAdminAction: %w", err)
 	}
 	if svc.approvedMail != nil {
-		if err := svc.approvedMail.SendAccountApproved(ctx, u.Email, acc.Username, svc.instanceName, svc.instanceURL); err != nil {
+		if err := svc.approvedMail.SendAccountApproved(ctx, u.Email, acc.Username, svc.resolveInstanceName(ctx), svc.instanceURL); err != nil {
 			return fmt.Errorf("SendAccountApproved: %w", err)
 		}
 	}
@@ -128,7 +137,7 @@ func (svc *registrationService) Reject(ctx context.Context, moderatorID, userID,
 		return fmt.Errorf("GetAccountByID(%s): %w", u.AccountID, err)
 	}
 	if svc.rejectedMail != nil {
-		if err := svc.rejectedMail.SendRegistrationRejected(ctx, u.Email, acc.Username, svc.instanceName, reason); err != nil {
+		if err := svc.rejectedMail.SendRegistrationRejected(ctx, u.Email, acc.Username, svc.resolveInstanceName(ctx), reason); err != nil {
 			return fmt.Errorf("SendRegistrationRejected: %w", err)
 		}
 	}

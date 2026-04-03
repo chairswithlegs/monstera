@@ -22,7 +22,6 @@ type Config struct {
 	MonsteraInstanceDomain string
 	MonsteraServerURL      *url.URL
 	MonsteraUIURL          *url.URL
-	InstanceName           string
 	LogLevel               string
 
 	DatabaseHost         string
@@ -85,7 +84,6 @@ func Load() (*Config, error) {
 		MonsteraInstanceDomain: envStringRequired("MONSTERA_INSTANCE_DOMAIN", &errs),
 		MonsteraUIURL:          envRequiredURL("MONSTERA_UI_URL", &errs),
 		MonsteraServerURL:      envOptionalURL("MONSTERA_SERVER_URL", &errs),
-		InstanceName:           envString("INSTANCE_NAME", "Monstera"),
 		LogLevel:               envString("LOG_LEVEL", "info"),
 
 		DatabaseHost:         envStringRequired("DATABASE_HOST", &errs),

@@ -14,9 +14,23 @@ import (
 	"github.com/chairswithlegs/monstera/internal/service"
 )
 
+// stubSettingsService is a minimal MonsteraSettingsService for testing.
+type stubSettingsService struct {
+	serverName *string
+}
+
+func (s *stubSettingsService) Get(_ context.Context) (domain.MonsteraSettings, error) {
+	return domain.MonsteraSettings{ServerName: s.serverName}, nil
+}
+
+func (s *stubSettingsService) Update(_ context.Context, _ domain.MonsteraSettings) error {
+	return nil
+}
+
 func TestInstanceHandler_GetInstance(t *testing.T) {
 	t.Parallel()
-	handler := NewInstanceHandler("example.com", "Example Instance", 500, 10<<20, []string{"image/jpeg", "image/png"}, nil)
+	name := "Example Instance"
+	handler := NewInstanceHandler("example.com", 500, 10<<20, []string{"image/jpeg", "image/png"}, nil, &stubSettingsService{serverName: &name})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v2/instance", nil)
 	rec := httptest.NewRecorder()
@@ -37,7 +51,7 @@ func TestInstanceHandler_GetInstance(t *testing.T) {
 
 func TestInstanceHandler_GetInstance_default_mime_types(t *testing.T) {
 	t.Parallel()
-	handler := NewInstanceHandler("test.com", "Test", 500, 5<<20, nil, nil)
+	handler := NewInstanceHandler("test.com", 500, 5<<20, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v2/instance", nil)
 	rec := httptest.NewRecorder()
@@ -52,7 +66,8 @@ func TestInstanceHandler_GetInstance_default_mime_types(t *testing.T) {
 
 func TestInstanceHandler_GETInstanceV1(t *testing.T) {
 	t.Parallel()
-	handler := NewInstanceHandler("example.com", "Example Instance", 500, 10<<20, nil, nil)
+	name := "Example Instance"
+	handler := NewInstanceHandler("example.com", 500, 10<<20, nil, nil, &stubSettingsService{serverName: &name})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/instance", nil)
 	rec := httptest.NewRecorder()
@@ -96,7 +111,7 @@ func TestInstanceHandler_GETInstanceV1_with_stats(t *testing.T) {
 		StatusCount: 100,
 		DomainCount: 5,
 	}}
-	handler := NewInstanceHandler("example.com", "Example", 500, 10<<20, nil, svc)
+	handler := NewInstanceHandler("example.com", 500, 10<<20, nil, svc, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/instance", nil)
 	rec := httptest.NewRecorder()
@@ -112,7 +127,7 @@ func TestInstanceHandler_GETInstanceV1_with_stats(t *testing.T) {
 
 func TestInstanceHandler_CustomEmojis(t *testing.T) {
 	t.Parallel()
-	handler := NewInstanceHandler("example.com", "Example", 500, 10<<20, nil, nil)
+	handler := NewInstanceHandler("example.com", 500, 10<<20, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/custom_emojis", nil)
 	rec := httptest.NewRecorder()

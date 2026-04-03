@@ -1,6 +1,7 @@
 package mastodon
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/chairswithlegs/monstera/internal/api"
@@ -96,26 +97,38 @@ type InstanceResponse struct {
 // InstanceHandler handles instance metadata endpoints.
 type InstanceHandler struct {
 	instanceDomain     string
-	instanceName       string
 	maxStatusChars     int
 	mediaMaxBytes      int64
 	supportedMimeTypes []string
 	instanceSvc        service.InstanceService
+	settingsSvc        service.MonsteraSettingsService
 }
 
 // NewInstanceHandler returns a new InstanceHandler. instanceSvc is used for v1 stats; may be nil for tests that only need v2.
-func NewInstanceHandler(instanceDomain, instanceName string, maxStatusChars int, mediaMaxBytes int64, supportedMimeTypes []string, instanceSvc service.InstanceService) *InstanceHandler {
+// settingsSvc is used to resolve the instance title from admin settings; may be nil to always fall back to instanceDomain.
+func NewInstanceHandler(instanceDomain string, maxStatusChars int, mediaMaxBytes int64, supportedMimeTypes []string, instanceSvc service.InstanceService, settingsSvc service.MonsteraSettingsService) *InstanceHandler {
 	return &InstanceHandler{
 		instanceDomain:     instanceDomain,
-		instanceName:       instanceName,
 		maxStatusChars:     maxStatusChars,
 		mediaMaxBytes:      mediaMaxBytes,
 		supportedMimeTypes: supportedMimeTypes,
 		instanceSvc:        instanceSvc,
+		settingsSvc:        settingsSvc,
 	}
 }
 
 const instanceVersion = "4.3.0"
+
+// instanceTitle returns the server name from settings, falling back to the instance domain.
+func (h *InstanceHandler) instanceTitle(ctx context.Context) string {
+	if h.settingsSvc != nil {
+		settings, err := h.settingsSvc.Get(ctx)
+		if err == nil && settings.ServerName != nil && *settings.ServerName != "" {
+			return *settings.ServerName
+		}
+	}
+	return h.instanceDomain
+}
 
 // GETInstanceV1 handles GET /api/v1/instance (Mastodon v1 entity shape).
 func (h *InstanceHandler) GETInstanceV1(w http.ResponseWriter, r *http.Request) {
@@ -130,7 +143,7 @@ func (h *InstanceHandler) GETInstanceV1(w http.ResponseWriter, r *http.Request) 
 	}
 	resp := InstanceV1Response{
 		URI:              h.instanceDomain,
-		Title:            h.instanceName,
+		Title:            h.instanceTitle(r.Context()),
 		ShortDescription: "",
 		Description:      "",
 		Email:            "",
@@ -154,7 +167,7 @@ func (h *InstanceHandler) GETInstance(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := InstanceResponse{
 		Domain:      h.instanceDomain,
-		Title:       h.instanceName,
+		Title:       h.instanceTitle(r.Context()),
 		Version:     instanceVersion,
 		SourceURL:   "",
 		Description: "",
