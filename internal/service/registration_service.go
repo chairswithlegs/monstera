@@ -40,32 +40,35 @@ type RegistrationRejectedMailer interface {
 }
 
 type registrationService struct {
-	store          store.Store
-	approvedMail   AccountApprovedMailer
-	rejectedMail   RegistrationRejectedMailer
-	instanceURL    string
-	instanceDomain string
+	store        store.Store
+	approvedMail AccountApprovedMailer
+	rejectedMail RegistrationRejectedMailer
+	instanceURL  string
+	settingsSvc  MonsteraSettingsService
 }
 
 // NewRegistrationService returns a RegistrationService that uses the given store.
 // approvedMail and rejectedMail can be nil to skip sending emails.
-func NewRegistrationService(s store.Store, approvedMail AccountApprovedMailer, rejectedMail RegistrationRejectedMailer, instanceURL, instanceDomain string) RegistrationService {
+// settingsSvc is used to resolve the instance title for emails; may be nil to fall back to the default name.
+func NewRegistrationService(s store.Store, approvedMail AccountApprovedMailer, rejectedMail RegistrationRejectedMailer, instanceURL string, settingsSvc MonsteraSettingsService) RegistrationService {
 	return &registrationService{
-		store:          s,
-		approvedMail:   approvedMail,
-		rejectedMail:   rejectedMail,
-		instanceURL:    instanceURL,
-		instanceDomain: instanceDomain,
+		store:        s,
+		approvedMail: approvedMail,
+		rejectedMail: rejectedMail,
+		instanceURL:  instanceURL,
+		settingsSvc:  settingsSvc,
 	}
 }
 
-// resolveInstanceName fetches the server name from settings, falling back to the instance domain.
+// resolveInstanceName returns the configured server name, falling back to the default.
 func (svc *registrationService) resolveInstanceName(ctx context.Context) string {
-	settings, err := svc.store.GetMonsteraSettings(ctx)
-	if err == nil && settings != nil && settings.ServerName != nil && *settings.ServerName != "" {
-		return *settings.ServerName
+	if svc.settingsSvc != nil {
+		settings, err := svc.settingsSvc.Get(ctx)
+		if err == nil {
+			return *settings.ServerName
+		}
 	}
-	return svc.instanceDomain
+	return defaultServerName
 }
 
 // Confirm marks a user as confirmed.

@@ -91,7 +91,7 @@ Use the standard library `log/slog` **exported package-level functions** only. D
 
 ## Lint, Test, and Format After Code Changes
 
-After editing code, run the linter and unit tests before considering the change done.
+After finishing a code change, run the linter and unit tests before considering the change done.
 
 If the changes touch any integration points, run the integration tests as well.
 
@@ -132,7 +132,7 @@ Fix all linter findings and failing tests before considering the change done. Do
 - Call `t.Helper()` in any helper that calls `t.Fatal`/`t.Error`/`require`/`assert`.
 - Mark tests with no shared mutable state as `t.Parallel()`.
 - HTTP handler tests use `net/http/httptest`.
-- Prefer hand-written fakes for simple interfaces; use testify mock when asserting call order or arguments.
+- Prefer hand-written fakes for simple interfaces; use testify mock when mocking non-trivial interfaces.
 - Do not use `t.Skip()` — all unit tests must run under `make test`; all integration tests must run under `make test-integration`.
 
 ---

@@ -18,7 +18,7 @@ import (
 func TestModeratorInvitesHandler_GETInvites(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
-	regSvc := service.NewRegistrationService(st, nil, nil, "https://example.com", "Example")
+	regSvc := service.NewRegistrationService(st, nil, nil, "https://example.com", nil)
 	settingsSvc := service.NewMonsteraSettingsService(st)
 	handler := NewModeratorInvitesHandler(regSvc, settingsSvc)
 
@@ -46,7 +46,7 @@ func TestModeratorInvitesHandler_GETInvites(t *testing.T) {
 func TestModeratorInvitesHandler_POSTInvites(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
-	regSvc := service.NewRegistrationService(st, nil, nil, "https://example.com", "Example")
+	regSvc := service.NewRegistrationService(st, nil, nil, "https://example.com", nil)
 	settingsSvc := service.NewMonsteraSettingsService(st)
 	handler := NewModeratorInvitesHandler(regSvc, settingsSvc)
 	adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
@@ -75,7 +75,7 @@ func TestModeratorInvitesHandler_POSTInvites(t *testing.T) {
 func TestModeratorInvitesHandler_DELETEInvite(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
-	regSvc := service.NewRegistrationService(st, nil, nil, "https://example.com", "Example")
+	regSvc := service.NewRegistrationService(st, nil, nil, "https://example.com", nil)
 	settingsSvc := service.NewMonsteraSettingsService(st)
 	handler := NewModeratorInvitesHandler(regSvc, settingsSvc)
 

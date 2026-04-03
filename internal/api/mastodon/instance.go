@@ -119,15 +119,15 @@ func NewInstanceHandler(instanceDomain string, maxStatusChars int, mediaMaxBytes
 
 const instanceVersion = "4.3.0"
 
-// instanceTitle returns the server name from settings, falling back to the instance domain.
+// instanceTitle returns the configured server name, falling back to the default.
 func (h *InstanceHandler) instanceTitle(ctx context.Context) string {
 	if h.settingsSvc != nil {
 		settings, err := h.settingsSvc.Get(ctx)
-		if err == nil && settings.ServerName != nil && *settings.ServerName != "" {
+		if err == nil {
 			return *settings.ServerName
 		}
 	}
-	return h.instanceDomain
+	return "Monstera"
 }
 
 // GETInstanceV1 handles GET /api/v1/instance (Mastodon v1 entity shape).
