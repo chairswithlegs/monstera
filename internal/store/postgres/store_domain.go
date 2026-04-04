@@ -1175,6 +1175,7 @@ func (s *PostgresStore) GetMonsteraSettings(ctx context.Context) (*domain.Monste
 		ServerName:          row.ServerName,
 		ServerDescription:   row.ServerDescription,
 		ServerRules:         rules,
+		TrendingLinksScope:  domain.MonsteraTrendingLinksScope(row.TrendingLinksScope),
 	}, nil
 }
 
@@ -1191,6 +1192,7 @@ func (s *PostgresStore) UpdateMonsteraSettings(ctx context.Context, in *domain.M
 		ServerName:          in.ServerName,
 		ServerDescription:   in.ServerDescription,
 		ServerRules:         rulesText,
+		TrendingLinksScope:  string(in.TrendingLinksScope),
 	}))
 }
 

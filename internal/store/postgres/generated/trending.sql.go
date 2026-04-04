@@ -11,6 +11,33 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addTrendingLinkDenylist = `-- name: AddTrendingLinkDenylist :exec
+INSERT INTO trending_link_denylist (url) VALUES ($1)
+ON CONFLICT (url) DO NOTHING
+`
+
+func (q *Queries) AddTrendingLinkDenylist(ctx context.Context, url string) error {
+	_, err := q.db.Exec(ctx, addTrendingLinkDenylist, url)
+	return err
+}
+
+const bulkInsertTrendingLinks = `-- name: BulkInsertTrendingLinks :exec
+INSERT INTO trending_links (url, score, ranked_at)
+SELECT unnest($1::text[]), unnest($2::float8[]), NOW()
+ON CONFLICT (url) DO UPDATE
+    SET score = EXCLUDED.score, ranked_at = EXCLUDED.ranked_at
+`
+
+type BulkInsertTrendingLinksParams struct {
+	Column1 []string  `json:"column_1"`
+	Column2 []float64 `json:"column_2"`
+}
+
+func (q *Queries) BulkInsertTrendingLinks(ctx context.Context, arg BulkInsertTrendingLinksParams) error {
+	_, err := q.db.Exec(ctx, bulkInsertTrendingLinks, arg.Column1, arg.Column2)
+	return err
+}
+
 const bulkUpsertTrendingStatuses = `-- name: BulkUpsertTrendingStatuses :exec
 INSERT INTO trending_statuses (status_id, score, ranked_at)
 SELECT unnest($1::text[]), unnest($2::float8[]), NOW()
@@ -26,6 +53,100 @@ type BulkUpsertTrendingStatusesParams struct {
 func (q *Queries) BulkUpsertTrendingStatuses(ctx context.Context, arg BulkUpsertTrendingStatusesParams) error {
 	_, err := q.db.Exec(ctx, bulkUpsertTrendingStatuses, arg.Column1, arg.Column2)
 	return err
+}
+
+const getLinkDailyStats = `-- name: GetLinkDailyStats :many
+SELECT url, day, uses, accounts
+FROM trending_link_history
+WHERE day >= CURRENT_DATE - ($1::int - 1)
+ORDER BY url, day DESC
+`
+
+func (q *Queries) GetLinkDailyStats(ctx context.Context, dollar_1 int32) ([]TrendingLinkHistory, error) {
+	rows, err := q.db.Query(ctx, getLinkDailyStats, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TrendingLinkHistory{}
+	for rows.Next() {
+		var i TrendingLinkHistory
+		if err := rows.Scan(
+			&i.Url,
+			&i.Day,
+			&i.Uses,
+			&i.Accounts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTrendingLinkHistory = `-- name: GetTrendingLinkHistory :many
+SELECT url, day, uses, accounts
+FROM trending_link_history
+WHERE url = $1 AND day >= CURRENT_DATE - ($2::int - 1)
+ORDER BY day DESC
+`
+
+type GetTrendingLinkHistoryParams struct {
+	Url     string `json:"url"`
+	Column2 int32  `json:"column_2"`
+}
+
+func (q *Queries) GetTrendingLinkHistory(ctx context.Context, arg GetTrendingLinkHistoryParams) ([]TrendingLinkHistory, error) {
+	rows, err := q.db.Query(ctx, getTrendingLinkHistory, arg.Url, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TrendingLinkHistory{}
+	for rows.Next() {
+		var i TrendingLinkHistory
+		if err := rows.Scan(
+			&i.Url,
+			&i.Day,
+			&i.Uses,
+			&i.Accounts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTrendingLinks = `-- name: GetTrendingLinks :many
+SELECT url, score, ranked_at FROM trending_links
+ORDER BY score DESC LIMIT $1
+`
+
+func (q *Queries) GetTrendingLinks(ctx context.Context, limit int32) ([]TrendingLink, error) {
+	rows, err := q.db.Query(ctx, getTrendingLinks, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TrendingLink{}
+	for rows.Next() {
+		var i TrendingLink
+		if err := rows.Scan(&i.Url, &i.Score, &i.RankedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getTrendingStatuses = `-- name: GetTrendingStatuses :many
@@ -100,12 +221,89 @@ func (q *Queries) GetTrendingTagHistory(ctx context.Context, dollar_1 int32) ([]
 	return items, nil
 }
 
+const isTrendingLinkDenylisted = `-- name: IsTrendingLinkDenylisted :one
+SELECT EXISTS(SELECT 1 FROM trending_link_denylist WHERE url = $1)::boolean
+`
+
+func (q *Queries) IsTrendingLinkDenylisted(ctx context.Context, url string) (bool, error) {
+	row := q.db.QueryRow(ctx, isTrendingLinkDenylisted, url)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const listTrendingLinkDenylist = `-- name: ListTrendingLinkDenylist :many
+SELECT url, created_at FROM trending_link_denylist ORDER BY created_at DESC
+`
+
+func (q *Queries) ListTrendingLinkDenylist(ctx context.Context) ([]TrendingLinkDenylist, error) {
+	rows, err := q.db.Query(ctx, listTrendingLinkDenylist)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TrendingLinkDenylist{}
+	for rows.Next() {
+		var i TrendingLinkDenylist
+		if err := rows.Scan(&i.Url, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const removeTrendingLinkDenylist = `-- name: RemoveTrendingLinkDenylist :exec
+DELETE FROM trending_link_denylist WHERE url = $1
+`
+
+func (q *Queries) RemoveTrendingLinkDenylist(ctx context.Context, url string) error {
+	_, err := q.db.Exec(ctx, removeTrendingLinkDenylist, url)
+	return err
+}
+
+const replaceTrendingLinks = `-- name: ReplaceTrendingLinks :exec
+DELETE FROM trending_links
+`
+
+func (q *Queries) ReplaceTrendingLinks(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, replaceTrendingLinks)
+	return err
+}
+
 const truncateTrendingStatuses = `-- name: TruncateTrendingStatuses :exec
 DELETE FROM trending_statuses
 `
 
 func (q *Queries) TruncateTrendingStatuses(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, truncateTrendingStatuses)
+	return err
+}
+
+const upsertTrendingLinkHistory = `-- name: UpsertTrendingLinkHistory :exec
+INSERT INTO trending_link_history (url, day, uses, accounts)
+SELECT unnest($1::text[]), unnest($2::date[]), unnest($3::bigint[]), unnest($4::bigint[])
+ON CONFLICT (url, day) DO UPDATE
+    SET uses = EXCLUDED.uses, accounts = EXCLUDED.accounts
+`
+
+type UpsertTrendingLinkHistoryParams struct {
+	Column1 []string      `json:"column_1"`
+	Column2 []pgtype.Date `json:"column_2"`
+	Column3 []int64       `json:"column_3"`
+	Column4 []int64       `json:"column_4"`
+}
+
+func (q *Queries) UpsertTrendingLinkHistory(ctx context.Context, arg UpsertTrendingLinkHistoryParams) error {
+	_, err := q.db.Exec(ctx, upsertTrendingLinkHistory,
+		arg.Column1,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+	)
 	return err
 }
 

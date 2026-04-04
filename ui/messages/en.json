@@ -152,6 +152,7 @@
     "selfActionDisabled": "Role and delete actions are disabled for your own account.",
     "accountId": "Account ID: {id}",
     "role": "Role: {role}",
+    "navTrends": "Trends",
     "navMetrics": "Metrics",
     "metricsTitle": "Server Metrics",
     "metricsInstanceActivity": "Instance Activity",
@@ -164,7 +165,20 @@
     "knownInstances": "Known instances",
     "openReports": "Open reports",
     "deliveryDlqDepth": "Failed deliveries",
-    "fanoutDlqDepth": "Failed fanouts"
+    "fanoutDlqDepth": "Failed fanouts",
+    "trendingLinksScope": "Trending links",
+    "trendingLinksScopeDisabled": "Disabled",
+    "trendingLinksScopeUsers": "Authenticated users only",
+    "trendingLinksScopeAll": "Everyone",
+    "trendsTitle": "Trending links",
+    "trendsDescription": "Review and manage links that are trending on this instance.",
+    "denylistTitle": "Denylist",
+    "denylistDescription": "Links on the denylist are never shown as trending.",
+    "denylistAdd": "Add to denylist",
+    "denylistEmpty": "No denylisted links.",
+    "addUrl": "Add URL",
+    "urlPlaceholder": "https://example.com/article",
+    "emptyTrendingLinks": "No trending links."
   },
   "moderator": {
     "navDashboard": "Dashboard",
@@ -291,7 +305,9 @@
     "noInviteCodes": "No invite codes yet.",
     "noInstances": "None yet.",
     "noDomainBlocks": "No domain blocks.",
-    "noFilters": "No filters."
+    "noFilters": "No filters.",
+    "noTrendingLinks": "No trending links.",
+    "noDenylistedLinks": "No denylisted links."
   },
   "footer": {
     "poweredBy": "Powered by",

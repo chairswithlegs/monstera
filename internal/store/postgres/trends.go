@@ -176,6 +176,174 @@ func (s *PostgresStore) UpsertTrendingTagHistory(ctx context.Context, entries []
 	return nil
 }
 
+// GetLinkDailyStats returns per-URL per-day usage aggregates for the past `days` days.
+func (s *PostgresStore) GetLinkDailyStats(ctx context.Context, days int) ([]domain.TrendingLinkStats, error) {
+	const q = `
+		SELECT url, day, uses, accounts
+		FROM trending_link_history
+		WHERE day >= CURRENT_DATE - ($1::int - 1)
+		ORDER BY url, day DESC`
+
+	rows, err := s.pool.Query(ctx, q, int64(days))
+	if err != nil {
+		return nil, fmt.Errorf("GetLinkDailyStats: %w", mapErr(err))
+	}
+	defer rows.Close()
+
+	var out []domain.TrendingLinkStats
+	for rows.Next() {
+		var ls domain.TrendingLinkStats
+		var day pgtype.Date
+		if err := rows.Scan(&ls.URL, &day, &ls.Uses, &ls.Accounts); err != nil {
+			return nil, fmt.Errorf("GetLinkDailyStats scan: %w", mapErr(err))
+		}
+		if day.Valid {
+			ls.Day = day.Time
+		}
+		out = append(out, ls)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetLinkDailyStats rows: %w", mapErr(err))
+	}
+	return out, nil
+}
+
+// UpsertTrendingLinkHistory inserts or updates daily usage entries in trending_link_history.
+func (s *PostgresStore) UpsertTrendingLinkHistory(ctx context.Context, entries []domain.TrendingLinkStats) error {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	urls := make([]string, len(entries))
+	days := make([]pgtype.Date, len(entries))
+	uses := make([]int64, len(entries))
+	accounts := make([]int64, len(entries))
+	for i, e := range entries {
+		urls[i] = e.URL
+		days[i] = pgtype.Date{Time: e.Day, Valid: true}
+		uses[i] = e.Uses
+		accounts[i] = e.Accounts
+	}
+
+	const q = `
+		INSERT INTO trending_link_history (url, day, uses, accounts)
+		SELECT unnest($1::text[]), unnest($2::date[]), unnest($3::bigint[]), unnest($4::bigint[])
+		ON CONFLICT (url, day) DO UPDATE
+		    SET uses = EXCLUDED.uses, accounts = EXCLUDED.accounts`
+
+	if _, err := s.pool.Exec(ctx, q, urls, days, uses, accounts); err != nil {
+		return fmt.Errorf("UpsertTrendingLinkHistory: %w", mapErr(err))
+	}
+	return nil
+}
+
+// ReplaceTrendingLinks replaces the entire trending_links index in a single transaction.
+func (s *PostgresStore) ReplaceTrendingLinks(ctx context.Context, entries []domain.TrendingLink) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("ReplaceTrendingLinks begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, `DELETE FROM trending_links`); err != nil {
+		return fmt.Errorf("ReplaceTrendingLinks truncate: %w", mapErr(err))
+	}
+
+	if len(entries) > 0 {
+		urls := make([]string, len(entries))
+		scores := make([]float64, len(entries))
+		for i, e := range entries {
+			urls[i] = e.URL
+			// Compute score as total uses across history days.
+			var score float64
+			for _, h := range e.History {
+				score += float64(h.Uses)
+			}
+			scores[i] = score
+		}
+
+		const q = `
+			INSERT INTO trending_links (url, score, ranked_at)
+			SELECT unnest($1::text[]), unnest($2::float8[]), NOW()
+			ON CONFLICT (url) DO UPDATE
+			    SET score = EXCLUDED.score, ranked_at = EXCLUDED.ranked_at`
+
+		if _, err := tx.Exec(ctx, q, urls, scores); err != nil {
+			return fmt.Errorf("ReplaceTrendingLinks insert: %w", mapErr(err))
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("ReplaceTrendingLinks commit: %w", err)
+	}
+	return nil
+}
+
+// GetTrendingLinks returns trending links with up to `days` days of history,
+// limited to `limit` links ordered by score descending.
+func (s *PostgresStore) GetTrendingLinks(ctx context.Context, days int, limit int) ([]domain.TrendingLink, error) {
+	const q = `
+		SELECT tl.url, tlh.day, tlh.uses, tlh.accounts
+		FROM trending_links tl
+		LEFT JOIN trending_link_history tlh
+		    ON tlh.url = tl.url AND tlh.day >= CURRENT_DATE - ($1::int - 1)
+		ORDER BY tl.score DESC, tl.url, tlh.day DESC`
+
+	rows, err := s.pool.Query(ctx, q, int64(days))
+	if err != nil {
+		return nil, fmt.Errorf("GetTrendingLinks: %w", mapErr(err))
+	}
+	defer rows.Close()
+
+	type linkEntry struct {
+		totalScore float64
+		history    []domain.TrendingLinkHistoryDay
+	}
+	order := make([]string, 0)
+	byURL := make(map[string]*linkEntry)
+
+	for rows.Next() {
+		var (
+			url      string
+			day      pgtype.Date
+			uses     *int64
+			accounts *int64
+		)
+		if err := rows.Scan(&url, &day, &uses, &accounts); err != nil {
+			return nil, fmt.Errorf("GetTrendingLinks scan: %w", mapErr(err))
+		}
+		e, ok := byURL[url]
+		if !ok {
+			e = &linkEntry{}
+			byURL[url] = e
+			order = append(order, url)
+		}
+		if uses != nil && accounts != nil && day.Valid {
+			e.history = append(e.history, domain.TrendingLinkHistoryDay{
+				Day:      day.Time,
+				Uses:     *uses,
+				Accounts: *accounts,
+			})
+			e.totalScore += float64(*uses)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetTrendingLinks rows: %w", mapErr(err))
+	}
+
+	out := make([]domain.TrendingLink, 0, len(order))
+	for _, url := range order {
+		out = append(out, domain.TrendingLink{
+			URL:     url,
+			History: byURL[url].history,
+		})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
 // GetTrendingTags returns trending hashtags with up to `days` days of history,
 // limited to `limit` hashtags ordered by total recent uses (descending).
 func (s *PostgresStore) GetTrendingTags(ctx context.Context, days int, limit int) ([]domain.TrendingTag, error) {

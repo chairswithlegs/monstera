@@ -8,6 +8,7 @@ import (
 )
 
 var allowedRegistrationModes = []string{"open", "approval", "invite", "closed"}
+var allowedTrendingLinksScopes = []string{"disabled", "users", "all"}
 
 // AdminSettings is the request/response for GET/PUT /admin/settings (Monstera settings).
 type AdminSettings struct {
@@ -17,6 +18,7 @@ type AdminSettings struct {
 	ServerName          *string  `json:"server_name,omitempty"`
 	ServerDescription   *string  `json:"server_description,omitempty"`
 	ServerRules         []string `json:"server_rules,omitempty"`
+	TrendingLinksScope  string   `json:"trending_links_scope"`
 }
 
 func (a AdminSettings) Validate() error {
@@ -25,6 +27,11 @@ func (a AdminSettings) Validate() error {
 	}
 	if a.ServerName != nil && len(*a.ServerName) > 24 {
 		return fmt.Errorf("server_name exceeds 24 characters: %w", domain.ErrValidation)
+	}
+	if a.TrendingLinksScope != "" {
+		if err := api.ValidateOneOf(a.TrendingLinksScope, allowedTrendingLinksScopes, "trending_links_scope"); err != nil {
+			return fmt.Errorf("trending_links_scope: %w", err)
+		}
 	}
 	return nil
 }
@@ -37,6 +44,7 @@ func (a AdminSettings) ToDomain() domain.MonsteraSettings {
 		ServerName:          a.ServerName,
 		ServerDescription:   a.ServerDescription,
 		ServerRules:         a.ServerRules,
+		TrendingLinksScope:  domain.MonsteraTrendingLinksScope(a.TrendingLinksScope),
 	}
 }
 
@@ -48,5 +56,6 @@ func AdminSettingsFromDomain(m domain.MonsteraSettings) AdminSettings {
 		ServerName:          m.ServerName,
 		ServerDescription:   m.ServerDescription,
 		ServerRules:         m.ServerRules,
+		TrendingLinksScope:  string(m.TrendingLinksScope),
 	}
 }

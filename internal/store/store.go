@@ -29,6 +29,7 @@ type Store interface {
 	FilterStore
 	MarkerStore
 	TrendingStore
+	TrendingLinkDenylistStore
 	PollStore
 	CardStore
 	OutboxStore
@@ -369,7 +370,7 @@ type MarkerStore interface {
 	SetMarker(ctx context.Context, accountID, timeline, lastReadID string) error
 }
 
-// TrendingStore handles trending status and tag persistence.
+// TrendingStore handles trending status, tag, and link persistence.
 type TrendingStore interface {
 	GetTopScoredPublicStatuses(ctx context.Context, since time.Time, limit int) ([]domain.TrendingStatus, error)
 	GetHashtagDailyStats(ctx context.Context, since time.Time) ([]domain.HashtagDailyStats, error)
@@ -377,6 +378,18 @@ type TrendingStore interface {
 	UpsertTrendingTagHistory(ctx context.Context, entries []domain.TrendingTagHistory) error
 	GetTrendingStatusIDs(ctx context.Context, limit int) ([]domain.TrendingStatus, error)
 	GetTrendingTags(ctx context.Context, days int, limit int) ([]domain.TrendingTag, error)
+
+	GetLinkDailyStats(ctx context.Context, days int) ([]domain.TrendingLinkStats, error)
+	UpsertTrendingLinkHistory(ctx context.Context, entries []domain.TrendingLinkStats) error
+	ReplaceTrendingLinks(ctx context.Context, entries []domain.TrendingLink) error
+	GetTrendingLinks(ctx context.Context, days int, limit int) ([]domain.TrendingLink, error)
+}
+
+// TrendingLinkDenylistStore handles denylist persistence for trending links.
+type TrendingLinkDenylistStore interface {
+	AddTrendingLinkDenylist(ctx context.Context, url string) error
+	RemoveTrendingLinkDenylist(ctx context.Context, url string) error
+	ListTrendingLinkDenylist(ctx context.Context) ([]string, error)
 }
 
 // PollStore handles poll persistence.

@@ -77,7 +77,10 @@ func TestIntegration_PostgresStore(t *testing.T) {
 		require.NotNil(t, settings)
 		require.NotEmpty(t, string(settings.RegistrationMode))
 
-		err = s.UpdateMonsteraSettings(ctx, &domain.MonsteraSettings{RegistrationMode: domain.MonsteraRegistrationModeClosed})
+		err = s.UpdateMonsteraSettings(ctx, &domain.MonsteraSettings{
+			RegistrationMode:   domain.MonsteraRegistrationModeClosed,
+			TrendingLinksScope: domain.MonsteraTrendingLinksScopeDisabled,
+		})
 		require.NoError(t, err)
 		settings, err = s.GetMonsteraSettings(ctx)
 		require.NoError(t, err)

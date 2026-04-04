@@ -713,7 +713,8 @@ func TestIntegration_InstanceStore(t *testing.T) {
 		require.NotNil(t, settings)
 
 		err = s.UpdateMonsteraSettings(ctx, &domain.MonsteraSettings{
-			RegistrationMode: domain.MonsteraRegistrationModeOpen,
+			RegistrationMode:   domain.MonsteraRegistrationModeOpen,
+			TrendingLinksScope: domain.MonsteraTrendingLinksScopeDisabled,
 		})
 		require.NoError(t, err)
 

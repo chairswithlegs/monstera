@@ -1166,11 +1166,12 @@ func parseQueryParam(t *testing.T, urlStr, name string) string {
 
 // fakeSettingsService is a minimal MonsteraSettingsService for testing.
 type fakeSettingsService struct {
-	mode domain.MonsteraRegistrationMode
+	mode  domain.MonsteraRegistrationMode
+	scope domain.MonsteraTrendingLinksScope
 }
 
 func (f *fakeSettingsService) Get(_ context.Context) (domain.MonsteraSettings, error) {
-	return domain.MonsteraSettings{RegistrationMode: f.mode}, nil
+	return domain.MonsteraSettings{RegistrationMode: f.mode, TrendingLinksScope: f.scope}, nil
 }
 
 func (f *fakeSettingsService) Update(_ context.Context, s domain.MonsteraSettings) error {

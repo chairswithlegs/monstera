@@ -25,6 +25,7 @@ export default function ServerSettingsPage() {
   const [serverName, setServerName] = useState('');
   const [serverDescription, setServerDescription] = useState('');
   const [serverRules, setServerRules] = useState('');
+  const [trendingLinksScope, setTrendingLinksScope] = useState('disabled');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -34,6 +35,12 @@ export default function ServerSettingsPage() {
     { value: 'open', label: t('modeOpen') },
     { value: 'approval', label: t('modeApproval') },
     { value: 'invite', label: t('modeInvite') },
+  ];
+
+  const trendingLinksScopeOptions = [
+    { value: 'disabled', label: t('trendingLinksScopeDisabled') },
+    { value: 'users', label: t('trendingLinksScopeUsers') },
+    { value: 'all', label: t('trendingLinksScopeAll') },
   ];
 
   useEffect(() => {
@@ -59,6 +66,7 @@ export default function ServerSettingsPage() {
         setServerName(s.server_name ?? '');
         setServerDescription(s.server_description ?? '');
         setServerRules(s.server_rules?.join('\n') ?? '');
+        setTrendingLinksScope(s.trending_links_scope ?? 'disabled');
       })
       .catch((e) => setError(translateApiError(tErr, e)));
   }, [tErr]);
@@ -80,6 +88,7 @@ export default function ServerSettingsPage() {
         server_name: serverName.trim() || null,
         server_description: serverDescription.trim() || null,
         server_rules: serverRules.split('\n').map((r) => r.trim()).filter(Boolean),
+        trending_links_scope: trendingLinksScope,
       });
       setSuccess(true);
     } catch (e) {
@@ -185,6 +194,21 @@ export default function ServerSettingsPage() {
             placeholder="Be respectful.&#10;No spam."
           />
           <p className="text-xs text-muted-foreground">{t('serverRulesHint')}</p>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="trending-links-scope">{t('trendingLinksScope')}</Label>
+          <select
+            id="trending-links-scope"
+            value={trendingLinksScope}
+            onChange={(e) => setTrendingLinksScope(e.target.value)}
+            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {trendingLinksScopeOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
         </div>
         <Button type="submit" disabled={saving}>
           {saving ? tCommon('saving') : tCommon('save')}

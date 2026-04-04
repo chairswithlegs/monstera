@@ -318,6 +318,7 @@ export interface AdminSettings {
   server_name?: string | null;
   server_description?: string | null;
   server_rules?: string[];
+  trending_links_scope?: string; // "disabled" | "users" | "all"
 }
 
 export async function getSettings(): Promise<AdminSettings> {
@@ -333,6 +334,28 @@ export async function putSettings(settings: AdminSettings): Promise<void> {
     method: 'PUT',
     body: JSON.stringify(settings),
   });
+  if (!res.ok) await throwApiError(res);
+}
+
+export async function getTrendingLinkDenylist(): Promise<{ urls: string[] }> {
+  const base = await adminPrefix();
+  const res = await authFetch(`${base}/trends/denylist`);
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+export async function addTrendingLinkDenylist(url: string): Promise<void> {
+  const base = await adminPrefix();
+  const res = await authFetch(`${base}/trends/denylist`, {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) await throwApiError(res);
+}
+
+export async function removeTrendingLinkDenylist(url: string): Promise<void> {
+  const base = await adminPrefix();
+  const res = await authFetch(`${base}/trends/denylist?url=${encodeURIComponent(url)}`, { method: 'DELETE' });
   if (!res.ok) await throwApiError(res);
 }
 

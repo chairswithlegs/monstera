@@ -89,9 +89,12 @@ type FakeStore struct {
 	favouritesByAccountStatus map[string]*domain.Favourite // accountID+":"+statusID -> favourite
 
 	// Trending index test data
-	TrendingStatuses   []domain.TrendingStatus
-	TrendingTagHistory []domain.TrendingTagHistory
-	HashtagDailyStats  []domain.HashtagDailyStats
+	TrendingStatuses    []domain.TrendingStatus
+	TrendingTagHistory  []domain.TrendingTagHistory
+	HashtagDailyStats   []domain.HashtagDailyStats
+	TrendingLinkHistory []domain.TrendingLinkStats
+	TrendingLinks       []domain.TrendingLink
+	LinkDenylist        []string
 
 	StatusCards map[string]*domain.Card // status_id -> card
 
@@ -3960,6 +3963,66 @@ func (f *FakeStore) GetTrendingTags(_ context.Context, _ int, limit int) ([]doma
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+func (f *FakeStore) GetLinkDailyStats(_ context.Context, _ int) ([]domain.TrendingLinkStats, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]domain.TrendingLinkStats{}, f.TrendingLinkHistory...), nil
+}
+
+func (f *FakeStore) UpsertTrendingLinkHistory(_ context.Context, entries []domain.TrendingLinkStats) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.TrendingLinkHistory = append([]domain.TrendingLinkStats{}, entries...)
+	return nil
+}
+
+func (f *FakeStore) ReplaceTrendingLinks(_ context.Context, entries []domain.TrendingLink) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.TrendingLinks = append([]domain.TrendingLink{}, entries...)
+	return nil
+}
+
+func (f *FakeStore) GetTrendingLinks(_ context.Context, _ int, limit int) ([]domain.TrendingLink, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := append([]domain.TrendingLink{}, f.TrendingLinks...)
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (f *FakeStore) AddTrendingLinkDenylist(_ context.Context, url string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, u := range f.LinkDenylist {
+		if u == url {
+			return nil
+		}
+	}
+	f.LinkDenylist = append(f.LinkDenylist, url)
+	return nil
+}
+
+func (f *FakeStore) RemoveTrendingLinkDenylist(_ context.Context, url string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, u := range f.LinkDenylist {
+		if u == url {
+			f.LinkDenylist = append(f.LinkDenylist[:i], f.LinkDenylist[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
+
+func (f *FakeStore) ListTrendingLinkDenylist(_ context.Context) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string{}, f.LinkDenylist...), nil
 }
 
 // UpsertStatusCard stores a card in the fake store.

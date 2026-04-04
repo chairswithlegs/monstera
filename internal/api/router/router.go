@@ -101,6 +101,7 @@ type Deps struct {
 	AdminSettings          *monstera.AdminSettingsHandler
 	AdminAnnouncements     *monstera.AdminAnnouncementsHandler
 	AdminMetrics           *monstera.AdminMetricsHandler
+	AdminTrends            *monstera.AdminTrendsHandler
 }
 
 // New builds the chi router with global middleware and P1–P2 routes.
@@ -431,6 +432,9 @@ func New(deps Deps) http.Handler {
 			r.Delete("/federation/domain-blocks/{domain}", deps.AdminFederation.DELETEDomainBlock)
 			r.Get("/settings", deps.AdminSettings.GETSettings)
 			r.Put("/settings", deps.AdminSettings.PUTSettings)
+			r.Get("/trends/denylist", deps.AdminTrends.GETDenylist)
+			r.Post("/trends/denylist", deps.AdminTrends.POSTDenylist)
+			r.Delete("/trends/denylist", deps.AdminTrends.DELETEDenylist)
 			r.Get("/announcements", deps.AdminAnnouncements.GETAnnouncements)
 			r.Post("/announcements", deps.AdminAnnouncements.POSTAnnouncements)
 			r.Put("/announcements/{id}", deps.AdminAnnouncements.PUTAnnouncement)

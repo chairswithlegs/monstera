@@ -11,7 +11,7 @@ import (
 
 const getMonsteraSettings = `-- name: GetMonsteraSettings :one
 SELECT id, registration_mode, invite_max_uses, invite_expires_in_days,
-       server_name, server_description, server_rules
+       server_name, server_description, server_rules, trending_links_scope
 FROM monstera_settings WHERE id = 'default'
 `
 
@@ -26,6 +26,7 @@ func (q *Queries) GetMonsteraSettings(ctx context.Context) (MonsteraSetting, err
 		&i.ServerName,
 		&i.ServerDescription,
 		&i.ServerRules,
+		&i.TrendingLinksScope,
 	)
 	return i, err
 }
@@ -33,16 +34,17 @@ func (q *Queries) GetMonsteraSettings(ctx context.Context) (MonsteraSetting, err
 const updateMonsteraSettings = `-- name: UpdateMonsteraSettings :exec
 INSERT INTO monstera_settings
   (id, registration_mode, invite_max_uses, invite_expires_in_days,
-   server_name, server_description, server_rules)
+   server_name, server_description, server_rules, trending_links_scope)
 VALUES ('default', $1, $2, $3,
-        $4, $5, $6)
+        $4, $5, $6, $7)
 ON CONFLICT (id) DO UPDATE SET
-  registration_mode    = $1,
-  invite_max_uses      = $2,
+  registration_mode      = $1,
+  invite_max_uses        = $2,
   invite_expires_in_days = $3,
-  server_name          = $4,
-  server_description   = $5,
-  server_rules         = $6
+  server_name            = $4,
+  server_description     = $5,
+  server_rules           = $6,
+  trending_links_scope   = $7
 `
 
 type UpdateMonsteraSettingsParams struct {
@@ -52,6 +54,7 @@ type UpdateMonsteraSettingsParams struct {
 	ServerName          *string `json:"server_name"`
 	ServerDescription   *string `json:"server_description"`
 	ServerRules         *string `json:"server_rules"`
+	TrendingLinksScope  string  `json:"trending_links_scope"`
 }
 
 func (q *Queries) UpdateMonsteraSettings(ctx context.Context, arg UpdateMonsteraSettingsParams) error {
@@ -62,6 +65,7 @@ func (q *Queries) UpdateMonsteraSettings(ctx context.Context, arg UpdateMonstera
 		arg.ServerName,
 		arg.ServerDescription,
 		arg.ServerRules,
+		arg.TrendingLinksScope,
 	)
 	return err
 }

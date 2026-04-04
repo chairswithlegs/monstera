@@ -11,16 +11,18 @@ import (
 	"github.com/chairswithlegs/monstera/internal/store"
 )
 
-// TrendsService provides trending statuses and tags from the pre-computed index.
+// TrendsService provides trending statuses, tags, and links from the pre-computed index.
 type TrendsService interface {
 	TrendingStatuses(ctx context.Context, offset, limit int) ([]EnrichedStatus, error)
 	TrendingTags(ctx context.Context, offset, limit int) ([]domain.TrendingTag, error)
+	TrendingLinks(ctx context.Context, offset, limit int) ([]domain.TrendingLink, error)
 	RefreshIndexes(ctx context.Context) error
 }
 
 type trendingCache struct {
 	statuses []EnrichedStatus
 	tags     []domain.TrendingTag
+	links    []domain.TrendingLink
 }
 
 type trendsService struct {
@@ -61,6 +63,22 @@ func (svc *trendsService) TrendingTags(ctx context.Context, offset, limit int) (
 	out := c.tags
 	if offset >= len(out) {
 		return []domain.TrendingTag{}, nil
+	}
+	out = out[offset:]
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (svc *trendsService) TrendingLinks(ctx context.Context, offset, limit int) ([]domain.TrendingLink, error) {
+	c, err := svc.getCache(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := c.links
+	if offset >= len(out) {
+		return []domain.TrendingLink{}, nil
 	}
 	out = out[offset:]
 	if len(out) > limit {
@@ -125,7 +143,12 @@ func (svc *trendsService) fill(ctx context.Context) (*trendingCache, error) {
 		return nil, fmt.Errorf("GetTrendingTags: %w", err)
 	}
 
-	return &trendingCache{statuses: enriched, tags: tags}, nil
+	links, err := svc.store.GetTrendingLinks(ctx, 7, maxTrending)
+	if err != nil {
+		return nil, fmt.Errorf("GetTrendingLinks: %w", err)
+	}
+
+	return &trendingCache{statuses: enriched, tags: tags, links: links}, nil
 }
 
 func (svc *trendsService) RefreshIndexes(ctx context.Context) error {
@@ -160,8 +183,55 @@ func (svc *trendsService) RefreshIndexes(ctx context.Context) error {
 		return fmt.Errorf("UpsertTrendingTagHistory: %w", err)
 	}
 
+	// Trending links: tabulate URL usage over the last 7 days and replace the index.
+	linkStats, err := svc.store.GetLinkDailyStats(ctx, 7)
+	if err != nil {
+		return fmt.Errorf("GetLinkDailyStats: %w", err)
+	}
+	if err := svc.store.UpsertTrendingLinkHistory(ctx, linkStats); err != nil {
+		return fmt.Errorf("UpsertTrendingLinkHistory: %w", err)
+	}
+	// Build TrendingLink entries from daily stats.
+	type linkEntry struct {
+		totalUses int64
+		history   []domain.TrendingLinkHistoryDay
+	}
+	order := make([]string, 0)
+	byURL := make(map[string]*linkEntry)
+	for _, s := range linkStats {
+		e, ok := byURL[s.URL]
+		if !ok {
+			e = &linkEntry{}
+			byURL[s.URL] = e
+			order = append(order, s.URL)
+		}
+		e.totalUses += s.Uses
+		e.history = append(e.history, domain.TrendingLinkHistoryDay{Day: s.Day, Uses: s.Uses, Accounts: s.Accounts})
+	}
+	denied, err := svc.store.ListTrendingLinkDenylist(ctx)
+	if err != nil {
+		return fmt.Errorf("ListTrendingLinkDenylist: %w", err)
+	}
+	deniedSet := make(map[string]struct{}, len(denied))
+	for _, u := range denied {
+		deniedSet[u] = struct{}{}
+	}
+
+	linkEntries := make([]domain.TrendingLink, 0, len(order))
+	for _, url := range order {
+		if _, blocked := deniedSet[url]; blocked {
+			continue
+		}
+		e := byURL[url]
+		linkEntries = append(linkEntries, domain.TrendingLink{URL: url, History: e.history})
+	}
+	if err := svc.store.ReplaceTrendingLinks(ctx, linkEntries); err != nil {
+		return fmt.Errorf("ReplaceTrendingLinks: %w", err)
+	}
+
 	slog.InfoContext(ctx, "trending indexes updated",
 		slog.Int("statuses", len(scored)),
-		slog.Int("tag_days", len(tagEntries)))
+		slog.Int("tag_days", len(tagEntries)),
+		slog.Int("link_days", len(linkStats)))
 	return nil
 }

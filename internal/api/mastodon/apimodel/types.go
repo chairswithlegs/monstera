@@ -138,6 +138,16 @@ type Card struct {
 	PublishedAt  *string `json:"published_at"`
 }
 
+// TrendingLinkCard is the Mastodon API preview card shape for GET /api/v1/trends/links.
+// It is a subset of Card extended with a 7-day usage history.
+type TrendingLinkCard struct {
+	URL         string       `json:"url"`
+	Title       string       `json:"title"`
+	Description string       `json:"description"`
+	Type        string       `json:"type"`
+	History     []TagHistory `json:"history"`
+}
+
 // Poll is the Mastodon API poll entity (GET /api/v1/polls/:id, or embedded in Status).
 type Poll struct {
 	ID          string       `json:"id"`

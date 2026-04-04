@@ -14,10 +14,12 @@ type Querier interface {
 	AcceptFollow(ctx context.Context, id string) error
 	AddAccountToList(ctx context.Context, arg AddAccountToListParams) error
 	AddAnnouncementReaction(ctx context.Context, arg AddAnnouncementReactionParams) error
+	AddTrendingLinkDenylist(ctx context.Context, url string) error
 	AreFollowingTagsByName(ctx context.Context, arg AreFollowingTagsByNameParams) ([]string, error)
 	AssignReport(ctx context.Context, arg AssignReportParams) error
 	AttachHashtagsToStatus(ctx context.Context, arg AttachHashtagsToStatusParams) error
 	AttachMediaToStatus(ctx context.Context, arg AttachMediaToStatusParams) error
+	BulkInsertTrendingLinks(ctx context.Context, arg BulkInsertTrendingLinksParams) error
 	BulkUpsertTrendingStatuses(ctx context.Context, arg BulkUpsertTrendingStatusesParams) error
 	ClearNotifications(ctx context.Context, accountID string) error
 	ConfirmUser(ctx context.Context, id string) error
@@ -159,6 +161,7 @@ type Querier interface {
 	GetHashtagTimeline(ctx context.Context, arg GetHashtagTimelineParams) ([]Status, error)
 	GetHomeTimeline(ctx context.Context, arg GetHomeTimelineParams) ([]Status, error)
 	GetInviteByCode(ctx context.Context, code string) (Invite, error)
+	GetLinkDailyStats(ctx context.Context, dollar_1 int32) ([]TrendingLinkHistory, error)
 	GetListByID(ctx context.Context, id string) (List, error)
 	GetListIDsByMemberAccountID(ctx context.Context, accountID string) ([]string, error)
 	GetListTimeline(ctx context.Context, arg GetListTimelineParams) ([]Status, error)
@@ -198,6 +201,8 @@ type Querier interface {
 	GetStatusMentionAccountIDs(ctx context.Context, statusID string) ([]string, error)
 	GetStatusMentions(ctx context.Context, statusID string) ([]GetStatusMentionsRow, error)
 	GetTopScoredPublicStatuses(ctx context.Context, arg GetTopScoredPublicStatusesParams) ([]GetTopScoredPublicStatusesRow, error)
+	GetTrendingLinkHistory(ctx context.Context, arg GetTrendingLinkHistoryParams) ([]TrendingLinkHistory, error)
+	GetTrendingLinks(ctx context.Context, limit int32) ([]TrendingLink, error)
 	GetTrendingStatuses(ctx context.Context, limit int32) ([]TrendingStatus, error)
 	GetTrendingTagHistory(ctx context.Context, dollar_1 int32) ([]GetTrendingTagHistoryRow, error)
 	GetUserByAccountID(ctx context.Context, accountID string) (User, error)
@@ -223,6 +228,7 @@ type Querier interface {
 	IsFavourited(ctx context.Context, arg IsFavouritedParams) (bool, error)
 	IsFollowingTag(ctx context.Context, arg IsFollowingTagParams) (bool, error)
 	IsMuted(ctx context.Context, arg IsMutedParams) (bool, error)
+	IsTrendingLinkDenylisted(ctx context.Context, url string) (bool, error)
 	ListAccountAnnouncementReactionNames(ctx context.Context, arg ListAccountAnnouncementReactionNamesParams) ([]string, error)
 	ListAccountConversationsPaginated(ctx context.Context, arg ListAccountConversationsPaginatedParams) ([]AccountConversation, error)
 	ListAccountTagSuggestions(ctx context.Context, arg ListAccountTagSuggestionsParams) ([]ListAccountTagSuggestionsRow, error)
@@ -263,6 +269,7 @@ type Querier interface {
 	ListServerFilters(ctx context.Context) ([]ServerFilter, error)
 	ListStatusAttachments(ctx context.Context, statusID *string) ([]MediaAttachment, error)
 	ListStatusEdits(ctx context.Context, statusID string) ([]StatusEdit, error)
+	ListTrendingLinkDenylist(ctx context.Context) ([]TrendingLinkDenylist, error)
 	ListUnattachedMedia(ctx context.Context, accountID string) ([]MediaAttachment, error)
 	ListUserFilters(ctx context.Context, accountID string) ([]UserFilter, error)
 	ListUserFiltersV2(ctx context.Context, accountID string) ([]UserFilter, error)
@@ -271,6 +278,8 @@ type Querier interface {
 	MarkOutboxEventsPublished(ctx context.Context, ids []string) error
 	RemoveAccountFromList(ctx context.Context, arg RemoveAccountFromListParams) error
 	RemoveAnnouncementReaction(ctx context.Context, arg RemoveAnnouncementReactionParams) error
+	RemoveTrendingLinkDenylist(ctx context.Context, url string) error
+	ReplaceTrendingLinks(ctx context.Context) error
 	ResolveReport(ctx context.Context, arg ResolveReportParams) error
 	RevokeAccessToken(ctx context.Context, token string) error
 	RevokeAllAccessTokensForAccount(ctx context.Context, accountID *string) error
@@ -319,6 +328,7 @@ type Querier interface {
 	UpsertNotificationPolicy(ctx context.Context, arg UpsertNotificationPolicyParams) (NotificationPolicy, error)
 	// ─── Notification requests ────────────────────────────────────────────────────
 	UpsertNotificationRequest(ctx context.Context, arg UpsertNotificationRequestParams) (NotificationRequest, error)
+	UpsertTrendingLinkHistory(ctx context.Context, arg UpsertTrendingLinkHistoryParams) error
 	UpsertTrendingTagHistory(ctx context.Context, arg UpsertTrendingTagHistoryParams) error
 }
 
