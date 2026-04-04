@@ -12,7 +12,8 @@ import (
 
 // GetTopScoredPublicStatuses returns up to limit public statuses created since `since`,
 // ordered by a simple engagement score (reblogs + favourites + 0.5×replies).
-func (s *PostgresStore) GetTopScoredPublicStatuses(ctx context.Context, since time.Time, limit int) ([]domain.TrendingStatus, error) {
+// When localOnly is true only statuses from local accounts are included.
+func (s *PostgresStore) GetTopScoredPublicStatuses(ctx context.Context, since time.Time, limit int, localOnly bool) ([]domain.TrendingStatus, error) {
 	const q = `
 		SELECT id AS status_id,
 		       (reblogs_count + favourites_count + replies_count * 0.5) AS score
@@ -21,10 +22,11 @@ func (s *PostgresStore) GetTopScoredPublicStatuses(ctx context.Context, since ti
 		  AND visibility = 'public'
 		  AND reblog_of_id IS NULL
 		  AND created_at >= $1
+		  AND ($3::boolean = FALSE OR local = TRUE)
 		ORDER BY score DESC
 		LIMIT $2`
 
-	rows, err := s.pool.Query(ctx, q, pgtype.Timestamptz{Time: since, Valid: true}, int64(limit))
+	rows, err := s.pool.Query(ctx, q, pgtype.Timestamptz{Time: since, Valid: true}, int64(limit), localOnly)
 	if err != nil {
 		return nil, fmt.Errorf("GetTopScoredPublicStatuses: %w", mapErr(err))
 	}
@@ -45,7 +47,8 @@ func (s *PostgresStore) GetTopScoredPublicStatuses(ctx context.Context, since ti
 }
 
 // GetHashtagDailyStats returns per-hashtag per-day usage aggregates since `since`.
-func (s *PostgresStore) GetHashtagDailyStats(ctx context.Context, since time.Time) ([]domain.HashtagDailyStats, error) {
+// When localOnly is true only statuses from local accounts are included.
+func (s *PostgresStore) GetHashtagDailyStats(ctx context.Context, since time.Time, localOnly bool) ([]domain.HashtagDailyStats, error) {
 	const q = `
 		SELECT h.id AS hashtag_id, h.name AS hashtag_name,
 		       date_trunc('day', s.created_at AT TIME ZONE 'UTC')::date AS day,
@@ -57,10 +60,11 @@ func (s *PostgresStore) GetHashtagDailyStats(ctx context.Context, since time.Tim
 		WHERE s.deleted_at IS NULL
 		  AND s.visibility IN ('public', 'unlisted')
 		  AND s.created_at >= $1
+		  AND ($2::boolean = FALSE OR s.local = TRUE)
 		GROUP BY h.id, h.name, day
 		ORDER BY day DESC, uses DESC`
 
-	rows, err := s.pool.Query(ctx, q, pgtype.Timestamptz{Time: since, Valid: true})
+	rows, err := s.pool.Query(ctx, q, pgtype.Timestamptz{Time: since, Valid: true}, localOnly)
 	if err != nil {
 		return nil, fmt.Errorf("GetHashtagDailyStats: %w", mapErr(err))
 	}
@@ -147,6 +151,14 @@ func (s *PostgresStore) GetTrendingStatusIDs(ctx context.Context, limit int) ([]
 	return out, nil
 }
 
+// TruncateTrendingTagHistory removes all rows from trending_tag_history.
+func (s *PostgresStore) TruncateTrendingTagHistory(ctx context.Context) error {
+	if _, err := s.pool.Exec(ctx, `DELETE FROM trending_tag_history`); err != nil {
+		return fmt.Errorf("TruncateTrendingTagHistory: %w", mapErr(err))
+	}
+	return nil
+}
+
 // UpsertTrendingTagHistory inserts or updates daily usage entries in trending_tag_history.
 func (s *PostgresStore) UpsertTrendingTagHistory(ctx context.Context, entries []domain.TrendingTagHistory) error {
 	if len(entries) == 0 {
@@ -176,15 +188,25 @@ func (s *PostgresStore) UpsertTrendingTagHistory(ctx context.Context, entries []
 	return nil
 }
 
-// GetLinkDailyStats returns per-URL per-day usage aggregates for the past `days` days.
-func (s *PostgresStore) GetLinkDailyStats(ctx context.Context, days int) ([]domain.TrendingLinkStats, error) {
+// GetLinkDailyStats returns per-URL per-day usage aggregates for the past `days` days,
+// computed fresh from status_cards JOIN statuses. When localOnly is true only statuses
+// from local accounts are included.
+func (s *PostgresStore) GetLinkDailyStats(ctx context.Context, days int, localOnly bool) ([]domain.TrendingLinkStats, error) {
 	const q = `
-		SELECT url, day, uses, accounts
-		FROM trending_link_history
-		WHERE day >= CURRENT_DATE - ($1::int - 1)
-		ORDER BY url, day DESC`
+		SELECT sc.url,
+		       date_trunc('day', s.created_at AT TIME ZONE 'UTC')::date AS day,
+		       COUNT(*)                     AS uses,
+		       COUNT(DISTINCT s.account_id) AS accounts
+		FROM status_cards sc
+		JOIN statuses s ON s.id = sc.status_id
+		WHERE s.deleted_at IS NULL
+		  AND s.visibility IN ('public', 'unlisted')
+		  AND s.created_at >= CURRENT_DATE - ($1::int - 1)
+		  AND ($2::boolean = FALSE OR s.local = TRUE)
+		GROUP BY sc.url, day
+		ORDER BY sc.url, day DESC`
 
-	rows, err := s.pool.Query(ctx, q, int64(days))
+	rows, err := s.pool.Query(ctx, q, int64(days), localOnly)
 	if err != nil {
 		return nil, fmt.Errorf("GetLinkDailyStats: %w", mapErr(err))
 	}

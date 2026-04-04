@@ -245,14 +245,16 @@ type MediaAttachment struct {
 }
 
 type MonsteraSetting struct {
-	ID                  string  `json:"id"`
-	RegistrationMode    string  `json:"registration_mode"`
-	InviteMaxUses       *int32  `json:"invite_max_uses"`
-	InviteExpiresInDays *int32  `json:"invite_expires_in_days"`
-	ServerName          *string `json:"server_name"`
-	ServerDescription   *string `json:"server_description"`
-	ServerRules         *string `json:"server_rules"`
-	TrendingLinksScope  string  `json:"trending_links_scope"`
+	ID                    string  `json:"id"`
+	RegistrationMode      string  `json:"registration_mode"`
+	InviteMaxUses         *int32  `json:"invite_max_uses"`
+	InviteExpiresInDays   *int32  `json:"invite_expires_in_days"`
+	ServerName            *string `json:"server_name"`
+	ServerDescription     *string `json:"server_description"`
+	ServerRules           *string `json:"server_rules"`
+	TrendingLinksScope    string  `json:"trending_links_scope"`
+	TrendingTagsScope     string  `json:"trending_tags_scope"`
+	TrendingStatusesScope string  `json:"trending_statuses_scope"`
 }
 
 type Mute struct {

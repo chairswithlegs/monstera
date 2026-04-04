@@ -114,7 +114,7 @@ func (f *fakeTagFollowService) AreFollowingTagsByName(_ context.Context, _ strin
 
 func TestTrendsHandler_GETTrendsStatuses_empty(t *testing.T) {
 	t.Parallel()
-	handler := NewTrendsHandler(&fakeTrendsService{}, &fakeTagFollowService{}, &fakeSettingsService{scope: domain.MonsteraTrendingLinksScopeAll}, "example.com")
+	handler := NewTrendsHandler(&fakeTrendsService{}, &fakeTagFollowService{}, "example.com")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/trends/statuses", nil)
 	rec := httptest.NewRecorder()
@@ -151,7 +151,7 @@ func TestTrendsHandler_GETTrendsStatuses_withData(t *testing.T) {
 			},
 		},
 	}
-	handler := NewTrendsHandler(svc, &fakeTagFollowService{}, &fakeSettingsService{scope: domain.MonsteraTrendingLinksScopeAll}, "example.com")
+	handler := NewTrendsHandler(svc, &fakeTagFollowService{}, "example.com")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/trends/statuses", nil)
 	rec := httptest.NewRecorder()
@@ -167,7 +167,7 @@ func TestTrendsHandler_GETTrendsStatuses_withData(t *testing.T) {
 
 func TestTrendsHandler_GETTrendsStatuses_error(t *testing.T) {
 	t.Parallel()
-	handler := NewTrendsHandler(&fakeTrendsService{err: errors.New("store error")}, &fakeTagFollowService{}, &fakeSettingsService{scope: domain.MonsteraTrendingLinksScopeAll}, "example.com")
+	handler := NewTrendsHandler(&fakeTrendsService{err: errors.New("store error")}, &fakeTagFollowService{}, "example.com")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/trends/statuses", nil)
 	rec := httptest.NewRecorder()
@@ -196,7 +196,7 @@ func TestTrendsHandler_GETTrendsStatuses_offset(t *testing.T) {
 	svc := &fakeTrendsService{
 		statuses: []service.EnrichedStatus{makeStatus("s1"), makeStatus("s2"), makeStatus("s3")},
 	}
-	handler := NewTrendsHandler(svc, &fakeTagFollowService{}, &fakeSettingsService{scope: domain.MonsteraTrendingLinksScopeAll}, "example.com")
+	handler := NewTrendsHandler(svc, &fakeTagFollowService{}, "example.com")
 
 	cases := []struct {
 		query   string
@@ -223,7 +223,7 @@ func TestTrendsHandler_GETTrendsStatuses_offset(t *testing.T) {
 
 func TestTrendsHandler_GETTrendsTags_empty(t *testing.T) {
 	t.Parallel()
-	handler := NewTrendsHandler(&fakeTrendsService{}, &fakeTagFollowService{}, &fakeSettingsService{scope: domain.MonsteraTrendingLinksScopeAll}, "example.com")
+	handler := NewTrendsHandler(&fakeTrendsService{}, &fakeTagFollowService{}, "example.com")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/trends/tags?limit=20", nil)
 	rec := httptest.NewRecorder()
@@ -248,7 +248,7 @@ func TestTrendsHandler_GETTrendsTags_withData(t *testing.T) {
 			},
 		},
 	}
-	handler := NewTrendsHandler(svc, &fakeTagFollowService{}, &fakeSettingsService{scope: domain.MonsteraTrendingLinksScopeAll}, "example.com")
+	handler := NewTrendsHandler(svc, &fakeTagFollowService{}, "example.com")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/trends/tags", nil)
 	rec := httptest.NewRecorder()
@@ -278,7 +278,7 @@ func TestTrendsHandler_GETTrendsTags_offset(t *testing.T) {
 			{Hashtag: domain.Hashtag{ID: "tag3", Name: "zig"}, History: []domain.TagHistoryDay{{Day: day, Uses: 4, Accounts: 2}}},
 		},
 	}
-	handler := NewTrendsHandler(svc, &fakeTagFollowService{}, &fakeSettingsService{scope: domain.MonsteraTrendingLinksScopeAll}, "example.com")
+	handler := NewTrendsHandler(svc, &fakeTagFollowService{}, "example.com")
 
 	cases := []struct {
 		query     string
@@ -305,7 +305,7 @@ func TestTrendsHandler_GETTrendsTags_offset(t *testing.T) {
 
 func TestTrendsHandler_GETTrendsTags_error(t *testing.T) {
 	t.Parallel()
-	handler := NewTrendsHandler(&fakeTrendsService{err: errors.New("store error")}, &fakeTagFollowService{}, &fakeSettingsService{scope: domain.MonsteraTrendingLinksScopeAll}, "example.com")
+	handler := NewTrendsHandler(&fakeTrendsService{err: errors.New("store error")}, &fakeTagFollowService{}, "example.com")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/trends/tags", nil)
 	rec := httptest.NewRecorder()
@@ -316,7 +316,7 @@ func TestTrendsHandler_GETTrendsTags_error(t *testing.T) {
 
 func TestTrendsHandler_GETTrendsLinks(t *testing.T) {
 	t.Parallel()
-	handler := NewTrendsHandler(&fakeTrendsService{}, &fakeTagFollowService{}, &fakeSettingsService{scope: domain.MonsteraTrendingLinksScopeAll}, "example.com")
+	handler := NewTrendsHandler(&fakeTrendsService{}, &fakeTagFollowService{}, "example.com")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/trends/links", nil)
 	rec := httptest.NewRecorder()
@@ -339,7 +339,7 @@ func TestTrendsHandler_GETTrendsLinks_withData(t *testing.T) {
 			},
 		},
 	}
-	handler := NewTrendsHandler(svc, &fakeTagFollowService{}, &fakeSettingsService{scope: domain.MonsteraTrendingLinksScopeAll}, "example.com")
+	handler := NewTrendsHandler(svc, &fakeTagFollowService{}, "example.com")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/trends/links", nil)
 	rec := httptest.NewRecorder()
@@ -361,7 +361,7 @@ func TestTrendsHandler_GETTrendsTags_followingOmittedWhenUnauthenticated(t *test
 			{Hashtag: domain.Hashtag{ID: "tag1", Name: "golang"}, History: []domain.TagHistoryDay{{Day: day, Uses: 5, Accounts: 2}}},
 		},
 	}
-	handler := NewTrendsHandler(svc, &fakeTagFollowService{}, &fakeSettingsService{scope: domain.MonsteraTrendingLinksScopeAll}, "example.com")
+	handler := NewTrendsHandler(svc, &fakeTagFollowService{}, "example.com")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/trends/tags", nil)
 	rec := httptest.NewRecorder()
@@ -387,7 +387,7 @@ func TestTrendsHandler_GETTrendsTags_followingReflectsUserState(t *testing.T) {
 	tagFollows := &fakeTagFollowService{
 		followed: []domain.Hashtag{{ID: "tag1", Name: "golang"}},
 	}
-	handler := NewTrendsHandler(svc, tagFollows, &fakeSettingsService{scope: domain.MonsteraTrendingLinksScopeAll}, "example.com")
+	handler := NewTrendsHandler(svc, tagFollows, "example.com")
 
 	account := &domain.Account{ID: "acct1", Username: "alice"}
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/trends/tags", nil)
@@ -406,56 +406,4 @@ func TestTrendsHandler_GETTrendsTags_followingReflectsUserState(t *testing.T) {
 	}
 	assert.Equal(t, true, byName["golang"]["following"], "golang is followed")
 	assert.Equal(t, false, byName["rust"]["following"], "rust is not followed")
-}
-
-func TestTrendsHandler_GETTrendsLinks_scopeDisabled_returnsEmpty(t *testing.T) {
-	t.Parallel()
-	day := time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC)
-	svc := &fakeTrendsService{
-		links: []domain.TrendingLink{
-			{URL: "https://example.com/article", History: []domain.TrendingLinkHistoryDay{{Day: day, Uses: 100, Accounts: 50}}},
-		},
-	}
-	handler := NewTrendsHandler(svc, &fakeTagFollowService{}, &fakeSettingsService{scope: domain.MonsteraTrendingLinksScopeDisabled}, "example.com")
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/trends/links", nil)
-	rec := httptest.NewRecorder()
-	handler.GETTrendsLinks(rec, req)
-
-	assert.Equal(t, http.StatusOK, rec.Code)
-	var body []any
-	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
-	assert.Empty(t, body)
-}
-
-func TestTrendsHandler_GETTrendsLinks_scopeUsers_unauthenticated_returns401(t *testing.T) {
-	t.Parallel()
-	handler := NewTrendsHandler(&fakeTrendsService{}, &fakeTagFollowService{}, &fakeSettingsService{scope: domain.MonsteraTrendingLinksScopeUsers}, "example.com")
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/trends/links", nil)
-	rec := httptest.NewRecorder()
-	handler.GETTrendsLinks(rec, req)
-
-	assert.Equal(t, http.StatusUnauthorized, rec.Code)
-}
-
-func TestTrendsHandler_GETTrendsLinks_scopeUsers_authenticated_returnsData(t *testing.T) {
-	t.Parallel()
-	day := time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC)
-	svc := &fakeTrendsService{
-		links: []domain.TrendingLink{
-			{URL: "https://example.com/article", History: []domain.TrendingLinkHistoryDay{{Day: day, Uses: 100, Accounts: 50}}},
-		},
-	}
-	handler := NewTrendsHandler(svc, &fakeTagFollowService{}, &fakeSettingsService{scope: domain.MonsteraTrendingLinksScopeUsers}, "example.com")
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/trends/links", nil)
-	req = req.WithContext(middleware.WithAccount(req.Context(), &domain.Account{ID: "acct1", Username: "alice"}))
-	rec := httptest.NewRecorder()
-	handler.GETTrendsLinks(rec, req)
-
-	assert.Equal(t, http.StatusOK, rec.Code)
-	var body []map[string]any
-	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
-	assert.Len(t, body, 1)
 }

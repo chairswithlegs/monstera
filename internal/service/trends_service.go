@@ -152,41 +152,83 @@ func (svc *trendsService) fill(ctx context.Context) (*trendingCache, error) {
 }
 
 func (svc *trendsService) RefreshIndexes(ctx context.Context) error {
+	settings, err := svc.store.GetMonsteraSettings(ctx)
+	if err != nil {
+		return fmt.Errorf("GetMonsteraSettings: %w", err)
+	}
+	var statusesScope, tagsScope, linksScope domain.MonsteraTrendingScope
+	if settings != nil {
+		statusesScope = settings.TrendingStatusesScope
+		tagsScope = settings.TrendingTagsScope
+		linksScope = settings.TrendingLinksScope
+	}
+
+	// Trending statuses: scope controls which statuses are sourced.
 	// This is a super simple algorithm for getting "trending" statuses.
 	// It simply gets the top 20 statuses by engagement score in the last 48 hours.
 	// Engagement score is defined as the sum of reblogs, favourites and replies.
-	scored, err := svc.store.GetTopScoredPublicStatuses(ctx, time.Now().UTC().Add(-48*time.Hour), 20)
-	if err != nil {
-		return fmt.Errorf("GetTopScoredPublicStatuses: %w", err)
-	}
-	if err := svc.store.ReplaceTrendingStatuses(ctx, scored); err != nil {
-		return fmt.Errorf("ReplaceTrendingStatuses: %w", err)
-	}
-
-	// This is a super simple algorithm for getting "trending" tags.
-	// It tabulates the usage of each hashtags over the last 7 days.
-	since := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -6)
-	stats, err := svc.store.GetHashtagDailyStats(ctx, since)
-	if err != nil {
-		return fmt.Errorf("GetHashtagDailyStats: %w", err)
-	}
-	tagEntries := make([]domain.TrendingTagHistory, len(stats))
-	for i, s := range stats {
-		tagEntries[i] = domain.TrendingTagHistory{
-			HashtagID: s.HashtagID,
-			Day:       s.Day,
-			Uses:      s.Uses,
-			Accounts:  s.Accounts,
+	if statusesScope == domain.MonsteraTrendingDisabled || statusesScope == "" {
+		if err := svc.store.ReplaceTrendingStatuses(ctx, nil); err != nil {
+			return fmt.Errorf("ReplaceTrendingStatuses (clear): %w", err)
+		}
+	} else {
+		localOnly := statusesScope == domain.MonsteraTrendingLocal
+		scored, err := svc.store.GetTopScoredPublicStatuses(ctx, time.Now().UTC().Add(-48*time.Hour), 20, localOnly)
+		if err != nil {
+			return fmt.Errorf("GetTopScoredPublicStatuses: %w", err)
+		}
+		if err := svc.store.ReplaceTrendingStatuses(ctx, scored); err != nil {
+			return fmt.Errorf("ReplaceTrendingStatuses: %w", err)
 		}
 	}
-	if err := svc.store.UpsertTrendingTagHistory(ctx, tagEntries); err != nil {
-		return fmt.Errorf("UpsertTrendingTagHistory: %w", err)
+
+	// Trending tags: scope controls which statuses are sourced.
+	// It tabulates the usage of each hashtag over the last 7 days.
+	since := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -6)
+	if tagsScope == domain.MonsteraTrendingDisabled || tagsScope == "" {
+		if err := svc.store.TruncateTrendingTagHistory(ctx); err != nil {
+			return fmt.Errorf("TruncateTrendingTagHistory: %w", err)
+		}
+	} else {
+		localOnly := tagsScope == domain.MonsteraTrendingLocal
+		stats, err := svc.store.GetHashtagDailyStats(ctx, since, localOnly)
+		if err != nil {
+			return fmt.Errorf("GetHashtagDailyStats: %w", err)
+		}
+		tagEntries := make([]domain.TrendingTagHistory, len(stats))
+		for i, s := range stats {
+			tagEntries[i] = domain.TrendingTagHistory{
+				HashtagID: s.HashtagID,
+				Day:       s.Day,
+				Uses:      s.Uses,
+				Accounts:  s.Accounts,
+			}
+		}
+		if err := svc.store.UpsertTrendingTagHistory(ctx, tagEntries); err != nil {
+			return fmt.Errorf("UpsertTrendingTagHistory: %w", err)
+		}
 	}
 
-	// Trending links: tabulate URL usage over the last 7 days and replace the index.
-	linkStats, err := svc.store.GetLinkDailyStats(ctx, 7)
-	if err != nil {
-		return fmt.Errorf("GetLinkDailyStats: %w", err)
+	// Trending links: scope controls which statuses are sourced; disabled clears the index.
+	var linkStats []domain.TrendingLinkStats
+	if linksScope == domain.MonsteraTrendingDisabled || linksScope == "" {
+		// Disabled: clear the index and skip link indexing.
+		if err := svc.store.ReplaceTrendingLinks(ctx, nil); err != nil {
+			return fmt.Errorf("ReplaceTrendingLinks (clear): %w", err)
+		}
+		slog.InfoContext(ctx, "trending indexes updated", slog.Int("link_days", 0))
+		return nil
+	}
+
+	// local: index links from local statuses only.
+	// all: index links from all statuses (local + remote).
+	// Note: "all" currently behaves like "local" because card_subscriber.go only
+	// fetches cards for local statuses. Remote card processing is a follow-up.
+	localOnly := linksScope == domain.MonsteraTrendingLocal
+	var fetchErr error
+	linkStats, fetchErr = svc.store.GetLinkDailyStats(ctx, 7, localOnly)
+	if fetchErr != nil {
+		return fmt.Errorf("GetLinkDailyStats: %w", fetchErr)
 	}
 	if err := svc.store.UpsertTrendingLinkHistory(ctx, linkStats); err != nil {
 		return fmt.Errorf("UpsertTrendingLinkHistory: %w", err)
@@ -230,8 +272,6 @@ func (svc *trendsService) RefreshIndexes(ctx context.Context) error {
 	}
 
 	slog.InfoContext(ctx, "trending indexes updated",
-		slog.Int("statuses", len(scored)),
-		slog.Int("tag_days", len(tagEntries)),
 		slog.Int("link_days", len(linkStats)))
 	return nil
 }

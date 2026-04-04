@@ -58,7 +58,13 @@ func (svc *monsteraSettingsService) Update(ctx context.Context, in domain.Monste
 		return err
 	}
 	if in.TrendingLinksScope == "" {
-		in.TrendingLinksScope = domain.MonsteraTrendingLinksScopeDisabled
+		in.TrendingLinksScope = domain.MonsteraTrendingDisabled
+	}
+	if in.TrendingTagsScope == "" {
+		in.TrendingTagsScope = domain.MonsteraTrendingDisabled
+	}
+	if in.TrendingStatusesScope == "" {
+		in.TrendingStatusesScope = domain.MonsteraTrendingDisabled
 	}
 	if err := svc.store.UpdateMonsteraSettings(ctx, &in); err != nil {
 		return fmt.Errorf("UpdateMonsteraSettings: %w", err)
@@ -81,13 +87,25 @@ func validateMonsteraSettings(s domain.MonsteraSettings) error {
 			return fmt.Errorf("server_name must be 24 characters or fewer: %w", domain.ErrValidation)
 		}
 	}
-	switch s.TrendingLinksScope {
-	case domain.MonsteraTrendingLinksScopeDisabled, domain.MonsteraTrendingLinksScopeUsers,
-		domain.MonsteraTrendingLinksScopeAll:
+	if err := validateTrendingScope(s.TrendingLinksScope, "trending_links_scope"); err != nil {
+		return err
+	}
+	if err := validateTrendingScope(s.TrendingTagsScope, "trending_tags_scope"); err != nil {
+		return err
+	}
+	if err := validateTrendingScope(s.TrendingStatusesScope, "trending_statuses_scope"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateTrendingScope(scope domain.MonsteraTrendingScope, field string) error {
+	switch scope {
+	case domain.MonsteraTrendingDisabled, domain.MonsteraTrendingLocal, domain.MonsteraTrendingAll:
 	case "":
 		// Empty is allowed; treated as disabled.
 	default:
-		return fmt.Errorf("invalid trending_links_scope %q: %w", s.TrendingLinksScope, domain.ErrValidation)
+		return fmt.Errorf("invalid %s %q: %w", field, scope, domain.ErrValidation)
 	}
 	return nil
 }

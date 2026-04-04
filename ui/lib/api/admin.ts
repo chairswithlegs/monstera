@@ -318,7 +318,9 @@ export interface AdminSettings {
   server_name?: string | null;
   server_description?: string | null;
   server_rules?: string[];
-  trending_links_scope?: string; // "disabled" | "users" | "all"
+  trending_links_scope?: string;    // "disabled" | "local" | "all"
+  trending_tags_scope?: string;     // "disabled" | "local" | "all"
+  trending_statuses_scope?: string; // "disabled" | "local" | "all"
 }
 
 export async function getSettings(): Promise<AdminSettings> {

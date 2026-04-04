@@ -96,6 +96,12 @@ type FakeStore struct {
 	TrendingLinks       []domain.TrendingLink
 	LinkDenylist        []string
 
+	// LastLocalOnly records the localOnly argument from the most recent call to each
+	// trending stats method, allowing tests to assert that the correct scope was used.
+	LastStatusesLocalOnly bool
+	LastTagsLocalOnly     bool
+	LastLinksLocalOnly    bool
+
 	StatusCards map[string]*domain.Card // status_id -> card
 
 	OutboxEvents []domain.DomainEvent // transactional outbox events
@@ -1925,19 +1931,28 @@ func (f *FakeStore) GetMonsteraSettings(ctx context.Context) (*domain.MonsteraSe
 	if f.monsteraSettings != nil {
 		return f.monsteraSettings, nil
 	}
-	return &domain.MonsteraSettings{RegistrationMode: domain.MonsteraRegistrationModeOpen}, nil
+	// Default: open registration, all trending enabled — permissive defaults for tests.
+	return &domain.MonsteraSettings{
+		RegistrationMode:      domain.MonsteraRegistrationModeOpen,
+		TrendingLinksScope:    domain.MonsteraTrendingAll,
+		TrendingTagsScope:     domain.MonsteraTrendingAll,
+		TrendingStatusesScope: domain.MonsteraTrendingAll,
+	}, nil
 }
 
 func (f *FakeStore) UpdateMonsteraSettings(ctx context.Context, in *domain.MonsteraSettings) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.monsteraSettings = &domain.MonsteraSettings{
-		RegistrationMode:    in.RegistrationMode,
-		InviteMaxUses:       in.InviteMaxUses,
-		InviteExpiresInDays: in.InviteExpiresInDays,
-		ServerName:          in.ServerName,
-		ServerDescription:   in.ServerDescription,
-		ServerRules:         append([]string(nil), in.ServerRules...),
+		RegistrationMode:      in.RegistrationMode,
+		InviteMaxUses:         in.InviteMaxUses,
+		InviteExpiresInDays:   in.InviteExpiresInDays,
+		ServerName:            in.ServerName,
+		ServerDescription:     in.ServerDescription,
+		ServerRules:           append([]string(nil), in.ServerRules...),
+		TrendingLinksScope:    in.TrendingLinksScope,
+		TrendingTagsScope:     in.TrendingTagsScope,
+		TrendingStatusesScope: in.TrendingStatusesScope,
 	}
 	return nil
 }
@@ -3896,15 +3911,17 @@ func (f *FakeStore) GetOwnVoteOptionIDs(ctx context.Context, pollID, accountID s
 	return ids, nil
 }
 
-func (f *FakeStore) GetTopScoredPublicStatuses(_ context.Context, _ time.Time, _ int) ([]domain.TrendingStatus, error) {
+func (f *FakeStore) GetTopScoredPublicStatuses(_ context.Context, _ time.Time, _ int, localOnly bool) ([]domain.TrendingStatus, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.LastStatusesLocalOnly = localOnly
 	return append([]domain.TrendingStatus{}, f.TrendingStatuses...), nil
 }
 
-func (f *FakeStore) GetHashtagDailyStats(_ context.Context, _ time.Time) ([]domain.HashtagDailyStats, error) {
+func (f *FakeStore) GetHashtagDailyStats(_ context.Context, _ time.Time, localOnly bool) ([]domain.HashtagDailyStats, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.LastTagsLocalOnly = localOnly
 	return append([]domain.HashtagDailyStats{}, f.HashtagDailyStats...), nil
 }
 
@@ -3912,6 +3929,13 @@ func (f *FakeStore) ReplaceTrendingStatuses(_ context.Context, entries []domain.
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.TrendingStatuses = append([]domain.TrendingStatus{}, entries...)
+	return nil
+}
+
+func (f *FakeStore) TruncateTrendingTagHistory(_ context.Context) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.TrendingTagHistory = nil
 	return nil
 }
 
@@ -3965,9 +3989,10 @@ func (f *FakeStore) GetTrendingTags(_ context.Context, _ int, limit int) ([]doma
 	return out, nil
 }
 
-func (f *FakeStore) GetLinkDailyStats(_ context.Context, _ int) ([]domain.TrendingLinkStats, error) {
+func (f *FakeStore) GetLinkDailyStats(_ context.Context, _ int, localOnly bool) ([]domain.TrendingLinkStats, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.LastLinksLocalOnly = localOnly
 	return append([]domain.TrendingLinkStats{}, f.TrendingLinkHistory...), nil
 }
 

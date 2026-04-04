@@ -1169,13 +1169,15 @@ func (s *PostgresStore) GetMonsteraSettings(ctx context.Context) (*domain.Monste
 		rules = strings.Split(*row.ServerRules, "\n")
 	}
 	return &domain.MonsteraSettings{
-		RegistrationMode:    domain.MonsteraRegistrationMode(row.RegistrationMode),
-		InviteMaxUses:       int32PtrToIntPtr(row.InviteMaxUses),
-		InviteExpiresInDays: int32PtrToIntPtr(row.InviteExpiresInDays),
-		ServerName:          row.ServerName,
-		ServerDescription:   row.ServerDescription,
-		ServerRules:         rules,
-		TrendingLinksScope:  domain.MonsteraTrendingLinksScope(row.TrendingLinksScope),
+		RegistrationMode:      domain.MonsteraRegistrationMode(row.RegistrationMode),
+		InviteMaxUses:         int32PtrToIntPtr(row.InviteMaxUses),
+		InviteExpiresInDays:   int32PtrToIntPtr(row.InviteExpiresInDays),
+		ServerName:            row.ServerName,
+		ServerDescription:     row.ServerDescription,
+		ServerRules:           rules,
+		TrendingLinksScope:    domain.MonsteraTrendingScope(row.TrendingLinksScope),
+		TrendingTagsScope:     domain.MonsteraTrendingScope(row.TrendingTagsScope),
+		TrendingStatusesScope: domain.MonsteraTrendingScope(row.TrendingStatusesScope),
 	}, nil
 }
 
@@ -1186,13 +1188,15 @@ func (s *PostgresStore) UpdateMonsteraSettings(ctx context.Context, in *domain.M
 		rulesText = &r
 	}
 	return mapErr(s.q.UpdateMonsteraSettings(ctx, db.UpdateMonsteraSettingsParams{
-		RegistrationMode:    string(in.RegistrationMode),
-		InviteMaxUses:       intPtrToInt32Ptr(in.InviteMaxUses),
-		InviteExpiresInDays: intPtrToInt32Ptr(in.InviteExpiresInDays),
-		ServerName:          in.ServerName,
-		ServerDescription:   in.ServerDescription,
-		ServerRules:         rulesText,
-		TrendingLinksScope:  string(in.TrendingLinksScope),
+		RegistrationMode:      string(in.RegistrationMode),
+		InviteMaxUses:         intPtrToInt32Ptr(in.InviteMaxUses),
+		InviteExpiresInDays:   intPtrToInt32Ptr(in.InviteExpiresInDays),
+		ServerName:            in.ServerName,
+		ServerDescription:     in.ServerDescription,
+		ServerRules:           rulesText,
+		TrendingLinksScope:    string(in.TrendingLinksScope),
+		TrendingTagsScope:     string(in.TrendingTagsScope),
+		TrendingStatusesScope: string(in.TrendingStatusesScope),
 	}))
 }
 

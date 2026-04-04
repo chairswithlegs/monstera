@@ -11,7 +11,8 @@ import (
 
 const getMonsteraSettings = `-- name: GetMonsteraSettings :one
 SELECT id, registration_mode, invite_max_uses, invite_expires_in_days,
-       server_name, server_description, server_rules, trending_links_scope
+       server_name, server_description, server_rules,
+       trending_links_scope, trending_tags_scope, trending_statuses_scope
 FROM monstera_settings WHERE id = 'default'
 `
 
@@ -27,6 +28,8 @@ func (q *Queries) GetMonsteraSettings(ctx context.Context) (MonsteraSetting, err
 		&i.ServerDescription,
 		&i.ServerRules,
 		&i.TrendingLinksScope,
+		&i.TrendingTagsScope,
+		&i.TrendingStatusesScope,
 	)
 	return i, err
 }
@@ -34,27 +37,33 @@ func (q *Queries) GetMonsteraSettings(ctx context.Context) (MonsteraSetting, err
 const updateMonsteraSettings = `-- name: UpdateMonsteraSettings :exec
 INSERT INTO monstera_settings
   (id, registration_mode, invite_max_uses, invite_expires_in_days,
-   server_name, server_description, server_rules, trending_links_scope)
+   server_name, server_description, server_rules,
+   trending_links_scope, trending_tags_scope, trending_statuses_scope)
 VALUES ('default', $1, $2, $3,
-        $4, $5, $6, $7)
+        $4, $5, $6,
+        $7, $8, $9)
 ON CONFLICT (id) DO UPDATE SET
-  registration_mode      = $1,
-  invite_max_uses        = $2,
-  invite_expires_in_days = $3,
-  server_name            = $4,
-  server_description     = $5,
-  server_rules           = $6,
-  trending_links_scope   = $7
+  registration_mode        = $1,
+  invite_max_uses          = $2,
+  invite_expires_in_days   = $3,
+  server_name              = $4,
+  server_description       = $5,
+  server_rules             = $6,
+  trending_links_scope     = $7,
+  trending_tags_scope      = $8,
+  trending_statuses_scope  = $9
 `
 
 type UpdateMonsteraSettingsParams struct {
-	RegistrationMode    string  `json:"registration_mode"`
-	InviteMaxUses       *int32  `json:"invite_max_uses"`
-	InviteExpiresInDays *int32  `json:"invite_expires_in_days"`
-	ServerName          *string `json:"server_name"`
-	ServerDescription   *string `json:"server_description"`
-	ServerRules         *string `json:"server_rules"`
-	TrendingLinksScope  string  `json:"trending_links_scope"`
+	RegistrationMode      string  `json:"registration_mode"`
+	InviteMaxUses         *int32  `json:"invite_max_uses"`
+	InviteExpiresInDays   *int32  `json:"invite_expires_in_days"`
+	ServerName            *string `json:"server_name"`
+	ServerDescription     *string `json:"server_description"`
+	ServerRules           *string `json:"server_rules"`
+	TrendingLinksScope    string  `json:"trending_links_scope"`
+	TrendingTagsScope     string  `json:"trending_tags_scope"`
+	TrendingStatusesScope string  `json:"trending_statuses_scope"`
 }
 
 func (q *Queries) UpdateMonsteraSettings(ctx context.Context, arg UpdateMonsteraSettingsParams) error {
@@ -66,6 +75,8 @@ func (q *Queries) UpdateMonsteraSettings(ctx context.Context, arg UpdateMonstera
 		arg.ServerDescription,
 		arg.ServerRules,
 		arg.TrendingLinksScope,
+		arg.TrendingTagsScope,
+		arg.TrendingStatusesScope,
 	)
 	return err
 }

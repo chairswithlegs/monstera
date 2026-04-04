@@ -372,14 +372,15 @@ type MarkerStore interface {
 
 // TrendingStore handles trending status, tag, and link persistence.
 type TrendingStore interface {
-	GetTopScoredPublicStatuses(ctx context.Context, since time.Time, limit int) ([]domain.TrendingStatus, error)
-	GetHashtagDailyStats(ctx context.Context, since time.Time) ([]domain.HashtagDailyStats, error)
+	GetTopScoredPublicStatuses(ctx context.Context, since time.Time, limit int, localOnly bool) ([]domain.TrendingStatus, error)
+	GetHashtagDailyStats(ctx context.Context, since time.Time, localOnly bool) ([]domain.HashtagDailyStats, error)
+	TruncateTrendingTagHistory(ctx context.Context) error
 	ReplaceTrendingStatuses(ctx context.Context, entries []domain.TrendingStatus) error
 	UpsertTrendingTagHistory(ctx context.Context, entries []domain.TrendingTagHistory) error
 	GetTrendingStatusIDs(ctx context.Context, limit int) ([]domain.TrendingStatus, error)
 	GetTrendingTags(ctx context.Context, days int, limit int) ([]domain.TrendingTag, error)
 
-	GetLinkDailyStats(ctx context.Context, days int) ([]domain.TrendingLinkStats, error)
+	GetLinkDailyStats(ctx context.Context, days int, localOnly bool) ([]domain.TrendingLinkStats, error)
 	UpsertTrendingLinkHistory(ctx context.Context, entries []domain.TrendingLinkStats) error
 	ReplaceTrendingLinks(ctx context.Context, entries []domain.TrendingLink) error
 	GetTrendingLinks(ctx context.Context, days int, limit int) ([]domain.TrendingLink, error)

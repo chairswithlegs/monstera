@@ -26,6 +26,8 @@ export default function ServerSettingsPage() {
   const [serverDescription, setServerDescription] = useState('');
   const [serverRules, setServerRules] = useState('');
   const [trendingLinksScope, setTrendingLinksScope] = useState('disabled');
+  const [trendingTagsScope, setTrendingTagsScope] = useState('disabled');
+  const [trendingStatusesScope, setTrendingStatusesScope] = useState('disabled');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -37,10 +39,10 @@ export default function ServerSettingsPage() {
     { value: 'invite', label: t('modeInvite') },
   ];
 
-  const trendingLinksScopeOptions = [
-    { value: 'disabled', label: t('trendingLinksScopeDisabled') },
-    { value: 'users', label: t('trendingLinksScopeUsers') },
-    { value: 'all', label: t('trendingLinksScopeAll') },
+  const trendingScopeOptions = [
+    { value: 'disabled', label: t('trendingScopeDisabled') },
+    { value: 'local', label: t('trendingScopeLocal') },
+    { value: 'all', label: t('trendingScopeAll') },
   ];
 
   useEffect(() => {
@@ -67,6 +69,8 @@ export default function ServerSettingsPage() {
         setServerDescription(s.server_description ?? '');
         setServerRules(s.server_rules?.join('\n') ?? '');
         setTrendingLinksScope(s.trending_links_scope ?? 'disabled');
+        setTrendingTagsScope(s.trending_tags_scope ?? 'disabled');
+        setTrendingStatusesScope(s.trending_statuses_scope ?? 'disabled');
       })
       .catch((e) => setError(translateApiError(tErr, e)));
   }, [tErr]);
@@ -89,6 +93,8 @@ export default function ServerSettingsPage() {
         server_description: serverDescription.trim() || null,
         server_rules: serverRules.split('\n').map((r) => r.trim()).filter(Boolean),
         trending_links_scope: trendingLinksScope,
+        trending_tags_scope: trendingTagsScope,
+        trending_statuses_scope: trendingStatusesScope,
       });
       setSuccess(true);
     } catch (e) {
@@ -196,6 +202,38 @@ export default function ServerSettingsPage() {
           <p className="text-xs text-muted-foreground">{t('serverRulesHint')}</p>
         </div>
         <div className="flex flex-col gap-1.5">
+          <Label htmlFor="trending-statuses-scope">{t('trendingStatusesScope')}</Label>
+          <select
+            id="trending-statuses-scope"
+            value={trendingStatusesScope}
+            onChange={(e) => setTrendingStatusesScope(e.target.value)}
+            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {trendingScopeOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">{t('trendingStatusesScopeHint')}</p>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="trending-tags-scope">{t('trendingTagsScope')}</Label>
+          <select
+            id="trending-tags-scope"
+            value={trendingTagsScope}
+            onChange={(e) => setTrendingTagsScope(e.target.value)}
+            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {trendingScopeOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">{t('trendingTagsScopeHint')}</p>
+        </div>
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="trending-links-scope">{t('trendingLinksScope')}</Label>
           <select
             id="trending-links-scope"
@@ -203,12 +241,13 @@ export default function ServerSettingsPage() {
             onChange={(e) => setTrendingLinksScope(e.target.value)}
             className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
-            {trendingLinksScopeOptions.map((opt) => (
+            {trendingScopeOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
             ))}
           </select>
+          <p className="text-xs text-muted-foreground">{t('trendingLinksScopeHint')}</p>
         </div>
         <Button type="submit" disabled={saving}>
           {saving ? tCommon('saving') : tCommon('save')}

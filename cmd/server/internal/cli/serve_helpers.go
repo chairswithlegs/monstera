@@ -403,7 +403,7 @@ func createRouter(cfg *config.Config, s *svcs, i *infra, sseHub *sse.Hub) http.H
 		Polls:                  mastodon.NewPollsHandler(s.statusRead, s.statusInteraction),
 		Timelines:              mastodon.NewTimelinesHandler(s.timeline, cfg.MonsteraInstanceDomain),
 		Instance:               mastodon.NewInstanceHandler(cfg.MonsteraInstanceDomain, cfg.MaxStatusChars, cfg.MediaMaxBytes, nil, s.instance, s.monsteraSettings),
-		Trends:                 mastodon.NewTrendsHandler(s.trends, s.tagFollow, s.monsteraSettings, cfg.MonsteraInstanceDomain),
+		Trends:                 mastodon.NewTrendsHandler(s.trends, s.tagFollow, cfg.MonsteraInstanceDomain),
 		Conversations:          mastodon.NewConversationsHandler(s.conversation, cfg.MonsteraInstanceDomain),
 		Suggestions:            mastodon.NewSuggestionsHandler(),
 		Notifications:          mastodon.NewNotificationsHandler(s.notification, s.account, s.statusRead, cfg.MonsteraInstanceDomain),

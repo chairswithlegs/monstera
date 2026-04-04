@@ -7,7 +7,6 @@ import (
 	"github.com/chairswithlegs/monstera/internal/api"
 	"github.com/chairswithlegs/monstera/internal/api/mastodon/apimodel"
 	"github.com/chairswithlegs/monstera/internal/api/middleware"
-	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
 )
 
@@ -15,13 +14,12 @@ import (
 type TrendsHandler struct {
 	svc            service.TrendsService
 	tagFollows     service.TagFollowService
-	settings       service.MonsteraSettingsService
 	instanceDomain string
 }
 
 // NewTrendsHandler returns a new TrendsHandler.
-func NewTrendsHandler(svc service.TrendsService, tagFollows service.TagFollowService, settings service.MonsteraSettingsService, instanceDomain string) *TrendsHandler {
-	return &TrendsHandler{svc: svc, tagFollows: tagFollows, settings: settings, instanceDomain: instanceDomain}
+func NewTrendsHandler(svc service.TrendsService, tagFollows service.TagFollowService, instanceDomain string) *TrendsHandler {
+	return &TrendsHandler{svc: svc, tagFollows: tagFollows, instanceDomain: instanceDomain}
 }
 
 // GETTrendsStatuses handles GET /api/v1/trends/statuses.
@@ -91,24 +89,6 @@ func (h *TrendsHandler) GETTrendsTags(w http.ResponseWriter, r *http.Request) {
 
 // GETTrendsLinks handles GET /api/v1/trends/links.
 func (h *TrendsHandler) GETTrendsLinks(w http.ResponseWriter, r *http.Request) {
-	cfg, err := h.settings.Get(r.Context())
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	switch cfg.TrendingLinksScope {
-	case domain.MonsteraTrendingLinksScopeDisabled, "":
-		api.WriteJSON(w, http.StatusOK, []apimodel.TrendingLinkCard{})
-		return
-	case domain.MonsteraTrendingLinksScopeUsers:
-		if middleware.AccountFromContext(r.Context()) == nil {
-			api.HandleError(w, r, api.ErrUnauthorized)
-			return
-		}
-	case domain.MonsteraTrendingLinksScopeAll:
-		// serve to everyone
-	}
-
 	offset := parseOffsetParam(r)
 	limit := parseLimitParam(r, 10, 40)
 	links, err := h.svc.TrendingLinks(r.Context(), offset, limit)
