@@ -54,9 +54,9 @@ func (c *CardSubscriber) processMessage(ctx context.Context, msg jetstream.Msg) 
 		_ = msg.Ack()
 		return
 	}
-	// Defensive check: the consumer filter already restricts to status.created,
-	// but guard here in case the stream config changes or a message arrives unexpectedly.
-	if event.EventType != domain.EventStatusCreated {
+	// Defensive check: the consumer filter already restricts to status.created
+	// and status.created.remote, but guard here in case a message arrives unexpectedly.
+	if event.EventType != domain.EventStatusCreated && event.EventType != domain.EventStatusCreatedRemote {
 		_ = msg.Ack()
 		return
 	}
@@ -68,9 +68,6 @@ func (c *CardSubscriber) handleStatusCreated(ctx context.Context, event domain.D
 	var payload domain.StatusCreatedPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		slog.ErrorContext(ctx, "card subscriber: unmarshal status.created", slog.Any("error", err))
-		return
-	}
-	if !payload.Local {
 		return
 	}
 	if payload.Status == nil {

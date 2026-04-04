@@ -222,8 +222,6 @@ func (svc *trendsService) RefreshIndexes(ctx context.Context) error {
 
 	// local: index links from local statuses only.
 	// all: index links from all statuses (local + remote).
-	// Note: "all" currently behaves like "local" because card_subscriber.go only
-	// fetches cards for local statuses. Remote card processing is a follow-up.
 	localOnly := linksScope == domain.MonsteraTrendingLocal
 	var fetchErr error
 	linkStats, fetchErr = svc.store.GetLinkDailyStats(ctx, 7, localOnly)

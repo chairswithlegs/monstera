@@ -40,7 +40,7 @@ func TestCardSubscriber_LocalStatus_TriggersProcessing(t *testing.T) {
 	assert.Equal(t, "status-1", svc.calls[0])
 }
 
-func TestCardSubscriber_RemoteStatus_Skipped(t *testing.T) {
+func TestCardSubscriber_RemoteStatus_TriggersProcessing(t *testing.T) {
 	t.Parallel()
 	svc := &fakeCardProcessor{}
 	sub := newTestCardSub(svc)
@@ -51,7 +51,23 @@ func TestCardSubscriber_RemoteStatus_Skipped(t *testing.T) {
 	})
 	sub.handleStatusCreated(context.Background(), event)
 
-	assert.Empty(t, svc.calls)
+	require.Len(t, svc.calls, 1)
+	assert.Equal(t, "status-1", svc.calls[0])
+}
+
+func TestCardSubscriber_RemoteStatusCreatedEvent_TriggersProcessing(t *testing.T) {
+	t.Parallel()
+	svc := &fakeCardProcessor{}
+	sub := newTestCardSub(svc)
+
+	event := makeEvent(t, domain.EventStatusCreatedRemote, domain.StatusCreatedPayload{
+		Status: &domain.Status{ID: "status-2"},
+		Local:  false,
+	})
+	sub.handleStatusCreated(context.Background(), event)
+
+	require.Len(t, svc.calls, 1)
+	assert.Equal(t, "status-2", svc.calls[0])
 }
 
 func TestCardSubscriber_NilStatus_Skipped(t *testing.T) {
