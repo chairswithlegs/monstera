@@ -268,49 +268,6 @@ export async function deleteDomainBlock(domain: string): Promise<void> {
   if (!res.ok) await throwApiError(res);
 }
 
-export interface ServerFilter {
-  id: string;
-  phrase: string;
-  scope: string;
-  action: string;
-  whole_word: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export async function getFilters(): Promise<{ filters: ServerFilter[] }> {
-  const base = await moderatorPrefix();
-  const res = await authFetch(`${base}/content/filters`);
-  if (!res.ok) await throwApiError(res);
-  return res.json();
-}
-
-export async function createFilter(body: { phrase: string; scope?: string; action?: string; whole_word?: boolean }): Promise<ServerFilter> {
-  const base = await moderatorPrefix();
-  const res = await authFetch(`${base}/content/filters`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) await throwApiError(res);
-  return res.json();
-}
-
-export async function updateFilter(id: string, body: { phrase: string; scope?: string; action?: string; whole_word?: boolean }): Promise<ServerFilter> {
-  const base = await moderatorPrefix();
-  const res = await authFetch(`${base}/content/filters/${encodeURIComponent(id)}`, {
-    method: 'PUT',
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) await throwApiError(res);
-  return res.json();
-}
-
-export async function deleteFilter(id: string): Promise<void> {
-  const base = await moderatorPrefix();
-  const res = await authFetch(`${base}/content/filters/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  if (!res.ok) await throwApiError(res);
-}
-
 export interface AdminSettings {
   registration_mode: string; // "open" | "approval" | "invite" | "closed"
   invite_max_uses?: number | null;
@@ -318,6 +275,9 @@ export interface AdminSettings {
   server_name?: string | null;
   server_description?: string | null;
   server_rules?: string[];
+  trending_links_scope?: string;    // "disabled" | "local" | "all"
+  trending_tags_scope?: string;     // "disabled" | "local" | "all"
+  trending_statuses_scope?: string; // "disabled" | "local" | "all"
 }
 
 export async function getSettings(): Promise<AdminSettings> {
@@ -333,6 +293,28 @@ export async function putSettings(settings: AdminSettings): Promise<void> {
     method: 'PUT',
     body: JSON.stringify(settings),
   });
+  if (!res.ok) await throwApiError(res);
+}
+
+export async function getTrendingLinkFilters(): Promise<{ urls: string[] }> {
+  const base = await moderatorPrefix();
+  const res = await authFetch(`${base}/content/trending-link-filters`);
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+export async function addTrendingLinkFilter(url: string): Promise<void> {
+  const base = await moderatorPrefix();
+  const res = await authFetch(`${base}/content/trending-link-filters`, {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) await throwApiError(res);
+}
+
+export async function removeTrendingLinkFilter(url: string): Promise<void> {
+  const base = await moderatorPrefix();
+  const res = await authFetch(`${base}/content/trending-link-filters?url=${encodeURIComponent(url)}`, { method: 'DELETE' });
   if (!res.ok) await throwApiError(res);
 }
 

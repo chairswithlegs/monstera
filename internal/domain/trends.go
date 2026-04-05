@@ -38,3 +38,32 @@ type TrendingTag struct {
 	Hashtag Hashtag
 	History []TagHistoryDay
 }
+
+// TrendingLinkStats is the aggregated usage of a URL on a single calendar day.
+type TrendingLinkStats struct {
+	URL      string
+	Day      time.Time
+	Uses     int64
+	Accounts int64
+}
+
+// TrendingLinkHistoryDay is the usage statistics for a URL on a single calendar day.
+type TrendingLinkHistoryDay struct {
+	Day      time.Time
+	Uses     int64
+	Accounts int64
+}
+
+// TrendingLink is a URL with its 7-day history and card metadata, used for the trends/links endpoint.
+type TrendingLink struct {
+	URL          string
+	Title        string
+	Description  string
+	Type         string // "link", "photo", "video", "rich"
+	ProviderName string
+	ProviderURL  string
+	ImageURL     string
+	Width        int
+	Height       int
+	History      []TrendingLinkHistoryDay
+}

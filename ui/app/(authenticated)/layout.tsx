@@ -45,8 +45,8 @@ export default function AuthenticatedLayout({
 
   return (
     <div className="flex flex-col flex-1 bg-gray-50">
-      <nav className="border-b bg-white px-6 py-4">
-        <div className="mx-auto flex max-w-6xl items-center">
+      <nav className="border-b bg-white py-4">
+        <div className="mx-auto flex w-full max-w-6xl items-center px-6">
           <Link href="/home" className="font-semibold text-gray-900 mr-auto">
             {serverName || 'Monstera'}
           </Link>
@@ -82,7 +82,7 @@ export default function AuthenticatedLayout({
           </div>
         </div>
       </nav>
-      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+      <main className="mx-auto w-full max-w-6xl px-6 py-8">{children}</main>
     </div>
   );
 }

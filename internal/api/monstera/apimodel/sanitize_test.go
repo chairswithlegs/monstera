@@ -108,28 +108,6 @@ func TestPostAnnouncementRequest_Sanitize(t *testing.T) {
 	})
 }
 
-func TestPostServerFilterRequest_Sanitize(t *testing.T) {
-	t.Parallel()
-
-	t.Run("strips HTML from phrase", func(t *testing.T) {
-		t.Parallel()
-		req := PostServerFilterRequest{Phrase: `badword<script>evil()</script>`}
-		req.Sanitize()
-		assert.Equal(t, "badword", req.Phrase)
-	})
-}
-
-func TestPutServerFilterRequest_Sanitize(t *testing.T) {
-	t.Parallel()
-
-	t.Run("strips HTML from phrase", func(t *testing.T) {
-		t.Parallel()
-		req := PutServerFilterRequest{Phrase: `<b>badword</b>`}
-		req.Sanitize()
-		assert.Equal(t, "badword", req.Phrase)
-	})
-}
-
 func TestPostDomainBlocksRequest_Sanitize(t *testing.T) {
 	t.Parallel()
 

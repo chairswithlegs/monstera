@@ -57,7 +57,7 @@ func TestModeratorDashboardHandler_GETDashboard(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
 	instanceSvc := service.NewInstanceService(st)
-	modSvc := service.NewModerationService(st)
+	modSvc := service.NewModerationService(st, testutil.NoopBlocklistRefresher{})
 	handler := NewModeratorDashboardHandler(instanceSvc, modSvc)
 
 	t.Run("returns 200 and dashboard body", func(t *testing.T) {

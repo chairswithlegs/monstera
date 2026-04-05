@@ -31,7 +31,7 @@ export default function AdminMetricsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-foreground">{t('metricsTitle')}</h1>
+      <h1 className="text-2xl font-semibold text-foreground">{t('adminDashboardTitle')}</h1>
 
       <h2 className="mt-6 text-lg font-medium text-foreground">{t('metricsInstanceActivity')}</h2>
       <div className="mt-3 grid gap-4 sm:grid-cols-3">

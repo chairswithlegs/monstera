@@ -1169,12 +1169,15 @@ func (s *PostgresStore) GetMonsteraSettings(ctx context.Context) (*domain.Monste
 		rules = strings.Split(*row.ServerRules, "\n")
 	}
 	return &domain.MonsteraSettings{
-		RegistrationMode:    domain.MonsteraRegistrationMode(row.RegistrationMode),
-		InviteMaxUses:       int32PtrToIntPtr(row.InviteMaxUses),
-		InviteExpiresInDays: int32PtrToIntPtr(row.InviteExpiresInDays),
-		ServerName:          row.ServerName,
-		ServerDescription:   row.ServerDescription,
-		ServerRules:         rules,
+		RegistrationMode:      domain.MonsteraRegistrationMode(row.RegistrationMode),
+		InviteMaxUses:         int32PtrToIntPtr(row.InviteMaxUses),
+		InviteExpiresInDays:   int32PtrToIntPtr(row.InviteExpiresInDays),
+		ServerName:            row.ServerName,
+		ServerDescription:     row.ServerDescription,
+		ServerRules:           rules,
+		TrendingLinksScope:    domain.MonsteraTrendingScope(row.TrendingLinksScope),
+		TrendingTagsScope:     domain.MonsteraTrendingScope(row.TrendingTagsScope),
+		TrendingStatusesScope: domain.MonsteraTrendingScope(row.TrendingStatusesScope),
 	}, nil
 }
 
@@ -1185,12 +1188,15 @@ func (s *PostgresStore) UpdateMonsteraSettings(ctx context.Context, in *domain.M
 		rulesText = &r
 	}
 	return mapErr(s.q.UpdateMonsteraSettings(ctx, db.UpdateMonsteraSettingsParams{
-		RegistrationMode:    string(in.RegistrationMode),
-		InviteMaxUses:       intPtrToInt32Ptr(in.InviteMaxUses),
-		InviteExpiresInDays: intPtrToInt32Ptr(in.InviteExpiresInDays),
-		ServerName:          in.ServerName,
-		ServerDescription:   in.ServerDescription,
-		ServerRules:         rulesText,
+		RegistrationMode:      string(in.RegistrationMode),
+		InviteMaxUses:         intPtrToInt32Ptr(in.InviteMaxUses),
+		InviteExpiresInDays:   intPtrToInt32Ptr(in.InviteExpiresInDays),
+		ServerName:            in.ServerName,
+		ServerDescription:     in.ServerDescription,
+		ServerRules:           rulesText,
+		TrendingLinksScope:    string(in.TrendingLinksScope),
+		TrendingTagsScope:     string(in.TrendingTagsScope),
+		TrendingStatusesScope: string(in.TrendingStatusesScope),
 	}))
 }
 
@@ -2251,51 +2257,6 @@ func (s *PostgresStore) CountKnownInstances(ctx context.Context) (int64, error) 
 func (s *PostgresStore) CountReportsByState(ctx context.Context, state string) (int64, error) {
 	n, err := s.q.CountReportsByState(ctx, state)
 	return n, mapErr(err)
-}
-
-func (s *PostgresStore) CreateServerFilter(ctx context.Context, in store.CreateServerFilterInput) (*domain.ServerFilter, error) {
-	f, err := s.q.CreateServerFilter(ctx, db.CreateServerFilterParams{
-		ID:     in.ID,
-		Phrase: in.Phrase,
-		Scope:  in.Scope,
-		Action: in.Action,
-	})
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	d := ToDomainServerFilter(f)
-	return &d, nil
-}
-
-func (s *PostgresStore) ListServerFilters(ctx context.Context) ([]domain.ServerFilter, error) {
-	rows, err := s.q.ListServerFilters(ctx)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	out := make([]domain.ServerFilter, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, ToDomainServerFilter(r))
-	}
-	return out, nil
-}
-
-func (s *PostgresStore) UpdateServerFilter(ctx context.Context, in store.UpdateServerFilterInput) (*domain.ServerFilter, error) {
-	f, err := s.q.UpdateServerFilter(ctx, db.UpdateServerFilterParams{
-		ID:        in.ID,
-		Phrase:    in.Phrase,
-		Scope:     in.Scope,
-		Action:    in.Action,
-		WholeWord: in.WholeWord,
-	})
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	d := ToDomainServerFilter(f)
-	return &d, nil
-}
-
-func (s *PostgresStore) DeleteServerFilter(ctx context.Context, id string) error {
-	return mapErr(s.q.DeleteServerFilter(ctx, id))
 }
 
 func (s *PostgresStore) ListLocalUsers(ctx context.Context, limit, offset int) ([]domain.User, error) {

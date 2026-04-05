@@ -34,21 +34,7 @@ func (h *TrendsHandler) GETTrendsStatuses(w http.ResponseWriter, r *http.Request
 
 	out := make([]apimodel.Status, 0, len(enriched))
 	for i := range enriched {
-		e := &enriched[i]
-		authorAcc := apimodel.ToAccount(e.Author, h.instanceDomain)
-		mentionsResp := make([]apimodel.Mention, 0, len(e.Mentions))
-		for _, a := range e.Mentions {
-			mentionsResp = append(mentionsResp, apimodel.MentionFromAccount(a, h.instanceDomain))
-		}
-		tagsResp := make([]apimodel.Tag, 0, len(e.Tags))
-		for _, t := range e.Tags {
-			tagsResp = append(tagsResp, apimodel.TagFromName(t.Name, h.instanceDomain))
-		}
-		mediaResp := make([]apimodel.MediaAttachment, 0, len(e.Media))
-		for j := range e.Media {
-			mediaResp = append(mediaResp, apimodel.MediaFromDomain(&e.Media[j]))
-		}
-		out = append(out, apimodel.ToStatus(e.Status, authorAcc, mentionsResp, tagsResp, mediaResp, e.Card, h.instanceDomain))
+		out = append(out, apimodel.StatusFromEnriched(enriched[i], h.instanceDomain))
 	}
 	api.WriteJSON(w, http.StatusOK, out)
 }
@@ -88,7 +74,18 @@ func (h *TrendsHandler) GETTrendsTags(w http.ResponseWriter, r *http.Request) {
 }
 
 // GETTrendsLinks handles GET /api/v1/trends/links.
-// Deferred — OGP parsing not implemented.
 func (h *TrendsHandler) GETTrendsLinks(w http.ResponseWriter, r *http.Request) {
-	api.WriteJSON(w, http.StatusOK, []any{})
+	offset := parseOffsetParam(r)
+	limit := parseLimitParam(r, 10, 40)
+	links, err := h.svc.TrendingLinks(r.Context(), offset, limit)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+
+	out := make([]apimodel.TrendingLink, 0, len(links))
+	for _, l := range links {
+		out = append(out, apimodel.TrendingLinkFromDomain(l))
+	}
+	api.WriteJSON(w, http.StatusOK, out)
 }

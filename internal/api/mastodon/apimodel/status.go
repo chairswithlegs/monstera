@@ -202,6 +202,38 @@ func TrendingTagFromDomain(t domain.TrendingTag, instanceDomain string, followed
 	return tag
 }
 
+// TrendingLinkFromDomain converts a domain.TrendingLink to the Mastodon API TrendingLink shape.
+func TrendingLinkFromDomain(link domain.TrendingLink) TrendingLink {
+	history := make([]TagHistory, len(link.History))
+	for i, h := range link.History {
+		history[i] = TagHistory{
+			Day:      strconv.FormatInt(h.Day.Unix(), 10),
+			Uses:     strconv.FormatInt(h.Uses, 10),
+			Accounts: strconv.FormatInt(h.Accounts, 10),
+		}
+	}
+	cardType := link.Type
+	if cardType == "" {
+		cardType = "link"
+	}
+	var img *string
+	if link.ImageURL != "" {
+		img = &link.ImageURL
+	}
+	return TrendingLink{
+		URL:          link.URL,
+		Title:        link.Title,
+		Description:  link.Description,
+		Type:         cardType,
+		ProviderName: link.ProviderName,
+		ProviderURL:  link.ProviderURL,
+		Width:        link.Width,
+		Height:       link.Height,
+		Image:        img,
+		History:      history,
+	}
+}
+
 // MediaFromDomain converts a domain media attachment to the API model shape.
 func MediaFromDomain(m *domain.MediaAttachment) MediaAttachment {
 	preview := ""

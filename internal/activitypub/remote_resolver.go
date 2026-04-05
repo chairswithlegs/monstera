@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/chairswithlegs/monstera/internal/activitypub/vocab"
+	"github.com/chairswithlegs/monstera/internal/blocklist"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/chairswithlegs/monstera/internal/ssrf"
@@ -20,6 +22,9 @@ import (
 )
 
 var ErrWebFingerRequestFailed = errors.New("webfinger request failed")
+
+// ErrDomainSuspended is returned when resolving an account on a suspended domain.
+var ErrDomainSuspended = errors.New("domain is suspended")
 
 const (
 	// staleRemoteActorDuration is the duration after which a remote actor stored in the system is
@@ -45,13 +50,14 @@ type JRD struct {
 // Used by the Mastodon search API when resolve=true.
 type RemoteAccountResolver struct {
 	accounts       service.AccountService
+	blocklist      *blocklist.BlocklistCache
 	instanceDomain string
 	httpClient     *http.Client
 }
 
 // NewRemoteAccountResolver returns a resolver that uses the given account service and actor fetch.
 // instanceDomain is used to skip resolution for local accounts (e.g. "example.com").
-func NewRemoteAccountResolver(accounts service.AccountService, appEnv string, insecureSkipTLS bool, instanceDomain string) *RemoteAccountResolver {
+func NewRemoteAccountResolver(accounts service.AccountService, bl *blocklist.BlocklistCache, appEnv string, insecureSkipTLS bool, instanceDomain string) *RemoteAccountResolver {
 	var client *http.Client
 	if appEnv != "production" && insecureSkipTLS {
 		client = &http.Client{
@@ -66,6 +72,7 @@ func NewRemoteAccountResolver(accounts service.AccountService, appEnv string, in
 
 	return &RemoteAccountResolver{
 		accounts:       accounts,
+		blocklist:      bl,
 		instanceDomain: strings.TrimSpace(strings.ToLower(instanceDomain)),
 		httpClient:     client,
 	}
@@ -81,6 +88,9 @@ func (r *RemoteAccountResolver) ResolveRemoteAccount(ctx context.Context, acct s
 		return nil, fmt.Errorf("ResolveRemoteAccount: invalid acct %q", acct)
 	}
 	username, acctDomain := parts[0], strings.ToLower(parts[1])
+	if r.blocklist != nil && r.blocklist.IsSuspended(ctx, acctDomain) {
+		return nil, fmt.Errorf("ResolveRemoteAccount(%s): %w", acct, ErrDomainSuspended)
+	}
 	if acctDomain == r.instanceDomain {
 		slog.DebugContext(ctx, "ResolveRemoteAccount called with local account, using local resolution", slog.String("username", username), slog.String("acctDomain", acctDomain))
 		acc, err := r.accounts.GetLocalByUsername(ctx, username)
@@ -116,21 +126,16 @@ func (r *RemoteAccountResolver) ResolveRemoteAccount(ctx context.Context, acct s
 // If the account already exists and is not stale, returns it.
 // Otherwise, fetches the actor document, creates/updates the account, and returns it.
 func (r *RemoteAccountResolver) ResolveRemoteAccountByIRI(ctx context.Context, actorIRI string) (*domain.Account, error) {
-	if r.instanceDomain != "" {
-		u, parseErr := url.Parse(actorIRI)
-		if parseErr == nil && u.Host != "" {
-			host := strings.ToLower(strings.TrimSpace(u.Host))
-			if idx := strings.Index(host, ":"); idx >= 0 {
-				host = host[:idx]
-			}
-			if host == r.instanceDomain {
-				acc, err := r.accounts.GetByAPID(ctx, actorIRI)
-				if err != nil {
-					return nil, fmt.Errorf("ResolveRemoteAccountByIRI(local): %w", err)
-				}
-				return acc, nil
-			}
+	iriHost := vocab.DomainFromIRI(actorIRI)
+	if iriHost == r.instanceDomain {
+		acc, err := r.accounts.GetByAPID(ctx, actorIRI)
+		if err != nil {
+			return nil, fmt.Errorf("ResolveRemoteAccountByIRI(local): %w", err)
 		}
+		return acc, nil
+	}
+	if r.blocklist != nil && iriHost != "" && r.blocklist.IsSuspended(ctx, iriHost) {
+		return nil, fmt.Errorf("ResolveRemoteAccountByIRI(%s): %w", actorIRI, ErrDomainSuspended)
 	}
 	acc, err := r.accounts.GetByAPID(ctx, actorIRI)
 	if err == nil && !r.isRemoteActorAccountStale(acc) {
@@ -162,7 +167,7 @@ func (r *RemoteAccountResolver) fetchWebFingerActorIRI(ctx context.Context, acct
 		return "", fmt.Errorf("%w: invalid acct", ErrWebFingerRequestFailed)
 	}
 	resource := "acct:" + acct
-	u := "https://" + parts[1] + "/.well-known/webfinger?resource=" + resource
+	u := "https://" + parts[1] + "/.well-known/webfinger?resource=" + url.QueryEscape(resource)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return "", fmt.Errorf("%w: webfinger request: %w", ErrWebFingerRequestFailed, err)
@@ -278,7 +283,7 @@ func (r *RemoteAccountResolver) resolveIRIDocument(ctx context.Context, iri stri
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("resolveIRIDocument: status %d", resp.StatusCode)
 	}
-	err = json.NewDecoder(resp.Body).Decode(out)
+	err = json.NewDecoder(io.LimitReader(resp.Body, 5<<20)).Decode(out)
 	if err != nil {
 		return fmt.Errorf("resolveIRIDocument decode: %w", err)
 	}

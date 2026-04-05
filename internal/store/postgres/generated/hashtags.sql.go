@@ -7,8 +7,6 @@ package db
 
 import (
 	"context"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const attachHashtagsToStatus = `-- name: AttachHashtagsToStatus :exec
@@ -50,55 +48,6 @@ func (q *Queries) GetHashtagByName(ctx context.Context, lower string) (Hashtag, 
 		&i.UpdatedAt,
 	)
 	return i, err
-}
-
-const getHashtagDailyStats = `-- name: GetHashtagDailyStats :many
-SELECT h.id AS hashtag_id, h.name AS hashtag_name,
-       date_trunc('day', s.created_at AT TIME ZONE 'UTC')::date AS day,
-       COUNT(*) AS uses,
-       COUNT(DISTINCT s.account_id) AS accounts
-FROM status_hashtags sh
-JOIN statuses  s ON s.id  = sh.status_id
-JOIN hashtags  h ON h.id  = sh.hashtag_id
-WHERE s.deleted_at IS NULL
-  AND s.visibility IN ('public', 'unlisted')
-  AND s.created_at >= $1
-GROUP BY h.id, h.name, day
-ORDER BY day DESC, uses DESC
-`
-
-type GetHashtagDailyStatsRow struct {
-	HashtagID   string      `json:"hashtag_id"`
-	HashtagName string      `json:"hashtag_name"`
-	Day         pgtype.Date `json:"day"`
-	Uses        int64       `json:"uses"`
-	Accounts    int64       `json:"accounts"`
-}
-
-func (q *Queries) GetHashtagDailyStats(ctx context.Context, createdAt pgtype.Timestamptz) ([]GetHashtagDailyStatsRow, error) {
-	rows, err := q.db.Query(ctx, getHashtagDailyStats, createdAt)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []GetHashtagDailyStatsRow{}
-	for rows.Next() {
-		var i GetHashtagDailyStatsRow
-		if err := rows.Scan(
-			&i.HashtagID,
-			&i.HashtagName,
-			&i.Day,
-			&i.Uses,
-			&i.Accounts,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const getHashtagTimeline = `-- name: GetHashtagTimeline :many

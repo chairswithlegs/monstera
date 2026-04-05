@@ -245,13 +245,16 @@ type MediaAttachment struct {
 }
 
 type MonsteraSetting struct {
-	ID                  string  `json:"id"`
-	RegistrationMode    string  `json:"registration_mode"`
-	InviteMaxUses       *int32  `json:"invite_max_uses"`
-	InviteExpiresInDays *int32  `json:"invite_expires_in_days"`
-	ServerName          *string `json:"server_name"`
-	ServerDescription   *string `json:"server_description"`
-	ServerRules         *string `json:"server_rules"`
+	ID                    string  `json:"id"`
+	RegistrationMode      string  `json:"registration_mode"`
+	InviteMaxUses         *int32  `json:"invite_max_uses"`
+	InviteExpiresInDays   *int32  `json:"invite_expires_in_days"`
+	ServerName            *string `json:"server_name"`
+	ServerDescription     *string `json:"server_description"`
+	ServerRules           *string `json:"server_rules"`
+	TrendingLinksScope    string  `json:"trending_links_scope"`
+	TrendingTagsScope     string  `json:"trending_tags_scope"`
+	TrendingStatusesScope string  `json:"trending_statuses_scope"`
 }
 
 type Mute struct {
@@ -405,16 +408,6 @@ type ScheduledStatus struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
-type ServerFilter struct {
-	ID        string             `json:"id"`
-	Phrase    string             `json:"phrase"`
-	Scope     string             `json:"scope"`
-	Action    string             `json:"action"`
-	WholeWord bool               `json:"whole_word"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
-}
-
 type Status struct {
 	ID                  string             `json:"id"`
 	Uri                 string             `json:"uri"`
@@ -477,6 +470,24 @@ type StatusHashtag struct {
 type StatusMention struct {
 	StatusID  string `json:"status_id"`
 	AccountID string `json:"account_id"`
+}
+
+type TrendingLink struct {
+	Url      string             `json:"url"`
+	Score    float64            `json:"score"`
+	RankedAt pgtype.Timestamptz `json:"ranked_at"`
+}
+
+type TrendingLinkFilter struct {
+	Url       string             `json:"url"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type TrendingLinkHistory struct {
+	Url      string      `json:"url"`
+	Day      pgtype.Date `json:"day"`
+	Uses     int64       `json:"uses"`
+	Accounts int64       `json:"accounts"`
 }
 
 type TrendingStatus struct {

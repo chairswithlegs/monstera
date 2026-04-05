@@ -203,6 +203,196 @@ func TestTrendsService_RefreshIndexes_withStatuses(t *testing.T) {
 	assert.Len(t, fs.TrendingStatuses, 2)
 }
 
+// seedSettings is a helper that sets all three trending scopes on the fake store.
+func seedSettings(fs *testutil.FakeStore, statuses, tags, links domain.MonsteraTrendingScope) {
+	ctx := context.Background()
+	_ = fs.UpdateMonsteraSettings(ctx, &domain.MonsteraSettings{
+		RegistrationMode:      domain.MonsteraRegistrationModeOpen,
+		TrendingStatusesScope: statuses,
+		TrendingTagsScope:     tags,
+		TrendingLinksScope:    links,
+	})
+}
+
+func TestTrendsService_RefreshIndexes_scopeDisabled_clearsStatuses(t *testing.T) {
+	t.Parallel()
+	fs := testutil.NewFakeStore()
+	fs.TrendingStatuses = []domain.TrendingStatus{
+		{StatusID: "st1", Score: 10.0},
+	}
+	seedSettings(fs, domain.MonsteraTrendingDisabled, domain.MonsteraTrendingAll, domain.MonsteraTrendingAll)
+
+	svc := NewTrendsService(fs, NewStatusService(fs, "https://example.com", "example.com", 500))
+	require.NoError(t, svc.RefreshIndexes(context.Background()))
+	assert.Empty(t, fs.TrendingStatuses)
+}
+
+func TestTrendsService_RefreshIndexes_scopeLocal_indexesStatuses(t *testing.T) {
+	t.Parallel()
+	fs := testutil.NewFakeStore()
+	fs.TrendingStatuses = []domain.TrendingStatus{
+		{StatusID: "st1", Score: 10.0},
+	}
+	seedSettings(fs, domain.MonsteraTrendingLocal, domain.MonsteraTrendingAll, domain.MonsteraTrendingAll)
+
+	svc := NewTrendsService(fs, NewStatusService(fs, "https://example.com", "example.com", 500))
+	require.NoError(t, svc.RefreshIndexes(context.Background()))
+	assert.Len(t, fs.TrendingStatuses, 1)
+	assert.True(t, fs.LastStatusesLocalOnly, "local scope should pass localOnly=true")
+}
+
+func TestTrendsService_RefreshIndexes_scopeAll_indexesAllStatuses(t *testing.T) {
+	t.Parallel()
+	fs := testutil.NewFakeStore()
+	fs.TrendingStatuses = []domain.TrendingStatus{
+		{StatusID: "st1", Score: 10.0},
+	}
+	seedSettings(fs, domain.MonsteraTrendingAll, domain.MonsteraTrendingAll, domain.MonsteraTrendingAll)
+
+	svc := NewTrendsService(fs, NewStatusService(fs, "https://example.com", "example.com", 500))
+	require.NoError(t, svc.RefreshIndexes(context.Background()))
+	assert.Len(t, fs.TrendingStatuses, 1)
+	assert.False(t, fs.LastStatusesLocalOnly, "all scope should pass localOnly=false")
+}
+
+func TestTrendsService_RefreshIndexes_scopeDisabled_clearsTags(t *testing.T) {
+	t.Parallel()
+	day := time.Now().UTC().Truncate(24 * time.Hour)
+	fs := testutil.NewFakeStore()
+	fs.TrendingTagHistory = []domain.TrendingTagHistory{
+		{HashtagID: "tag1", Day: day, Uses: 42, Accounts: 10},
+	}
+	seedSettings(fs, domain.MonsteraTrendingAll, domain.MonsteraTrendingDisabled, domain.MonsteraTrendingAll)
+
+	svc := NewTrendsService(fs, NewStatusService(fs, "https://example.com", "example.com", 500))
+	require.NoError(t, svc.RefreshIndexes(context.Background()))
+	assert.Empty(t, fs.TrendingTagHistory)
+}
+
+func TestTrendsService_RefreshIndexes_scopeLocal_indexesTags(t *testing.T) {
+	t.Parallel()
+	day := time.Now().UTC().Truncate(24 * time.Hour)
+	fs := testutil.NewFakeStore()
+	fs.HashtagDailyStats = []domain.HashtagDailyStats{
+		{HashtagID: "tag1", HashtagName: "golang", Day: day, Uses: 42, Accounts: 10},
+	}
+	seedSettings(fs, domain.MonsteraTrendingAll, domain.MonsteraTrendingLocal, domain.MonsteraTrendingAll)
+
+	svc := NewTrendsService(fs, NewStatusService(fs, "https://example.com", "example.com", 500))
+	require.NoError(t, svc.RefreshIndexes(context.Background()))
+	require.Len(t, fs.TrendingTagHistory, 1)
+	assert.Equal(t, "tag1", fs.TrendingTagHistory[0].HashtagID)
+	assert.True(t, fs.LastTagsLocalOnly, "local scope should pass localOnly=true")
+}
+
+func TestTrendsService_RefreshIndexes_scopeAll_indexesAllTags(t *testing.T) {
+	t.Parallel()
+	day := time.Now().UTC().Truncate(24 * time.Hour)
+	fs := testutil.NewFakeStore()
+	fs.HashtagDailyStats = []domain.HashtagDailyStats{
+		{HashtagID: "tag1", HashtagName: "golang", Day: day, Uses: 42, Accounts: 10},
+	}
+	seedSettings(fs, domain.MonsteraTrendingAll, domain.MonsteraTrendingAll, domain.MonsteraTrendingAll)
+
+	svc := NewTrendsService(fs, NewStatusService(fs, "https://example.com", "example.com", 500))
+	require.NoError(t, svc.RefreshIndexes(context.Background()))
+	require.Len(t, fs.TrendingTagHistory, 1)
+	assert.False(t, fs.LastTagsLocalOnly, "all scope should pass localOnly=false")
+}
+
+func TestTrendsService_RefreshIndexes_scopeDisabled_clearsLinks(t *testing.T) {
+	t.Parallel()
+	day := time.Now().UTC().Truncate(24 * time.Hour)
+	fs := testutil.NewFakeStore()
+	fs.TrendingLinks = []domain.TrendingLink{{URL: "https://example.com/article"}}
+	fs.TrendingLinkHistory = []domain.TrendingLinkStats{
+		{URL: "https://example.com/article", Day: day, Uses: 5, Accounts: 3},
+	}
+	seedSettings(fs, domain.MonsteraTrendingAll, domain.MonsteraTrendingAll, domain.MonsteraTrendingDisabled)
+
+	svc := NewTrendsService(fs, NewStatusService(fs, "https://example.com", "example.com", 500))
+	require.NoError(t, svc.RefreshIndexes(context.Background()))
+	assert.Empty(t, fs.TrendingLinks)
+}
+
+func TestTrendsService_RefreshIndexes_scopeLocal_indexesLinks(t *testing.T) {
+	t.Parallel()
+	day := time.Now().UTC().Truncate(24 * time.Hour)
+	fs := testutil.NewFakeStore()
+	fs.TrendingLinkHistory = []domain.TrendingLinkStats{
+		{URL: "https://example.com/article", Day: day, Uses: 5, Accounts: 3},
+	}
+	seedSettings(fs, domain.MonsteraTrendingAll, domain.MonsteraTrendingAll, domain.MonsteraTrendingLocal)
+
+	svc := NewTrendsService(fs, NewStatusService(fs, "https://example.com", "example.com", 500))
+	require.NoError(t, svc.RefreshIndexes(context.Background()))
+	require.Len(t, fs.TrendingLinks, 1)
+	assert.Equal(t, "https://example.com/article", fs.TrendingLinks[0].URL)
+	assert.True(t, fs.LastLinksLocalOnly, "local scope should pass localOnly=true")
+}
+
+func TestTrendsService_RefreshIndexes_scopeAll_indexesAllLinks(t *testing.T) {
+	t.Parallel()
+	day := time.Now().UTC().Truncate(24 * time.Hour)
+	fs := testutil.NewFakeStore()
+	fs.TrendingLinkHistory = []domain.TrendingLinkStats{
+		{URL: "https://example.com/article", Day: day, Uses: 5, Accounts: 3},
+	}
+	seedSettings(fs, domain.MonsteraTrendingAll, domain.MonsteraTrendingAll, domain.MonsteraTrendingAll)
+
+	svc := NewTrendsService(fs, NewStatusService(fs, "https://example.com", "example.com", 500))
+	require.NoError(t, svc.RefreshIndexes(context.Background()))
+	require.Len(t, fs.TrendingLinks, 1)
+	assert.False(t, fs.LastLinksLocalOnly, "all scope should pass localOnly=false")
+}
+
+func TestTrendsService_RefreshIndexes_filtersLinks(t *testing.T) {
+	t.Parallel()
+	day := time.Now().UTC().Truncate(24 * time.Hour)
+	fs := testutil.NewFakeStore()
+	fs.TrendingLinkHistory = []domain.TrendingLinkStats{
+		{URL: "https://allowed.example/article", Day: day, Uses: 10, Accounts: 5},
+		{URL: "https://denied.example/post", Day: day, Uses: 8, Accounts: 4},
+	}
+	fs.LinkFilters = []string{"https://denied.example/post"}
+	seedSettings(fs, domain.MonsteraTrendingAll, domain.MonsteraTrendingAll, domain.MonsteraTrendingAll)
+
+	svc := NewTrendsService(fs, NewStatusService(fs, "https://example.com", "example.com", 500))
+	require.NoError(t, svc.RefreshIndexes(context.Background()))
+	require.Len(t, fs.TrendingLinks, 1)
+	assert.Equal(t, "https://allowed.example/article", fs.TrendingLinks[0].URL)
+}
+
+func TestTrendsService_ListTrendingLinkFilters(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fs := testutil.NewFakeStore()
+	svc := NewTrendsService(fs, NewStatusService(fs, "https://example.com", "example.com", 500))
+
+	// Initially empty.
+	urls, err := svc.ListTrendingLinkFilters(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, urls)
+
+	// Add a URL.
+	require.NoError(t, svc.AddTrendingLinkFilter(ctx, "https://spam.example.com"))
+	urls, err = svc.ListTrendingLinkFilters(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"https://spam.example.com"}, urls)
+
+	// Adding duplicate is idempotent.
+	require.NoError(t, svc.AddTrendingLinkFilter(ctx, "https://spam.example.com"))
+	urls, err = svc.ListTrendingLinkFilters(ctx)
+	require.NoError(t, err)
+	assert.Len(t, urls, 1)
+
+	// Remove the URL.
+	require.NoError(t, svc.RemoveTrendingLinkFilter(ctx, "https://spam.example.com"))
+	urls, err = svc.ListTrendingLinkFilters(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, urls)
+}
+
 func TestTrendsService_cacheHit(t *testing.T) {
 	t.Parallel()
 

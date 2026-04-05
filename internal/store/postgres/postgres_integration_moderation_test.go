@@ -164,48 +164,6 @@ func TestIntegration_ModerationStore_DomainBlocks(t *testing.T) {
 	})
 }
 
-func TestIntegration_ModerationStore_ServerFilters(t *testing.T) {
-	s, ctx := setupTestStore(t)
-
-	t.Run("CRUD", func(t *testing.T) {
-		sfID := uid.New()
-		sf, err := s.CreateServerFilter(ctx, store.CreateServerFilterInput{
-			ID:        sfID,
-			Phrase:    "bad_word_" + uid.New()[:8],
-			Scope:     domain.ServerFilterScopePublicTimeline,
-			Action:    domain.ServerFilterActionHide,
-			WholeWord: true,
-		})
-		require.NoError(t, err)
-		assert.Equal(t, sfID, sf.ID)
-
-		filters, err := s.ListServerFilters(ctx)
-		require.NoError(t, err)
-		found := false
-		for _, f := range filters {
-			if f.ID == sfID {
-				found = true
-			}
-		}
-		assert.True(t, found, "server filter not in list")
-
-		newPhrase := "updated_" + uid.New()[:8]
-		updated, err := s.UpdateServerFilter(ctx, store.UpdateServerFilterInput{
-			ID:        sfID,
-			Phrase:    newPhrase,
-			Scope:     domain.ServerFilterScopeAll,
-			Action:    domain.ServerFilterActionWarn,
-			WholeWord: false,
-		})
-		require.NoError(t, err)
-		assert.Equal(t, newPhrase, updated.Phrase)
-		assert.False(t, updated.WholeWord)
-
-		err = s.DeleteServerFilter(ctx, sfID)
-		require.NoError(t, err)
-	})
-}
-
 func TestIntegration_ModerationStore_Invites(t *testing.T) {
 	s, ctx := setupTestStore(t)
 

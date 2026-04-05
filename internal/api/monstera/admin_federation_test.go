@@ -20,7 +20,7 @@ func TestAdminFederationHandler_GETInstances(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
 	instanceSvc := service.NewInstanceService(st)
-	modSvc := service.NewModerationService(st)
+	modSvc := service.NewModerationService(st, testutil.NoopBlocklistRefresher{})
 	handler := NewAdminFederationHandler(instanceSvc, modSvc)
 
 	t.Run("returns 200 and instances list", func(t *testing.T) {
@@ -38,7 +38,7 @@ func TestAdminFederationHandler_GETDomainBlocks(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
 	instanceSvc := service.NewInstanceService(st)
-	modSvc := service.NewModerationService(st)
+	modSvc := service.NewModerationService(st, testutil.NoopBlocklistRefresher{})
 	handler := NewAdminFederationHandler(instanceSvc, modSvc)
 
 	t.Run("returns 200 and domain blocks list", func(t *testing.T) {
@@ -56,7 +56,7 @@ func TestAdminFederationHandler_POSTDomainBlocks(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
 	instanceSvc := service.NewInstanceService(st)
-	modSvc := service.NewModerationService(st)
+	modSvc := service.NewModerationService(st, testutil.NoopBlocklistRefresher{})
 	handler := NewAdminFederationHandler(instanceSvc, modSvc)
 	adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
 	adminUser := getUserByAccountID(t, st, adminAcc.ID)
@@ -87,7 +87,7 @@ func TestAdminFederationHandler_DELETEDomainBlock(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
 	instanceSvc := service.NewInstanceService(st)
-	modSvc := service.NewModerationService(st)
+	modSvc := service.NewModerationService(st, testutil.NoopBlocklistRefresher{})
 	handler := NewAdminFederationHandler(instanceSvc, modSvc)
 	adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
 	adminUser := getUserByAccountID(t, st, adminAcc.ID)

@@ -14,7 +14,8 @@ Design doc: `docs/architecture/05-database.md`
 - Row-to-domain conversion for statuses uses `statusRowParams` struct instead of positional arguments — see `internal/store/postgres/convert.go`.
 - Accounts have a nullable `url` column for storing the human-readable profile URL of remote accounts.
 
-## Generating query code
+## SQL queries
 
-Query code is generated via sqlc based on the contents of store/postgres/queries.
-When queries are updated, regenerate the code via: `sqlc generate`.
+All SQL queries must be defined in `.sql` files under `internal/store/postgres/queries/` and use sqlc-generated code. Do not hand-write inline SQL in Go store methods. This ensures consistent patterns, type safety, and a single source of truth for query definitions.
+
+When queries are added or updated, regenerate the code via: `sqlc generate`.

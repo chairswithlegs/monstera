@@ -14,10 +14,12 @@ type Querier interface {
 	AcceptFollow(ctx context.Context, id string) error
 	AddAccountToList(ctx context.Context, arg AddAccountToListParams) error
 	AddAnnouncementReaction(ctx context.Context, arg AddAnnouncementReactionParams) error
+	AddTrendingLinkFilter(ctx context.Context, url string) error
 	AreFollowingTagsByName(ctx context.Context, arg AreFollowingTagsByNameParams) ([]string, error)
 	AssignReport(ctx context.Context, arg AssignReportParams) error
 	AttachHashtagsToStatus(ctx context.Context, arg AttachHashtagsToStatusParams) error
 	AttachMediaToStatus(ctx context.Context, arg AttachMediaToStatusParams) error
+	BulkInsertTrendingLinks(ctx context.Context, arg BulkInsertTrendingLinksParams) error
 	BulkUpsertTrendingStatuses(ctx context.Context, arg BulkUpsertTrendingStatusesParams) error
 	ClearNotifications(ctx context.Context, accountID string) error
 	ConfirmUser(ctx context.Context, id string) error
@@ -67,7 +69,6 @@ type Querier interface {
 	CreateQuoteApproval(ctx context.Context, arg CreateQuoteApprovalParams) error
 	CreateReport(ctx context.Context, arg CreateReportParams) (Report, error)
 	CreateScheduledStatus(ctx context.Context, arg CreateScheduledStatusParams) (ScheduledStatus, error)
-	CreateServerFilter(ctx context.Context, arg CreateServerFilterParams) (ServerFilter, error)
 	CreateStatus(ctx context.Context, arg CreateStatusParams) (Status, error)
 	CreateStatusEdit(ctx context.Context, arg CreateStatusEditParams) (StatusEdit, error)
 	CreateStatusMention(ctx context.Context, arg CreateStatusMentionParams) error
@@ -108,7 +109,6 @@ type Querier interface {
 	DeletePublishedOutboxEventsBefore(ctx context.Context, publishedAt pgtype.Timestamptz) error
 	DeletePushSubscription(ctx context.Context, accessTokenID string) error
 	DeleteScheduledStatus(ctx context.Context, id string) error
-	DeleteServerFilter(ctx context.Context, id string) error
 	DeleteStatusHashtags(ctx context.Context, statusID string) error
 	DeleteStatusMentions(ctx context.Context, statusID string) error
 	DeleteUser(ctx context.Context, id string) error
@@ -155,10 +155,11 @@ type Querier interface {
 	GetFollowers(ctx context.Context, arg GetFollowersParams) ([]GetFollowersRow, error)
 	GetFollowing(ctx context.Context, arg GetFollowingParams) ([]GetFollowingRow, error)
 	GetHashtagByName(ctx context.Context, lower string) (Hashtag, error)
-	GetHashtagDailyStats(ctx context.Context, createdAt pgtype.Timestamptz) ([]GetHashtagDailyStatsRow, error)
+	GetHashtagDailyStats(ctx context.Context, arg GetHashtagDailyStatsParams) ([]GetHashtagDailyStatsRow, error)
 	GetHashtagTimeline(ctx context.Context, arg GetHashtagTimelineParams) ([]Status, error)
 	GetHomeTimeline(ctx context.Context, arg GetHomeTimelineParams) ([]Status, error)
 	GetInviteByCode(ctx context.Context, code string) (Invite, error)
+	GetLinkDailyStats(ctx context.Context, arg GetLinkDailyStatsParams) ([]GetLinkDailyStatsRow, error)
 	GetListByID(ctx context.Context, id string) (List, error)
 	GetListIDsByMemberAccountID(ctx context.Context, accountID string) ([]string, error)
 	GetListTimeline(ctx context.Context, arg GetListTimelineParams) ([]Status, error)
@@ -187,7 +188,6 @@ type Querier interface {
 	GetRemoteAccountByUsername(ctx context.Context, arg GetRemoteAccountByUsernameParams) (Account, error)
 	GetReport(ctx context.Context, id string) (Report, error)
 	GetScheduledStatusByID(ctx context.Context, id string) (ScheduledStatus, error)
-	GetServerFilter(ctx context.Context, id string) (ServerFilter, error)
 	GetStatusAncestors(ctx context.Context, id string) ([]GetStatusAncestorsRow, error)
 	GetStatusByAPID(ctx context.Context, apID string) (Status, error)
 	GetStatusByID(ctx context.Context, id string) (Status, error)
@@ -198,6 +198,7 @@ type Querier interface {
 	GetStatusMentionAccountIDs(ctx context.Context, statusID string) ([]string, error)
 	GetStatusMentions(ctx context.Context, statusID string) ([]GetStatusMentionsRow, error)
 	GetTopScoredPublicStatuses(ctx context.Context, arg GetTopScoredPublicStatusesParams) ([]GetTopScoredPublicStatusesRow, error)
+	GetTrendingLinks(ctx context.Context, arg GetTrendingLinksParams) ([]GetTrendingLinksRow, error)
 	GetTrendingStatuses(ctx context.Context, limit int32) ([]TrendingStatus, error)
 	GetTrendingTagHistory(ctx context.Context, dollar_1 int32) ([]GetTrendingTagHistoryRow, error)
 	GetUserByAccountID(ctx context.Context, accountID string) (User, error)
@@ -223,6 +224,7 @@ type Querier interface {
 	IsFavourited(ctx context.Context, arg IsFavouritedParams) (bool, error)
 	IsFollowingTag(ctx context.Context, arg IsFollowingTagParams) (bool, error)
 	IsMuted(ctx context.Context, arg IsMutedParams) (bool, error)
+	IsTrendingLinkFiltered(ctx context.Context, url string) (bool, error)
 	ListAccountAnnouncementReactionNames(ctx context.Context, arg ListAccountAnnouncementReactionNamesParams) ([]string, error)
 	ListAccountConversationsPaginated(ctx context.Context, arg ListAccountConversationsPaginatedParams) ([]AccountConversation, error)
 	ListAccountTagSuggestions(ctx context.Context, arg ListAccountTagSuggestionsParams) ([]ListAccountTagSuggestionsRow, error)
@@ -260,9 +262,9 @@ type Querier interface {
 	ListReports(ctx context.Context, arg ListReportsParams) ([]Report, error)
 	ListScheduledStatuses(ctx context.Context, arg ListScheduledStatusesParams) ([]ScheduledStatus, error)
 	ListScheduledStatusesDue(ctx context.Context, limit int32) ([]ScheduledStatus, error)
-	ListServerFilters(ctx context.Context) ([]ServerFilter, error)
 	ListStatusAttachments(ctx context.Context, statusID *string) ([]MediaAttachment, error)
 	ListStatusEdits(ctx context.Context, statusID string) ([]StatusEdit, error)
+	ListTrendingLinkFilters(ctx context.Context) ([]TrendingLinkFilter, error)
 	ListUnattachedMedia(ctx context.Context, accountID string) ([]MediaAttachment, error)
 	ListUserFilters(ctx context.Context, accountID string) ([]UserFilter, error)
 	ListUserFiltersV2(ctx context.Context, accountID string) ([]UserFilter, error)
@@ -271,6 +273,8 @@ type Querier interface {
 	MarkOutboxEventsPublished(ctx context.Context, ids []string) error
 	RemoveAccountFromList(ctx context.Context, arg RemoveAccountFromListParams) error
 	RemoveAnnouncementReaction(ctx context.Context, arg RemoveAnnouncementReactionParams) error
+	RemoveTrendingLinkFilter(ctx context.Context, url string) error
+	ReplaceTrendingLinks(ctx context.Context) error
 	ResolveReport(ctx context.Context, arg ResolveReportParams) error
 	RevokeAccessToken(ctx context.Context, token string) error
 	RevokeAllAccessTokensForAccount(ctx context.Context, accountID *string) error
@@ -284,6 +288,7 @@ type Querier interface {
 	SoftDeleteStatus(ctx context.Context, id string) error
 	SuspendAccount(ctx context.Context, id string) error
 	TruncateTrendingStatuses(ctx context.Context) error
+	TruncateTrendingTagHistory(ctx context.Context) error
 	UnfollowTag(ctx context.Context, arg UnfollowTagParams) error
 	UnsilenceAccount(ctx context.Context, id string) error
 	UnsuspendAccount(ctx context.Context, id string) error
@@ -303,7 +308,6 @@ type Querier interface {
 	UpdatePushSubscriptionAlerts(ctx context.Context, arg UpdatePushSubscriptionAlertsParams) (PushSubscription, error)
 	UpdateRemoteAccountMeta(ctx context.Context, arg UpdateRemoteAccountMetaParams) error
 	UpdateScheduledStatus(ctx context.Context, arg UpdateScheduledStatusParams) (ScheduledStatus, error)
-	UpdateServerFilter(ctx context.Context, arg UpdateServerFilterParams) (ServerFilter, error)
 	UpdateStatus(ctx context.Context, arg UpdateStatusParams) (Status, error)
 	UpdateStatusQuoteApprovalPolicy(ctx context.Context, arg UpdateStatusQuoteApprovalPolicyParams) error
 	UpdateUserDefaultQuotePolicy(ctx context.Context, arg UpdateUserDefaultQuotePolicyParams) error
@@ -319,6 +323,7 @@ type Querier interface {
 	UpsertNotificationPolicy(ctx context.Context, arg UpsertNotificationPolicyParams) (NotificationPolicy, error)
 	// ─── Notification requests ────────────────────────────────────────────────────
 	UpsertNotificationRequest(ctx context.Context, arg UpsertNotificationRequestParams) (NotificationRequest, error)
+	UpsertTrendingLinkHistory(ctx context.Context, arg UpsertTrendingLinkHistoryParams) error
 	UpsertTrendingTagHistory(ctx context.Context, arg UpsertTrendingTagHistoryParams) error
 }
 

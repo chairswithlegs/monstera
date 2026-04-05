@@ -23,7 +23,7 @@ func TestCardService_FetchAndStoreCard_noURL_plainContent(t *testing.T) {
 		Content:   &content,
 	})
 
-	svc := NewCardService(fs)
+	svc := NewCardService(fs, nil)
 	err := svc.FetchAndStoreCard(context.Background(), "status1")
 	require.NoError(t, err)
 
@@ -46,7 +46,7 @@ func TestCardService_FetchAndStoreCard_noURL_withHTTPContent(t *testing.T) {
 		Content:   &content,
 	})
 
-	svc := NewCardService(fs)
+	svc := NewCardService(fs, nil)
 	err := svc.FetchAndStoreCard(context.Background(), "status1")
 	require.NoError(t, err)
 
@@ -145,7 +145,7 @@ func TestCardService_FetchAndStoreCard_httpFetch(t *testing.T) {
 		Content:   &content,
 	})
 
-	svc := NewCardService(fs)
+	svc := NewCardService(fs, nil)
 	// Use the default HTTP client for testing purposes, since the secure egress HTTP client
 	// will block requests to the test server.
 	svc.(*cardService).httpClient = http.DefaultClient
@@ -173,13 +173,44 @@ func TestCardService_FetchAndStoreCard_mentionOnlyStatus(t *testing.T) {
 		Content:   &content,
 	})
 
-	svc := NewCardService(fs)
+	svc := NewCardService(fs, nil)
 	err := svc.FetchAndStoreCard(context.Background(), "status1")
 	require.NoError(t, err)
 
 	card, ok := fs.StatusCards["status1"]
 	require.True(t, ok, "card row should have been written")
 	assert.Equal(t, domain.CardStateNoURL, card.ProcessingState)
+}
+
+type fakeDomainBlockChecker struct {
+	suspended map[string]bool
+}
+
+func (f *fakeDomainBlockChecker) IsSuspended(_ context.Context, domain string) bool {
+	return f.suspended[domain]
+}
+
+func TestCardService_FetchAndStoreCard_SuspendedDomainURL(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fs := testutil.NewFakeStore()
+
+	content := `<p>Check <a href="https://suspended.example/page">this</a></p>`
+	fs.SeedStatus(&domain.Status{
+		ID:        "status1",
+		AccountID: "acct1",
+		Content:   &content,
+	})
+
+	checker := &fakeDomainBlockChecker{suspended: map[string]bool{"suspended.example": true}}
+	svc := NewCardService(fs, checker)
+
+	err := svc.FetchAndStoreCard(ctx, "status1")
+	require.NoError(t, err)
+
+	card, ok := fs.StatusCards["status1"]
+	require.True(t, ok, "card row should have been written")
+	assert.Equal(t, domain.CardStateFetchFailed, card.ProcessingState)
 }
 
 func TestCardService_FetchAndStoreCard_fetchFailed(t *testing.T) {
@@ -193,7 +224,7 @@ func TestCardService_FetchAndStoreCard_fetchFailed(t *testing.T) {
 		Content:   &content,
 	})
 
-	svc := NewCardService(fs)
+	svc := NewCardService(fs, nil)
 	err := svc.FetchAndStoreCard(context.Background(), "status1")
 	require.NoError(t, err) // FetchAndStoreCard logs the OG fetch error and writes CardStateFetchFailed
 

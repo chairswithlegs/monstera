@@ -415,10 +415,9 @@ func New(deps Deps) http.Handler {
 			r.Post("/reports/{id}/resolve", deps.ModeratorReports.POSTResolve)
 			r.Get("/federation/instances", deps.AdminFederation.GETInstances)
 			r.Get("/federation/domain-blocks", deps.AdminFederation.GETDomainBlocks)
-			r.Get("/content/filters", deps.ModeratorContent.GETFilters)
-			r.Post("/content/filters", deps.ModeratorContent.POSTFilters)
-			r.Put("/content/filters/{id}", deps.ModeratorContent.PUTFilter)
-			r.Delete("/content/filters/{id}", deps.ModeratorContent.DELETEFilter)
+			r.Get("/content/trending-link-filters", deps.ModeratorContent.GETTrendingLinkFilters)
+			r.Post("/content/trending-link-filters", deps.ModeratorContent.POSTTrendingLinkFilters)
+			r.Delete("/content/trending-link-filters", deps.ModeratorContent.DELETETrendingLinkFilter)
 		})
 
 		// Admin API (requires admin role)

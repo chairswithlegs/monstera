@@ -22,6 +22,11 @@ const (
 	cardUserAgent    = "Monstera/1.0"
 )
 
+// DomainBlockChecker checks whether a domain is blocked.
+type DomainBlockChecker interface {
+	IsSuspended(ctx context.Context, domain string) bool
+}
+
 // CardService fetches and stores link preview cards for statuses.
 type CardService interface {
 	FetchAndStoreCard(ctx context.Context, statusID string) error
@@ -29,14 +34,15 @@ type CardService interface {
 
 type cardService struct {
 	store      store.Store
+	blocklist  DomainBlockChecker
 	httpClient *http.Client
 }
 
 // NewCardService returns a CardService backed by the given store.
-func NewCardService(s store.Store) CardService {
+func NewCardService(s store.Store, bl DomainBlockChecker) CardService {
 	// Use a secure egress HTTP client to protect against SSRF attacks.
 	client := ssrf.NewHTTPClient(ssrf.HTTPClientOptions{})
-	return &cardService{store: s, httpClient: client}
+	return &cardService{store: s, blocklist: bl, httpClient: client}
 }
 
 func (svc *cardService) FetchAndStoreCard(ctx context.Context, statusID string) error {
@@ -51,6 +57,21 @@ func (svc *cardService) FetchAndStoreCard(ctx context.Context, statusID string) 
 	}
 
 	rawURL := extractFirstURL(content)
+	if rawURL != "" && svc.blocklist != nil {
+		if parsed, parseErr := url.Parse(rawURL); parseErr == nil && parsed.Host != "" {
+			if svc.blocklist.IsSuspended(ctx, parsed.Hostname()) {
+				if upsertErr := svc.store.UpsertStatusCard(ctx, store.UpsertStatusCardInput{
+					StatusID:        statusID,
+					ProcessingState: domain.CardStateFetchFailed,
+					URL:             rawURL,
+					CardType:        "link",
+				}); upsertErr != nil {
+					return fmt.Errorf("UpsertStatusCard: %w", upsertErr)
+				}
+				return nil
+			}
+		}
+	}
 	if rawURL == "" {
 		if err := svc.store.UpsertStatusCard(ctx, store.UpsertStatusCardInput{
 			StatusID:        statusID,
@@ -110,6 +131,10 @@ func (svc *cardService) fetchOGMetadata(ctx context.Context, rawURL string) (*og
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("http status %d", resp.StatusCode)
+	}
+
 	body, err := io.ReadAll(io.LimitReader(resp.Body, cardMaxBodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
@@ -163,9 +188,10 @@ func parseOGMetadata(body []byte) *ogMetadata {
 	og.title = bluemonday.StrictPolicy().Sanitize(og.title)
 	og.description = bluemonday.StrictPolicy().Sanitize(og.description)
 
-	// Image must be a valid URL
+	// Image must be a valid http(s) URL
 	if og.image != "" {
-		if _, err := url.Parse(og.image); err != nil {
+		parsed, err := url.Parse(og.image)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 			og.image = ""
 		}
 	}

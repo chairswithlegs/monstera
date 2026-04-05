@@ -77,7 +77,13 @@ func TestStreamConfigs_ConsumerProperties(t *testing.T) {
 		assert.Equal(t, jetstream.AckExplicitPolicy, c.AckPolicy, "consumer %s should use explicit ack", c.Durable)
 		assert.Positive(t, c.MaxAckPending, "consumer %s MaxAckPending must be positive", c.Durable)
 		assert.Greater(t, c.AckWait, time.Duration(0), "consumer %s AckWait must be positive", c.Durable)
-		assert.Contains(t, c.FilterSubject, SubjectPrefix, "consumer %s should filter under domain.events prefix", c.Durable)
+		if len(c.FilterSubjects) > 0 {
+			for _, subj := range c.FilterSubjects {
+				assert.Contains(t, subj, SubjectPrefix, "consumer %s FilterSubjects entry should filter under domain.events prefix", c.Durable)
+			}
+		} else {
+			assert.Contains(t, c.FilterSubject, SubjectPrefix, "consumer %s should filter under domain.events prefix", c.Durable)
+		}
 	}
 
 	for name, found := range expectedNames {

@@ -84,16 +84,14 @@ type svcs struct {
 	marker             service.MarkerService
 	featuredTag        service.FeaturedTagService
 	registration       service.RegistrationService
-	serverFilter       service.ServerFilterService
 	announcement       service.AnnouncementService
 	pushSubscription   service.PushSubscriptionService
 	backfill           service.BackfillService
 	adminMetrics       service.AdminMetricsService
-
-	oauthServer      *oauth.Server
-	remoteResolver   *ap.RemoteAccountResolver
-	signatureService ap.HTTPSignatureService
-	inboxProcessor   ap.Inbox
+	oauthServer        *oauth.Server
+	remoteResolver     *ap.RemoteAccountResolver
+	signatureService   ap.HTTPSignatureService
+	inboxProcessor     ap.Inbox
 }
 
 func setupInfra(ctx context.Context, cfg *config.Config) (*infra, func(), error) {
@@ -235,7 +233,7 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 	mediaSvc := service.NewMediaService(i.store, i.mediaStore, cfg.MediaMaxBytes)
 
 	mailer := service.NewRegistrationEmailSender(i.emailSender, i.emailTemplates, cfg.EmailFrom, cfg.EmailFromName)
-	remoteResolver := ap.NewRemoteAccountResolver(accountSvc, cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.MonsteraInstanceDomain)
+	remoteResolver := ap.NewRemoteAccountResolver(accountSvc, i.blocklist, cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.MonsteraInstanceDomain)
 	signatureService := ap.NewHTTPSignatureService(cfg.FederationInsecureSkipTLS, instanceBaseURL, i.sharedCache, i.cache, accountSvc)
 
 	statusWriteSvc := service.NewStatusWriteService(i.store, statusSvc, conversationSvc, instanceBaseURL, cfg.MonsteraInstanceDomain, cfg.MaxStatusChars)
@@ -263,10 +261,10 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 		search:             service.NewSearchService(i.store, remoteResolver, backfillSvc),
 		backfill:           backfillSvc,
 		trends:             service.NewTrendsService(i.store, statusSvc),
-		card:               service.NewCardService(i.store),
+		card:               service.NewCardService(i.store, i.blocklist),
 		auth:               service.NewAuthService(i.store, monsteraUIHost, oauth.MONSTERA_UI_APPLICATION_ID),
 		monsteraSettings:   monsteraSettingsSvc,
-		moderation:         service.NewModerationService(i.store),
+		moderation:         service.NewModerationService(i.store, i.blocklist),
 		adminMetrics:       service.NewAdminMetricsService(i.store, i.nats.JS, i.cache, ap.StreamOutboxDeliveryDLQ, ap.StreamOutboxFanoutDLQ),
 		list:               service.NewListService(i.store),
 		userFilter:         service.NewUserFilterService(i.store),
@@ -274,7 +272,6 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 		marker:             service.NewMarkerService(i.store),
 		featuredTag:        service.NewFeaturedTagService(i.store),
 		registration:       service.NewRegistrationService(i.store, mailer, mailer, instanceBaseURL, monsteraSettingsSvc),
-		serverFilter:       service.NewServerFilterService(i.store),
 		announcement:       service.NewAnnouncementService(i.store),
 		pushSubscription:   service.NewPushSubscriptionService(i.store),
 
@@ -332,7 +329,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 	})
 	cardSub := events.NewCardSubscriber(i.nats.JS, s.card)
 	backfillWorker := ap.NewBackfillWorker(i.nats.JS, s.account, s.backfill, s.remoteResolver,
-		s.remoteStatusWrite, s.remoteFollow, s.statusRead, cfg.MonsteraInstanceDomain, cfg.BackfillMaxPages, cfg.BackfillCooldown)
+		s.remoteStatusWrite, s.remoteFollow, s.statusRead, i.blocklist, cfg.MonsteraInstanceDomain, cfg.BackfillMaxPages, cfg.BackfillCooldown)
 
 	workers := []namedWorker{
 		{"event-poller", i.eventPoller},
@@ -434,7 +431,7 @@ func createRouter(cfg *config.Config, s *svcs, i *infra, sseHub *sse.Hub) http.H
 		ModeratorInvites:       monstera.NewModeratorInvitesHandler(s.registration, s.monsteraSettings),
 		ModeratorReports:       monstera.NewModeratorReportsHandler(s.moderation),
 		AdminFederation:        monstera.NewAdminFederationHandler(s.instance, s.moderation),
-		ModeratorContent:       monstera.NewModeratorContentHandler(s.serverFilter),
+		ModeratorContent:       monstera.NewModeratorContentHandler(s.trends),
 		AdminSettings:          monstera.NewAdminSettingsHandler(s.monsteraSettings),
 		AdminAnnouncements:     monstera.NewAdminAnnouncementsHandler(s.announcement),
 		AdminMetrics:           monstera.NewAdminMetricsHandler(s.adminMetrics),

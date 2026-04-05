@@ -10,8 +10,8 @@ export function Footer() {
   const locale = useLocale() as Locale;
 
   return (
-    <footer className="border-t bg-white px-6 py-3">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-2">
+    <footer className="border-t bg-white py-3">
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-2 px-6">
         <p className="text-sm text-muted-foreground">
           {t('poweredBy')}{' '}
           <Link

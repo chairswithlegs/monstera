@@ -439,3 +439,44 @@ func TestToNotification_shape(t *testing.T) {
 	out := ToNotification(n, acc, nil, "example.com")
 	assertJSONShape(t, "Notification", out, notificationFields)
 }
+
+func TestTrendingLinkFromDomain(t *testing.T) {
+	t.Parallel()
+	day := time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC)
+	link := domain.TrendingLink{
+		URL:          "https://example.com/article",
+		Title:        "Test Article",
+		Description:  "A great article",
+		Type:         "link",
+		ProviderName: "Example",
+		ProviderURL:  "https://example.com",
+		ImageURL:     "https://example.com/img.png",
+		Width:        800,
+		Height:       600,
+		History: []domain.TrendingLinkHistoryDay{
+			{Day: day, Uses: 42, Accounts: 10},
+		},
+	}
+	card := TrendingLinkFromDomain(link)
+	assert.Equal(t, "https://example.com/article", card.URL)
+	assert.Equal(t, "Test Article", card.Title)
+	assert.Equal(t, "A great article", card.Description)
+	assert.Equal(t, "link", card.Type)
+	assert.Equal(t, "Example", card.ProviderName)
+	assert.Equal(t, "https://example.com", card.ProviderURL)
+	require.NotNil(t, card.Image)
+	assert.Equal(t, "https://example.com/img.png", *card.Image)
+	assert.Equal(t, 800, card.Width)
+	assert.Equal(t, 600, card.Height)
+	require.Len(t, card.History, 1)
+	assert.Equal(t, "42", card.History[0].Uses)
+	assert.Equal(t, "10", card.History[0].Accounts)
+}
+
+func TestTrendingLinkFromDomain_emptyType(t *testing.T) {
+	t.Parallel()
+	link := domain.TrendingLink{URL: "https://example.com/article"}
+	card := TrendingLinkFromDomain(link)
+	assert.Equal(t, "link", card.Type)
+	assert.Nil(t, card.Image)
+}

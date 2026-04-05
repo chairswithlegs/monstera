@@ -19,7 +19,7 @@ import (
 func TestModeratorReportsHandler_GETReports(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
-	modSvc := service.NewModerationService(st)
+	modSvc := service.NewModerationService(st, testutil.NoopBlocklistRefresher{})
 	handler := NewModeratorReportsHandler(modSvc)
 
 	t.Run("returns 200 and report list", func(t *testing.T) {
@@ -36,7 +36,7 @@ func TestModeratorReportsHandler_GETReports(t *testing.T) {
 func TestModeratorReportsHandler_GETReport(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
-	modSvc := service.NewModerationService(st)
+	modSvc := service.NewModerationService(st, testutil.NoopBlocklistRefresher{})
 	handler := NewModeratorReportsHandler(modSvc)
 
 	t.Run("with nonexistent id returns 404", func(t *testing.T) {
@@ -51,7 +51,7 @@ func TestModeratorReportsHandler_GETReport(t *testing.T) {
 func TestModeratorReportsHandler_POSTAssign(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
-	modSvc := service.NewModerationService(st)
+	modSvc := service.NewModerationService(st, testutil.NoopBlocklistRefresher{})
 	handler := NewModeratorReportsHandler(modSvc)
 	adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
 	adminUser := getUserByAccountID(t, st, adminAcc.ID)
@@ -78,7 +78,7 @@ func TestModeratorReportsHandler_POSTAssign(t *testing.T) {
 func TestModeratorReportsHandler_POSTResolve(t *testing.T) {
 	t.Parallel()
 	st := testutil.NewFakeStore()
-	modSvc := service.NewModerationService(st)
+	modSvc := service.NewModerationService(st, testutil.NoopBlocklistRefresher{})
 	handler := NewModeratorReportsHandler(modSvc)
 	adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
 	adminUser := getUserByAccountID(t, st, adminAcc.ID)

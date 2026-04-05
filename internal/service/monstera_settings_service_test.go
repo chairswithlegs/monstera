@@ -21,7 +21,13 @@ func TestMonsteraSettingsService_Get_default(t *testing.T) {
 
 	settings, err := svc.Get(ctx)
 	require.NoError(t, err)
-	expected := domain.MonsteraSettings{RegistrationMode: domain.MonsteraRegistrationModeOpen, ServerName: ptr("Monstera")}
+	expected := domain.MonsteraSettings{
+		RegistrationMode:      domain.MonsteraRegistrationModeOpen,
+		ServerName:            ptr("Monstera"),
+		TrendingLinksScope:    domain.MonsteraTrendingAll,
+		TrendingTagsScope:     domain.MonsteraTrendingAll,
+		TrendingStatusesScope: domain.MonsteraTrendingAll,
+	}
 	assert.Equal(t, expected, settings)
 }
 
@@ -36,7 +42,13 @@ func TestMonsteraSettingsService_Get_after_update(t *testing.T) {
 
 	settings, err := svc.Get(ctx)
 	require.NoError(t, err)
-	expected := domain.MonsteraSettings{RegistrationMode: domain.MonsteraRegistrationModeApproval, ServerName: ptr("Monstera")}
+	expected := domain.MonsteraSettings{
+		RegistrationMode:      domain.MonsteraRegistrationModeApproval,
+		ServerName:            ptr("Monstera"),
+		TrendingLinksScope:    domain.MonsteraTrendingDisabled,
+		TrendingTagsScope:     domain.MonsteraTrendingDisabled,
+		TrendingStatusesScope: domain.MonsteraTrendingDisabled,
+	}
 	assert.Equal(t, expected, settings)
 }
 
@@ -68,7 +80,13 @@ func TestMonsteraSettingsService_Update_all_modes(t *testing.T) {
 		require.NoError(t, err)
 		settings, err := svc.Get(ctx)
 		require.NoError(t, err)
-		expected := domain.MonsteraSettings{RegistrationMode: mode, ServerName: ptr("Monstera")}
+		expected := domain.MonsteraSettings{
+			RegistrationMode:      mode,
+			ServerName:            ptr("Monstera"),
+			TrendingLinksScope:    domain.MonsteraTrendingDisabled,
+			TrendingTagsScope:     domain.MonsteraTrendingDisabled,
+			TrendingStatusesScope: domain.MonsteraTrendingDisabled,
+		}
 		assert.Equal(t, expected, settings)
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/chairswithlegs/monstera/internal/activitypub/vocab"
+	"github.com/chairswithlegs/monstera/internal/blocklist"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/chairswithlegs/monstera/internal/store"
@@ -33,7 +34,7 @@ func TestRemoteAccountResolver_ResolveRemoteAccount_invalidAcct(t *testing.T) {
 	}, CreateOrUpdateRemoteAccountFunc: func(ctx context.Context, in service.CreateOrUpdateRemoteInput) (*domain.Account, error) {
 		return nil, domain.ErrNotFound
 	}}
-	r := NewRemoteAccountResolver(svc, "", false, "example.com")
+	r := NewRemoteAccountResolver(svc, nil, "", false, "example.com")
 
 	for _, acct := range []string{"", "invalid", "no-at", "@nodomain", "user@"} {
 		_, err := r.ResolveRemoteAccount(ctx, acct)
@@ -48,7 +49,7 @@ func TestRemoteAccountResolver_ResolveRemoteAccount_local(t *testing.T) {
 	fake := testutil.NewFakeStore()
 	svc := service.NewAccountService(fake, "https://example.com")
 
-	r := NewRemoteAccountResolver(svc, "", false, "example.com")
+	r := NewRemoteAccountResolver(svc, nil, "", false, "example.com")
 
 	_, err := fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID:           "01alice",
@@ -73,7 +74,7 @@ func TestRemoteAccountResolver_ResolveRemoteAccount_local_notFound(t *testing.T)
 	t.Parallel()
 	ctx := context.Background()
 	svc := service.NewAccountService(testutil.NewFakeStore(), "https://example.com")
-	r := NewRemoteAccountResolver(svc, "", false, "example.com")
+	r := NewRemoteAccountResolver(svc, nil, "", false, "example.com")
 
 	_, err := r.ResolveRemoteAccount(ctx, "nobody@example.com")
 	require.Error(t, err)
@@ -98,7 +99,7 @@ func TestRemoteAccountResolver_ResolveRemoteAccount_remote_cached(t *testing.T) 
 	})
 	require.NoError(t, err)
 
-	r := NewRemoteAccountResolver(svc, "", false, "example.com")
+	r := NewRemoteAccountResolver(svc, nil, "", false, "example.com")
 	acc, err := r.ResolveRemoteAccount(ctx, "bob@remote.example")
 	require.NoError(t, err)
 	require.NotNil(t, acc)
@@ -435,6 +436,52 @@ type roundTripFunc struct {
 
 func (f *roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f.fn(req)
+}
+
+func TestRemoteAccountResolver_ResolveRemoteAccount_SuspendedDomain(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	fake := testutil.NewFakeStore()
+	_, err := fake.CreateDomainBlock(ctx, store.CreateDomainBlockInput{
+		ID:       "db-1",
+		Domain:   "suspended.example",
+		Severity: domain.DomainBlockSeveritySuspend,
+	})
+	require.NoError(t, err)
+
+	bl := blocklist.NewBlocklistCache(fake)
+	require.NoError(t, bl.Refresh(ctx))
+
+	svc := &mockAccountService{}
+	r := NewRemoteAccountResolver(svc, bl, "", false, "example.com")
+
+	_, err = r.ResolveRemoteAccount(ctx, "user@suspended.example")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrDomainSuspended)
+}
+
+func TestRemoteAccountResolver_ResolveRemoteAccountByIRI_SuspendedDomain(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	fake := testutil.NewFakeStore()
+	_, err := fake.CreateDomainBlock(ctx, store.CreateDomainBlockInput{
+		ID:       "db-1",
+		Domain:   "suspended.example",
+		Severity: domain.DomainBlockSeveritySuspend,
+	})
+	require.NoError(t, err)
+
+	bl := blocklist.NewBlocklistCache(fake)
+	require.NoError(t, bl.Refresh(ctx))
+
+	svc := &mockAccountService{}
+	r := NewRemoteAccountResolver(svc, bl, "", false, "example.com")
+
+	_, err = r.ResolveRemoteAccountByIRI(ctx, "https://suspended.example/users/alice")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrDomainSuspended)
 }
 
 var mockActorResponseBody = `{

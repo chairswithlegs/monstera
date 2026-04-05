@@ -84,6 +84,12 @@ func (p *inbox) handleAnnounce(ctx context.Context, activity *vocab.Activity, _ 
 		if !errors.Is(err, domain.ErrNotFound) {
 			return fmt.Errorf("inbox: GetByAPID (Announce): %w", err)
 		}
+		objectDomain := vocab.DomainFromIRI(objectID)
+		if objectDomain != "" && p.blocklist.IsSuspended(ctx, objectDomain) {
+			slog.DebugContext(ctx, "inbox: dropped Announce referencing suspended domain",
+				slog.String("object", objectID), slog.String("domain", objectDomain))
+			return nil
+		}
 		var note vocab.Note
 		if fetchErr := p.remoteResolver.resolveIRIDocument(ctx, objectID, &note); fetchErr != nil {
 			return fmt.Errorf("inbox: fetch Note for Announce: %w", fetchErr)
@@ -204,7 +210,7 @@ func (p *inbox) handleDelete(ctx context.Context, activity *vocab.Activity) erro
 		if err != nil {
 			return fmt.Errorf("inbox: GetByAPID (Delete Person): %w", err)
 		}
-		if account.Domain == nil {
+		if account.IsLocal() {
 			return fmt.Errorf("%w: delete: refusing to suspend local account %s", ErrInboxFatal, account.ID)
 		}
 		if suspendErr := p.accounts.SuspendRemote(ctx, account.ID); suspendErr != nil {

@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/store"
@@ -43,13 +45,19 @@ type ModerationService interface {
 	ListDomainBlocks(ctx context.Context) ([]domain.DomainBlock, error)
 }
 
+// BlocklistRefresher refreshes the in-memory blocklist cache.
+type BlocklistRefresher interface {
+	Refresh(ctx context.Context) error
+}
+
 type moderationService struct {
-	store store.Store
+	store     store.Store
+	blocklist BlocklistRefresher
 }
 
 // NewModerationService returns a ModerationService that uses the given store.
-func NewModerationService(s store.Store) ModerationService {
-	return &moderationService{store: s}
+func NewModerationService(s store.Store, bl BlocklistRefresher) ModerationService {
+	return &moderationService{store: s, blocklist: bl}
 }
 
 // CreateReportInput is the input for creating a report.
@@ -159,11 +167,10 @@ func (svc *moderationService) SetUserRole(ctx context.Context, moderatorID, targ
 }
 
 func (svc *moderationService) DeleteAccount(ctx context.Context, moderatorID, targetID string) error {
-	t := targetID
-	if err := svc.writeAdminAction(ctx, moderatorID, &t, AdminActionDeleteAccount, nil, nil); err != nil {
-		return fmt.Errorf("CreateAdminAction(delete_account): %w", err)
-	}
 	user, err := svc.store.GetUserByAccountID(ctx, targetID)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return fmt.Errorf("GetUserByAccountID(%s): %w", targetID, err)
+	}
 	if err == nil {
 		if err := svc.store.DeleteUser(ctx, user.ID); err != nil {
 			return fmt.Errorf("DeleteUser(%s): %w", user.ID, err)
@@ -171,6 +178,10 @@ func (svc *moderationService) DeleteAccount(ctx context.Context, moderatorID, ta
 	}
 	if err := svc.store.DeleteAccount(ctx, targetID); err != nil {
 		return fmt.Errorf("DeleteAccount(%s): %w", targetID, err)
+	}
+	t := targetID
+	if err := svc.writeAdminAction(ctx, moderatorID, &t, AdminActionDeleteAccount, nil, nil); err != nil {
+		return fmt.Errorf("CreateAdminAction(delete_account): %w", err)
 	}
 	return nil
 }
@@ -255,6 +266,9 @@ func (svc *moderationService) CreateDomainBlock(ctx context.Context, moderatorID
 	if err := svc.writeAdminAction(ctx, moderatorID, nil, AdminActionCreateDomainBlock, nil, meta); err != nil {
 		return nil, fmt.Errorf("CreateAdminAction(create_domain_block): %w", err)
 	}
+	if err := svc.blocklist.Refresh(ctx); err != nil {
+		slog.WarnContext(ctx, "blocklist refresh after create domain block failed", slog.Any("error", err))
+	}
 	return block, nil
 }
 
@@ -265,6 +279,9 @@ func (svc *moderationService) DeleteDomainBlock(ctx context.Context, moderatorID
 	meta := encodeMetadata(map[string]string{"domain": domain})
 	if err := svc.writeAdminAction(ctx, moderatorID, nil, AdminActionRemoveDomainBlock, nil, meta); err != nil {
 		return fmt.Errorf("CreateAdminAction(remove_domain_block): %w", err)
+	}
+	if err := svc.blocklist.Refresh(ctx); err != nil {
+		slog.WarnContext(ctx, "blocklist refresh after delete domain block failed", slog.Any("error", err))
 	}
 	return nil
 }

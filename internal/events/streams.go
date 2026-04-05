@@ -67,7 +67,10 @@ var StreamConfigs = []natsutil.StreamConfig{
 				AckPolicy:     jetstream.AckExplicitPolicy,
 				MaxAckPending: 50,
 				AckWait:       30 * time.Second,
-				FilterSubject: SubjectPrefix + "status.created",
+				FilterSubjects: []string{
+					SubjectPrefix + "status.created",
+					SubjectPrefix + "status.created.remote",
+				},
 			},
 		},
 	},

@@ -11,6 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type noopBlocklistRefresher struct{}
+
+func (noopBlocklistRefresher) Refresh(_ context.Context) error { return nil }
+
 func seedLocalAccount(t *testing.T, fake *testutil.FakeStore, id, username string) *domain.Account {
 	t.Helper()
 	acc, err := fake.CreateAccount(context.Background(), store.CreateAccountInput{
@@ -76,7 +80,7 @@ func TestModerationService_SuspendAccount(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
 			fake := testutil.NewFakeStore()
-			svc := NewModerationService(fake)
+			svc := NewModerationService(fake, noopBlocklistRefresher{})
 
 			modID, targetID := tc.setup(t, fake)
 			err := svc.SuspendAccount(ctx, modID, targetID)
@@ -128,7 +132,7 @@ func TestModerationService_SilenceAccount(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
 			fake := testutil.NewFakeStore()
-			svc := NewModerationService(fake)
+			svc := NewModerationService(fake, noopBlocklistRefresher{})
 
 			modID, targetID := tc.setup(t, fake)
 			err := svc.SilenceAccount(ctx, modID, targetID)
@@ -153,7 +157,7 @@ func TestModerationService_UnsuspendAccount(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
-		svc := NewModerationService(fake)
+		svc := NewModerationService(fake, noopBlocklistRefresher{})
 
 		mod := seedLocalAccount(t, fake, "mod-1", "moderator")
 		target := seedLocalAccount(t, fake, "target-1", "target")
@@ -175,7 +179,7 @@ func TestModerationService_UnsilenceAccount(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
-		svc := NewModerationService(fake)
+		svc := NewModerationService(fake, noopBlocklistRefresher{})
 
 		mod := seedLocalAccount(t, fake, "mod-1", "moderator")
 		target := seedLocalAccount(t, fake, "target-1", "target")
@@ -197,7 +201,7 @@ func TestModerationService_CreateDomainBlock(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
-		svc := NewModerationService(fake)
+		svc := NewModerationService(fake, noopBlocklistRefresher{})
 
 		mod := seedLocalAccount(t, fake, "mod-1", "moderator")
 
@@ -219,7 +223,7 @@ func TestModerationService_DeleteDomainBlock(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
-		svc := NewModerationService(fake)
+		svc := NewModerationService(fake, noopBlocklistRefresher{})
 
 		mod := seedLocalAccount(t, fake, "mod-1", "moderator")
 		_, err := fake.CreateDomainBlock(ctx, store.CreateDomainBlockInput{
@@ -245,7 +249,7 @@ func TestModerationService_CreateReport(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
-		svc := NewModerationService(fake)
+		svc := NewModerationService(fake, noopBlocklistRefresher{})
 
 		reporter := seedLocalAccount(t, fake, "reporter-1", "reporter")
 		target := seedLocalAccount(t, fake, "target-1", "target")
@@ -272,7 +276,7 @@ func TestModerationService_ListReports(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
-		svc := NewModerationService(fake)
+		svc := NewModerationService(fake, noopBlocklistRefresher{})
 
 		reports, err := svc.ListReports(ctx, domain.ReportStateOpen, 10, 0)
 		require.NoError(t, err)
@@ -287,7 +291,7 @@ func TestModerationService_GetReport(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
-		svc := NewModerationService(fake)
+		svc := NewModerationService(fake, noopBlocklistRefresher{})
 
 		_, err := svc.GetReport(ctx, "nonexistent")
 		require.Error(t, err)
@@ -302,7 +306,7 @@ func TestModerationService_AssignReport(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
-		svc := NewModerationService(fake)
+		svc := NewModerationService(fake, noopBlocklistRefresher{})
 
 		mod := seedLocalAccount(t, fake, "mod-1", "moderator")
 		assignee := "assignee-1"
@@ -319,7 +323,7 @@ func TestModerationService_ResolveReport(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
-		svc := NewModerationService(fake)
+		svc := NewModerationService(fake, noopBlocklistRefresher{})
 
 		mod := seedLocalAccount(t, fake, "mod-1", "moderator")
 
@@ -335,7 +339,7 @@ func TestModerationService_SetUserRole(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
-		svc := NewModerationService(fake)
+		svc := NewModerationService(fake, noopBlocklistRefresher{})
 
 		mod := seedLocalAccount(t, fake, "mod-1", "moderator")
 		target := seedLocalAccount(t, fake, "target-1", "target")
@@ -357,6 +361,54 @@ func TestModerationService_SetUserRole(t *testing.T) {
 	})
 }
 
+type trackingBlocklistRefresher struct {
+	refreshed bool
+}
+
+func (t *trackingBlocklistRefresher) Refresh(_ context.Context) error {
+	t.refreshed = true
+	return nil
+}
+
+func TestModerationService_CreateDomainBlock_RefreshesBlocklist(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	tracker := &trackingBlocklistRefresher{}
+	svc := NewModerationService(fake, tracker)
+
+	mod := seedLocalAccount(t, fake, "mod-1", "moderator")
+
+	_, err := svc.CreateDomainBlock(ctx, mod.ID, CreateDomainBlockInput{
+		Domain:   "evil.example",
+		Severity: domain.DomainBlockSeveritySuspend,
+	})
+	require.NoError(t, err)
+	assert.True(t, tracker.refreshed, "blocklist should have been refreshed after CreateDomainBlock")
+}
+
+func TestModerationService_DeleteDomainBlock_RefreshesBlocklist(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	tracker := &trackingBlocklistRefresher{}
+	svc := NewModerationService(fake, tracker)
+
+	mod := seedLocalAccount(t, fake, "mod-1", "moderator")
+
+	// Seed a domain block to delete.
+	_, err := fake.CreateDomainBlock(ctx, store.CreateDomainBlockInput{
+		ID:       "db-1",
+		Domain:   "evil.example",
+		Severity: domain.DomainBlockSeveritySuspend,
+	})
+	require.NoError(t, err)
+
+	err = svc.DeleteDomainBlock(ctx, mod.ID, "evil.example")
+	require.NoError(t, err)
+	assert.True(t, tracker.refreshed, "blocklist should have been refreshed after DeleteDomainBlock")
+}
+
 func TestModerationService_DeleteAccount(t *testing.T) {
 	t.Parallel()
 
@@ -364,7 +416,7 @@ func TestModerationService_DeleteAccount(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
-		svc := NewModerationService(fake)
+		svc := NewModerationService(fake, noopBlocklistRefresher{})
 
 		mod := seedLocalAccount(t, fake, "mod-1", "moderator")
 		target := seedLocalAccount(t, fake, "target-1", "target")

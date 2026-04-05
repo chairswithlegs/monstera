@@ -1,7 +1,7 @@
 'use client';
 
 import { getSettings, putSettings } from '@/lib/api/admin';
-import { getUser, isAdminOrModerator } from '@/lib/api/user';
+import { getUser, isAdmin } from '@/lib/api/user';
 import type { User } from '@/lib/api/user';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -25,6 +25,9 @@ export default function ServerSettingsPage() {
   const [serverName, setServerName] = useState('');
   const [serverDescription, setServerDescription] = useState('');
   const [serverRules, setServerRules] = useState('');
+  const [trendingLinksScope, setTrendingLinksScope] = useState('disabled');
+  const [trendingTagsScope, setTrendingTagsScope] = useState('disabled');
+  const [trendingStatusesScope, setTrendingStatusesScope] = useState('disabled');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -36,6 +39,12 @@ export default function ServerSettingsPage() {
     { value: 'invite', label: t('modeInvite') },
   ];
 
+  const trendingScopeOptions = [
+    { value: 'disabled', label: t('trendingScopeDisabled') },
+    { value: 'local', label: t('trendingScopeLocal') },
+    { value: 'all', label: t('trendingScopeAll') },
+  ];
+
   useEffect(() => {
     getUser()
       .then(setUser)
@@ -45,7 +54,7 @@ export default function ServerSettingsPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!user || !isAdminOrModerator(user)) {
+    if (!user || !isAdmin(user)) {
       router.replace('/home');
     }
   }, [loading, user, router]);
@@ -59,12 +68,15 @@ export default function ServerSettingsPage() {
         setServerName(s.server_name ?? '');
         setServerDescription(s.server_description ?? '');
         setServerRules(s.server_rules?.join('\n') ?? '');
+        setTrendingLinksScope(s.trending_links_scope ?? 'disabled');
+        setTrendingTagsScope(s.trending_tags_scope ?? 'disabled');
+        setTrendingStatusesScope(s.trending_statuses_scope ?? 'disabled');
       })
       .catch((e) => setError(translateApiError(tErr, e)));
   }, [tErr]);
 
   useEffect(() => {
-    if (user && isAdminOrModerator(user)) load();
+    if (user && isAdmin(user)) load();
   }, [user, load]);
 
   const save = async (e: React.FormEvent) => {
@@ -80,6 +92,9 @@ export default function ServerSettingsPage() {
         server_name: serverName.trim() || null,
         server_description: serverDescription.trim() || null,
         server_rules: serverRules.split('\n').map((r) => r.trim()).filter(Boolean),
+        trending_links_scope: trendingLinksScope,
+        trending_tags_scope: trendingTagsScope,
+        trending_statuses_scope: trendingStatusesScope,
       });
       setSuccess(true);
     } catch (e) {
@@ -89,7 +104,7 @@ export default function ServerSettingsPage() {
     }
   };
 
-  if (loading || !user || !isAdminOrModerator(user)) {
+  if (loading || !user || !isAdmin(user)) {
     return null;
   }
 
@@ -185,6 +200,54 @@ export default function ServerSettingsPage() {
             placeholder="Be respectful.&#10;No spam."
           />
           <p className="text-xs text-muted-foreground">{t('serverRulesHint')}</p>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="trending-statuses-scope">{t('trendingStatusesScope')}</Label>
+          <select
+            id="trending-statuses-scope"
+            value={trendingStatusesScope}
+            onChange={(e) => setTrendingStatusesScope(e.target.value)}
+            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {trendingScopeOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">{t('trendingStatusesScopeHint')}</p>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="trending-tags-scope">{t('trendingTagsScope')}</Label>
+          <select
+            id="trending-tags-scope"
+            value={trendingTagsScope}
+            onChange={(e) => setTrendingTagsScope(e.target.value)}
+            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {trendingScopeOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">{t('trendingTagsScopeHint')}</p>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="trending-links-scope">{t('trendingLinksScope')}</Label>
+          <select
+            id="trending-links-scope"
+            value={trendingLinksScope}
+            onChange={(e) => setTrendingLinksScope(e.target.value)}
+            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {trendingScopeOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">{t('trendingLinksScopeHint')}</p>
         </div>
         <Button type="submit" disabled={saving}>
           {saving ? tCommon('saving') : tCommon('save')}

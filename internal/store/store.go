@@ -29,6 +29,7 @@ type Store interface {
 	FilterStore
 	MarkerStore
 	TrendingStore
+	TrendingLinkFilterStore
 	PollStore
 	CardStore
 	OutboxStore
@@ -270,7 +271,7 @@ type MediaStore interface {
 	UpdateMediaAttachment(ctx context.Context, in UpdateMediaAttachmentInput) (*domain.MediaAttachment, error)
 }
 
-// ModerationStore handles reports, domain blocks, admin actions, server filters, invites, and known instances.
+// ModerationStore handles reports, domain blocks, admin actions, invites, and known instances.
 type ModerationStore interface {
 	CreateReport(ctx context.Context, in CreateReportInput) (*domain.Report, error)
 	GetReportByID(ctx context.Context, id string) (*domain.Report, error)
@@ -281,10 +282,6 @@ type ModerationStore interface {
 	DeleteDomainBlock(ctx context.Context, domain string) error
 	ListDomainBlocks(ctx context.Context) ([]domain.DomainBlock, error)
 	CreateAdminAction(ctx context.Context, in CreateAdminActionInput) error
-	CreateServerFilter(ctx context.Context, in CreateServerFilterInput) (*domain.ServerFilter, error)
-	ListServerFilters(ctx context.Context) ([]domain.ServerFilter, error)
-	UpdateServerFilter(ctx context.Context, in UpdateServerFilterInput) (*domain.ServerFilter, error)
-	DeleteServerFilter(ctx context.Context, id string) error
 	CreateInvite(ctx context.Context, in CreateInviteInput) (*domain.Invite, error)
 	GetInviteByCode(ctx context.Context, code string) (*domain.Invite, error)
 	ListInvitesByCreator(ctx context.Context, createdByUserID string) ([]domain.Invite, error)
@@ -369,14 +366,27 @@ type MarkerStore interface {
 	SetMarker(ctx context.Context, accountID, timeline, lastReadID string) error
 }
 
-// TrendingStore handles trending status and tag persistence.
+// TrendingStore handles trending status, tag, and link persistence.
 type TrendingStore interface {
-	GetTopScoredPublicStatuses(ctx context.Context, since time.Time, limit int) ([]domain.TrendingStatus, error)
-	GetHashtagDailyStats(ctx context.Context, since time.Time) ([]domain.HashtagDailyStats, error)
+	GetTopScoredPublicStatuses(ctx context.Context, since time.Time, limit int, localOnly bool) ([]domain.TrendingStatus, error)
+	GetHashtagDailyStats(ctx context.Context, since time.Time, localOnly bool) ([]domain.HashtagDailyStats, error)
+	TruncateTrendingTagHistory(ctx context.Context) error
 	ReplaceTrendingStatuses(ctx context.Context, entries []domain.TrendingStatus) error
 	UpsertTrendingTagHistory(ctx context.Context, entries []domain.TrendingTagHistory) error
 	GetTrendingStatusIDs(ctx context.Context, limit int) ([]domain.TrendingStatus, error)
 	GetTrendingTags(ctx context.Context, days int, limit int) ([]domain.TrendingTag, error)
+
+	GetLinkDailyStats(ctx context.Context, days int, localOnly bool) ([]domain.TrendingLinkStats, error)
+	UpsertTrendingLinkHistory(ctx context.Context, entries []domain.TrendingLinkStats) error
+	ReplaceTrendingLinks(ctx context.Context, entries []domain.TrendingLink) error
+	GetTrendingLinks(ctx context.Context, days int, limit int) ([]domain.TrendingLink, error)
+}
+
+// TrendingLinkFilterStore handles filter persistence for trending links.
+type TrendingLinkFilterStore interface {
+	AddTrendingLinkFilter(ctx context.Context, url string) error
+	RemoveTrendingLinkFilter(ctx context.Context, url string) error
+	ListTrendingLinkFilters(ctx context.Context) ([]string, error)
 }
 
 // PollStore handles poll persistence.

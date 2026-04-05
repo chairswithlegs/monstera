@@ -11,6 +11,33 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addTrendingLinkFilter = `-- name: AddTrendingLinkFilter :exec
+INSERT INTO trending_link_filters (url) VALUES ($1)
+ON CONFLICT (url) DO NOTHING
+`
+
+func (q *Queries) AddTrendingLinkFilter(ctx context.Context, url string) error {
+	_, err := q.db.Exec(ctx, addTrendingLinkFilter, url)
+	return err
+}
+
+const bulkInsertTrendingLinks = `-- name: BulkInsertTrendingLinks :exec
+INSERT INTO trending_links (url, score, ranked_at)
+SELECT unnest($1::text[]), unnest($2::float8[]), NOW()
+ON CONFLICT (url) DO UPDATE
+    SET score = EXCLUDED.score, ranked_at = EXCLUDED.ranked_at
+`
+
+type BulkInsertTrendingLinksParams struct {
+	Column1 []string  `json:"column_1"`
+	Column2 []float64 `json:"column_2"`
+}
+
+func (q *Queries) BulkInsertTrendingLinks(ctx context.Context, arg BulkInsertTrendingLinksParams) error {
+	_, err := q.db.Exec(ctx, bulkInsertTrendingLinks, arg.Column1, arg.Column2)
+	return err
+}
+
 const bulkUpsertTrendingStatuses = `-- name: BulkUpsertTrendingStatuses :exec
 INSERT INTO trending_statuses (status_id, score, ranked_at)
 SELECT unnest($1::text[]), unnest($2::float8[]), NOW()
@@ -26,6 +53,253 @@ type BulkUpsertTrendingStatusesParams struct {
 func (q *Queries) BulkUpsertTrendingStatuses(ctx context.Context, arg BulkUpsertTrendingStatusesParams) error {
 	_, err := q.db.Exec(ctx, bulkUpsertTrendingStatuses, arg.Column1, arg.Column2)
 	return err
+}
+
+const getHashtagDailyStats = `-- name: GetHashtagDailyStats :many
+SELECT h.id AS hashtag_id, h.name AS hashtag_name,
+       date_trunc('day', s.created_at AT TIME ZONE 'UTC')::date AS day,
+       COUNT(*) AS uses,
+       COUNT(DISTINCT s.account_id) AS accounts
+FROM status_hashtags sh
+JOIN statuses  s ON s.id  = sh.status_id
+JOIN accounts  a ON a.id  = s.account_id
+JOIN hashtags  h ON h.id  = sh.hashtag_id
+WHERE s.deleted_at IS NULL
+  AND s.visibility IN ('public', 'unlisted')
+  AND s.created_at >= $1
+  AND ($2::boolean = FALSE OR s.local = TRUE)
+  AND NOT EXISTS (
+      SELECT 1 FROM domain_blocks db
+      WHERE db.domain = a.domain AND db.severity = 'silence'
+  )
+GROUP BY h.id, h.name, day
+ORDER BY day DESC, uses DESC
+`
+
+type GetHashtagDailyStatsParams struct {
+	Since     pgtype.Timestamptz `json:"since"`
+	LocalOnly bool               `json:"local_only"`
+}
+
+type GetHashtagDailyStatsRow struct {
+	HashtagID   string      `json:"hashtag_id"`
+	HashtagName string      `json:"hashtag_name"`
+	Day         pgtype.Date `json:"day"`
+	Uses        int64       `json:"uses"`
+	Accounts    int64       `json:"accounts"`
+}
+
+func (q *Queries) GetHashtagDailyStats(ctx context.Context, arg GetHashtagDailyStatsParams) ([]GetHashtagDailyStatsRow, error) {
+	rows, err := q.db.Query(ctx, getHashtagDailyStats, arg.Since, arg.LocalOnly)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetHashtagDailyStatsRow{}
+	for rows.Next() {
+		var i GetHashtagDailyStatsRow
+		if err := rows.Scan(
+			&i.HashtagID,
+			&i.HashtagName,
+			&i.Day,
+			&i.Uses,
+			&i.Accounts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getLinkDailyStats = `-- name: GetLinkDailyStats :many
+SELECT sc.url,
+       date_trunc('day', s.created_at AT TIME ZONE 'UTC')::date AS day,
+       COUNT(*)                     AS uses,
+       COUNT(DISTINCT s.account_id) AS accounts
+FROM status_cards sc
+JOIN statuses s ON s.id = sc.status_id
+JOIN accounts a ON a.id = s.account_id
+WHERE s.deleted_at IS NULL
+  AND s.visibility IN ('public', 'unlisted')
+  AND s.created_at >= CURRENT_DATE - ($1::int - 1)
+  AND ($2::boolean = FALSE OR s.local = TRUE)
+  AND NOT EXISTS (
+      SELECT 1 FROM domain_blocks db
+      WHERE db.domain = a.domain AND db.severity = 'silence'
+  )
+GROUP BY sc.url, day
+ORDER BY sc.url, day DESC
+`
+
+type GetLinkDailyStatsParams struct {
+	Column1 int32 `json:"column_1"`
+	Column2 bool  `json:"column_2"`
+}
+
+type GetLinkDailyStatsRow struct {
+	Url      string      `json:"url"`
+	Day      pgtype.Date `json:"day"`
+	Uses     int64       `json:"uses"`
+	Accounts int64       `json:"accounts"`
+}
+
+func (q *Queries) GetLinkDailyStats(ctx context.Context, arg GetLinkDailyStatsParams) ([]GetLinkDailyStatsRow, error) {
+	rows, err := q.db.Query(ctx, getLinkDailyStats, arg.Column1, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetLinkDailyStatsRow{}
+	for rows.Next() {
+		var i GetLinkDailyStatsRow
+		if err := rows.Scan(
+			&i.Url,
+			&i.Day,
+			&i.Uses,
+			&i.Accounts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTopScoredPublicStatuses = `-- name: GetTopScoredPublicStatuses :many
+SELECT s.id AS status_id,
+       (s.reblogs_count + s.favourites_count + s.replies_count * 0.5)::float8 AS score
+FROM statuses s
+JOIN accounts a ON a.id = s.account_id
+WHERE s.deleted_at IS NULL
+  AND s.visibility = 'public'
+  AND s.reblog_of_id IS NULL
+  AND s.created_at >= $1
+  AND ($2::boolean = FALSE OR s.local = TRUE)
+  AND NOT EXISTS (
+      SELECT 1 FROM domain_blocks db
+      WHERE db.domain = a.domain AND db.severity = 'silence'
+  )
+ORDER BY score DESC
+LIMIT $3
+`
+
+type GetTopScoredPublicStatusesParams struct {
+	Since      pgtype.Timestamptz `json:"since"`
+	LocalOnly  bool               `json:"local_only"`
+	MaxResults int32              `json:"max_results"`
+}
+
+type GetTopScoredPublicStatusesRow struct {
+	StatusID string  `json:"status_id"`
+	Score    float64 `json:"score"`
+}
+
+func (q *Queries) GetTopScoredPublicStatuses(ctx context.Context, arg GetTopScoredPublicStatusesParams) ([]GetTopScoredPublicStatusesRow, error) {
+	rows, err := q.db.Query(ctx, getTopScoredPublicStatuses, arg.Since, arg.LocalOnly, arg.MaxResults)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTopScoredPublicStatusesRow{}
+	for rows.Next() {
+		var i GetTopScoredPublicStatusesRow
+		if err := rows.Scan(&i.StatusID, &i.Score); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTrendingLinks = `-- name: GetTrendingLinks :many
+WITH ranked_links AS (
+    SELECT tl.url, tl.score,
+           sc.title, sc.description, sc.card_type, sc.provider_name,
+           sc.provider_url, sc.image_url, sc.width, sc.height
+    FROM trending_links tl
+    LEFT JOIN LATERAL (
+        SELECT sc.title, sc.description, sc.card_type, sc.provider_name,
+               sc.provider_url, sc.image_url, sc.width, sc.height
+        FROM status_cards sc
+        WHERE sc.url = tl.url
+          AND sc.processing_state = 'fetched'
+        ORDER BY sc.fetched_at DESC
+        LIMIT 1
+    ) sc ON true
+    ORDER BY tl.score DESC
+    LIMIT $2
+)
+SELECT rl.url, rl.title, rl.description, rl.card_type,
+       rl.provider_name, rl.provider_url, rl.image_url,
+       rl.width, rl.height,
+       tlh.day, tlh.uses, tlh.accounts
+FROM ranked_links rl
+LEFT JOIN trending_link_history tlh
+    ON tlh.url = rl.url AND tlh.day >= CURRENT_DATE - ($1::int - 1)
+ORDER BY rl.score DESC, rl.url, tlh.day DESC
+`
+
+type GetTrendingLinksParams struct {
+	Column1 int32 `json:"column_1"`
+	Limit   int32 `json:"limit"`
+}
+
+type GetTrendingLinksRow struct {
+	Url          string      `json:"url"`
+	Title        string      `json:"title"`
+	Description  string      `json:"description"`
+	CardType     string      `json:"card_type"`
+	ProviderName string      `json:"provider_name"`
+	ProviderUrl  string      `json:"provider_url"`
+	ImageUrl     string      `json:"image_url"`
+	Width        int32       `json:"width"`
+	Height       int32       `json:"height"`
+	Day          pgtype.Date `json:"day"`
+	Uses         *int64      `json:"uses"`
+	Accounts     *int64      `json:"accounts"`
+}
+
+func (q *Queries) GetTrendingLinks(ctx context.Context, arg GetTrendingLinksParams) ([]GetTrendingLinksRow, error) {
+	rows, err := q.db.Query(ctx, getTrendingLinks, arg.Column1, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTrendingLinksRow{}
+	for rows.Next() {
+		var i GetTrendingLinksRow
+		if err := rows.Scan(
+			&i.Url,
+			&i.Title,
+			&i.Description,
+			&i.CardType,
+			&i.ProviderName,
+			&i.ProviderUrl,
+			&i.ImageUrl,
+			&i.Width,
+			&i.Height,
+			&i.Day,
+			&i.Uses,
+			&i.Accounts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getTrendingStatuses = `-- name: GetTrendingStatuses :many
@@ -100,12 +374,98 @@ func (q *Queries) GetTrendingTagHistory(ctx context.Context, dollar_1 int32) ([]
 	return items, nil
 }
 
+const isTrendingLinkFiltered = `-- name: IsTrendingLinkFiltered :one
+SELECT EXISTS(SELECT 1 FROM trending_link_filters WHERE url = $1)::boolean
+`
+
+func (q *Queries) IsTrendingLinkFiltered(ctx context.Context, url string) (bool, error) {
+	row := q.db.QueryRow(ctx, isTrendingLinkFiltered, url)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const listTrendingLinkFilters = `-- name: ListTrendingLinkFilters :many
+SELECT url, created_at FROM trending_link_filters ORDER BY created_at DESC
+`
+
+func (q *Queries) ListTrendingLinkFilters(ctx context.Context) ([]TrendingLinkFilter, error) {
+	rows, err := q.db.Query(ctx, listTrendingLinkFilters)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TrendingLinkFilter{}
+	for rows.Next() {
+		var i TrendingLinkFilter
+		if err := rows.Scan(&i.Url, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const removeTrendingLinkFilter = `-- name: RemoveTrendingLinkFilter :exec
+DELETE FROM trending_link_filters WHERE url = $1
+`
+
+func (q *Queries) RemoveTrendingLinkFilter(ctx context.Context, url string) error {
+	_, err := q.db.Exec(ctx, removeTrendingLinkFilter, url)
+	return err
+}
+
+const replaceTrendingLinks = `-- name: ReplaceTrendingLinks :exec
+DELETE FROM trending_links
+`
+
+func (q *Queries) ReplaceTrendingLinks(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, replaceTrendingLinks)
+	return err
+}
+
 const truncateTrendingStatuses = `-- name: TruncateTrendingStatuses :exec
 DELETE FROM trending_statuses
 `
 
 func (q *Queries) TruncateTrendingStatuses(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, truncateTrendingStatuses)
+	return err
+}
+
+const truncateTrendingTagHistory = `-- name: TruncateTrendingTagHistory :exec
+DELETE FROM trending_tag_history
+`
+
+func (q *Queries) TruncateTrendingTagHistory(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, truncateTrendingTagHistory)
+	return err
+}
+
+const upsertTrendingLinkHistory = `-- name: UpsertTrendingLinkHistory :exec
+INSERT INTO trending_link_history (url, day, uses, accounts)
+SELECT unnest($1::text[]), unnest($2::date[]), unnest($3::bigint[]), unnest($4::bigint[])
+ON CONFLICT (url, day) DO UPDATE
+    SET uses = EXCLUDED.uses, accounts = EXCLUDED.accounts
+`
+
+type UpsertTrendingLinkHistoryParams struct {
+	Column1 []string      `json:"column_1"`
+	Column2 []pgtype.Date `json:"column_2"`
+	Column3 []int64       `json:"column_3"`
+	Column4 []int64       `json:"column_4"`
+}
+
+func (q *Queries) UpsertTrendingLinkHistory(ctx context.Context, arg UpsertTrendingLinkHistoryParams) error {
+	_, err := q.db.Exec(ctx, upsertTrendingLinkHistory,
+		arg.Column1,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+	)
 	return err
 }
 

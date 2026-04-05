@@ -38,16 +38,3 @@ ORDER BY name
 LIMIT $2;
 
 
--- name: GetHashtagDailyStats :many
-SELECT h.id AS hashtag_id, h.name AS hashtag_name,
-       date_trunc('day', s.created_at AT TIME ZONE 'UTC')::date AS day,
-       COUNT(*) AS uses,
-       COUNT(DISTINCT s.account_id) AS accounts
-FROM status_hashtags sh
-JOIN statuses  s ON s.id  = sh.status_id
-JOIN hashtags  h ON h.id  = sh.hashtag_id
-WHERE s.deleted_at IS NULL
-  AND s.visibility IN ('public', 'unlisted')
-  AND s.created_at >= $1
-GROUP BY h.id, h.name, day
-ORDER BY day DESC, uses DESC;
