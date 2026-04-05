@@ -478,7 +478,7 @@ type TrendingLink struct {
 	RankedAt pgtype.Timestamptz `json:"ranked_at"`
 }
 
-type TrendingLinkDenylist struct {
+type TrendingLinkFilter struct {
 	Url       string             `json:"url"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }

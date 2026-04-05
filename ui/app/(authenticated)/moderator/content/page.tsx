@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Card,
@@ -79,7 +80,11 @@ export default function ModeratorContentPage() {
         <h2 className="text-lg font-medium text-foreground">{t('trendingLinkFilterTitle')}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{t('trendingLinkFilterDescription')}</p>
         <form onSubmit={handleAddTrendingLinkFilter} className="mt-4 flex gap-2">
+          <Label htmlFor="trending-link-filter-url" className="sr-only">
+            {t('trendingLinkFilterTitle')}
+          </Label>
           <Input
+            id="trending-link-filter-url"
             type="url"
             value={newTrendingLinkUrl}
             onChange={(e) => setNewTrendingLinkUrl(e.target.value)}

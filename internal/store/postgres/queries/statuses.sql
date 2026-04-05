@@ -159,15 +159,3 @@ RETURNING *;
 
 -- name: ListStatusEdits :many
 SELECT * FROM status_edits WHERE status_id = $1 ORDER BY created_at ASC;
-
-
--- name: GetTopScoredPublicStatuses :many
-SELECT id AS status_id,
-       (reblogs_count + favourites_count + replies_count * 0.5) AS score
-FROM statuses
-WHERE deleted_at IS NULL
-  AND visibility = 'public'
-  AND reblog_of_id IS NULL
-  AND created_at >= $1
-ORDER BY score DESC
-LIMIT $2;

@@ -9,17 +9,17 @@ import (
 
 // ModeratorContentHandler handles trending link filters.
 type ModeratorContentHandler struct {
-	linkDeny service.TrendingLinkDenylistService
+	trends service.TrendsService
 }
 
 // NewModeratorContentHandler returns a new ModeratorContentHandler.
-func NewModeratorContentHandler(linkDeny service.TrendingLinkDenylistService) *ModeratorContentHandler {
-	return &ModeratorContentHandler{linkDeny: linkDeny}
+func NewModeratorContentHandler(trends service.TrendsService) *ModeratorContentHandler {
+	return &ModeratorContentHandler{trends: trends}
 }
 
 // GETTrendingLinkFilters returns the trending link filter list.
 func (h *ModeratorContentHandler) GETTrendingLinkFilters(w http.ResponseWriter, r *http.Request) {
-	urls, err := h.linkDeny.GetDenylist(r.Context())
+	urls, err := h.trends.ListTrendingLinkFilters(r.Context())
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
@@ -45,7 +45,7 @@ func (h *ModeratorContentHandler) POSTTrendingLinkFilters(w http.ResponseWriter,
 		api.HandleError(w, r, err)
 		return
 	}
-	if err := h.linkDeny.AddDenylist(r.Context(), body.URL); err != nil {
+	if err := h.trends.AddTrendingLinkFilter(r.Context(), body.URL); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
@@ -60,7 +60,7 @@ func (h *ModeratorContentHandler) DELETETrendingLinkFilter(w http.ResponseWriter
 		api.HandleError(w, r, err)
 		return
 	}
-	if err := h.linkDeny.RemoveDenylist(r.Context(), url); err != nil {
+	if err := h.trends.RemoveTrendingLinkFilter(r.Context(), url); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}

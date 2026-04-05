@@ -54,8 +54,16 @@ type TrendingLinkHistoryDay struct {
 	Accounts int64
 }
 
-// TrendingLink is a URL with its 7-day history, used for the trends/links endpoint.
+// TrendingLink is a URL with its 7-day history and card metadata, used for the trends/links endpoint.
 type TrendingLink struct {
-	URL     string
-	History []TrendingLinkHistoryDay
+	URL          string
+	Title        string
+	Description  string
+	Type         string // "link", "photo", "video", "rich"
+	ProviderName string
+	ProviderURL  string
+	ImageURL     string
+	Width        int
+	Height       int
+	History      []TrendingLinkHistoryDay
 }

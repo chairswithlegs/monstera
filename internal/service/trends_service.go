@@ -17,6 +17,9 @@ type TrendsService interface {
 	TrendingTags(ctx context.Context, offset, limit int) ([]domain.TrendingTag, error)
 	TrendingLinks(ctx context.Context, offset, limit int) ([]domain.TrendingLink, error)
 	RefreshIndexes(ctx context.Context) error
+	ListTrendingLinkFilters(ctx context.Context) ([]string, error)
+	AddTrendingLinkFilter(ctx context.Context, url string) error
+	RemoveTrendingLinkFilter(ctx context.Context, url string) error
 }
 
 type trendingCache struct {
@@ -248,18 +251,18 @@ func (svc *trendsService) RefreshIndexes(ctx context.Context) error {
 		e.totalUses += s.Uses
 		e.history = append(e.history, domain.TrendingLinkHistoryDay{Day: s.Day, Uses: s.Uses, Accounts: s.Accounts})
 	}
-	denied, err := svc.store.ListTrendingLinkDenylist(ctx)
+	filtered, err := svc.store.ListTrendingLinkFilters(ctx)
 	if err != nil {
-		return fmt.Errorf("ListTrendingLinkDenylist: %w", err)
+		return fmt.Errorf("ListTrendingLinkFilters: %w", err)
 	}
-	deniedSet := make(map[string]struct{}, len(denied))
-	for _, u := range denied {
-		deniedSet[u] = struct{}{}
+	filteredSet := make(map[string]struct{}, len(filtered))
+	for _, u := range filtered {
+		filteredSet[u] = struct{}{}
 	}
 
 	linkEntries := make([]domain.TrendingLink, 0, len(order))
 	for _, url := range order {
-		if _, blocked := deniedSet[url]; blocked {
+		if _, blocked := filteredSet[url]; blocked {
 			continue
 		}
 		e := byURL[url]
@@ -271,5 +274,27 @@ func (svc *trendsService) RefreshIndexes(ctx context.Context) error {
 
 	slog.InfoContext(ctx, "trending indexes updated",
 		slog.Int("link_days", len(linkStats)))
+	return nil
+}
+
+func (svc *trendsService) ListTrendingLinkFilters(ctx context.Context) ([]string, error) {
+	urls, err := svc.store.ListTrendingLinkFilters(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("ListTrendingLinkFilters: %w", err)
+	}
+	return urls, nil
+}
+
+func (svc *trendsService) AddTrendingLinkFilter(ctx context.Context, url string) error {
+	if err := svc.store.AddTrendingLinkFilter(ctx, url); err != nil {
+		return fmt.Errorf("AddTrendingLinkFilter: %w", err)
+	}
+	return nil
+}
+
+func (svc *trendsService) RemoveTrendingLinkFilter(ctx context.Context, url string) error {
+	if err := svc.store.RemoveTrendingLinkFilter(ctx, url); err != nil {
+		return fmt.Errorf("RemoveTrendingLinkFilter: %w", err)
+	}
 	return nil
 }

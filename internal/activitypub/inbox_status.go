@@ -210,7 +210,7 @@ func (p *inbox) handleDelete(ctx context.Context, activity *vocab.Activity) erro
 		if err != nil {
 			return fmt.Errorf("inbox: GetByAPID (Delete Person): %w", err)
 		}
-		if account.Domain == nil {
+		if account.IsLocal() {
 			return fmt.Errorf("%w: delete: refusing to suspend local account %s", ErrInboxFatal, account.ID)
 		}
 		if suspendErr := p.accounts.SuspendRemote(ctx, account.ID); suspendErr != nil {

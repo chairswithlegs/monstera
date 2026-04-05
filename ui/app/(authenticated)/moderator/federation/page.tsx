@@ -79,19 +79,17 @@ export default function ModeratorFederationPage() {
     }
   };
 
-  if (error) {
-    return (
-      <Alert variant="destructive">
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
-    );
-  }
-
   const showAdminActions = currentUser && isAdmin(currentUser);
 
   return (
     <div>
       <h1 className="text-2xl font-semibold text-foreground">{t('federationTitle')}</h1>
+
+      {error && (
+        <Alert variant="destructive" className="mt-4">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
       <section className="mt-8">
         <h2 className="text-lg font-medium text-foreground">{t('knownInstances')}</h2>

@@ -29,7 +29,7 @@ type Store interface {
 	FilterStore
 	MarkerStore
 	TrendingStore
-	TrendingLinkDenylistStore
+	TrendingLinkFilterStore
 	PollStore
 	CardStore
 	OutboxStore
@@ -382,11 +382,11 @@ type TrendingStore interface {
 	GetTrendingLinks(ctx context.Context, days int, limit int) ([]domain.TrendingLink, error)
 }
 
-// TrendingLinkDenylistStore handles denylist persistence for trending links.
-type TrendingLinkDenylistStore interface {
-	AddTrendingLinkDenylist(ctx context.Context, url string) error
-	RemoveTrendingLinkDenylist(ctx context.Context, url string) error
-	ListTrendingLinkDenylist(ctx context.Context) ([]string, error)
+// TrendingLinkFilterStore handles filter persistence for trending links.
+type TrendingLinkFilterStore interface {
+	AddTrendingLinkFilter(ctx context.Context, url string) error
+	RemoveTrendingLinkFilter(ctx context.Context, url string) error
+	ListTrendingLinkFilters(ctx context.Context) ([]string, error)
 }
 
 // PollStore handles poll persistence.

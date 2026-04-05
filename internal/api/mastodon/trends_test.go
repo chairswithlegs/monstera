@@ -72,6 +72,18 @@ func (f *fakeTrendsService) TrendingLinks(_ context.Context, offset, limit int) 
 
 func (f *fakeTrendsService) RefreshIndexes(_ context.Context) error { return nil }
 
+func (f *fakeTrendsService) ListTrendingLinkFilters(_ context.Context) ([]string, error) {
+	return nil, nil
+}
+
+func (f *fakeTrendsService) AddTrendingLinkFilter(_ context.Context, _ string) error {
+	return nil
+}
+
+func (f *fakeTrendsService) RemoveTrendingLinkFilter(_ context.Context, _ string) error {
+	return nil
+}
+
 // fakeTagFollowService is a minimal TagFollowService for trends handler tests.
 type fakeTagFollowService struct {
 	followed []domain.Hashtag
@@ -334,8 +346,13 @@ func TestTrendsHandler_GETTrendsLinks_withData(t *testing.T) {
 	svc := &fakeTrendsService{
 		links: []domain.TrendingLink{
 			{
-				URL:     "https://example.com/article",
-				History: []domain.TrendingLinkHistoryDay{{Day: day, Uses: 100, Accounts: 50}},
+				URL:          "https://example.com/article",
+				Title:        "Test Article",
+				Description:  "A great read",
+				Type:         "link",
+				ProviderName: "Example",
+				ImageURL:     "https://example.com/img.png",
+				History:      []domain.TrendingLinkHistoryDay{{Day: day, Uses: 100, Accounts: 50}},
 			},
 		},
 	}
@@ -350,7 +367,11 @@ func TestTrendsHandler_GETTrendsLinks_withData(t *testing.T) {
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
 	require.Len(t, body, 1)
 	assert.Equal(t, "https://example.com/article", body[0]["url"])
+	assert.Equal(t, "Test Article", body[0]["title"])
+	assert.Equal(t, "A great read", body[0]["description"])
 	assert.Equal(t, "link", body[0]["type"])
+	assert.Equal(t, "Example", body[0]["provider_name"])
+	assert.Equal(t, "https://example.com/img.png", body[0]["image"])
 }
 
 func TestTrendsHandler_GETTrendsTags_followingOmittedWhenUnauthenticated(t *testing.T) {

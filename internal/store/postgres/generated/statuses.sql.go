@@ -880,48 +880,6 @@ func (q *Queries) GetStatusDescendants(ctx context.Context, inReplyToID *string)
 	return items, nil
 }
 
-const getTopScoredPublicStatuses = `-- name: GetTopScoredPublicStatuses :many
-SELECT id AS status_id,
-       (reblogs_count + favourites_count + replies_count * 0.5) AS score
-FROM statuses
-WHERE deleted_at IS NULL
-  AND visibility = 'public'
-  AND reblog_of_id IS NULL
-  AND created_at >= $1
-ORDER BY score DESC
-LIMIT $2
-`
-
-type GetTopScoredPublicStatusesParams struct {
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	Limit     int32              `json:"limit"`
-}
-
-type GetTopScoredPublicStatusesRow struct {
-	StatusID string `json:"status_id"`
-	Score    int32  `json:"score"`
-}
-
-func (q *Queries) GetTopScoredPublicStatuses(ctx context.Context, arg GetTopScoredPublicStatusesParams) ([]GetTopScoredPublicStatusesRow, error) {
-	rows, err := q.db.Query(ctx, getTopScoredPublicStatuses, arg.CreatedAt, arg.Limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []GetTopScoredPublicStatusesRow{}
-	for rows.Next() {
-		var i GetTopScoredPublicStatusesRow
-		if err := rows.Scan(&i.StatusID, &i.Score); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const incrementFavouritesCount = `-- name: IncrementFavouritesCount :exec
 UPDATE statuses SET favourites_count = favourites_count + 1 WHERE id = $1
 `

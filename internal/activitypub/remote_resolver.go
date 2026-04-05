@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -165,7 +167,7 @@ func (r *RemoteAccountResolver) fetchWebFingerActorIRI(ctx context.Context, acct
 		return "", fmt.Errorf("%w: invalid acct", ErrWebFingerRequestFailed)
 	}
 	resource := "acct:" + acct
-	u := "https://" + parts[1] + "/.well-known/webfinger?resource=" + resource
+	u := "https://" + parts[1] + "/.well-known/webfinger?resource=" + url.QueryEscape(resource)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return "", fmt.Errorf("%w: webfinger request: %w", ErrWebFingerRequestFailed, err)
@@ -281,7 +283,7 @@ func (r *RemoteAccountResolver) resolveIRIDocument(ctx context.Context, iri stri
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("resolveIRIDocument: status %d", resp.StatusCode)
 	}
-	err = json.NewDecoder(resp.Body).Decode(out)
+	err = json.NewDecoder(io.LimitReader(resp.Body, 5<<20)).Decode(out)
 	if err != nil {
 		return fmt.Errorf("resolveIRIDocument decode: %w", err)
 	}

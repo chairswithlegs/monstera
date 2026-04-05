@@ -8,38 +8,56 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// fakeTrendingLinkDenylistService is a minimal TrendingLinkDenylistService for testing.
-type fakeTrendingLinkDenylistService struct {
-	denylist []string
-	err      error
+// fakeTrendsService is a minimal TrendsService for testing the moderator content handler.
+type fakeTrendsService struct {
+	filters []string
+	err     error
 }
 
-func (f *fakeTrendingLinkDenylistService) GetDenylist(_ context.Context) ([]string, error) {
-	if f.err != nil {
-		return nil, f.err
-	}
-	return f.denylist, nil
+func (f *fakeTrendsService) TrendingStatuses(_ context.Context, _, _ int) ([]service.EnrichedStatus, error) {
+	return nil, nil
 }
 
-func (f *fakeTrendingLinkDenylistService) AddDenylist(_ context.Context, url string) error {
-	if f.err != nil {
-		return f.err
-	}
-	f.denylist = append(f.denylist, url)
+func (f *fakeTrendsService) TrendingTags(_ context.Context, _, _ int) ([]domain.TrendingTag, error) {
+	return nil, nil
+}
+
+func (f *fakeTrendsService) TrendingLinks(_ context.Context, _, _ int) ([]domain.TrendingLink, error) {
+	return nil, nil
+}
+
+func (f *fakeTrendsService) RefreshIndexes(_ context.Context) error {
 	return nil
 }
 
-func (f *fakeTrendingLinkDenylistService) RemoveDenylist(_ context.Context, url string) error {
+func (f *fakeTrendsService) ListTrendingLinkFilters(_ context.Context) ([]string, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.filters, nil
+}
+
+func (f *fakeTrendsService) AddTrendingLinkFilter(_ context.Context, url string) error {
 	if f.err != nil {
 		return f.err
 	}
-	for i, u := range f.denylist {
+	f.filters = append(f.filters, url)
+	return nil
+}
+
+func (f *fakeTrendsService) RemoveTrendingLinkFilter(_ context.Context, url string) error {
+	if f.err != nil {
+		return f.err
+	}
+	for i, u := range f.filters {
 		if u == url {
-			f.denylist = append(f.denylist[:i], f.denylist[i+1:]...)
+			f.filters = append(f.filters[:i], f.filters[i+1:]...)
 			return nil
 		}
 	}
@@ -48,7 +66,7 @@ func (f *fakeTrendingLinkDenylistService) RemoveDenylist(_ context.Context, url 
 
 func TestModeratorContentHandler_GETTrendingLinkFilters_empty(t *testing.T) {
 	t.Parallel()
-	handler := NewModeratorContentHandler(&fakeTrendingLinkDenylistService{})
+	handler := NewModeratorContentHandler(&fakeTrendsService{})
 
 	req := httptest.NewRequest(http.MethodGet, "/moderator/content/trending-link-filters", nil)
 	rec := httptest.NewRecorder()
@@ -62,7 +80,7 @@ func TestModeratorContentHandler_GETTrendingLinkFilters_empty(t *testing.T) {
 
 func TestModeratorContentHandler_GETTrendingLinkFilters_withData(t *testing.T) {
 	t.Parallel()
-	svc := &fakeTrendingLinkDenylistService{denylist: []string{"https://spam.example/a", "https://spam.example/b"}}
+	svc := &fakeTrendsService{filters: []string{"https://spam.example/a", "https://spam.example/b"}}
 	handler := NewModeratorContentHandler(svc)
 
 	req := httptest.NewRequest(http.MethodGet, "/moderator/content/trending-link-filters", nil)
@@ -77,7 +95,7 @@ func TestModeratorContentHandler_GETTrendingLinkFilters_withData(t *testing.T) {
 
 func TestModeratorContentHandler_POSTTrendingLinkFilters_valid(t *testing.T) {
 	t.Parallel()
-	svc := &fakeTrendingLinkDenylistService{}
+	svc := &fakeTrendsService{}
 	handler := NewModeratorContentHandler(svc)
 
 	b, _ := json.Marshal(map[string]string{"url": "https://spam.example/bad"})
@@ -87,12 +105,12 @@ func TestModeratorContentHandler_POSTTrendingLinkFilters_valid(t *testing.T) {
 	handler.POSTTrendingLinkFilters(rec, req)
 
 	assert.Equal(t, http.StatusNoContent, rec.Code)
-	assert.Equal(t, []string{"https://spam.example/bad"}, svc.denylist)
+	assert.Equal(t, []string{"https://spam.example/bad"}, svc.filters)
 }
 
 func TestModeratorContentHandler_POSTTrendingLinkFilters_missingURL(t *testing.T) {
 	t.Parallel()
-	handler := NewModeratorContentHandler(&fakeTrendingLinkDenylistService{})
+	handler := NewModeratorContentHandler(&fakeTrendsService{})
 
 	b, _ := json.Marshal(map[string]string{"url": ""})
 	req := httptest.NewRequest(http.MethodPost, "/moderator/content/trending-link-filters", bytes.NewReader(b))
@@ -105,7 +123,7 @@ func TestModeratorContentHandler_POSTTrendingLinkFilters_missingURL(t *testing.T
 
 func TestModeratorContentHandler_DELETETrendingLinkFilter_valid(t *testing.T) {
 	t.Parallel()
-	svc := &fakeTrendingLinkDenylistService{denylist: []string{"https://spam.example/bad"}}
+	svc := &fakeTrendsService{filters: []string{"https://spam.example/bad"}}
 	handler := NewModeratorContentHandler(svc)
 
 	req := httptest.NewRequest(http.MethodDelete, "/moderator/content/trending-link-filters?url=https%3A%2F%2Fspam.example%2Fbad", nil)
@@ -113,12 +131,12 @@ func TestModeratorContentHandler_DELETETrendingLinkFilter_valid(t *testing.T) {
 	handler.DELETETrendingLinkFilter(rec, req)
 
 	assert.Equal(t, http.StatusNoContent, rec.Code)
-	assert.Empty(t, svc.denylist)
+	assert.Empty(t, svc.filters)
 }
 
 func TestModeratorContentHandler_DELETETrendingLinkFilter_missingURL(t *testing.T) {
 	t.Parallel()
-	handler := NewModeratorContentHandler(&fakeTrendingLinkDenylistService{})
+	handler := NewModeratorContentHandler(&fakeTrendsService{})
 
 	req := httptest.NewRequest(http.MethodDelete, "/moderator/content/trending-link-filters", nil)
 	rec := httptest.NewRecorder()

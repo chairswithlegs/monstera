@@ -713,8 +713,10 @@ func TestIntegration_InstanceStore(t *testing.T) {
 		require.NotNil(t, settings)
 
 		err = s.UpdateMonsteraSettings(ctx, &domain.MonsteraSettings{
-			RegistrationMode:   domain.MonsteraRegistrationModeOpen,
-			TrendingLinksScope: domain.MonsteraTrendingLinksScopeDisabled,
+			RegistrationMode:      domain.MonsteraRegistrationModeOpen,
+			TrendingLinksScope:    domain.MonsteraTrendingDisabled,
+			TrendingTagsScope:     domain.MonsteraTrendingDisabled,
+			TrendingStatusesScope: domain.MonsteraTrendingDisabled,
 		})
 		require.NoError(t, err)
 
@@ -764,7 +766,7 @@ func TestIntegration_TrendingStore(t *testing.T) {
 	})
 
 	t.Run("GetTopScoredPublicStatuses", func(t *testing.T) {
-		statuses, err := s.GetTopScoredPublicStatuses(ctx, time.Now().Add(-24*time.Hour), 10)
+		statuses, err := s.GetTopScoredPublicStatuses(ctx, time.Now().Add(-24*time.Hour), 10, false)
 		require.NoError(t, err)
 		_ = statuses
 	})

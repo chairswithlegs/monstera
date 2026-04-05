@@ -5,43 +5,32 @@ import (
 	"fmt"
 )
 
-// AddTrendingLinkDenylist adds a URL to the trending link denylist.
-func (s *PostgresStore) AddTrendingLinkDenylist(ctx context.Context, url string) error {
-	const q = `INSERT INTO trending_link_denylist (url) VALUES ($1) ON CONFLICT (url) DO NOTHING`
-	if _, err := s.pool.Exec(ctx, q, url); err != nil {
-		return fmt.Errorf("AddTrendingLinkDenylist: %w", mapErr(err))
+// AddTrendingLinkFilter adds a URL to the trending link filter list.
+func (s *PostgresStore) AddTrendingLinkFilter(ctx context.Context, url string) error {
+	if err := s.q.AddTrendingLinkFilter(ctx, url); err != nil {
+		return fmt.Errorf("AddTrendingLinkFilter: %w", mapErr(err))
 	}
 	return nil
 }
 
-// RemoveTrendingLinkDenylist removes a URL from the trending link denylist.
-func (s *PostgresStore) RemoveTrendingLinkDenylist(ctx context.Context, url string) error {
-	const q = `DELETE FROM trending_link_denylist WHERE url = $1`
-	if _, err := s.pool.Exec(ctx, q, url); err != nil {
-		return fmt.Errorf("RemoveTrendingLinkDenylist: %w", mapErr(err))
+// RemoveTrendingLinkFilter removes a URL from the trending link filter list.
+func (s *PostgresStore) RemoveTrendingLinkFilter(ctx context.Context, url string) error {
+	if err := s.q.RemoveTrendingLinkFilter(ctx, url); err != nil {
+		return fmt.Errorf("RemoveTrendingLinkFilter: %w", mapErr(err))
 	}
 	return nil
 }
 
-// ListTrendingLinkDenylist returns all URLs in the trending link denylist.
-func (s *PostgresStore) ListTrendingLinkDenylist(ctx context.Context) ([]string, error) {
-	const q = `SELECT url FROM trending_link_denylist ORDER BY created_at DESC`
-	rows, err := s.pool.Query(ctx, q)
+// ListTrendingLinkFilters returns all URLs in the trending link filter list.
+func (s *PostgresStore) ListTrendingLinkFilters(ctx context.Context) ([]string, error) {
+	rows, err := s.q.ListTrendingLinkFilters(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("ListTrendingLinkDenylist: %w", mapErr(err))
+		return nil, fmt.Errorf("ListTrendingLinkFilters: %w", mapErr(err))
 	}
-	defer rows.Close()
 
-	var out []string
-	for rows.Next() {
-		var url string
-		if err := rows.Scan(&url); err != nil {
-			return nil, fmt.Errorf("ListTrendingLinkDenylist scan: %w", mapErr(err))
-		}
-		out = append(out, url)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("ListTrendingLinkDenylist rows: %w", mapErr(err))
+	out := make([]string, len(rows))
+	for i, r := range rows {
+		out[i] = r.Url
 	}
 	return out, nil
 }

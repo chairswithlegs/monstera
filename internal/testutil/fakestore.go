@@ -94,7 +94,7 @@ type FakeStore struct {
 	HashtagDailyStats   []domain.HashtagDailyStats
 	TrendingLinkHistory []domain.TrendingLinkStats
 	TrendingLinks       []domain.TrendingLink
-	LinkDenylist        []string
+	LinkFilters         []string
 
 	// LastLocalOnly records the localOnly argument from the most recent call to each
 	// trending stats method, allowing tests to assert that the correct scope was used.
@@ -4007,34 +4007,34 @@ func (f *FakeStore) GetTrendingLinks(_ context.Context, _ int, limit int) ([]dom
 	return out, nil
 }
 
-func (f *FakeStore) AddTrendingLinkDenylist(_ context.Context, url string) error {
+func (f *FakeStore) AddTrendingLinkFilter(_ context.Context, url string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	for _, u := range f.LinkDenylist {
+	for _, u := range f.LinkFilters {
 		if u == url {
 			return nil
 		}
 	}
-	f.LinkDenylist = append(f.LinkDenylist, url)
+	f.LinkFilters = append(f.LinkFilters, url)
 	return nil
 }
 
-func (f *FakeStore) RemoveTrendingLinkDenylist(_ context.Context, url string) error {
+func (f *FakeStore) RemoveTrendingLinkFilter(_ context.Context, url string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	for i, u := range f.LinkDenylist {
+	for i, u := range f.LinkFilters {
 		if u == url {
-			f.LinkDenylist = append(f.LinkDenylist[:i], f.LinkDenylist[i+1:]...)
+			f.LinkFilters = append(f.LinkFilters[:i], f.LinkFilters[i+1:]...)
 			return nil
 		}
 	}
 	return nil
 }
 
-func (f *FakeStore) ListTrendingLinkDenylist(_ context.Context) ([]string, error) {
+func (f *FakeStore) ListTrendingLinkFilters(_ context.Context) ([]string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]string{}, f.LinkDenylist...), nil
+	return append([]string{}, f.LinkFilters...), nil
 }
 
 // UpsertStatusCard stores a card in the fake store.

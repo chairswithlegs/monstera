@@ -346,7 +346,7 @@ func TestTrendsService_RefreshIndexes_scopeAll_indexesAllLinks(t *testing.T) {
 	assert.False(t, fs.LastLinksLocalOnly, "all scope should pass localOnly=false")
 }
 
-func TestTrendsService_RefreshIndexes_denylistFiltersLinks(t *testing.T) {
+func TestTrendsService_RefreshIndexes_filtersLinks(t *testing.T) {
 	t.Parallel()
 	day := time.Now().UTC().Truncate(24 * time.Hour)
 	fs := testutil.NewFakeStore()
@@ -354,13 +354,43 @@ func TestTrendsService_RefreshIndexes_denylistFiltersLinks(t *testing.T) {
 		{URL: "https://allowed.example/article", Day: day, Uses: 10, Accounts: 5},
 		{URL: "https://denied.example/post", Day: day, Uses: 8, Accounts: 4},
 	}
-	fs.LinkDenylist = []string{"https://denied.example/post"}
+	fs.LinkFilters = []string{"https://denied.example/post"}
 	seedSettings(fs, domain.MonsteraTrendingAll, domain.MonsteraTrendingAll, domain.MonsteraTrendingAll)
 
 	svc := NewTrendsService(fs, NewStatusService(fs, "https://example.com", "example.com", 500))
 	require.NoError(t, svc.RefreshIndexes(context.Background()))
 	require.Len(t, fs.TrendingLinks, 1)
 	assert.Equal(t, "https://allowed.example/article", fs.TrendingLinks[0].URL)
+}
+
+func TestTrendsService_ListTrendingLinkFilters(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fs := testutil.NewFakeStore()
+	svc := NewTrendsService(fs, NewStatusService(fs, "https://example.com", "example.com", 500))
+
+	// Initially empty.
+	urls, err := svc.ListTrendingLinkFilters(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, urls)
+
+	// Add a URL.
+	require.NoError(t, svc.AddTrendingLinkFilter(ctx, "https://spam.example.com"))
+	urls, err = svc.ListTrendingLinkFilters(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"https://spam.example.com"}, urls)
+
+	// Adding duplicate is idempotent.
+	require.NoError(t, svc.AddTrendingLinkFilter(ctx, "https://spam.example.com"))
+	urls, err = svc.ListTrendingLinkFilters(ctx)
+	require.NoError(t, err)
+	assert.Len(t, urls, 1)
+
+	// Remove the URL.
+	require.NoError(t, svc.RemoveTrendingLinkFilter(ctx, "https://spam.example.com"))
+	urls, err = svc.ListTrendingLinkFilters(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, urls)
 }
 
 func TestTrendsService_cacheHit(t *testing.T) {

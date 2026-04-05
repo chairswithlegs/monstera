@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -166,11 +167,10 @@ func (svc *moderationService) SetUserRole(ctx context.Context, moderatorID, targ
 }
 
 func (svc *moderationService) DeleteAccount(ctx context.Context, moderatorID, targetID string) error {
-	t := targetID
-	if err := svc.writeAdminAction(ctx, moderatorID, &t, AdminActionDeleteAccount, nil, nil); err != nil {
-		return fmt.Errorf("CreateAdminAction(delete_account): %w", err)
-	}
 	user, err := svc.store.GetUserByAccountID(ctx, targetID)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return fmt.Errorf("GetUserByAccountID(%s): %w", targetID, err)
+	}
 	if err == nil {
 		if err := svc.store.DeleteUser(ctx, user.ID); err != nil {
 			return fmt.Errorf("DeleteUser(%s): %w", user.ID, err)
@@ -178,6 +178,10 @@ func (svc *moderationService) DeleteAccount(ctx context.Context, moderatorID, ta
 	}
 	if err := svc.store.DeleteAccount(ctx, targetID); err != nil {
 		return fmt.Errorf("DeleteAccount(%s): %w", targetID, err)
+	}
+	t := targetID
+	if err := svc.writeAdminAction(ctx, moderatorID, &t, AdminActionDeleteAccount, nil, nil); err != nil {
+		return fmt.Errorf("CreateAdminAction(delete_account): %w", err)
 	}
 	return nil
 }

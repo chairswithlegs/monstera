@@ -1,7 +1,7 @@
 'use client';
 
 import { getSettings, putSettings } from '@/lib/api/admin';
-import { getUser, isAdminOrModerator } from '@/lib/api/user';
+import { getUser, isAdmin } from '@/lib/api/user';
 import type { User } from '@/lib/api/user';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -54,7 +54,7 @@ export default function ServerSettingsPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!user || !isAdminOrModerator(user)) {
+    if (!user || !isAdmin(user)) {
       router.replace('/home');
     }
   }, [loading, user, router]);
@@ -76,7 +76,7 @@ export default function ServerSettingsPage() {
   }, [tErr]);
 
   useEffect(() => {
-    if (user && isAdminOrModerator(user)) load();
+    if (user && isAdmin(user)) load();
   }, [user, load]);
 
   const save = async (e: React.FormEvent) => {
@@ -104,7 +104,7 @@ export default function ServerSettingsPage() {
     }
   };
 
-  if (loading || !user || !isAdminOrModerator(user)) {
+  if (loading || !user || !isAdmin(user)) {
     return null;
   }
 

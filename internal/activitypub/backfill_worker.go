@@ -67,13 +67,16 @@ func NewBackfillWorker(
 
 // Start begins consuming backfill messages. Blocks until ctx is cancelled.
 func (w *BackfillWorker) Start(ctx context.Context) error {
-	return fmt.Errorf("backfill worker: %w", natsutil.RunConsumer(ctx, w.js, StreamBackfill, ConsumerBackfill,
+	if err := natsutil.RunConsumer(ctx, w.js, StreamBackfill, ConsumerBackfill,
 		func(msg jetstream.Msg) {
 			w.handleMessage(ctx, msg)
 		},
 		natsutil.WithMaxMessages(3),
 		natsutil.WithLabel("backfill-worker"),
-	))
+	); err != nil {
+		return fmt.Errorf("backfill worker: %w", err)
+	}
+	return nil
 }
 
 func (w *BackfillWorker) handleMessage(ctx context.Context, msg jetstream.Msg) {
@@ -100,7 +103,7 @@ func (w *BackfillWorker) processBackfill(ctx context.Context, accountID string) 
 		return
 	}
 
-	if account.Domain == nil {
+	if account.IsLocal() {
 		return
 	}
 	if w.blocklist != nil && w.blocklist.IsSuspended(ctx, *account.Domain) {
