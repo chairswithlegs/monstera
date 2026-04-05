@@ -11,6 +11,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/chairswithlegs/monstera/internal/activitypub/vocab"
+	"github.com/chairswithlegs/monstera/internal/blocklist"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/natsutil"
 	"github.com/chairswithlegs/monstera/internal/service"
@@ -28,6 +29,7 @@ type BackfillWorker struct {
 	remoteStatuses service.RemoteStatusWriteService
 	remoteFollows  service.RemoteFollowService
 	statuses       service.StatusService
+	blocklist      *blocklist.BlocklistCache
 	instanceDomain string
 	maxPages       int
 	// cooldown is the minimum time between backfill runs for the same account.
@@ -43,6 +45,7 @@ func NewBackfillWorker(
 	remoteStatuses service.RemoteStatusWriteService,
 	remoteFollows service.RemoteFollowService,
 	statuses service.StatusService,
+	bl *blocklist.BlocklistCache,
 	instanceDomain string,
 	maxPages int,
 	cooldown time.Duration,
@@ -55,6 +58,7 @@ func NewBackfillWorker(
 		remoteStatuses: remoteStatuses,
 		remoteFollows:  remoteFollows,
 		statuses:       statuses,
+		blocklist:      bl,
 		instanceDomain: instanceDomain,
 		maxPages:       maxPages,
 		cooldown:       cooldown,
@@ -97,6 +101,10 @@ func (w *BackfillWorker) processBackfill(ctx context.Context, accountID string) 
 	}
 
 	if account.Domain == nil {
+		return
+	}
+	if w.blocklist != nil && w.blocklist.IsSuspended(ctx, *account.Domain) {
+		slog.DebugContext(ctx, "backfill: skipping suspended domain", slog.String("account_id", accountID), slog.String("domain", *account.Domain))
 		return
 	}
 	if account.OutboxURL == "" {

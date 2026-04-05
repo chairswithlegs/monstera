@@ -4,78 +4,63 @@ import (
 	"net/http"
 
 	"github.com/chairswithlegs/monstera/internal/api"
-	"github.com/chairswithlegs/monstera/internal/api/monstera/apimodel"
 	"github.com/chairswithlegs/monstera/internal/service"
-	"github.com/go-chi/chi/v5"
 )
 
-// ModeratorContentHandler handles server filters.
+// ModeratorContentHandler handles trending link filters.
 type ModeratorContentHandler struct {
-	filters service.ServerFilterService
+	linkDeny service.TrendingLinkDenylistService
 }
 
 // NewModeratorContentHandler returns a new ModeratorContentHandler.
-func NewModeratorContentHandler(filters service.ServerFilterService) *ModeratorContentHandler {
-	return &ModeratorContentHandler{filters: filters}
+func NewModeratorContentHandler(linkDeny service.TrendingLinkDenylistService) *ModeratorContentHandler {
+	return &ModeratorContentHandler{linkDeny: linkDeny}
 }
 
-// GETFilters returns server filters.
-func (h *ModeratorContentHandler) GETFilters(w http.ResponseWriter, r *http.Request) {
-	filters, err := h.filters.ListServerFilters(r.Context())
+// GETTrendingLinkFilters returns the trending link filter list.
+func (h *ModeratorContentHandler) GETTrendingLinkFilters(w http.ResponseWriter, r *http.Request) {
+	urls, err := h.linkDeny.GetDenylist(r.Context())
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
-	out := make([]apimodel.AdminServerFilter, 0, len(filters))
-	for i := range filters {
-		out = append(out, apimodel.ToAdminServerFilter(&filters[i]))
+	if urls == nil {
+		urls = []string{}
 	}
-	api.WriteJSON(w, http.StatusOK, apimodel.AdminServerFilterList{Filters: out})
+	api.WriteJSON(w, http.StatusOK, map[string][]string{"urls": urls})
 }
 
-// POSTFilters creates a server filter.
-func (h *ModeratorContentHandler) POSTFilters(w http.ResponseWriter, r *http.Request) {
-	var body apimodel.PostServerFilterRequest
+type addTrendingLinkFilterRequest struct {
+	URL string `json:"url"`
+}
+
+func (r addTrendingLinkFilterRequest) Validate() error {
+	return api.ValidateRequiredField(r.URL, "url")
+}
+
+// POSTTrendingLinkFilters adds a URL to the trending link filter list.
+func (h *ModeratorContentHandler) POSTTrendingLinkFilters(w http.ResponseWriter, r *http.Request) {
+	var body addTrendingLinkFilterRequest
 	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
-	filter, err := h.filters.CreateServerFilter(r.Context(), body.Phrase, body.Scope, body.Action, body.WholeWord)
-	if err != nil {
+	if err := h.linkDeny.AddDenylist(r.Context(), body.URL); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
-	api.WriteJSON(w, http.StatusCreated, apimodel.ToAdminServerFilter(filter))
+	w.WriteHeader(http.StatusNoContent)
 }
 
-// PUTFilter updates a server filter.
-func (h *ModeratorContentHandler) PUTFilter(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		api.HandleError(w, r, api.NewMissingRequiredParamError("id"))
-		return
-	}
-	var body apimodel.PutServerFilterRequest
-	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+// DELETETrendingLinkFilter removes a URL from the trending link filter list.
+// The URL to remove is passed as the ?url= query parameter.
+func (h *ModeratorContentHandler) DELETETrendingLinkFilter(w http.ResponseWriter, r *http.Request) {
+	url := r.URL.Query().Get("url")
+	if err := api.ValidateRequiredField(url, "url"); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
-	filter, err := h.filters.UpdateServerFilter(r.Context(), id, body.Phrase, body.Scope, body.Action, body.WholeWord)
-	if err != nil {
-		api.HandleError(w, r, err)
-		return
-	}
-	api.WriteJSON(w, http.StatusOK, apimodel.ToAdminServerFilter(filter))
-}
-
-// DELETEFilter deletes a server filter.
-func (h *ModeratorContentHandler) DELETEFilter(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		api.HandleError(w, r, api.NewMissingRequiredParamError("id"))
-		return
-	}
-	if err := h.filters.DeleteServerFilter(r.Context(), id); err != nil {
+	if err := h.linkDeny.RemoveDenylist(r.Context(), url); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}

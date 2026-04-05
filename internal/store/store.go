@@ -271,7 +271,7 @@ type MediaStore interface {
 	UpdateMediaAttachment(ctx context.Context, in UpdateMediaAttachmentInput) (*domain.MediaAttachment, error)
 }
 
-// ModerationStore handles reports, domain blocks, admin actions, server filters, invites, and known instances.
+// ModerationStore handles reports, domain blocks, admin actions, invites, and known instances.
 type ModerationStore interface {
 	CreateReport(ctx context.Context, in CreateReportInput) (*domain.Report, error)
 	GetReportByID(ctx context.Context, id string) (*domain.Report, error)
@@ -282,10 +282,6 @@ type ModerationStore interface {
 	DeleteDomainBlock(ctx context.Context, domain string) error
 	ListDomainBlocks(ctx context.Context) ([]domain.DomainBlock, error)
 	CreateAdminAction(ctx context.Context, in CreateAdminActionInput) error
-	CreateServerFilter(ctx context.Context, in CreateServerFilterInput) (*domain.ServerFilter, error)
-	ListServerFilters(ctx context.Context) ([]domain.ServerFilter, error)
-	UpdateServerFilter(ctx context.Context, in UpdateServerFilterInput) (*domain.ServerFilter, error)
-	DeleteServerFilter(ctx context.Context, id string) error
 	CreateInvite(ctx context.Context, in CreateInviteInput) (*domain.Invite, error)
 	GetInviteByCode(ctx context.Context, code string) (*domain.Invite, error)
 	ListInvitesByCreator(ctx context.Context, createdByUserID string) ([]domain.Invite, error)

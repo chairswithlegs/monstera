@@ -1,7 +1,7 @@
 'use client';
 
-import { patchEmail, patchPassword } from '@/lib/api/user';
-import { useState } from 'react';
+import { getUser, patchEmail, patchPassword } from '@/lib/api/user';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,10 +13,21 @@ export default function SecurityPage() {
   const t = useTranslations('account');
   const tCommon = useTranslations('common');
   const tErr = useTranslations('errors');
+  const [currentEmail, setCurrentEmail] = useState('');
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState<string | null>(null);
   const [emailSuccess, setEmailSuccess] = useState(false);
   const [savingEmail, setSavingEmail] = useState(false);
+
+  const loadUser = useCallback(() => {
+    getUser()
+      .then((u) => setCurrentEmail(u.email))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    loadUser();
+  }, [loadUser]);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -30,7 +41,8 @@ export default function SecurityPage() {
     setEmailError(null);
     setEmailSuccess(false);
     try {
-      await patchEmail({ email });
+      const updated = await patchEmail({ email });
+      setCurrentEmail(updated.email);
       setEmailSuccess(true);
       setEmail('');
     } catch (e) {
@@ -77,6 +89,12 @@ export default function SecurityPage() {
           </Alert>
         )}
         <form onSubmit={saveEmail} className="max-w-2xl space-y-4">
+          {currentEmail && (
+            <div className="flex flex-col gap-1.5">
+              <Label>{t('currentEmailLabel')}</Label>
+              <p className="text-sm text-gray-600">{currentEmail}</p>
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="new-email">{t('newEmailAddress')}</Label>
             <Input

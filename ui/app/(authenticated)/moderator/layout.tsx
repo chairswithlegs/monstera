@@ -38,7 +38,7 @@ export default function ModeratorLayout({
   }
 
   const navItems = [
-    { href: '/moderator/dashboard', label: t('navDashboard') },
+    { href: '/moderator/dashboard', label: t('navModeratorDashboard') },
     { href: '/moderator/users', label: t('navUsers') },
     { href: '/moderator/registrations', label: t('navRegistrations') },
     { href: '/moderator/reports', label: t('navReports') },

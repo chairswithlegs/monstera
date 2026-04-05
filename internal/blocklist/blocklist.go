@@ -11,7 +11,7 @@ import (
 	"github.com/chairswithlegs/monstera/internal/domain"
 )
 
-const negativeCacheTTL = 10 * time.Minute
+const negativeCacheTTL = 5 * time.Minute
 
 // blocklistStore is the narrow interface the BlocklistCache needs.
 type blocklistStore interface {

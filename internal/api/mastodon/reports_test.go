@@ -21,7 +21,7 @@ func TestReportsHandler_POSTReports(t *testing.T) {
 	ctx := context.Background()
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
-	moderationSvc := service.NewModerationService(st)
+	moderationSvc := service.NewModerationService(st, testutil.NoopBlocklistRefresher{})
 	handler := NewReportsHandler(moderationSvc, accountSvc, "example.com")
 
 	reporter, err := accountSvc.Register(ctx, service.RegisterInput{

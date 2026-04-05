@@ -347,24 +347,6 @@ type CreateInviteInput struct {
 	ExpiresAt *time.Time
 }
 
-// CreateServerFilterInput is the input for creating a server filter.
-type CreateServerFilterInput struct {
-	ID        string
-	Phrase    string
-	Scope     string
-	Action    string
-	WholeWord bool
-}
-
-// UpdateServerFilterInput is the input for updating a server filter.
-type UpdateServerFilterInput struct {
-	ID        string
-	Phrase    string
-	Scope     string
-	Action    string
-	WholeWord bool
-}
-
 // CreateAnnouncementInput is the input for creating an announcement.
 type CreateAnnouncementInput struct {
 	ID          string

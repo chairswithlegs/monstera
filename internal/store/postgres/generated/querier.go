@@ -69,7 +69,6 @@ type Querier interface {
 	CreateQuoteApproval(ctx context.Context, arg CreateQuoteApprovalParams) error
 	CreateReport(ctx context.Context, arg CreateReportParams) (Report, error)
 	CreateScheduledStatus(ctx context.Context, arg CreateScheduledStatusParams) (ScheduledStatus, error)
-	CreateServerFilter(ctx context.Context, arg CreateServerFilterParams) (ServerFilter, error)
 	CreateStatus(ctx context.Context, arg CreateStatusParams) (Status, error)
 	CreateStatusEdit(ctx context.Context, arg CreateStatusEditParams) (StatusEdit, error)
 	CreateStatusMention(ctx context.Context, arg CreateStatusMentionParams) error
@@ -110,7 +109,6 @@ type Querier interface {
 	DeletePublishedOutboxEventsBefore(ctx context.Context, publishedAt pgtype.Timestamptz) error
 	DeletePushSubscription(ctx context.Context, accessTokenID string) error
 	DeleteScheduledStatus(ctx context.Context, id string) error
-	DeleteServerFilter(ctx context.Context, id string) error
 	DeleteStatusHashtags(ctx context.Context, statusID string) error
 	DeleteStatusMentions(ctx context.Context, statusID string) error
 	DeleteUser(ctx context.Context, id string) error
@@ -190,7 +188,6 @@ type Querier interface {
 	GetRemoteAccountByUsername(ctx context.Context, arg GetRemoteAccountByUsernameParams) (Account, error)
 	GetReport(ctx context.Context, id string) (Report, error)
 	GetScheduledStatusByID(ctx context.Context, id string) (ScheduledStatus, error)
-	GetServerFilter(ctx context.Context, id string) (ServerFilter, error)
 	GetStatusAncestors(ctx context.Context, id string) ([]GetStatusAncestorsRow, error)
 	GetStatusByAPID(ctx context.Context, apID string) (Status, error)
 	GetStatusByID(ctx context.Context, id string) (Status, error)
@@ -266,7 +263,6 @@ type Querier interface {
 	ListReports(ctx context.Context, arg ListReportsParams) ([]Report, error)
 	ListScheduledStatuses(ctx context.Context, arg ListScheduledStatusesParams) ([]ScheduledStatus, error)
 	ListScheduledStatusesDue(ctx context.Context, limit int32) ([]ScheduledStatus, error)
-	ListServerFilters(ctx context.Context) ([]ServerFilter, error)
 	ListStatusAttachments(ctx context.Context, statusID *string) ([]MediaAttachment, error)
 	ListStatusEdits(ctx context.Context, statusID string) ([]StatusEdit, error)
 	ListTrendingLinkDenylist(ctx context.Context) ([]TrendingLinkDenylist, error)
@@ -312,7 +308,6 @@ type Querier interface {
 	UpdatePushSubscriptionAlerts(ctx context.Context, arg UpdatePushSubscriptionAlertsParams) (PushSubscription, error)
 	UpdateRemoteAccountMeta(ctx context.Context, arg UpdateRemoteAccountMetaParams) error
 	UpdateScheduledStatus(ctx context.Context, arg UpdateScheduledStatusParams) (ScheduledStatus, error)
-	UpdateServerFilter(ctx context.Context, arg UpdateServerFilterParams) (ServerFilter, error)
 	UpdateStatus(ctx context.Context, arg UpdateStatusParams) (Status, error)
 	UpdateStatusQuoteApprovalPolicy(ctx context.Context, arg UpdateStatusQuoteApprovalPolicyParams) error
 	UpdateUserDefaultQuotePolicy(ctx context.Context, arg UpdateUserDefaultQuotePolicyParams) error

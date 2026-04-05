@@ -71,27 +71,6 @@ type Invite struct {
 	CreatedAt time.Time
 }
 
-// ServerFilter is an instance-wide keyword filter applied to public content.
-type ServerFilter struct {
-	ID        string
-	Phrase    string
-	Scope     string
-	Action    string
-	WholeWord bool
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
-
-const (
-	ServerFilterScopePublicTimeline = "public_timeline"
-	ServerFilterScopeAll            = "all"
-)
-
-const (
-	ServerFilterActionWarn = "warn"
-	ServerFilterActionHide = "hide"
-)
-
 // AdminAction records a moderator action (suspend, silence, etc.) for audit.
 type AdminAction struct {
 	ID              string

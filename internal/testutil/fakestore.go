@@ -3607,19 +3607,6 @@ func (f *FakeStore) ListKnownInstances(ctx context.Context, limit, offset int) (
 func (f *FakeStore) CountKnownInstances(ctx context.Context) (int64, error) {
 	return 0, nil
 }
-func (f *FakeStore) CreateServerFilter(ctx context.Context, in store.CreateServerFilterInput) (*domain.ServerFilter, error) {
-	return &domain.ServerFilter{ID: in.ID, Phrase: in.Phrase, Scope: in.Scope, Action: in.Action, CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil
-}
-func (f *FakeStore) ListServerFilters(ctx context.Context) ([]domain.ServerFilter, error) {
-	return nil, nil
-}
-func (f *FakeStore) UpdateServerFilter(ctx context.Context, in store.UpdateServerFilterInput) (*domain.ServerFilter, error) {
-	_ = in
-	return nil, domain.ErrNotFound
-}
-func (f *FakeStore) DeleteServerFilter(ctx context.Context, id string) error {
-	return nil
-}
 func (f *FakeStore) ListLocalUsers(ctx context.Context, limit, offset int) ([]domain.User, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

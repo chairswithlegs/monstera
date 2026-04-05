@@ -34,6 +34,7 @@ export default function ModeratorFederationPage() {
   const [blocks, setBlocks] = useState<DomainBlock[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [newDomain, setNewDomain] = useState('');
+  const [newSeverity, setNewSeverity] = useState<'silence' | 'suspend'>('silence');
   const [newReason, setNewReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -50,13 +51,16 @@ export default function ModeratorFederationPage() {
     load();
   }, [load]);
 
+  const isDuplicate = blocks.some((b) => b.domain.toLowerCase() === newDomain.trim().toLowerCase());
+
   const addBlock = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newDomain.trim()) return;
+    if (!newDomain.trim() || isDuplicate) return;
     setSubmitting(true);
     try {
-      await createDomainBlock({ domain: newDomain.trim(), severity: 'silence', reason: newReason.trim() || undefined });
+      await createDomainBlock({ domain: newDomain.trim(), severity: newSeverity, reason: newReason.trim() || undefined });
       setNewDomain('');
+      setNewSeverity('silence');
       setNewReason('');
       load();
     } catch (e) {
@@ -133,6 +137,18 @@ export default function ModeratorFederationPage() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
+              <Label htmlFor="domain-block-severity">{t('domainBlockSeverity')}</Label>
+              <select
+                id="domain-block-severity"
+                value={newSeverity}
+                onChange={(e) => setNewSeverity(e.target.value as 'silence' | 'suspend')}
+                className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="silence">{t('domainBlockSeveritySilence')}</option>
+                <option value="suspend">{t('domainBlockSeveritySuspend')}</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
               <Label htmlFor="domain-block-reason">{t('domainBlockReason')}</Label>
               <Input
                 id="domain-block-reason"
@@ -143,9 +159,12 @@ export default function ModeratorFederationPage() {
                 className="min-w-[200px]"
               />
             </div>
-            <Button type="submit" disabled={submitting}>
+            <Button type="submit" disabled={submitting || isDuplicate}>
               {t('addBlock')}
             </Button>
+            {isDuplicate && (
+              <p className="text-sm text-destructive">{t('domainBlockDuplicate')}</p>
+            )}
           </form>
         )}
         <Card className="mt-4">
@@ -158,6 +177,7 @@ export default function ModeratorFederationPage() {
                   <TableRow>
                     <TableHead>{t('domainColDomain')}</TableHead>
                     <TableHead>{t('domainColSeverity')}</TableHead>
+                    <TableHead>{t('domainColReason')}</TableHead>
                     {showAdminActions && <TableHead className="text-right">{t('domainColActions')}</TableHead>}
                   </TableRow>
                 </TableHeader>
@@ -166,9 +186,10 @@ export default function ModeratorFederationPage() {
                     <TableRow key={b.id}>
                       <TableCell>{b.domain}</TableCell>
                       <TableCell className="text-muted-foreground">{b.severity}</TableCell>
+                      <TableCell className="text-muted-foreground">{b.reason}</TableCell>
                       {showAdminActions && (
                         <TableCell className="text-right">
-                          <Button type="button" variant="ghost" size="sm" onClick={() => removeBlock(b.domain)} className="text-destructive hover:text-destructive">
+                          <Button type="button" variant="link" size="sm" onClick={() => removeBlock(b.domain)} className="text-destructive">
                             {tCommon('remove')}
                           </Button>
                         </TableCell>

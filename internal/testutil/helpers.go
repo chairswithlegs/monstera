@@ -28,3 +28,9 @@ func AddChiURLParams(r *http.Request, params map[string]string) *http.Request {
 	}
 	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 }
+
+// NoopBlocklistRefresher is a no-op implementation of service.BlocklistRefresher for tests.
+type NoopBlocklistRefresher struct{}
+
+// Refresh is a no-op.
+func (NoopBlocklistRefresher) Refresh(_ context.Context) error { return nil }

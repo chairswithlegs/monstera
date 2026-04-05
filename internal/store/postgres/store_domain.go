@@ -2259,51 +2259,6 @@ func (s *PostgresStore) CountReportsByState(ctx context.Context, state string) (
 	return n, mapErr(err)
 }
 
-func (s *PostgresStore) CreateServerFilter(ctx context.Context, in store.CreateServerFilterInput) (*domain.ServerFilter, error) {
-	f, err := s.q.CreateServerFilter(ctx, db.CreateServerFilterParams{
-		ID:     in.ID,
-		Phrase: in.Phrase,
-		Scope:  in.Scope,
-		Action: in.Action,
-	})
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	d := ToDomainServerFilter(f)
-	return &d, nil
-}
-
-func (s *PostgresStore) ListServerFilters(ctx context.Context) ([]domain.ServerFilter, error) {
-	rows, err := s.q.ListServerFilters(ctx)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	out := make([]domain.ServerFilter, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, ToDomainServerFilter(r))
-	}
-	return out, nil
-}
-
-func (s *PostgresStore) UpdateServerFilter(ctx context.Context, in store.UpdateServerFilterInput) (*domain.ServerFilter, error) {
-	f, err := s.q.UpdateServerFilter(ctx, db.UpdateServerFilterParams{
-		ID:        in.ID,
-		Phrase:    in.Phrase,
-		Scope:     in.Scope,
-		Action:    in.Action,
-		WholeWord: in.WholeWord,
-	})
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	d := ToDomainServerFilter(f)
-	return &d, nil
-}
-
-func (s *PostgresStore) DeleteServerFilter(ctx context.Context, id string) error {
-	return mapErr(s.q.DeleteServerFilter(ctx, id))
-}
-
 func (s *PostgresStore) ListLocalUsers(ctx context.Context, limit, offset int) ([]domain.User, error) {
 	rows, err := s.q.ListLocalUsers(ctx, db.ListLocalUsersParams{Limit: int32(limit), Offset: int32(offset)}) //nolint:gosec // G115: limit/offset clamped by caller
 	if err != nil {

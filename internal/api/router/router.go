@@ -101,7 +101,6 @@ type Deps struct {
 	AdminSettings          *monstera.AdminSettingsHandler
 	AdminAnnouncements     *monstera.AdminAnnouncementsHandler
 	AdminMetrics           *monstera.AdminMetricsHandler
-	AdminTrends            *monstera.AdminTrendsHandler
 }
 
 // New builds the chi router with global middleware and P1–P2 routes.
@@ -416,10 +415,9 @@ func New(deps Deps) http.Handler {
 			r.Post("/reports/{id}/resolve", deps.ModeratorReports.POSTResolve)
 			r.Get("/federation/instances", deps.AdminFederation.GETInstances)
 			r.Get("/federation/domain-blocks", deps.AdminFederation.GETDomainBlocks)
-			r.Get("/content/filters", deps.ModeratorContent.GETFilters)
-			r.Post("/content/filters", deps.ModeratorContent.POSTFilters)
-			r.Put("/content/filters/{id}", deps.ModeratorContent.PUTFilter)
-			r.Delete("/content/filters/{id}", deps.ModeratorContent.DELETEFilter)
+			r.Get("/content/trending-link-filters", deps.ModeratorContent.GETTrendingLinkFilters)
+			r.Post("/content/trending-link-filters", deps.ModeratorContent.POSTTrendingLinkFilters)
+			r.Delete("/content/trending-link-filters", deps.ModeratorContent.DELETETrendingLinkFilter)
 		})
 
 		// Admin API (requires admin role)
@@ -432,9 +430,6 @@ func New(deps Deps) http.Handler {
 			r.Delete("/federation/domain-blocks/{domain}", deps.AdminFederation.DELETEDomainBlock)
 			r.Get("/settings", deps.AdminSettings.GETSettings)
 			r.Put("/settings", deps.AdminSettings.PUTSettings)
-			r.Get("/trends/denylist", deps.AdminTrends.GETDenylist)
-			r.Post("/trends/denylist", deps.AdminTrends.POSTDenylist)
-			r.Delete("/trends/denylist", deps.AdminTrends.DELETEDenylist)
 			r.Get("/announcements", deps.AdminAnnouncements.GETAnnouncements)
 			r.Post("/announcements", deps.AdminAnnouncements.POSTAnnouncements)
 			r.Put("/announcements/{id}", deps.AdminAnnouncements.PUTAnnouncement)

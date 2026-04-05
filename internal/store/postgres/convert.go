@@ -729,16 +729,3 @@ func ListKnownInstancesRowToDomain(r db.ListKnownInstancesRow) domain.KnownInsta
 	d.LastSeenAt = pgTime(r.LastSeenAt)
 	return d
 }
-
-// ToDomainServerFilter converts a sqlc db.ServerFilter to a domain.ServerFilter.
-func ToDomainServerFilter(s db.ServerFilter) domain.ServerFilter {
-	return domain.ServerFilter{
-		ID:        s.ID,
-		Phrase:    s.Phrase,
-		Scope:     s.Scope,
-		Action:    s.Action,
-		WholeWord: s.WholeWord,
-		CreatedAt: pgTime(s.CreatedAt),
-		UpdatedAt: pgTime(s.UpdatedAt),
-	}
-}

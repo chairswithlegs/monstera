@@ -31,7 +31,7 @@ export default function ModeratorDashboardPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-foreground">{t('dashboardTitle')}</h1>
+      <h1 className="text-2xl font-semibold text-foreground">{t('moderatorDashboardTitle')}</h1>
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
         <StatsCard label={t('localUsers')} value={data.local_users_count.toLocaleString()} />
         <StatsCard label={t('localPosts')} value={data.local_statuses_count.toLocaleString()} />

@@ -22,6 +22,11 @@ const (
 	cardUserAgent    = "Monstera/1.0"
 )
 
+// DomainBlockChecker checks whether a domain is blocked.
+type DomainBlockChecker interface {
+	IsSuspended(ctx context.Context, domain string) bool
+}
+
 // CardService fetches and stores link preview cards for statuses.
 type CardService interface {
 	FetchAndStoreCard(ctx context.Context, statusID string) error
@@ -29,14 +34,15 @@ type CardService interface {
 
 type cardService struct {
 	store      store.Store
+	blocklist  DomainBlockChecker
 	httpClient *http.Client
 }
 
 // NewCardService returns a CardService backed by the given store.
-func NewCardService(s store.Store) CardService {
+func NewCardService(s store.Store, bl DomainBlockChecker) CardService {
 	// Use a secure egress HTTP client to protect against SSRF attacks.
 	client := ssrf.NewHTTPClient(ssrf.HTTPClientOptions{})
-	return &cardService{store: s, httpClient: client}
+	return &cardService{store: s, blocklist: bl, httpClient: client}
 }
 
 func (svc *cardService) FetchAndStoreCard(ctx context.Context, statusID string) error {
@@ -51,6 +57,21 @@ func (svc *cardService) FetchAndStoreCard(ctx context.Context, statusID string) 
 	}
 
 	rawURL := extractFirstURL(content)
+	if rawURL != "" && svc.blocklist != nil {
+		if parsed, parseErr := url.Parse(rawURL); parseErr == nil && parsed.Host != "" {
+			if svc.blocklist.IsSuspended(ctx, parsed.Hostname()) {
+				if upsertErr := svc.store.UpsertStatusCard(ctx, store.UpsertStatusCardInput{
+					StatusID:        statusID,
+					ProcessingState: domain.CardStateFetchFailed,
+					URL:             rawURL,
+					CardType:        "link",
+				}); upsertErr != nil {
+					return fmt.Errorf("UpsertStatusCard: %w", upsertErr)
+				}
+				return nil
+			}
+		}
+	}
 	if rawURL == "" {
 		if err := svc.store.UpsertStatusCard(ctx, store.UpsertStatusCardInput{
 			StatusID:        statusID,

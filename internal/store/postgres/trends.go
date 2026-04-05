@@ -15,14 +15,19 @@ import (
 // When localOnly is true only statuses from local accounts are included.
 func (s *PostgresStore) GetTopScoredPublicStatuses(ctx context.Context, since time.Time, limit int, localOnly bool) ([]domain.TrendingStatus, error) {
 	const q = `
-		SELECT id AS status_id,
-		       (reblogs_count + favourites_count + replies_count * 0.5) AS score
-		FROM statuses
-		WHERE deleted_at IS NULL
-		  AND visibility = 'public'
-		  AND reblog_of_id IS NULL
-		  AND created_at >= $1
-		  AND ($3::boolean = FALSE OR local = TRUE)
+		SELECT s.id AS status_id,
+		       (s.reblogs_count + s.favourites_count + s.replies_count * 0.5) AS score
+		FROM statuses s
+		JOIN accounts a ON a.id = s.account_id
+		WHERE s.deleted_at IS NULL
+		  AND s.visibility = 'public'
+		  AND s.reblog_of_id IS NULL
+		  AND s.created_at >= $1
+		  AND ($3::boolean = FALSE OR s.local = TRUE)
+		  AND NOT EXISTS (
+		      SELECT 1 FROM domain_blocks db
+		      WHERE db.domain = a.domain AND db.severity = 'silence'
+		  )
 		ORDER BY score DESC
 		LIMIT $2`
 
@@ -56,11 +61,16 @@ func (s *PostgresStore) GetHashtagDailyStats(ctx context.Context, since time.Tim
 		       COUNT(DISTINCT s.account_id) AS accounts
 		FROM status_hashtags sh
 		JOIN statuses  s ON s.id  = sh.status_id
+		JOIN accounts  a ON a.id  = s.account_id
 		JOIN hashtags  h ON h.id  = sh.hashtag_id
 		WHERE s.deleted_at IS NULL
 		  AND s.visibility IN ('public', 'unlisted')
 		  AND s.created_at >= $1
 		  AND ($2::boolean = FALSE OR s.local = TRUE)
+		  AND NOT EXISTS (
+		      SELECT 1 FROM domain_blocks db
+		      WHERE db.domain = a.domain AND db.severity = 'silence'
+		  )
 		GROUP BY h.id, h.name, day
 		ORDER BY day DESC, uses DESC`
 
@@ -199,10 +209,15 @@ func (s *PostgresStore) GetLinkDailyStats(ctx context.Context, days int, localOn
 		       COUNT(DISTINCT s.account_id) AS accounts
 		FROM status_cards sc
 		JOIN statuses s ON s.id = sc.status_id
+		JOIN accounts a ON a.id = s.account_id
 		WHERE s.deleted_at IS NULL
 		  AND s.visibility IN ('public', 'unlisted')
 		  AND s.created_at >= CURRENT_DATE - ($1::int - 1)
 		  AND ($2::boolean = FALSE OR s.local = TRUE)
+		  AND NOT EXISTS (
+		      SELECT 1 FROM domain_blocks db
+		      WHERE db.domain = a.domain AND db.severity = 'silence'
+		  )
 		GROUP BY sc.url, day
 		ORDER BY sc.url, day DESC`
 

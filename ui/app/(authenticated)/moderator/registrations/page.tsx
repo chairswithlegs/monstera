@@ -239,10 +239,10 @@ export default function ModeratorRegistrationsPage() {
                       <TableCell className="text-right">
                         <Button
                           type="button"
-                          variant="ghost"
+                          variant="link"
                           size="sm"
                           onClick={() => remove(inv.id)}
-                          className="text-destructive hover:text-destructive"
+                          className="text-destructive"
                         >
                           {tCommon('revoke')}
                         </Button>

@@ -408,16 +408,6 @@ type ScheduledStatus struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
-type ServerFilter struct {
-	ID        string             `json:"id"`
-	Phrase    string             `json:"phrase"`
-	Scope     string             `json:"scope"`
-	Action    string             `json:"action"`
-	WholeWord bool               `json:"whole_word"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
-}
-
 type Status struct {
 	ID                  string             `json:"id"`
 	Uri                 string             `json:"uri"`

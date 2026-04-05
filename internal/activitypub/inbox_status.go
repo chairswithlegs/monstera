@@ -84,6 +84,12 @@ func (p *inbox) handleAnnounce(ctx context.Context, activity *vocab.Activity, _ 
 		if !errors.Is(err, domain.ErrNotFound) {
 			return fmt.Errorf("inbox: GetByAPID (Announce): %w", err)
 		}
+		objectDomain := vocab.DomainFromIRI(objectID)
+		if objectDomain != "" && p.blocklist.IsSuspended(ctx, objectDomain) {
+			slog.DebugContext(ctx, "inbox: dropped Announce referencing suspended domain",
+				slog.String("object", objectID), slog.String("domain", objectDomain))
+			return nil
+		}
 		var note vocab.Note
 		if fetchErr := p.remoteResolver.resolveIRIDocument(ctx, objectID, &note); fetchErr != nil {
 			return fmt.Errorf("inbox: fetch Note for Announce: %w", fetchErr)
