@@ -141,6 +141,8 @@ func (s *FederationSubscriber) processMessage(ctx context.Context, msg jetstream
 		err = s.handleFavouriteCreated(ctx, event)
 	case domain.EventFavouriteRemoved:
 		err = s.handleFavouriteRemoved(ctx, event)
+	case domain.EventPollUpdated, domain.EventPollExpired:
+		err = s.handlePollUpdated(ctx, event)
 	case domain.EventStatusCreatedRemote,
 		domain.EventStatusDeletedRemote,
 		domain.EventStatusUpdatedRemote,
@@ -171,7 +173,7 @@ func (s *FederationSubscriber) handleStatusCreated(ctx context.Context, event do
 	if !payload.Local || payload.Author == nil {
 		return nil
 	}
-	note, err := vocab.LocalStatusToNote(vocab.LocalStatusToNoteInput{
+	noteInput := vocab.LocalStatusToNoteInput{
 		Status:       payload.Status,
 		Author:       payload.Author,
 		InstanceBase: s.instanceBaseURL,
@@ -179,7 +181,11 @@ func (s *FederationSubscriber) handleStatusCreated(ctx context.Context, event do
 		Tags:         payload.Tags,
 		Media:        payload.Media,
 		ParentAPID:   payload.ParentAPID,
-	})
+	}
+	if payload.Poll != nil && len(payload.PollOptions) > 0 {
+		noteInput.Poll = pollDataFromPayload(payload.Poll, payload.PollOptions)
+	}
+	note, err := vocab.LocalStatusToNote(noteInput)
 	if err != nil {
 		return fmt.Errorf("local status to note: %w", err)
 	}
@@ -246,7 +252,7 @@ func (s *FederationSubscriber) handleStatusUpdated(ctx context.Context, event do
 	if !payload.Local || payload.Author == nil {
 		return nil
 	}
-	note, err := vocab.LocalStatusToNote(vocab.LocalStatusToNoteInput{
+	noteInput := vocab.LocalStatusToNoteInput{
 		Status:       payload.Status,
 		Author:       payload.Author,
 		InstanceBase: s.instanceBaseURL,
@@ -254,7 +260,11 @@ func (s *FederationSubscriber) handleStatusUpdated(ctx context.Context, event do
 		Tags:         payload.Tags,
 		Media:        payload.Media,
 		ParentAPID:   payload.ParentAPID,
-	})
+	}
+	if payload.Poll != nil && len(payload.PollOptions) > 0 {
+		noteInput.Poll = pollDataFromPayload(payload.Poll, payload.PollOptions)
+	}
+	note, err := vocab.LocalStatusToNote(noteInput)
 	if err != nil {
 		return fmt.Errorf("local status to note: %w", err)
 	}
@@ -277,6 +287,84 @@ func (s *FederationSubscriber) handleStatusUpdated(ctx context.Context, event do
 		return fmt.Errorf("publish status updated: %w", err)
 	}
 	return nil
+}
+
+func (s *FederationSubscriber) handlePollUpdated(ctx context.Context, event domain.DomainEvent) error {
+	var payload domain.PollUpdatedPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return fmt.Errorf("unmarshal poll.updated payload: %w", err)
+	}
+	if !payload.Local || payload.Author == nil || payload.Status == nil {
+		return nil
+	}
+	noteInput := vocab.LocalStatusToNoteInput{
+		Status:       payload.Status,
+		Author:       payload.Author,
+		InstanceBase: s.instanceBaseURL,
+		Mentions:     payload.Mentions,
+		Tags:         payload.Tags,
+		Media:        payload.Media,
+	}
+	if payload.Poll != nil && len(payload.PollOptions) > 0 {
+		noteInput.Poll = pollDataFromPayloadWithVoters(payload.Poll, payload.PollOptions, payload.VotersCount)
+	}
+	note, err := vocab.LocalStatusToNote(noteInput)
+	if err != nil {
+		return fmt.Errorf("poll updated: local status to note: %w", err)
+	}
+	activityID := s.statusActivityID(payload.Status)
+	actorID := vocab.AccountActorID(payload.Author, s.instanceBaseURL)
+	update, err := vocab.NewUpdateNoteActivity(activityID+"#poll-update", actorID, note)
+	if err != nil {
+		return fmt.Errorf("wrap poll update: %w", err)
+	}
+	raw, err := json.Marshal(update)
+	if err != nil {
+		return fmt.Errorf("marshal poll update: %w", err)
+	}
+	err = s.fanout.Publish(ctx, "update", internal.OutboxFanoutMessage{
+		ActivityID: activityID + "#poll-update",
+		Activity:   raw,
+		SenderID:   payload.Author.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("publish poll updated: %w", err)
+	}
+	return nil
+}
+
+// pollDataFromPayloadWithVoters converts domain poll and options into the vocab outbound format
+// using a pre-computed distinct voter count.
+func pollDataFromPayloadWithVoters(poll *domain.Poll, opts []domain.PollOption, votersCount int) *vocab.LocalPollData {
+	options := make([]vocab.LocalPollOptionData, len(opts))
+	for i, o := range opts {
+		options[i] = vocab.LocalPollOptionData{Title: o.Title, VotesCount: o.VotesCount}
+	}
+	var closedAt *time.Time
+	if poll.ClosedAt != nil {
+		closedAt = poll.ClosedAt
+	} else if poll.ExpiresAt != nil && poll.ExpiresAt.Before(time.Now()) {
+		closedAt = poll.ExpiresAt
+	}
+	return &vocab.LocalPollData{
+		Multiple:    poll.Multiple,
+		ExpiresAt:   poll.ExpiresAt,
+		ClosedAt:    closedAt,
+		Options:     options,
+		VotersCount: votersCount,
+	}
+}
+
+// pollDataFromPayload converts domain poll and options into the vocab outbound format.
+// VotersCount is approximated from option counts (correct for single-choice, approximate for multiple).
+func pollDataFromPayload(poll *domain.Poll, opts []domain.PollOption) *vocab.LocalPollData {
+	votersCount := 0
+	if !poll.Multiple {
+		for _, o := range opts {
+			votersCount += o.VotesCount
+		}
+	}
+	return pollDataFromPayloadWithVoters(poll, opts, votersCount)
 }
 
 func (s *FederationSubscriber) handleFollowCreated(ctx context.Context, event domain.DomainEvent) error {

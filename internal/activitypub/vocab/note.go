@@ -25,7 +25,7 @@ var ErrLocalAuthorRequired = errors.New("vocab: LocalStatusToNote requires local
 type Note struct {
 	Context      any               `json:"@context,omitempty"`
 	ID           string            `json:"id"`
-	Type         ObjectType        `json:"type"` // "Note"
+	Type         ObjectType        `json:"type"` // "Note" or "Question"
 	AttributedTo string            `json:"attributedTo"`
 	Content      string            `json:"content"` // rendered HTML
 	ContentMap   map[string]string `json:"contentMap,omitempty"`
@@ -41,6 +41,27 @@ type Note struct {
 	Tag          []Tag             `json:"tag,omitempty"`
 	Attachment   []Attachment      `json:"attachment,omitempty"`
 	Replies      json.RawMessage   `json:"replies,omitempty"`
+
+	// Poll fields (present when Type == "Question")
+	OneOf       []PollOptionEntry `json:"oneOf,omitempty"`
+	AnyOf       []PollOptionEntry `json:"anyOf,omitempty"`
+	EndTime     string            `json:"endTime,omitempty"`     // ISO 8601 poll expiry
+	Closed      any               `json:"closed,omitempty"`      // ISO 8601 timestamp or boolean
+	VotersCount *int              `json:"votersCount,omitempty"` // Mastodon extension (toot:votersCount)
+}
+
+// PollOptionEntry represents a single poll option in the AP wire format.
+// Used in both oneOf (single-choice) and anyOf (multiple-choice) arrays.
+type PollOptionEntry struct {
+	Type    ObjectType         `json:"type"`              // "Note"
+	Name    string             `json:"name"`              // option text
+	Replies *PollOptionReplies `json:"replies,omitempty"` // vote count
+}
+
+// PollOptionReplies carries the vote count for a poll option.
+type PollOptionReplies struct {
+	Type       ObjectType `json:"type"`       // "Collection"
+	TotalItems int        `json:"totalItems"` // vote count
 }
 
 // NoteSource preserves the original plain-text or Markdown source.
@@ -59,7 +80,8 @@ type LocalStatusToNoteInput struct {
 	Mentions     []*domain.Account
 	Tags         []domain.Hashtag
 	Media        []domain.MediaAttachment
-	ParentAPID   string // APID of the parent status (for InReplyTo); empty if not a reply
+	ParentAPID   string         // APID of the parent status (for InReplyTo); empty if not a reply
+	Poll         *LocalPollData // optional; when set, the Note type becomes "Question"
 }
 
 // LocalStatusToNote builds an ActivityPub Note from a domain status and its
@@ -116,7 +138,7 @@ func LocalStatusToNote(in LocalStatusToNoteInput) (*Note, error) {
 		contentMap = map[string]string{*s.Language: content}
 	}
 
-	return &Note{
+	note := &Note{
 		Context:      DefaultContext,
 		ID:           noteID,
 		Type:         ObjectTypeNote,
@@ -133,7 +155,24 @@ func LocalStatusToNote(in LocalStatusToNoteInput) (*Note, error) {
 		Summary:      s.ContentWarning,
 		Tag:          tags,
 		Attachment:   attachments,
-	}, nil
+	}
+	if in.Poll != nil {
+		note.Type = ObjectTypeQuestion
+		entries := buildPollOptionEntries(in.Poll.Options)
+		if in.Poll.Multiple {
+			note.AnyOf = entries
+		} else {
+			note.OneOf = entries
+		}
+		if in.Poll.ExpiresAt != nil {
+			note.EndTime = in.Poll.ExpiresAt.UTC().Format(time.RFC3339)
+		}
+		if in.Poll.ClosedAt != nil {
+			note.Closed = in.Poll.ClosedAt.UTC().Format(time.RFC3339)
+		}
+		note.VotersCount = &in.Poll.VotersCount
+	}
+	return note, nil
 }
 
 // noteAddressing returns To and Cc slices per Mastodon/AP convention.
@@ -302,4 +341,91 @@ func NoteToStatusFields(note *Note) NoteStatusFields {
 		}
 	}
 	return fields
+}
+
+// buildPollOptionEntries converts local poll option data to AP wire-format entries.
+func buildPollOptionEntries(options []LocalPollOptionData) []PollOptionEntry {
+	entries := make([]PollOptionEntry, len(options))
+	for i, o := range options {
+		entries[i] = PollOptionEntry{
+			Type: ObjectTypeNote,
+			Name: o.Title,
+			Replies: &PollOptionReplies{
+				Type:       "Collection",
+				TotalItems: o.VotesCount,
+			},
+		}
+	}
+	return entries
+}
+
+// --- Poll helpers ---
+
+// IsQuestion returns true if the Note represents an AP Question (poll).
+func (n *Note) IsQuestion() bool {
+	return n.Type == ObjectTypeQuestion
+}
+
+// PollEntries returns the poll options — from OneOf (single-choice) or AnyOf (multiple-choice).
+func (n *Note) PollEntries() []PollOptionEntry {
+	if len(n.AnyOf) > 0 {
+		return n.AnyOf
+	}
+	return n.OneOf
+}
+
+// PollIsMultiple returns true if this is a multiple-choice poll (AnyOf).
+func (n *Note) PollIsMultiple() bool {
+	return len(n.AnyOf) > 0
+}
+
+// NotePollFields holds poll-specific data extracted from an inbound AP Question.
+type NotePollFields struct {
+	Multiple   bool
+	ExpiresAt  *time.Time
+	Options    []string // option titles in order
+	VoteCounts []int    // per-option vote counts from replies.totalItems
+}
+
+// NoteToPollFields extracts poll data from an inbound Note/Question.
+// Returns nil if the Note has no poll fields (not a Question).
+func NoteToPollFields(note *Note) *NotePollFields {
+	entries := note.PollEntries()
+	if len(entries) == 0 {
+		return nil
+	}
+	fields := &NotePollFields{
+		Multiple:   note.PollIsMultiple(),
+		Options:    make([]string, len(entries)),
+		VoteCounts: make([]int, len(entries)),
+	}
+	for i, e := range entries {
+		fields.Options[i] = e.Name
+		if e.Replies != nil {
+			fields.VoteCounts[i] = e.Replies.TotalItems
+		}
+	}
+	if note.EndTime != "" {
+		if t, err := time.Parse(time.RFC3339, note.EndTime); err == nil {
+			fields.ExpiresAt = &t
+		}
+	}
+	return fields
+}
+
+// --- Outbound poll data ---
+
+// LocalPollData holds poll data for constructing an outbound AP Question.
+type LocalPollData struct {
+	Multiple    bool
+	ExpiresAt   *time.Time
+	ClosedAt    *time.Time // when the poll actually closed; nil if still open
+	Options     []LocalPollOptionData
+	VotersCount int
+}
+
+// LocalPollOptionData holds a single poll option for outbound AP Question construction.
+type LocalPollOptionData struct {
+	Title      string
+	VotesCount int
 }

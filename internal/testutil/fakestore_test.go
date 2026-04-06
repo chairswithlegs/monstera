@@ -936,7 +936,7 @@ func TestNotificationLifecycle(t *testing.T) {
 	_, err = f.GetNotification(ctx, "nonexistent", recipientID)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
-	list, err := f.ListNotifications(ctx, recipientID, nil, 3)
+	list, err := f.ListNotifications(ctx, recipientID, nil, 3, nil, nil)
 	require.NoError(t, err)
 	assert.Len(t, list, 3)
 	for i := 1; i < len(list); i++ {
@@ -944,7 +944,7 @@ func TestNotificationLifecycle(t *testing.T) {
 	}
 
 	cursor := list[len(list)-1].ID
-	page2, err := f.ListNotifications(ctx, recipientID, &cursor, 10)
+	page2, err := f.ListNotifications(ctx, recipientID, &cursor, 10, nil, nil)
 	require.NoError(t, err)
 	assert.Len(t, page2, 2)
 }

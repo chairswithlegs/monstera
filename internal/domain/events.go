@@ -22,6 +22,8 @@ const (
 	EventBlockRemoved        = "block.removed"
 	EventAccountUpdated      = "account.updated"
 	EventStatusUpdatedRemote = "status.updated.remote"
+	EventPollUpdated         = "poll.updated"
+	EventPollExpired         = "poll.expired"
 	EventNotificationCreated = "notification.created"
 )
 
@@ -47,6 +49,8 @@ type StatusCreatedPayload struct {
 	MentionedAccountIDs []string          `json:"mentioned_account_ids"`
 	ParentAPID          string            `json:"parent_ap_id,omitempty"`
 	Local               bool              `json:"local"`
+	Poll                *Poll             `json:"poll,omitempty"`
+	PollOptions         []PollOption      `json:"poll_options,omitempty"`
 }
 
 // StatusDeletedPayload carries data for a deleted status.
@@ -72,6 +76,8 @@ type StatusUpdatedPayload struct {
 	MentionedAccountIDs []string          `json:"mentioned_account_ids"`
 	ParentAPID          string            `json:"parent_ap_id,omitempty"`
 	Local               bool              `json:"local"`
+	Poll                *Poll             `json:"poll,omitempty"`
+	PollOptions         []PollOption      `json:"poll_options,omitempty"`
 }
 
 // FollowCreatedPayload carries data when a follow is created.
@@ -170,6 +176,19 @@ type ReblogRemovedPayload struct {
 type AccountUpdatedPayload struct {
 	Account *Account `json:"account"`
 	Local   bool     `json:"local"`
+}
+
+// PollUpdatedPayload carries data when poll vote counts change (local vote cast).
+type PollUpdatedPayload struct {
+	Status      *Status           `json:"status"`
+	Author      *Account          `json:"author"`
+	Poll        *Poll             `json:"poll"`
+	PollOptions []PollOption      `json:"poll_options"`
+	VotersCount int               `json:"voters_count"`
+	Mentions    []*Account        `json:"mentions,omitempty"`
+	Tags        []Hashtag         `json:"tags,omitempty"`
+	Media       []MediaAttachment `json:"media,omitempty"`
+	Local       bool              `json:"local"`
 }
 
 // NotificationCreatedPayload carries data for a new notification (SSE-only).

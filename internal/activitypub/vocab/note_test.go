@@ -535,3 +535,174 @@ func TestNoteToStatusFields(t *testing.T) {
 		assert.Equal(t, "fr", *fields.Language)
 	})
 }
+
+// --- Poll tests ---
+
+func TestNoteToPollFields_SingleChoice(t *testing.T) {
+	t.Parallel()
+	note := &Note{
+		Type: ObjectTypeQuestion,
+		OneOf: []PollOptionEntry{
+			{Type: ObjectTypeNote, Name: "Option A", Replies: &PollOptionReplies{Type: "Collection", TotalItems: 5}},
+			{Type: ObjectTypeNote, Name: "Option B", Replies: &PollOptionReplies{Type: "Collection", TotalItems: 3}},
+		},
+		EndTime: "2026-04-10T12:00:00Z",
+	}
+	fields := NoteToPollFields(note)
+	require.NotNil(t, fields)
+	assert.False(t, fields.Multiple)
+	assert.Equal(t, []string{"Option A", "Option B"}, fields.Options)
+	assert.Equal(t, []int{5, 3}, fields.VoteCounts)
+	require.NotNil(t, fields.ExpiresAt)
+	assert.Equal(t, 2026, fields.ExpiresAt.Year())
+}
+
+func TestNoteToPollFields_MultipleChoice(t *testing.T) {
+	t.Parallel()
+	note := &Note{
+		Type: ObjectTypeQuestion,
+		AnyOf: []PollOptionEntry{
+			{Type: ObjectTypeNote, Name: "Red", Replies: &PollOptionReplies{Type: "Collection", TotalItems: 10}},
+			{Type: ObjectTypeNote, Name: "Blue"},
+		},
+	}
+	fields := NoteToPollFields(note)
+	require.NotNil(t, fields)
+	assert.True(t, fields.Multiple)
+	assert.Equal(t, []string{"Red", "Blue"}, fields.Options)
+	assert.Equal(t, []int{10, 0}, fields.VoteCounts)
+	assert.Nil(t, fields.ExpiresAt)
+}
+
+func TestNoteToPollFields_NotAPoll(t *testing.T) {
+	t.Parallel()
+	note := &Note{Type: ObjectTypeNote, Content: "just a note"}
+	assert.Nil(t, NoteToPollFields(note))
+}
+
+func TestNoteToPollFields_NoEndTime(t *testing.T) {
+	t.Parallel()
+	note := &Note{
+		Type:  ObjectTypeQuestion,
+		OneOf: []PollOptionEntry{{Type: ObjectTypeNote, Name: "Yes"}, {Type: ObjectTypeNote, Name: "No"}},
+	}
+	fields := NoteToPollFields(note)
+	require.NotNil(t, fields)
+	assert.Nil(t, fields.ExpiresAt)
+}
+
+func TestLocalStatusToNote_WithPoll(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 4, 6, 12, 0, 0, 0, time.UTC)
+	expires := time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)
+	content := "<p>What do you think?</p>"
+	status := &domain.Status{ID: "01POLL", AccountID: "01ACC", Content: &content, Visibility: domain.VisibilityPublic, CreatedAt: now}
+	account := &domain.Account{ID: "01ACC", Username: "alice", FollowersURL: "https://example.com/users/alice/followers"}
+	votersCount := 8
+
+	note, err := LocalStatusToNote(LocalStatusToNoteInput{
+		Status:       status,
+		Author:       account,
+		InstanceBase: testInstanceBase,
+		Poll: &LocalPollData{
+			Multiple:    false,
+			ExpiresAt:   &expires,
+			VotersCount: votersCount,
+			Options: []LocalPollOptionData{
+				{Title: "Option A", VotesCount: 5},
+				{Title: "Option B", VotesCount: 3},
+			},
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, ObjectTypeQuestion, note.Type)
+	require.Len(t, note.OneOf, 2)
+	assert.Empty(t, note.AnyOf)
+	assert.Equal(t, "Option A", note.OneOf[0].Name)
+	assert.Equal(t, 5, note.OneOf[0].Replies.TotalItems)
+	assert.Equal(t, "Option B", note.OneOf[1].Name)
+	assert.Equal(t, 3, note.OneOf[1].Replies.TotalItems)
+	assert.Equal(t, "2026-04-07T12:00:00Z", note.EndTime)
+	require.NotNil(t, note.VotersCount)
+	assert.Equal(t, 8, *note.VotersCount)
+}
+
+func TestLocalStatusToNote_WithMultiplePoll(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	content := "<p>Pick all that apply</p>"
+	status := &domain.Status{ID: "01POLL2", AccountID: "01ACC", Content: &content, Visibility: domain.VisibilityPublic, CreatedAt: now}
+	account := &domain.Account{ID: "01ACC", Username: "alice"}
+
+	note, err := LocalStatusToNote(LocalStatusToNoteInput{
+		Status:       status,
+		Author:       account,
+		InstanceBase: testInstanceBase,
+		Poll: &LocalPollData{
+			Multiple: true,
+			Options: []LocalPollOptionData{
+				{Title: "Red", VotesCount: 1},
+				{Title: "Blue", VotesCount: 2},
+			},
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, ObjectTypeQuestion, note.Type)
+	assert.Empty(t, note.OneOf)
+	require.Len(t, note.AnyOf, 2)
+	assert.Equal(t, "Red", note.AnyOf[0].Name)
+	assert.Equal(t, "Blue", note.AnyOf[1].Name)
+}
+
+func TestLocalStatusToNote_NoPoll(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	content := "<p>No poll here</p>"
+	status := &domain.Status{ID: "01NOPOLL", AccountID: "01ACC", Content: &content, Visibility: domain.VisibilityPublic, CreatedAt: now}
+	account := &domain.Account{ID: "01ACC", Username: "alice"}
+
+	note, err := LocalStatusToNote(LocalStatusToNoteInput{
+		Status:       status,
+		Author:       account,
+		InstanceBase: testInstanceBase,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, ObjectTypeNote, note.Type)
+	assert.Empty(t, note.OneOf)
+	assert.Empty(t, note.AnyOf)
+	assert.Empty(t, note.EndTime)
+	assert.Nil(t, note.VotersCount)
+}
+
+func TestQuestion_JSONRoundTrip(t *testing.T) {
+	t.Parallel()
+	votersCount := 12
+	note := Note{
+		Context:      DefaultContext,
+		ID:           "https://example.com/statuses/poll1",
+		Type:         ObjectTypeQuestion,
+		AttributedTo: "https://example.com/users/alice",
+		Content:      "<p>Favorite color?</p>",
+		To:           []string{PublicAddress},
+		Published:    "2026-04-06T12:00:00Z",
+		OneOf: []PollOptionEntry{
+			{Type: ObjectTypeNote, Name: "Red", Replies: &PollOptionReplies{Type: "Collection", TotalItems: 7}},
+			{Type: ObjectTypeNote, Name: "Blue", Replies: &PollOptionReplies{Type: "Collection", TotalItems: 5}},
+		},
+		EndTime:     "2026-04-07T12:00:00Z",
+		VotersCount: &votersCount,
+	}
+	data, err := json.Marshal(note)
+	require.NoError(t, err)
+
+	var decoded Note
+	err = json.Unmarshal(data, &decoded)
+	require.NoError(t, err)
+	assert.Equal(t, ObjectTypeQuestion, decoded.Type)
+	require.Len(t, decoded.OneOf, 2)
+	assert.Equal(t, "Red", decoded.OneOf[0].Name)
+	assert.Equal(t, 7, decoded.OneOf[0].Replies.TotalItems)
+	assert.Equal(t, "2026-04-07T12:00:00Z", decoded.EndTime)
+	require.NotNil(t, decoded.VotersCount)
+	assert.Equal(t, 12, *decoded.VotersCount)
+}

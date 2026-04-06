@@ -87,6 +87,8 @@ func (s *Subscriber) processMessage(ctx context.Context, msg jetstream.Msg) {
 		s.handleStatusCreated(ctx, event)
 	case domain.EventStatusUpdated, domain.EventStatusUpdatedRemote:
 		s.handleStatusUpdated(ctx, event)
+	case domain.EventPollUpdated, domain.EventPollExpired:
+		s.handlePollUpdated(ctx, event)
 	case domain.EventStatusDeleted, domain.EventStatusDeletedRemote:
 		s.handleStatusDeleted(ctx, event)
 	case domain.EventNotificationCreated:
@@ -125,6 +127,44 @@ func (s *Subscriber) handleStatusCreated(ctx context.Context, event domain.Domai
 	hashtagNames := hashtagNamesFromTags(payload.Tags)
 	isReblog := payload.Status.ReblogOfID != nil
 	s.routeStatusEvent(ctx, EventUpdate, payload.Status.AccountID, payload.Status.Visibility, isReblog, payload.Status.Local, statusJSON, hashtagNames, payload.MentionedAccountIDs, payload.Status)
+}
+
+// handlePollUpdated re-enriches the status from the store (to get full mentions,
+// tags, media, and updated poll data) and pushes a status.update SSE event.
+func (s *Subscriber) handlePollUpdated(ctx context.Context, event domain.DomainEvent) {
+	var payload domain.PollUpdatedPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		slog.ErrorContext(ctx, "sse subscriber: unmarshal poll.updated", slog.Any("error", err))
+		return
+	}
+	if payload.Status == nil || payload.Author == nil {
+		return
+	}
+	enriched, err := s.statusSvc.GetByIDEnriched(ctx, payload.Status.ID, nil)
+	if err != nil {
+		slog.WarnContext(ctx, "sse subscriber: enrich status for poll update", slog.Any("error", err), slog.String("status_id", payload.Status.ID))
+		return
+	}
+	apiStatus := apimodel.StatusFromEnriched(enriched, s.instanceDomain)
+	statusJSON, err := json.Marshal(apiStatus)
+	if err != nil {
+		slog.ErrorContext(ctx, "sse subscriber: marshal status (poll update)", slog.Any("error", err))
+		return
+	}
+	var hashtagNames []string
+	if enriched.Tags != nil {
+		hashtagNames = make([]string, 0, len(enriched.Tags))
+		for _, t := range enriched.Tags {
+			hashtagNames = append(hashtagNames, t.Name)
+		}
+	}
+	var mentionedIDs []string
+	for _, m := range enriched.Mentions {
+		if m != nil {
+			mentionedIDs = append(mentionedIDs, m.ID)
+		}
+	}
+	s.routeStatusEvent(ctx, EventStatusUpdate, payload.Status.AccountID, payload.Status.Visibility, false, payload.Status.Local, statusJSON, hashtagNames, mentionedIDs, payload.Status)
 }
 
 func (s *Subscriber) handleStatusUpdated(ctx context.Context, event domain.DomainEvent) {
@@ -181,12 +221,20 @@ func (s *Subscriber) routeStatusEvent(ctx context.Context, eventType, accountID,
 		}
 		fallthrough
 	case domain.VisibilityUnlisted:
+		// Deliver to the author's own stream so they see their post in real time.
+		ev.Stream = streamNameUser
+		if subj := StreamKeyToSubject(StreamUserPrefix + accountID); subj != "" {
+			s.publish(ctx, subj, ev, "events.user.*")
+		}
 		followerIDs, err := s.store.GetLocalFollowerAccountIDs(ctx, accountID)
 		if err != nil {
 			slog.ErrorContext(ctx, "sse subscriber: get local followers", slog.Any("error", err), slog.String("account_id", accountID))
 		} else {
 			ev.Stream = streamNameUser
 			for _, fid := range followerIDs {
+				if fid == accountID {
+					continue // already delivered to author above
+				}
 				if _, excluded := exclusiveOwners[fid]; excluded {
 					continue
 				}
@@ -210,12 +258,20 @@ func (s *Subscriber) routeStatusEvent(ctx context.Context, eventType, accountID,
 		}
 		s.publishToListStreams(ctx, lists, status, ev)
 	case domain.VisibilityPrivate:
+		// Deliver to the author's own stream so they see their post in real time.
+		ev.Stream = streamNameUser
+		if subj := StreamKeyToSubject(StreamUserPrefix + accountID); subj != "" {
+			s.publish(ctx, subj, ev, "events.user.*")
+		}
 		followerIDs, err := s.store.GetLocalFollowerAccountIDs(ctx, accountID)
 		if err != nil {
 			slog.ErrorContext(ctx, "sse subscriber: get local followers", slog.Any("error", err), slog.String("account_id", accountID))
 		} else {
 			ev.Stream = streamNameUser
 			for _, fid := range followerIDs {
+				if fid == accountID {
+					continue // already delivered to author above
+				}
 				if _, excluded := exclusiveOwners[fid]; excluded {
 					continue
 				}
@@ -366,12 +422,21 @@ func (s *Subscriber) handleStatusDeleted(ctx context.Context, event domain.Domai
 		}
 	}
 
+	// Deliver delete to the author's own stream.
+	ev.Stream = streamNameUser
+	if subj := StreamKeyToSubject(StreamUserPrefix + payload.AccountID); subj != "" {
+		s.publish(ctx, subj, ev, "events.user.*")
+	}
+
 	followerIDs, err := s.store.GetLocalFollowerAccountIDs(ctx, payload.AccountID)
 	if err != nil {
 		slog.ErrorContext(ctx, "sse subscriber: get local followers for delete", slog.Any("error", err), slog.String("account_id", payload.AccountID))
 	} else {
 		ev.Stream = streamNameUser
 		for _, fid := range followerIDs {
+			if fid == payload.AccountID {
+				continue // already delivered to author above
+			}
 			if _, excluded := exclusiveOwners[fid]; excluded {
 				continue
 			}

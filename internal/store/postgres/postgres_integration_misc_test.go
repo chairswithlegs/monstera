@@ -521,7 +521,7 @@ func TestIntegration_NotificationStore(t *testing.T) {
 		assert.Equal(t, domain.NotificationTypeFollow, got.Type)
 		assert.False(t, got.Read)
 
-		list, err := s.ListNotifications(ctx, recipient.ID, nil, 10)
+		list, err := s.ListNotifications(ctx, recipient.ID, nil, 10, nil, nil)
 		require.NoError(t, err)
 		assert.NotEmpty(t, list)
 	})
@@ -567,7 +567,7 @@ func TestIntegration_NotificationStore(t *testing.T) {
 		err = s.ClearNotifications(ctx, recipient.ID)
 		require.NoError(t, err)
 
-		list, err := s.ListNotifications(ctx, recipient.ID, nil, 10)
+		list, err := s.ListNotifications(ctx, recipient.ID, nil, 10, nil, nil)
 		require.NoError(t, err)
 		assert.Empty(t, list)
 	})

@@ -224,8 +224,14 @@ func (q *Queries) GetTopScoredPublicStatuses(ctx context.Context, arg GetTopScor
 const getTrendingLinks = `-- name: GetTrendingLinks :many
 WITH ranked_links AS (
     SELECT tl.url, tl.score,
-           sc.title, sc.description, sc.card_type, sc.provider_name,
-           sc.provider_url, sc.image_url, sc.width, sc.height
+           COALESCE(sc.title, '') AS title,
+           COALESCE(sc.description, '') AS description,
+           COALESCE(sc.card_type, 'link') AS card_type,
+           COALESCE(sc.provider_name, '') AS provider_name,
+           COALESCE(sc.provider_url, '') AS provider_url,
+           COALESCE(sc.image_url, '') AS image_url,
+           COALESCE(sc.width, 0) AS width,
+           COALESCE(sc.height, 0) AS height
     FROM trending_links tl
     LEFT JOIN LATERAL (
         SELECT sc.title, sc.description, sc.card_type, sc.provider_name,

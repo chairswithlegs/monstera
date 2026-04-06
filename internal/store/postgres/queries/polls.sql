@@ -25,11 +25,27 @@ INSERT INTO poll_votes (id, poll_id, account_id, option_id)
 VALUES ($1, $2, $3, $4)
 RETURNING *;
 
+-- name: SetPollOptionVoteCount :exec
+UPDATE poll_options SET votes_count = $3 WHERE poll_id = $1 AND position = $2;
+
+-- name: ListExpiredOpenPollStatusIDs :many
+SELECT p.status_id FROM polls p
+WHERE p.expires_at IS NOT NULL AND p.expires_at <= NOW() AND p.closed_at IS NULL
+ORDER BY p.expires_at ASC
+LIMIT $1;
+
+-- name: ClosePoll :exec
+UPDATE polls SET closed_at = NOW() WHERE id = $1;
+
 -- name: GetVoteCountsByPoll :many
 SELECT option_id, COUNT(*)::int AS votes_count
 FROM poll_votes
 WHERE poll_id = $1
 GROUP BY option_id;
+
+-- name: CountDistinctVoters :one
+SELECT COUNT(DISTINCT account_id)::int AS voters_count
+FROM poll_votes WHERE poll_id = $1;
 
 -- name: HasVotedOnPoll :one
 SELECT EXISTS(

@@ -101,14 +101,16 @@ type Poll struct {
 	ExpiresAt *time.Time
 	Multiple  bool
 	CreatedAt time.Time
+	ClosedAt  *time.Time
 }
 
 // PollOption is one option in a poll.
 type PollOption struct {
-	ID       string
-	PollID   string
-	Title    string
-	Position int
+	ID         string
+	PollID     string
+	Title      string
+	Position   int
+	VotesCount int
 }
 
 // QuoteApprovalRecord is the persistence record for a quote (quoting status -> quoted status); used to derive API quote_approval state.

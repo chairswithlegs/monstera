@@ -478,9 +478,68 @@ func (svc *statusInteractionService) RecordVote(ctx context.Context, pollID, acc
 			return nil, fmt.Errorf("RecordVote: %w", err)
 		}
 	}
+	// Update denormalized vote counts on poll_options.
+	counts, err := svc.store.GetVoteCountsByPoll(ctx, pollID)
+	if err != nil {
+		return nil, fmt.Errorf("RecordVote GetVoteCountsByPoll: %w", err)
+	}
+	for i, o := range opts {
+		c := 0
+		if n, ok := counts[o.ID]; ok {
+			c = n
+		}
+		if err := svc.store.SetPollOptionVoteCount(ctx, pollID, i, c); err != nil {
+			return nil, fmt.Errorf("RecordVote SetPollOptionVoteCount: %w", err)
+		}
+	}
+	// Emit poll.updated event for federation and SSE.
+	if emitErr := svc.emitPollUpdated(ctx, st, poll); emitErr != nil {
+		slog.WarnContext(ctx, "RecordVote: failed to emit poll.updated", slog.Any("error", emitErr))
+	}
 	poll2, err := svc.statusSvc.GetPoll(ctx, pollID, &accountID)
 	if err != nil {
 		return nil, fmt.Errorf("RecordVote: %w", err)
 	}
 	return poll2, nil
+}
+
+// emitPollUpdated gathers enrichment data and emits an EventPollUpdated event.
+func (svc *statusInteractionService) emitPollUpdated(ctx context.Context, st *domain.Status, poll *domain.Poll) error {
+	author, err := svc.store.GetAccountByID(ctx, st.AccountID)
+	if err != nil {
+		return fmt.Errorf("GetAccountByID: %w", err)
+	}
+	updatedOpts, err := svc.store.ListPollOptions(ctx, poll.ID)
+	if err != nil {
+		return fmt.Errorf("ListPollOptions: %w", err)
+	}
+	votersCount, err := svc.store.CountDistinctVoters(ctx, poll.ID)
+	if err != nil {
+		return fmt.Errorf("CountDistinctVoters: %w", err)
+	}
+	mentions, err := svc.store.GetStatusMentions(ctx, st.ID)
+	if err != nil {
+		return fmt.Errorf("GetStatusMentions: %w", err)
+	}
+	tags, err := svc.store.GetStatusHashtags(ctx, st.ID)
+	if err != nil {
+		return fmt.Errorf("GetStatusHashtags: %w", err)
+	}
+	media, err := svc.store.GetStatusAttachments(ctx, st.ID)
+	if err != nil {
+		return fmt.Errorf("GetStatusAttachments: %w", err)
+	}
+	return svc.store.WithTx(ctx, func(tx store.Store) error {
+		return events.EmitEvent(ctx, tx, domain.EventPollUpdated, "poll", poll.ID, domain.PollUpdatedPayload{
+			Status:      st,
+			Author:      author,
+			Poll:        poll,
+			PollOptions: updatedOpts,
+			VotersCount: votersCount,
+			Mentions:    mentions,
+			Tags:        tags,
+			Media:       media,
+			Local:       st.IsLocal(),
+		})
+	})
 }

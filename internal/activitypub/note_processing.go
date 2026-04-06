@@ -44,7 +44,7 @@ func buildCreateStatusInput(ctx context.Context, note *vocab.Note, author *domai
 	hashtagNames, mentionIRIs := extractTagsFromNote(note)
 
 	fields := vocab.NoteToStatusFields(note)
-	return service.CreateRemoteStatusInput{
+	input := service.CreateRemoteStatusInput{
 		AccountID:      author.ID,
 		URI:            fields.URI,
 		Text:           &text,
@@ -60,6 +60,21 @@ func buildCreateStatusInput(ctx context.Context, note *vocab.Note, author *domai
 		MentionIRIs:    mentionIRIs,
 		PublishedAt:    fields.PublishedAt,
 	}
+	if pollFields := vocab.NoteToPollFields(note); pollFields != nil {
+		opts := make([]service.CreateRemotePollOptionInput, len(pollFields.Options))
+		for i, title := range pollFields.Options {
+			opts[i] = service.CreateRemotePollOptionInput{
+				Title:      title,
+				VotesCount: pollFields.VoteCounts[i],
+			}
+		}
+		input.Poll = &service.CreateRemotePollInput{
+			Multiple:  pollFields.Multiple,
+			ExpiresAt: pollFields.ExpiresAt,
+			Options:   opts,
+		}
+	}
+	return input
 }
 
 // noteAttachmentsToServiceInput converts AP Note attachments to service input structs.

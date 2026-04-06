@@ -414,7 +414,7 @@ func (svc *statusWriteService) Create(ctx context.Context, in CreateStatusInput)
 				mentionedAccountIDs = append(mentionedAccountIDs, m.ID)
 			}
 		}
-		return events.EmitEvent(ctx, tx, domain.EventStatusCreated, "status", statusID, domain.StatusCreatedPayload{
+		payload := domain.StatusCreatedPayload{
 			Status:              created,
 			Author:              author,
 			Mentions:            mentions,
@@ -423,7 +423,16 @@ func (svc *statusWriteService) Create(ctx context.Context, in CreateStatusInput)
 			MentionedAccountIDs: mentionedAccountIDs,
 			ParentAPID:          parentAPID,
 			Local:               created.IsLocal(),
-		})
+		}
+		if createdPollID != "" {
+			if p, pErr := tx.GetPollByID(ctx, createdPollID); pErr == nil {
+				payload.Poll = p
+			}
+			if pOpts, pErr := tx.ListPollOptions(ctx, createdPollID); pErr == nil {
+				payload.PollOptions = pOpts
+			}
+		}
+		return events.EmitEvent(ctx, tx, domain.EventStatusCreated, "status", statusID, payload)
 	})
 	if err != nil {
 		return EnrichedStatus{}, fmt.Errorf("Create: %w", err)
@@ -442,7 +451,9 @@ func (svc *statusWriteService) Create(ctx context.Context, in CreateStatusInput)
 	}
 	if createdPollID != "" {
 		enrichedPoll, getErr := svc.statusSvc.GetPoll(ctx, createdPollID, &in.AccountID)
-		if getErr == nil {
+		if getErr != nil {
+			slog.WarnContext(ctx, "poll enrichment failed after create", slog.Any("error", getErr), slog.String("poll_id", createdPollID), slog.String("status_id", created.ID))
+		} else {
 			out.Poll = enrichedPoll
 		}
 	}

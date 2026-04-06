@@ -289,9 +289,14 @@ func (svc *statusService) EnrichStatuses(ctx context.Context, statuses []*domain
 		}
 		if opts.IncludePoll {
 			poll, pollErr := svc.store.GetPollByStatusID(ctx, st.ID)
+			if pollErr != nil && !errors.Is(pollErr, domain.ErrNotFound) {
+				slog.WarnContext(ctx, "enrich status: get poll", slog.Any("error", pollErr), slog.String("status_id", st.ID))
+			}
 			if pollErr == nil && poll != nil {
 				enrichedPoll, enrichErr := svc.getPollEnriched(ctx, poll.ID, opts.ViewerID)
-				if enrichErr == nil {
+				if enrichErr != nil {
+					slog.WarnContext(ctx, "enrich status: enrich poll", slog.Any("error", enrichErr), slog.String("poll_id", poll.ID), slog.String("status_id", st.ID))
+				} else {
 					e.Poll = enrichedPoll
 				}
 			}
@@ -376,17 +381,9 @@ func (svc *statusService) getPollEnriched(ctx context.Context, pollID string, vi
 	if err != nil {
 		return nil, fmt.Errorf("GetPoll ListPollOptions: %w", err)
 	}
-	counts, err := svc.store.GetVoteCountsByPoll(ctx, pollID)
-	if err != nil {
-		return nil, fmt.Errorf("GetPoll GetVoteCountsByPoll: %w", err)
-	}
 	optionsWithCount := make([]PollOptionWithCount, 0, len(opts))
 	for _, o := range opts {
-		c := 0
-		if n, ok := counts[o.ID]; ok {
-			c = n
-		}
-		optionsWithCount = append(optionsWithCount, PollOptionWithCount{Title: o.Title, VotesCount: c})
+		optionsWithCount = append(optionsWithCount, PollOptionWithCount{Title: o.Title, VotesCount: o.VotesCount})
 	}
 	var voted bool
 	var ownVotes []int

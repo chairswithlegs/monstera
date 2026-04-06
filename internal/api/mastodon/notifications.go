@@ -45,7 +45,9 @@ func (h *NotificationsHandler) GETNotifications(w http.ResponseWriter, r *http.R
 	}
 	params := PageParamsFromRequest(r)
 	maxID := optionalString(params.MaxID)
-	list, err := h.notifications.List(r.Context(), account.ID, maxID, params.Limit)
+	types := parseArrayParam(r, "types[]")
+	excludeTypes := parseArrayParam(r, "exclude_types[]")
+	list, err := h.notifications.List(r.Context(), account.ID, maxID, params.Limit, types, excludeTypes)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return

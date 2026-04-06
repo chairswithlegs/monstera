@@ -27,9 +27,23 @@ type CreateRemoteStatusInput struct {
 	Attachments    []CreateRemoteMediaInput // optional; created and attached after status is created (max 4)
 	APID           string
 	Sensitive      bool
-	HashtagNames   []string   // hashtag names (without '#') from inbound Note tags
-	MentionIRIs    []string   // actor IRIs of mentioned accounts from inbound Note tags
-	PublishedAt    *time.Time // original publish time from AP Note; nil falls back to NOW()
+	HashtagNames   []string               // hashtag names (without '#') from inbound Note tags
+	MentionIRIs    []string               // actor IRIs of mentioned accounts from inbound Note tags
+	PublishedAt    *time.Time             // original publish time from AP Note; nil falls back to NOW()
+	Poll           *CreateRemotePollInput // optional; when set, creates a poll alongside the status
+}
+
+// CreateRemotePollInput carries poll data for a remote status with a poll (AP Question).
+type CreateRemotePollInput struct {
+	Multiple  bool
+	ExpiresAt *time.Time
+	Options   []CreateRemotePollOptionInput
+}
+
+// CreateRemotePollOptionInput carries a single poll option for remote poll creation.
+type CreateRemotePollOptionInput struct {
+	Title      string
+	VotesCount int
 }
 
 // CreateRemoteReblogInput is the input for creating a remote reblog (e.g. from federation Announce).
@@ -53,6 +67,7 @@ type RemoteStatusWriteService interface {
 	CreateRemote(ctx context.Context, in CreateRemoteStatusInput) (*domain.Status, error)
 	UpdateRemote(ctx context.Context, statusID string, st *domain.Status, in UpdateRemoteStatusInput) error
 	DeleteRemote(ctx context.Context, statusID string) error
+	UpdateRemotePollVoteCounts(ctx context.Context, statusAPID string, optionVoteCounts []int) error
 	CreateRemoteReblog(ctx context.Context, in CreateRemoteReblogInput) (*domain.Status, error)
 	DeleteRemoteReblog(ctx context.Context, accountID, statusID string) error
 	CreateRemoteFavourite(ctx context.Context, accountID, statusID string, apID *string) (*domain.Favourite, error)
@@ -137,6 +152,35 @@ func (svc *remoteStatusWriteService) CreateRemote(ctx context.Context, in Create
 		for _, accID := range mentionAccountIDs {
 			if txErr = tx.CreateStatusMention(ctx, st.ID, accID); txErr != nil {
 				slog.WarnContext(ctx, "CreateRemote: create mention failed", slog.String("status_id", st.ID), slog.String("account_id", accID), slog.Any("error", txErr))
+			}
+		}
+
+		// Create poll if present (AP Question).
+		if in.Poll != nil && len(in.Poll.Options) > 0 {
+			pollID := uid.New()
+			if _, txErr = tx.CreatePoll(ctx, store.CreatePollInput{
+				ID:        pollID,
+				StatusID:  st.ID,
+				ExpiresAt: in.Poll.ExpiresAt,
+				Multiple:  in.Poll.Multiple,
+			}); txErr != nil {
+				return fmt.Errorf("CreatePoll: %w", txErr)
+			}
+			for i, opt := range in.Poll.Options {
+				optID := uid.New()
+				if _, txErr = tx.CreatePollOption(ctx, store.CreatePollOptionInput{
+					ID:       optID,
+					PollID:   pollID,
+					Title:    opt.Title,
+					Position: i,
+				}); txErr != nil {
+					return fmt.Errorf("CreatePollOption: %w", txErr)
+				}
+				if opt.VotesCount > 0 {
+					if txErr = tx.SetPollOptionVoteCount(ctx, pollID, i, opt.VotesCount); txErr != nil {
+						return fmt.Errorf("SetPollOptionVoteCount: %w", txErr)
+					}
+				}
 			}
 		}
 
@@ -400,6 +444,65 @@ func (svc *remoteStatusWriteService) UpdateRemote(ctx context.Context, statusID 
 		})
 	}); err != nil {
 		return fmt.Errorf("UpdateRemote: %w", err)
+	}
+	return nil
+}
+
+// UpdateRemotePollVoteCounts updates the denormalized vote counts on a remote poll
+// from an inbound Update{Question} activity. The counts are authoritative from the
+// originating server.
+func (svc *remoteStatusWriteService) UpdateRemotePollVoteCounts(ctx context.Context, statusAPID string, optionVoteCounts []int) error {
+	st, err := svc.store.GetStatusByAPID(ctx, statusAPID)
+	if err != nil {
+		return fmt.Errorf("UpdateRemotePollVoteCounts GetStatusByAPID: %w", err)
+	}
+	if err := requireRemote(st.Local, "UpdateRemotePollVoteCounts"); err != nil {
+		return err
+	}
+	poll, err := svc.store.GetPollByStatusID(ctx, st.ID)
+	if err != nil {
+		return fmt.Errorf("UpdateRemotePollVoteCounts GetPollByStatusID: %w", err)
+	}
+	// Update vote counts and emit event in one transaction for atomicity.
+	if err := svc.store.WithTx(ctx, func(tx store.Store) error {
+		for i, count := range optionVoteCounts {
+			if err := tx.SetPollOptionVoteCount(ctx, poll.ID, i, count); err != nil {
+				return fmt.Errorf("SetPollOptionVoteCount(%d): %w", i, err)
+			}
+		}
+		author, err := tx.GetAccountByID(ctx, st.AccountID)
+		if err != nil {
+			return fmt.Errorf("GetAccountByID: %w", err)
+		}
+		mentions, err := tx.GetStatusMentions(ctx, st.ID)
+		if err != nil {
+			return fmt.Errorf("GetStatusMentions: %w", err)
+		}
+		tags, err := tx.GetStatusHashtags(ctx, st.ID)
+		if err != nil {
+			return fmt.Errorf("GetStatusHashtags: %w", err)
+		}
+		media, err := tx.GetStatusAttachments(ctx, st.ID)
+		if err != nil {
+			return fmt.Errorf("GetStatusAttachments: %w", err)
+		}
+		mentionedIDs := make([]string, 0, len(mentions))
+		for _, m := range mentions {
+			if m != nil {
+				mentionedIDs = append(mentionedIDs, m.ID)
+			}
+		}
+		return events.EmitEvent(ctx, tx, domain.EventStatusUpdatedRemote, "status", st.ID, domain.StatusUpdatedPayload{
+			Status:              st,
+			Author:              author,
+			Mentions:            mentions,
+			Tags:                tags,
+			Media:               media,
+			MentionedAccountIDs: mentionedIDs,
+			Local:               st.IsLocal(),
+		})
+	}); err != nil {
+		return fmt.Errorf("UpdateRemotePollVoteCounts: %w", err)
 	}
 	return nil
 }

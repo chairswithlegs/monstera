@@ -312,8 +312,8 @@ func (w *BackfillWorker) processItem(ctx context.Context, account *domain.Accoun
 	switch activity.Type {
 	case vocab.ObjectTypeCreate:
 		w.processCreateActivity(ctx, account, &activity)
-	case vocab.ObjectTypeNote:
-		// Bare Note (not wrapped in Create).
+	case vocab.ObjectTypeNote, vocab.ObjectTypeQuestion:
+		// Bare Note or Question (not wrapped in Create).
 		w.processBareNote(ctx, account, raw)
 	default:
 		// Ignore other activity types (Announce, Like, etc.).
@@ -326,7 +326,7 @@ func (w *BackfillWorker) processCreateActivity(ctx context.Context, account *dom
 		slog.DebugContext(ctx, "backfill: activity object is not a Note", slog.Any("error", err))
 		return
 	}
-	if note.Type != vocab.ObjectTypeNote {
+	if note.Type != vocab.ObjectTypeNote && note.Type != vocab.ObjectTypeQuestion {
 		return
 	}
 	w.createStatusFromNote(ctx, account, note)
@@ -337,7 +337,7 @@ func (w *BackfillWorker) processBareNote(ctx context.Context, account *domain.Ac
 	if err := json.Unmarshal(raw, &note); err != nil {
 		return
 	}
-	if note.Type != vocab.ObjectTypeNote {
+	if note.Type != vocab.ObjectTypeNote && note.Type != vocab.ObjectTypeQuestion {
 		return
 	}
 	w.createStatusFromNote(ctx, account, &note)
