@@ -110,6 +110,17 @@ func (s *Subscriber) handleStatusCreated(ctx context.Context, event domain.Domai
 	}
 
 	apiStatus := apimodel.StatusFromParts(payload.Status, payload.Author, payload.Mentions, payload.Tags, payload.Media, s.instanceDomain)
+	if payload.Poll != nil && len(payload.PollOptions) > 0 {
+		opts := make([]service.PollOptionWithCount, len(payload.PollOptions))
+		for i, o := range payload.PollOptions {
+			opts[i] = service.PollOptionWithCount{Title: o.Title, VotesCount: o.VotesCount}
+		}
+		p := apimodel.PollFromEnriched(&service.EnrichedPoll{
+			Poll:    *payload.Poll,
+			Options: opts,
+		})
+		apiStatus.Poll = &p
+	}
 	if payload.Status.ReblogOfID != nil {
 		if enriched, err := s.statusSvc.GetByIDEnriched(ctx, *payload.Status.ReblogOfID, nil); err == nil {
 			orig := apimodel.StatusFromEnriched(enriched, s.instanceDomain)
@@ -170,6 +181,33 @@ func (s *Subscriber) handlePollUpdated(ctx context.Context, event domain.DomainE
 		if m != nil {
 			mentionedIDs = append(mentionedIDs, m.ID)
 		}
+	}
+	// If triggered by a vote, skip the voter's user stream — they already got
+	// the updated poll in the HTTP response and delivering via SSE causes
+	// clients to double-count.
+	if payload.VoterAccountID != "" {
+		ev := SSEEvent{Event: EventStatusUpdate, Data: string(statusJSON), Stream: streamNameUser}
+		// Deliver to all followers except the voter.
+		followerIDs, err := s.store.GetLocalFollowerAccountIDs(ctx, payload.Status.AccountID)
+		if err != nil {
+			slog.ErrorContext(ctx, "sse subscriber: get local followers for poll update", slog.Any("error", err))
+		} else {
+			for _, fid := range followerIDs {
+				if fid == payload.VoterAccountID {
+					continue
+				}
+				if subj := StreamKeyToSubject(StreamUserPrefix + fid); subj != "" {
+					s.publish(ctx, subj, ev, "events.user.*")
+				}
+			}
+		}
+		// Also deliver to the author if they're not the voter.
+		if payload.Status.AccountID != payload.VoterAccountID {
+			if subj := StreamKeyToSubject(StreamUserPrefix + payload.Status.AccountID); subj != "" {
+				s.publish(ctx, subj, ev, "events.user.*")
+			}
+		}
+		return
 	}
 	s.routeStatusEvent(ctx, EventStatusUpdate, payload.Status.AccountID, payload.Status.Visibility, false, payload.Status.Local, statusJSON, hashtagNames, mentionedIDs, payload.Status)
 }

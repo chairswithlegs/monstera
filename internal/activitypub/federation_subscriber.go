@@ -3,6 +3,7 @@ package activitypub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -294,9 +295,22 @@ func (s *FederationSubscriber) handlePollUpdated(ctx context.Context, event doma
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal poll.updated payload: %w", err)
 	}
-	if !payload.Local || payload.Author == nil || payload.Status == nil {
+	if payload.Author == nil || payload.Status == nil {
 		return nil
 	}
+	// Local polls: we are the authoritative instance → send Update{Question} to followers.
+	if payload.Local {
+		return s.sendPollUpdate(ctx, payload)
+	}
+	// Remote polls: send Create{Note} vote(s) to the poll author's inbox.
+	if payload.VoterAccountID != "" && len(payload.VoteOptionNames) > 0 && payload.AuthorInboxURL != "" {
+		return s.sendPollVotes(ctx, payload)
+	}
+	return nil
+}
+
+// sendPollUpdate sends an Update{Question} for a local poll to followers.
+func (s *FederationSubscriber) sendPollUpdate(ctx context.Context, payload domain.PollUpdatedPayload) error {
 	noteInput := vocab.LocalStatusToNoteInput{
 		Status:       payload.Status,
 		Author:       payload.Author,
@@ -322,13 +336,40 @@ func (s *FederationSubscriber) handlePollUpdated(ctx context.Context, event doma
 	if err != nil {
 		return fmt.Errorf("marshal poll update: %w", err)
 	}
-	err = s.fanout.Publish(ctx, "update", internal.OutboxFanoutMessage{
+	return s.fanout.Publish(ctx, "update", internal.OutboxFanoutMessage{
 		ActivityID: activityID + "#poll-update",
 		Activity:   raw,
 		SenderID:   payload.Author.ID,
 	})
-	if err != nil {
-		return fmt.Errorf("publish poll updated: %w", err)
+}
+
+// sendPollVotes sends Create{Note} vote activities to the remote poll author's inbox.
+// Per Mastodon convention, each selected option is a separate activity.
+func (s *FederationSubscriber) sendPollVotes(ctx context.Context, payload domain.PollUpdatedPayload) error {
+	if payload.VoterAccount == nil {
+		return errors.New("sendPollVotes: voter account is nil")
+	}
+	voterActorID := vocab.AccountActorID(payload.VoterAccount, s.instanceBaseURL)
+
+	for i, optionName := range payload.VoteOptionNames {
+		voteID := fmt.Sprintf("%s#votes/%s/%d", voterActorID, uid.New(), i)
+		voteNote := vocab.NewVoteNote(voteID, voterActorID, payload.StatusAPID, payload.AuthorAPID, optionName)
+		create, err := vocab.NewCreateNoteActivity(voteID+"/activity", voteNote)
+		if err != nil {
+			return fmt.Errorf("wrap vote create: %w", err)
+		}
+		raw, err := json.Marshal(create)
+		if err != nil {
+			return fmt.Errorf("marshal vote create: %w", err)
+		}
+		if err := s.delivery.Publish(ctx, "create", internal.OutboxDeliveryMessage{
+			ActivityID:  voteID + "/activity",
+			Activity:    raw,
+			TargetInbox: payload.AuthorInboxURL,
+			SenderID:    payload.VoterAccountID,
+		}); err != nil {
+			return fmt.Errorf("deliver vote: %w", err)
+		}
 	}
 	return nil
 }

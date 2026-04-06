@@ -11,6 +11,7 @@ import (
 
 	"github.com/chairswithlegs/monstera/internal/cache"
 	"github.com/chairswithlegs/monstera/internal/store"
+	"github.com/chairswithlegs/monstera/internal/uid"
 )
 
 const adminMetricsCacheKey = "admin:metrics"
@@ -37,6 +38,7 @@ type adminMetricsService struct {
 	store           store.Store
 	js              jetstream.JetStream
 	cache           cache.Store
+	cacheKey        string
 	deliveryDLQName string
 	fanoutDLQName   string
 }
@@ -48,13 +50,14 @@ func NewAdminMetricsService(s store.Store, js jetstream.JetStream, c cache.Store
 		store:           s,
 		js:              js,
 		cache:           c,
+		cacheKey:        adminMetricsCacheKey + ":" + uid.New(), // Each instance has a unique cache key. This avoids cross-instance collisions in tests.
 		deliveryDLQName: deliveryDLQ,
 		fanoutDLQName:   fanoutDLQ,
 	}
 }
 
 func (svc *adminMetricsService) GetMetrics(ctx context.Context) (*AdminMetrics, error) {
-	return cache.GetOrSet(ctx, svc.cache, adminMetricsCacheKey, adminMetricsCacheTTL, func() (*AdminMetrics, error) {
+	return cache.GetOrSet(ctx, svc.cache, svc.cacheKey, adminMetricsCacheTTL, func() (*AdminMetrics, error) {
 		return svc.fetchMetrics(ctx)
 	})
 }

@@ -23,6 +23,10 @@ func (p *inbox) handleCreate(ctx context.Context, activity *vocab.Activity, _ st
 	if note.Type != vocab.ObjectTypeNote && note.Type != vocab.ObjectTypeQuestion {
 		return fmt.Errorf("%w: create object type %q is not supported", ErrInboxFatal, note.Type)
 	}
+	// Detect poll vote Notes: has `name` (option text), no `content`, with `inReplyTo`.
+	if note.IsPollVote() {
+		return p.handlePollVote(ctx, activity, note)
+	}
 	if note.ID != "" {
 		if _, err := p.statuses.GetByAPID(ctx, note.ID); err == nil {
 			return nil
@@ -64,6 +68,36 @@ func (p *inbox) handleCreate(ctx context.Context, activity *vocab.Activity, _ st
 			return nil
 		}
 		return fmt.Errorf("inbox: create status: %w", err)
+	}
+	return nil
+}
+
+// handlePollVote processes an inbound Create{Note} that represents a poll vote.
+// Per Mastodon convention, a vote Note has `name` (option text), no `content`, and
+// `inReplyTo` pointing to the Question IRI. Only votes on local polls are processed.
+func (p *inbox) handlePollVote(ctx context.Context, activity *vocab.Activity, note *vocab.Note) error {
+	questionIRI := *note.InReplyTo
+	// Look up the poll's status by the Question IRI.
+	status, err := p.statuses.GetByAPID(ctx, questionIRI)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			slog.DebugContext(ctx, "inbox: poll vote for unknown status", slog.String("question_iri", questionIRI))
+			return nil // unknown poll, silently drop
+		}
+		return fmt.Errorf("inbox: GetByAPID for poll vote: %w", err)
+	}
+	// Only process votes on local polls — we are the authoritative instance.
+	if !status.IsLocal() {
+		slog.DebugContext(ctx, "inbox: ignoring poll vote for remote poll", slog.String("status_id", status.ID))
+		return nil
+	}
+	// Resolve the voter's account.
+	voter, err := p.remoteResolver.ResolveRemoteAccountByIRI(ctx, activity.Actor)
+	if err != nil {
+		return fmt.Errorf("inbox: resolve voter %q: %w", activity.Actor, err)
+	}
+	if err := p.remoteStatusWrites.RecordRemoteVote(ctx, status.ID, voter.ID, note.Name); err != nil {
+		return fmt.Errorf("inbox: RecordRemoteVote: %w", err)
 	}
 	return nil
 }

@@ -496,8 +496,13 @@ func (svc *statusInteractionService) RecordVote(ctx context.Context, pollID, acc
 	}); err != nil {
 		return nil, fmt.Errorf("RecordVote: %w", err)
 	}
+	// Collect voted option names for remote vote delivery.
+	voteOptionNames := make([]string, 0, len(optionIndices))
+	for _, idx := range optionIndices {
+		voteOptionNames = append(voteOptionNames, opts[idx].Title)
+	}
 	// Emit poll.updated event (best-effort, outside vote tx so a failure doesn't roll back the vote).
-	if emitErr := svc.emitPollUpdated(ctx, st, poll); emitErr != nil {
+	if emitErr := svc.emitPollUpdated(ctx, st, poll, accountID, voteOptionNames); emitErr != nil {
 		slog.WarnContext(ctx, "RecordVote: failed to emit poll.updated", slog.Any("error", emitErr))
 	}
 	poll2, err := svc.statusSvc.GetPoll(ctx, pollID, &accountID)
@@ -508,7 +513,9 @@ func (svc *statusInteractionService) RecordVote(ctx context.Context, pollID, acc
 }
 
 // emitPollUpdated gathers enrichment data and emits an EventPollUpdated event.
-func (svc *statusInteractionService) emitPollUpdated(ctx context.Context, st *domain.Status, poll *domain.Poll) error {
+// voterAccountID is the account that cast the vote (empty for non-vote triggers like expiry).
+// voteOptionNames are the option titles the voter selected (for remote vote delivery).
+func (svc *statusInteractionService) emitPollUpdated(ctx context.Context, st *domain.Status, poll *domain.Poll, voterAccountID string, voteOptionNames []string) error {
 	author, err := svc.store.GetAccountByID(ctx, st.AccountID)
 	if err != nil {
 		return fmt.Errorf("GetAccountByID: %w", err)
@@ -533,17 +540,29 @@ func (svc *statusInteractionService) emitPollUpdated(ctx context.Context, st *do
 	if err != nil {
 		return fmt.Errorf("GetStatusAttachments: %w", err)
 	}
+	var voterAccount *domain.Account
+	if voterAccountID != "" {
+		if v, vErr := svc.store.GetAccountByID(ctx, voterAccountID); vErr == nil {
+			voterAccount = v
+		}
+	}
 	return svc.store.WithTx(ctx, func(tx store.Store) error {
 		return events.EmitEvent(ctx, tx, domain.EventPollUpdated, "poll", poll.ID, domain.PollUpdatedPayload{
-			Status:      st,
-			Author:      author,
-			Poll:        poll,
-			PollOptions: updatedOpts,
-			VotersCount: votersCount,
-			Mentions:    mentions,
-			Tags:        tags,
-			Media:       media,
-			Local:       st.IsLocal(),
+			Status:          st,
+			Author:          author,
+			Poll:            poll,
+			PollOptions:     updatedOpts,
+			VotersCount:     votersCount,
+			Mentions:        mentions,
+			Tags:            tags,
+			Media:           media,
+			VoterAccountID:  voterAccountID,
+			VoterAccount:    voterAccount,
+			VoteOptionNames: voteOptionNames,
+			StatusAPID:      st.APID,
+			AuthorAPID:      author.APID,
+			AuthorInboxURL:  author.InboxURL,
+			Local:           st.IsLocal(),
 		})
 	})
 }

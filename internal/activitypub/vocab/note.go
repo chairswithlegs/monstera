@@ -41,6 +41,7 @@ type Note struct {
 	Tag          []Tag             `json:"tag,omitempty"`
 	Attachment   []Attachment      `json:"attachment,omitempty"`
 	Replies      json.RawMessage   `json:"replies,omitempty"`
+	Name         string            `json:"name,omitempty"` // used by poll vote Notes (option text)
 
 	// Poll fields (present when Type == "Question")
 	OneOf       []PollOptionEntry `json:"oneOf,omitempty"`
@@ -173,6 +174,21 @@ func LocalStatusToNote(in LocalStatusToNoteInput) (*Note, error) {
 		note.VotersCount = &in.Poll.VotersCount
 	}
 	return note, nil
+}
+
+// NewVoteNote builds a Note representing a poll vote for federation.
+// The vote is addressed to the poll author only (like a DM).
+// Per Mastodon convention, a vote Note has `name` (option text) but no `content`.
+func NewVoteNote(voteID, voterActorID, questionIRI, authorActorID, optionName string) *Note {
+	return &Note{
+		Context:      DefaultContext,
+		ID:           voteID,
+		Type:         ObjectTypeNote,
+		AttributedTo: voterActorID,
+		Name:         optionName,
+		InReplyTo:    &questionIRI,
+		To:           []string{authorActorID},
+	}
 }
 
 // noteAddressing returns To and Cc slices per Mastodon/AP convention.
@@ -360,6 +376,12 @@ func buildPollOptionEntries(options []LocalPollOptionData) []PollOptionEntry {
 }
 
 // --- Poll helpers ---
+
+// IsPollVote returns true if the Note represents a poll vote.
+// Per Mastodon convention: has `name` (option text), no `content`, and `inReplyTo` set.
+func (n *Note) IsPollVote() bool {
+	return n.Name != "" && n.Content == "" && n.InReplyTo != nil && *n.InReplyTo != ""
+}
 
 // IsQuestion returns true if the Note represents an AP Question (poll).
 func (n *Note) IsQuestion() bool {

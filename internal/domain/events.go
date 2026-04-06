@@ -182,15 +182,21 @@ type AccountUpdatedPayload struct {
 
 // PollUpdatedPayload carries data when poll vote counts change (local vote cast).
 type PollUpdatedPayload struct {
-	Status      *Status           `json:"status"`
-	Author      *Account          `json:"author"`
-	Poll        *Poll             `json:"poll"`
-	PollOptions []PollOption      `json:"poll_options"`
-	VotersCount int               `json:"voters_count"`
-	Mentions    []*Account        `json:"mentions,omitempty"`
-	Tags        []Hashtag         `json:"tags,omitempty"`
-	Media       []MediaAttachment `json:"media,omitempty"`
-	Local       bool              `json:"local"`
+	Status          *Status           `json:"status"`
+	Author          *Account          `json:"author"`
+	Poll            *Poll             `json:"poll"`
+	PollOptions     []PollOption      `json:"poll_options"`
+	VotersCount     int               `json:"voters_count"`
+	Mentions        []*Account        `json:"mentions,omitempty"`
+	Tags            []Hashtag         `json:"tags,omitempty"`
+	Media           []MediaAttachment `json:"media,omitempty"`
+	VoterAccountID  string            `json:"voter_account_id,omitempty"`  // set when triggered by a vote; SSE skips this user's stream
+	VoterAccount    *Account          `json:"voter_account,omitempty"`     // voter's account for federation delivery
+	VoteOptionNames []string          `json:"vote_option_names,omitempty"` // option titles the voter selected (for remote vote delivery)
+	StatusAPID      string            `json:"status_ap_id,omitempty"`      // APID of the poll status (Question IRI for remote vote delivery)
+	AuthorAPID      string            `json:"author_ap_id,omitempty"`      // APID of the poll author (for remote vote delivery)
+	AuthorInboxURL  string            `json:"author_inbox_url,omitempty"`  // inbox URL of the poll author (for remote vote delivery)
+	Local           bool              `json:"local"`
 }
 
 // NotificationCreatedPayload carries data for a new notification (SSE-only).
