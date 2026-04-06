@@ -7,6 +7,8 @@ RETURNING *;
 SELECT * FROM notifications
 WHERE account_id = $1
   AND ($2::text IS NULL OR id < $2)
+  AND (cardinality($4::text[]) = 0 OR type = ANY($4::text[]))
+  AND (cardinality($5::text[]) = 0 OR type != ALL($5::text[]))
 ORDER BY id DESC
 LIMIT $3;
 
@@ -55,6 +57,8 @@ FROM (
   WHERE account_id = $1
     AND group_key != ''
     AND ($2::text IS NULL OR id < $2)
+    AND (cardinality($4::text[]) = 0 OR type = ANY($4::text[]))
+    AND (cardinality($5::text[]) = 0 OR type != ALL($5::text[]))
   GROUP BY group_key
   ORDER BY MAX(id) DESC
   LIMIT $3

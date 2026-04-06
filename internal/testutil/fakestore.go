@@ -1798,7 +1798,7 @@ func (f *FakeStore) CreateNotification(ctx context.Context, in store.CreateNotif
 	f.notificationsByAccount[in.AccountID] = append(f.notificationsByAccount[in.AccountID], n)
 	return n, nil
 }
-func (f *FakeStore) ListNotifications(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Notification, error) {
+func (f *FakeStore) ListNotifications(_ context.Context, accountID string, maxID *string, limit int, types, excludeTypes []string) ([]domain.Notification, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	list := f.notificationsByAccount[accountID]
@@ -1809,10 +1809,24 @@ func (f *FakeStore) ListNotifications(ctx context.Context, accountID string, max
 	if maxID != nil && *maxID != "" {
 		cursor = *maxID
 	}
+	typesSet := make(map[string]bool, len(types))
+	for _, t := range types {
+		typesSet[t] = true
+	}
+	excludeSet := make(map[string]bool, len(excludeTypes))
+	for _, t := range excludeTypes {
+		excludeSet[t] = true
+	}
 	out := make([]domain.Notification, 0, limit)
 	for i := len(list) - 1; i >= 0 && len(out) < limit; i-- {
 		n := list[i]
 		if cursor != noCursorSentinel && n.ID >= cursor {
+			continue
+		}
+		if len(typesSet) > 0 && !typesSet[n.Type] {
+			continue
+		}
+		if excludeSet[n.Type] {
 			continue
 		}
 		out = append(out, *n)
@@ -1835,10 +1849,18 @@ func (f *FakeStore) ClearNotifications(ctx context.Context, accountID string) er
 func (f *FakeStore) DismissNotification(ctx context.Context, id, accountID string) error {
 	return nil
 }
-func (f *FakeStore) ListGroupedNotifications(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.NotificationGroup, error) {
+func (f *FakeStore) ListGroupedNotifications(_ context.Context, accountID string, maxID *string, limit int, types, excludeTypes []string) ([]domain.NotificationGroup, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	list := f.notificationsByAccount[accountID]
+	typesSet := make(map[string]bool, len(types))
+	for _, t := range types {
+		typesSet[t] = true
+	}
+	excludeSet := make(map[string]bool, len(excludeTypes))
+	for _, t := range excludeTypes {
+		excludeSet[t] = true
+	}
 	groups := make(map[string]*domain.NotificationGroup)
 	var order []string
 	for i := len(list) - 1; i >= 0; i-- {
@@ -1847,6 +1869,12 @@ func (f *FakeStore) ListGroupedNotifications(ctx context.Context, accountID stri
 			continue
 		}
 		if maxID != nil && *maxID != "" && n.ID >= *maxID {
+			continue
+		}
+		if len(typesSet) > 0 && !typesSet[n.Type] {
+			continue
+		}
+		if excludeSet[n.Type] {
 			continue
 		}
 		g, exists := groups[n.GroupKey]
@@ -3876,6 +3904,39 @@ func (f *FakeStore) ListPollOptions(ctx context.Context, pollID string) ([]domai
 		return cp[i].ID < cp[j].ID
 	})
 	return cp, nil
+}
+
+func (f *FakeStore) CountDistinctVoters(_ context.Context, pollID string) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	voters := make(map[string]struct{})
+	for _, v := range f.pollVotes {
+		if v.pollID == pollID {
+			voters[v.accountID] = struct{}{}
+		}
+	}
+	return len(voters), nil
+}
+
+func (f *FakeStore) ListExpiredOpenPollStatusIDs(_ context.Context, _ int) ([]string, error) {
+	return nil, nil
+}
+
+func (f *FakeStore) ClosePoll(_ context.Context, _ string) error {
+	return nil
+}
+
+func (f *FakeStore) SetPollOptionVoteCount(_ context.Context, pollID string, position, count int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	opts := f.pollOptions[pollID]
+	for i := range opts {
+		if opts[i].Position == position {
+			opts[i].VotesCount = count
+			return nil
+		}
+	}
+	return nil
 }
 
 func (f *FakeStore) DeletePollVotesByAccount(ctx context.Context, pollID, accountID string) error {

@@ -103,6 +103,8 @@ func (n *NotificationSubscriber) processMessage(ctx context.Context, msg jetstre
 		n.handleReblogCreated(ctx, event)
 	case domain.EventStatusCreated, domain.EventStatusCreatedRemote:
 		n.handleStatusCreatedMentions(ctx, event)
+	case domain.EventPollExpired:
+		n.handlePollExpired(ctx, event)
 	}
 	_ = msg.Ack()
 }
@@ -220,6 +222,28 @@ func (n *NotificationSubscriber) handleStatusCreatedMentions(ctx context.Context
 		}
 		n.createOrFilterNotification(ctx, mentioned.ID, payload.Author.ID, domain.NotificationTypeMention, &statusID, fc)
 	}
+}
+
+// handlePollExpired notifies the poll author when their poll closes.
+// Per Mastodon behavior, poll authors are only notified on expiry, not on each vote.
+func (n *NotificationSubscriber) handlePollExpired(ctx context.Context, event domain.DomainEvent) {
+	var payload domain.PollUpdatedPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		slog.ErrorContext(ctx, "notification subscriber: unmarshal poll event", slog.Any("error", err))
+		return
+	}
+	if payload.Status == nil || payload.Author == nil {
+		return
+	}
+	// Only notify local poll authors.
+	if payload.Author.IsRemote() {
+		return
+	}
+	statusID := payload.Status.ID
+	// Use the author as both the "from" and recipient for poll expiry notifications
+	// (Mastodon sends "your poll has ended" from the author to themselves).
+	fc := filterContext{fromAccount: payload.Author}
+	n.createOrFilterNotification(ctx, payload.Author.ID, payload.Author.ID, domain.NotificationTypePoll, &statusID, fc)
 }
 
 // filterContext carries optional context needed for notification policy filtering.

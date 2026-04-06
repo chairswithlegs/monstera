@@ -61,6 +61,9 @@ const (
 	ObjectTypeReject   ObjectType = "Reject"
 	ObjectTypeBlock    ObjectType = "Block"
 
+	// Content types
+	ObjectTypeQuestion ObjectType = "Question"
+
 	// Object types
 	ObjectTypeImage    ObjectType = "Image"
 	ObjectTypeVideo    ObjectType = "Video"

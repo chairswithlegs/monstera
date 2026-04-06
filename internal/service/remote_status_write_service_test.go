@@ -509,3 +509,92 @@ func TestRemoteStatusWriteService_DeleteRemoteFavourite_EmitsEvent(t *testing.T)
 	assert.Equal(t, statusID, payload.StatusID)
 	assert.Equal(t, author.ID, payload.StatusAuthorID)
 }
+
+func TestRemoteStatusWriteService_CreateRemote_WithPoll(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := NewAccountService(st, "https://example.com")
+	acc, err := accountSvc.Register(ctx, RegisterInput{
+		Username: "remotepoll",
+		Email:    "rp@example.com",
+		Password: "p",
+		Role:     domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	statusSvc := NewStatusService(st, "https://example.com", "example.com", 5000)
+	convSvc := NewConversationService(st, statusSvc)
+	mediaSvc := NewMediaService(st, nil, 0)
+	svc := NewRemoteStatusWriteService(st, convSvc, mediaSvc, "https://example.com")
+
+	expires := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	in := CreateRemoteStatusInput{
+		AccountID:  acc.ID,
+		URI:        "https://remote.example/statuses/poll1",
+		Content:    testutil.StrPtr("What's your favorite?"),
+		Visibility: domain.VisibilityPublic,
+		APID:       "https://remote.example/statuses/poll1",
+		Poll: &CreateRemotePollInput{
+			Multiple:  false,
+			ExpiresAt: &expires,
+			Options: []CreateRemotePollOptionInput{
+				{Title: "Option A", VotesCount: 5},
+				{Title: "Option B", VotesCount: 3},
+			},
+		},
+	}
+	created, err := svc.CreateRemote(ctx, in)
+	require.NoError(t, err)
+	require.NotNil(t, created)
+
+	// Verify poll was created.
+	poll, err := st.GetPollByStatusID(ctx, created.ID)
+	require.NoError(t, err)
+	require.NotNil(t, poll)
+	assert.False(t, poll.Multiple)
+	require.NotNil(t, poll.ExpiresAt)
+
+	// Verify options.
+	opts, err := st.ListPollOptions(ctx, poll.ID)
+	require.NoError(t, err)
+	require.Len(t, opts, 2)
+	assert.Equal(t, "Option A", opts[0].Title)
+	assert.Equal(t, 5, opts[0].VotesCount)
+	assert.Equal(t, "Option B", opts[1].Title)
+	assert.Equal(t, 3, opts[1].VotesCount)
+}
+
+func TestRemoteStatusWriteService_CreateRemote_WithoutPoll(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	accountSvc := NewAccountService(st, "https://example.com")
+	acc, err := accountSvc.Register(ctx, RegisterInput{
+		Username: "remotenopoll",
+		Email:    "rnp@example.com",
+		Password: "p",
+		Role:     domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	statusSvc := NewStatusService(st, "https://example.com", "example.com", 5000)
+	convSvc := NewConversationService(st, statusSvc)
+	mediaSvc := NewMediaService(st, nil, 0)
+	svc := NewRemoteStatusWriteService(st, convSvc, mediaSvc, "https://example.com")
+
+	in := CreateRemoteStatusInput{
+		AccountID:  acc.ID,
+		URI:        "https://remote.example/statuses/nopoll",
+		Content:    testutil.StrPtr("no poll here"),
+		Visibility: domain.VisibilityPublic,
+		APID:       "https://remote.example/statuses/nopoll",
+	}
+	created, err := svc.CreateRemote(ctx, in)
+	require.NoError(t, err)
+	require.NotNil(t, created)
+
+	// No poll should exist.
+	_, err = st.GetPollByStatusID(ctx, created.ID)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+}

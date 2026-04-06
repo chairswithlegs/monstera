@@ -25,12 +25,12 @@ const (
 // Notification creation is handled by the NotificationSubscriber
 // (internal/events/notification_subscriber.go) which reacts to domain events.
 type NotificationService interface {
-	List(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Notification, error)
+	List(ctx context.Context, accountID string, maxID *string, limit int, types, excludeTypes []string) ([]domain.Notification, error)
 	Get(ctx context.Context, id, accountID string) (*domain.Notification, error)
 	Clear(ctx context.Context, accountID string) error
 	Dismiss(ctx context.Context, id, accountID string) error
 	CreateAndEmit(ctx context.Context, recipientID, fromAccountID, notifType string, statusID *string) error
-	ListGrouped(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.NotificationGroup, error)
+	ListGrouped(ctx context.Context, accountID string, maxID *string, limit int, types, excludeTypes []string) ([]domain.NotificationGroup, error)
 	GetGroup(ctx context.Context, accountID, groupKey string) ([]domain.Notification, error)
 	DismissGroup(ctx context.Context, accountID, groupKey string) error
 	CountUnreadGroups(ctx context.Context, accountID string) (int64, error)
@@ -47,7 +47,7 @@ func NewNotificationService(s store.Store) NotificationService {
 
 // List returns notifications for the account with cursor pagination.
 // limit is clamped to [1, maxNotificationLimit]; default defaultNotificationLimit if <= 0.
-func (svc *notificationService) List(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Notification, error) {
+func (svc *notificationService) List(ctx context.Context, accountID string, maxID *string, limit int, types, excludeTypes []string) ([]domain.Notification, error) {
 	l := limit
 	if l <= 0 {
 		l = defaultNotificationLimit
@@ -55,7 +55,7 @@ func (svc *notificationService) List(ctx context.Context, accountID string, maxI
 	if l > maxNotificationLimit {
 		l = maxNotificationLimit
 	}
-	rows, err := svc.store.ListNotifications(ctx, accountID, maxID, l)
+	rows, err := svc.store.ListNotifications(ctx, accountID, maxID, l, types, excludeTypes)
 	if err != nil {
 		return nil, fmt.Errorf("ListNotifications: %w", err)
 	}
@@ -156,7 +156,7 @@ func (svc *notificationService) CreateAndEmit(ctx context.Context, recipientID, 
 }
 
 // ListGrouped returns notification groups for the account with cursor pagination.
-func (svc *notificationService) ListGrouped(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.NotificationGroup, error) {
+func (svc *notificationService) ListGrouped(ctx context.Context, accountID string, maxID *string, limit int, types, excludeTypes []string) ([]domain.NotificationGroup, error) {
 	l := limit
 	if l <= 0 {
 		l = defaultNotificationLimit
@@ -164,7 +164,7 @@ func (svc *notificationService) ListGrouped(ctx context.Context, accountID strin
 	if l > maxNotificationLimit {
 		l = maxNotificationLimit
 	}
-	groups, err := svc.store.ListGroupedNotifications(ctx, accountID, maxID, l)
+	groups, err := svc.store.ListGroupedNotifications(ctx, accountID, maxID, l, types, excludeTypes)
 	if err != nil {
 		return nil, fmt.Errorf("ListGroupedNotifications: %w", err)
 	}

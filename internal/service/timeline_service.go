@@ -79,7 +79,7 @@ func (svc *timelineService) enrichStatuses(ctx context.Context, statuses []domai
 	for i := range statuses {
 		ptrs[i] = &statuses[i]
 	}
-	enriched, err := svc.statusSvc.EnrichStatuses(ctx, ptrs, EnrichOpts{IncludeCard: true, ViewerID: viewerAccountID})
+	enriched, err := svc.statusSvc.EnrichStatuses(ctx, ptrs, EnrichOpts{IncludeCard: true, IncludePoll: true, ViewerID: viewerAccountID})
 	if err != nil {
 		return nil, fmt.Errorf("enrichStatuses: %w", err)
 	}

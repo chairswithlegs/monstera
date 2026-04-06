@@ -228,11 +228,11 @@ type ContentStore interface {
 // NotificationStore handles notification persistence.
 type NotificationStore interface {
 	CreateNotification(ctx context.Context, in CreateNotificationInput) (*domain.Notification, error)
-	ListNotifications(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Notification, error)
+	ListNotifications(ctx context.Context, accountID string, maxID *string, limit int, types, excludeTypes []string) ([]domain.Notification, error)
 	GetNotification(ctx context.Context, id, accountID string) (*domain.Notification, error)
 	ClearNotifications(ctx context.Context, accountID string) error
 	DismissNotification(ctx context.Context, id, accountID string) error
-	ListGroupedNotifications(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.NotificationGroup, error)
+	ListGroupedNotifications(ctx context.Context, accountID string, maxID *string, limit int, types, excludeTypes []string) ([]domain.NotificationGroup, error)
 	GetNotificationGroup(ctx context.Context, accountID, groupKey string) ([]domain.Notification, error)
 	DismissNotificationGroup(ctx context.Context, accountID, groupKey string) error
 	CountUnreadGroupedNotifications(ctx context.Context, accountID string) (int64, error)
@@ -399,7 +399,11 @@ type PollStore interface {
 	ListPollOptions(ctx context.Context, pollID string) ([]domain.PollOption, error)
 	DeletePollVotesByAccount(ctx context.Context, pollID, accountID string) error
 	CreatePollVote(ctx context.Context, id, pollID, accountID, optionID string) error
+	SetPollOptionVoteCount(ctx context.Context, pollID string, position, count int) error
+	ListExpiredOpenPollStatusIDs(ctx context.Context, limit int) ([]string, error)
+	ClosePoll(ctx context.Context, pollID string) error
 	GetVoteCountsByPoll(ctx context.Context, pollID string) (map[string]int, error)
+	CountDistinctVoters(ctx context.Context, pollID string) (int, error)
 	HasVotedOnPoll(ctx context.Context, pollID, accountID string) (bool, error)
 	GetOwnVoteOptionIDs(ctx context.Context, pollID, accountID string) ([]string, error)
 }

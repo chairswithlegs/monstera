@@ -194,6 +194,8 @@ FROM (
   WHERE account_id = $1
     AND group_key != ''
     AND ($2::text IS NULL OR id < $2)
+    AND (cardinality($4::text[]) = 0 OR type = ANY($4::text[]))
+    AND (cardinality($5::text[]) = 0 OR type != ALL($5::text[]))
   GROUP BY group_key
   ORDER BY MAX(id) DESC
   LIMIT $3
@@ -201,9 +203,11 @@ FROM (
 `
 
 type ListGroupedNotificationsParams struct {
-	AccountID string `json:"account_id"`
-	Column2   string `json:"column_2"`
-	Limit     int32  `json:"limit"`
+	AccountID string   `json:"account_id"`
+	Column2   string   `json:"column_2"`
+	Limit     int32    `json:"limit"`
+	Column4   []string `json:"column_4"`
+	Column5   []string `json:"column_5"`
 }
 
 type ListGroupedNotificationsRow struct {
@@ -219,7 +223,13 @@ type ListGroupedNotificationsRow struct {
 }
 
 func (q *Queries) ListGroupedNotifications(ctx context.Context, arg ListGroupedNotificationsParams) ([]ListGroupedNotificationsRow, error) {
-	rows, err := q.db.Query(ctx, listGroupedNotifications, arg.AccountID, arg.Column2, arg.Limit)
+	rows, err := q.db.Query(ctx, listGroupedNotifications,
+		arg.AccountID,
+		arg.Column2,
+		arg.Limit,
+		arg.Column4,
+		arg.Column5,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -252,18 +262,28 @@ const listNotifications = `-- name: ListNotifications :many
 SELECT id, account_id, from_id, type, status_id, read, created_at, group_key FROM notifications
 WHERE account_id = $1
   AND ($2::text IS NULL OR id < $2)
+  AND (cardinality($4::text[]) = 0 OR type = ANY($4::text[]))
+  AND (cardinality($5::text[]) = 0 OR type != ALL($5::text[]))
 ORDER BY id DESC
 LIMIT $3
 `
 
 type ListNotificationsParams struct {
-	AccountID string `json:"account_id"`
-	Column2   string `json:"column_2"`
-	Limit     int32  `json:"limit"`
+	AccountID string   `json:"account_id"`
+	Column2   string   `json:"column_2"`
+	Limit     int32    `json:"limit"`
+	Column4   []string `json:"column_4"`
+	Column5   []string `json:"column_5"`
 }
 
 func (q *Queries) ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]Notification, error) {
-	rows, err := q.db.Query(ctx, listNotifications, arg.AccountID, arg.Column2, arg.Limit)
+	rows, err := q.db.Query(ctx, listNotifications,
+		arg.AccountID,
+		arg.Column2,
+		arg.Limit,
+		arg.Column4,
+		arg.Column5,
+	)
 	if err != nil {
 		return nil, err
 	}

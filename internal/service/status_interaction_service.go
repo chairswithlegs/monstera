@@ -468,19 +468,101 @@ func (svc *statusInteractionService) RecordVote(ctx context.Context, pollID, acc
 			return nil, fmt.Errorf("RecordVote: %w", domain.ErrValidation)
 		}
 	}
-	if err := svc.store.DeletePollVotesByAccount(ctx, pollID, accountID); err != nil {
+	// Vote creation, count denormalization, and event emission in one transaction.
+	if err := svc.store.WithTx(ctx, func(tx store.Store) error {
+		if err := tx.DeletePollVotesByAccount(ctx, pollID, accountID); err != nil {
+			return fmt.Errorf("DeletePollVotesByAccount: %w", err)
+		}
+		for _, idx := range optionIndices {
+			voteID := uid.New()
+			if err := tx.CreatePollVote(ctx, voteID, pollID, accountID, opts[idx].ID); err != nil {
+				return fmt.Errorf("CreatePollVote: %w", err)
+			}
+		}
+		counts, err := tx.GetVoteCountsByPoll(ctx, pollID)
+		if err != nil {
+			return fmt.Errorf("GetVoteCountsByPoll: %w", err)
+		}
+		for i, o := range opts {
+			c := 0
+			if n, ok := counts[o.ID]; ok {
+				c = n
+			}
+			if err := tx.SetPollOptionVoteCount(ctx, pollID, i, c); err != nil {
+				return fmt.Errorf("SetPollOptionVoteCount: %w", err)
+			}
+		}
+		return nil
+	}); err != nil {
 		return nil, fmt.Errorf("RecordVote: %w", err)
 	}
+	// Collect voted option names for remote vote delivery.
+	voteOptionNames := make([]string, 0, len(optionIndices))
 	for _, idx := range optionIndices {
-		optionID := opts[idx].ID
-		voteID := uid.New()
-		if err := svc.store.CreatePollVote(ctx, voteID, pollID, accountID, optionID); err != nil {
-			return nil, fmt.Errorf("RecordVote: %w", err)
-		}
+		voteOptionNames = append(voteOptionNames, opts[idx].Title)
+	}
+	// Emit poll.updated event (best-effort, outside vote tx so a failure doesn't roll back the vote).
+	if emitErr := svc.emitPollUpdated(ctx, st, poll, accountID, voteOptionNames); emitErr != nil {
+		slog.WarnContext(ctx, "RecordVote: failed to emit poll.updated", slog.Any("error", emitErr))
 	}
 	poll2, err := svc.statusSvc.GetPoll(ctx, pollID, &accountID)
 	if err != nil {
 		return nil, fmt.Errorf("RecordVote: %w", err)
 	}
 	return poll2, nil
+}
+
+// emitPollUpdated gathers enrichment data and emits an EventPollUpdated event.
+// voterAccountID is the account that cast the vote (empty for non-vote triggers like expiry).
+// voteOptionNames are the option titles the voter selected (for remote vote delivery).
+func (svc *statusInteractionService) emitPollUpdated(ctx context.Context, st *domain.Status, poll *domain.Poll, voterAccountID string, voteOptionNames []string) error {
+	author, err := svc.store.GetAccountByID(ctx, st.AccountID)
+	if err != nil {
+		return fmt.Errorf("GetAccountByID: %w", err)
+	}
+	updatedOpts, err := svc.store.ListPollOptions(ctx, poll.ID)
+	if err != nil {
+		return fmt.Errorf("ListPollOptions: %w", err)
+	}
+	votersCount, err := svc.store.CountDistinctVoters(ctx, poll.ID)
+	if err != nil {
+		return fmt.Errorf("CountDistinctVoters: %w", err)
+	}
+	mentions, err := svc.store.GetStatusMentions(ctx, st.ID)
+	if err != nil {
+		return fmt.Errorf("GetStatusMentions: %w", err)
+	}
+	tags, err := svc.store.GetStatusHashtags(ctx, st.ID)
+	if err != nil {
+		return fmt.Errorf("GetStatusHashtags: %w", err)
+	}
+	media, err := svc.store.GetStatusAttachments(ctx, st.ID)
+	if err != nil {
+		return fmt.Errorf("GetStatusAttachments: %w", err)
+	}
+	var voterAccount *domain.Account
+	if voterAccountID != "" {
+		if v, vErr := svc.store.GetAccountByID(ctx, voterAccountID); vErr == nil {
+			voterAccount = v
+		}
+	}
+	return svc.store.WithTx(ctx, func(tx store.Store) error {
+		return events.EmitEvent(ctx, tx, domain.EventPollUpdated, "poll", poll.ID, domain.PollUpdatedPayload{
+			Status:          st,
+			Author:          author,
+			Poll:            poll,
+			PollOptions:     updatedOpts,
+			VotersCount:     votersCount,
+			Mentions:        mentions,
+			Tags:            tags,
+			Media:           media,
+			VoterAccountID:  voterAccountID,
+			VoterAccount:    voterAccount,
+			VoteOptionNames: voteOptionNames,
+			StatusAPID:      st.APID,
+			AuthorAPID:      author.APID,
+			AuthorInboxURL:  author.InboxURL,
+			Local:           st.IsLocal(),
+		})
+	})
 }

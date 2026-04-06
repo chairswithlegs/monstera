@@ -11,10 +11,31 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const closePoll = `-- name: ClosePoll :exec
+UPDATE polls SET closed_at = NOW() WHERE id = $1
+`
+
+func (q *Queries) ClosePoll(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, closePoll, id)
+	return err
+}
+
+const countDistinctVoters = `-- name: CountDistinctVoters :one
+SELECT COUNT(DISTINCT account_id)::int AS voters_count
+FROM poll_votes WHERE poll_id = $1
+`
+
+func (q *Queries) CountDistinctVoters(ctx context.Context, pollID string) (int32, error) {
+	row := q.db.QueryRow(ctx, countDistinctVoters, pollID)
+	var voters_count int32
+	err := row.Scan(&voters_count)
+	return voters_count, err
+}
+
 const createPoll = `-- name: CreatePoll :one
 INSERT INTO polls (id, status_id, expires_at, multiple)
 VALUES ($1, $2, $3, $4)
-RETURNING id, status_id, expires_at, multiple, created_at
+RETURNING id, status_id, expires_at, multiple, created_at, closed_at
 `
 
 type CreatePollParams struct {
@@ -38,6 +59,7 @@ func (q *Queries) CreatePoll(ctx context.Context, arg CreatePollParams) (Poll, e
 		&i.ExpiresAt,
 		&i.Multiple,
 		&i.CreatedAt,
+		&i.ClosedAt,
 	)
 	return i, err
 }
@@ -45,7 +67,7 @@ func (q *Queries) CreatePoll(ctx context.Context, arg CreatePollParams) (Poll, e
 const createPollOption = `-- name: CreatePollOption :one
 INSERT INTO poll_options (id, poll_id, title, position)
 VALUES ($1, $2, $3, $4)
-RETURNING id, poll_id, title, position, created_at
+RETURNING id, poll_id, title, position, created_at, votes_count
 `
 
 type CreatePollOptionParams struct {
@@ -69,6 +91,7 @@ func (q *Queries) CreatePollOption(ctx context.Context, arg CreatePollOptionPara
 		&i.Title,
 		&i.Position,
 		&i.CreatedAt,
+		&i.VotesCount,
 	)
 	return i, err
 }
@@ -150,7 +173,7 @@ func (q *Queries) GetOwnVoteOptionIDs(ctx context.Context, arg GetOwnVoteOptionI
 }
 
 const getPollByID = `-- name: GetPollByID :one
-SELECT id, status_id, expires_at, multiple, created_at FROM polls WHERE id = $1
+SELECT id, status_id, expires_at, multiple, created_at, closed_at FROM polls WHERE id = $1
 `
 
 func (q *Queries) GetPollByID(ctx context.Context, id string) (Poll, error) {
@@ -162,12 +185,13 @@ func (q *Queries) GetPollByID(ctx context.Context, id string) (Poll, error) {
 		&i.ExpiresAt,
 		&i.Multiple,
 		&i.CreatedAt,
+		&i.ClosedAt,
 	)
 	return i, err
 }
 
 const getPollByStatusID = `-- name: GetPollByStatusID :one
-SELECT id, status_id, expires_at, multiple, created_at FROM polls WHERE status_id = $1
+SELECT id, status_id, expires_at, multiple, created_at, closed_at FROM polls WHERE status_id = $1
 `
 
 func (q *Queries) GetPollByStatusID(ctx context.Context, statusID string) (Poll, error) {
@@ -179,6 +203,7 @@ func (q *Queries) GetPollByStatusID(ctx context.Context, statusID string) (Poll,
 		&i.ExpiresAt,
 		&i.Multiple,
 		&i.CreatedAt,
+		&i.ClosedAt,
 	)
 	return i, err
 }
@@ -233,8 +258,35 @@ func (q *Queries) HasVotedOnPoll(ctx context.Context, arg HasVotedOnPollParams) 
 	return voted, err
 }
 
+const listExpiredOpenPollStatusIDs = `-- name: ListExpiredOpenPollStatusIDs :many
+SELECT p.status_id FROM polls p
+WHERE p.expires_at IS NOT NULL AND p.expires_at <= NOW() AND p.closed_at IS NULL
+ORDER BY p.expires_at ASC
+LIMIT $1
+`
+
+func (q *Queries) ListExpiredOpenPollStatusIDs(ctx context.Context, limit int32) ([]string, error) {
+	rows, err := q.db.Query(ctx, listExpiredOpenPollStatusIDs, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var status_id string
+		if err := rows.Scan(&status_id); err != nil {
+			return nil, err
+		}
+		items = append(items, status_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPollOptions = `-- name: ListPollOptions :many
-SELECT id, poll_id, title, position, created_at FROM poll_options WHERE poll_id = $1 ORDER BY position ASC, id ASC
+SELECT id, poll_id, title, position, created_at, votes_count FROM poll_options WHERE poll_id = $1 ORDER BY position ASC, id ASC
 `
 
 func (q *Queries) ListPollOptions(ctx context.Context, pollID string) ([]PollOption, error) {
@@ -252,6 +304,7 @@ func (q *Queries) ListPollOptions(ctx context.Context, pollID string) ([]PollOpt
 			&i.Title,
 			&i.Position,
 			&i.CreatedAt,
+			&i.VotesCount,
 		); err != nil {
 			return nil, err
 		}
@@ -261,4 +314,19 @@ func (q *Queries) ListPollOptions(ctx context.Context, pollID string) ([]PollOpt
 		return nil, err
 	}
 	return items, nil
+}
+
+const setPollOptionVoteCount = `-- name: SetPollOptionVoteCount :exec
+UPDATE poll_options SET votes_count = $3 WHERE poll_id = $1 AND position = $2
+`
+
+type SetPollOptionVoteCountParams struct {
+	PollID     string `json:"poll_id"`
+	Position   int32  `json:"position"`
+	VotesCount int32  `json:"votes_count"`
+}
+
+func (q *Queries) SetPollOptionVoteCount(ctx context.Context, arg SetPollOptionVoteCountParams) error {
+	_, err := q.db.Exec(ctx, setPollOptionVoteCount, arg.PollID, arg.Position, arg.VotesCount)
+	return err
 }

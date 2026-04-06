@@ -236,6 +236,7 @@ func TestProcessMessage_StatusCreated_Public_PublishesToPublicAndFollowers(t *te
 
 	assert.Contains(t, subjects, SubjectPrefixPublic, "should publish to public")
 	assert.Contains(t, subjects, SubjectPrefixPublicLocal, "local status should publish to public:local")
+	assert.Contains(t, subjects, SubjectPrefixUser+"author-1", "should publish to author")
 	assert.Contains(t, subjects, SubjectPrefixUser+"follower-1")
 	assert.Contains(t, subjects, SubjectPrefixUser+"follower-2")
 
@@ -289,12 +290,13 @@ func TestProcessMessage_StatusCreated_Unlisted_PublishesToFollowersAndHashtags(t
 		subjects[m.Subject] = true
 	}
 
+	assert.True(t, subjects[SubjectPrefixUser+"author-1"], "should publish to author")
 	assert.True(t, subjects[SubjectPrefixUser+"follower-1"], "should publish to follower")
 	assert.True(t, subjects[SubjectPrefixHashtag+"golang"], "should publish to hashtag")
 	assert.False(t, subjects[SubjectPrefixPublic], "unlisted should not go to public timeline")
 }
 
-func TestProcessMessage_StatusCreated_Private_OnlyFollowers(t *testing.T) {
+func TestProcessMessage_StatusCreated_Private_OnlyFollowersAndAuthor(t *testing.T) {
 	t.Parallel()
 	sub, pub, store, _ := newTestSubscriber(t)
 
@@ -310,8 +312,14 @@ func TestProcessMessage_StatusCreated_Private_OnlyFollowers(t *testing.T) {
 	sub.processMessage(context.Background(), msg)
 
 	msgs := pub.published()
-	require.Len(t, msgs, 1)
-	assert.Equal(t, SubjectPrefixUser+"follower-1", msgs[0].Subject)
+	require.Len(t, msgs, 2)
+
+	subjects := make(map[string]bool)
+	for _, m := range msgs {
+		subjects[m.Subject] = true
+	}
+	assert.True(t, subjects[SubjectPrefixUser+"author-1"], "should publish to author")
+	assert.True(t, subjects[SubjectPrefixUser+"follower-1"], "should publish to follower")
 }
 
 func TestProcessMessage_StatusCreated_Direct_OnlyMentionedAccounts(t *testing.T) {
