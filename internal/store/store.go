@@ -323,6 +323,7 @@ type ListStore interface {
 	DeleteList(ctx context.Context, id string) error
 	ListListAccountIDs(ctx context.Context, listID string) ([]string, error)
 	GetListIDsByMemberAccountID(ctx context.Context, accountID string) ([]string, error)
+	GetListsByMemberAccountID(ctx context.Context, accountID string) ([]domain.List, error)
 	AddAccountToList(ctx context.Context, listID, accountID string) error
 	RemoveAccountFromList(ctx context.Context, listID, accountID string) error
 	GetListTimeline(ctx context.Context, listID string, maxID *string, limit int) ([]domain.Status, error)

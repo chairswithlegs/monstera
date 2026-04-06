@@ -401,6 +401,11 @@ WHERE s.deleted_at IS NULL
       UNION ALL
       SELECT $1::text
   )
+  AND s.account_id NOT IN (
+      SELECT la.account_id FROM list_accounts la
+      INNER JOIN lists l ON l.id = la.list_id
+      WHERE l.account_id = $1 AND l.exclusive = TRUE
+  )
   AND ($2::text IS NULL OR s.id < $2)
 ORDER BY s.id DESC
 LIMIT $3

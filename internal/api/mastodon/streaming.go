@@ -124,6 +124,7 @@ func (h *StreamingHandler) GETDirect(w http.ResponseWriter, r *http.Request) {
 func (h *StreamingHandler) serveSSE(w http.ResponseWriter, r *http.Request, streamKey string) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
+		slog.ErrorContext(r.Context(), "streaming: ResponseWriter does not implement http.Flusher")
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("streaming not supported"))
 		return

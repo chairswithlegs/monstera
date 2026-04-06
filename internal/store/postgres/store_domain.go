@@ -2731,6 +2731,18 @@ func (s *PostgresStore) GetListIDsByMemberAccountID(ctx context.Context, account
 	return ids, nil
 }
 
+func (s *PostgresStore) GetListsByMemberAccountID(ctx context.Context, accountID string) ([]domain.List, error) {
+	rows, err := s.q.GetListsByMemberAccountID(ctx, accountID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]domain.List, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ToDomainList(r))
+	}
+	return out, nil
+}
+
 func (s *PostgresStore) AddAccountToList(ctx context.Context, listID, accountID string) error {
 	return mapErr(s.q.AddAccountToList(ctx, db.AddAccountToListParams{
 		ListID:    listID,

@@ -44,22 +44,35 @@ func (f *fakePublisher) published() []publishedMsg {
 }
 
 type fakeSubscriberStore struct {
-	followers     map[string][]string
-	listsByMember map[string][]string
+	followers   map[string][]string
+	lists       map[string][]domain.List   // accountID -> lists containing that account
+	listMembers map[string][]string        // listID -> member account IDs
+	follows     map[string]map[string]bool // accountID -> targetID -> true
 }
 
 func newFakeSubscriberStore() *fakeSubscriberStore {
 	return &fakeSubscriberStore{
-		followers:     make(map[string][]string),
-		listsByMember: make(map[string][]string),
+		followers:   make(map[string][]string),
+		lists:       make(map[string][]domain.List),
+		listMembers: make(map[string][]string),
+		follows:     make(map[string]map[string]bool),
 	}
 }
 
 func (f *fakeSubscriberStore) GetLocalFollowerAccountIDs(_ context.Context, targetID string) ([]string, error) {
 	return f.followers[targetID], nil
 }
-func (f *fakeSubscriberStore) GetListIDsByMemberAccountID(_ context.Context, accountID string) ([]string, error) {
-	return f.listsByMember[accountID], nil
+func (f *fakeSubscriberStore) GetListsByMemberAccountID(_ context.Context, accountID string) ([]domain.List, error) {
+	return f.lists[accountID], nil
+}
+func (f *fakeSubscriberStore) ListListAccountIDs(_ context.Context, listID string) ([]string, error) {
+	return f.listMembers[listID], nil
+}
+func (f *fakeSubscriberStore) GetFollow(_ context.Context, accountID, targetID string) (*domain.Follow, error) {
+	if targets, ok := f.follows[accountID]; ok && targets[targetID] {
+		return &domain.Follow{}, nil
+	}
+	return nil, domain.ErrNotFound
 }
 
 // fakeStatusEnricher implements subscriberStatusService for tests.
@@ -599,7 +612,10 @@ func TestProcessMessage_StatusCreated_Public_PublishesToListStreams(t *testing.T
 	sub, pub, store, _ := newTestSubscriber(t)
 
 	store.followers["author-1"] = []string{}
-	store.listsByMember["author-1"] = []string{"list-1", "list-2"}
+	store.lists["author-1"] = []domain.List{
+		{ID: "list-1", AccountID: "owner-1", RepliesPolicy: domain.ListRepliesPolicyList},
+		{ID: "list-2", AccountID: "owner-2", RepliesPolicy: domain.ListRepliesPolicyList},
+	}
 
 	payload := domain.StatusCreatedPayload{
 		Status: makeMinimalStatus("status-1", "author-1", domain.VisibilityPublic, true),
@@ -625,7 +641,9 @@ func TestProcessMessage_StatusCreated_Private_PublishesToListStreams(t *testing.
 	sub, pub, store, _ := newTestSubscriber(t)
 
 	store.followers["author-1"] = []string{"follower-1"}
-	store.listsByMember["author-1"] = []string{"list-1"}
+	store.lists["author-1"] = []domain.List{
+		{ID: "list-1", AccountID: "owner-1", RepliesPolicy: domain.ListRepliesPolicyList},
+	}
 
 	payload := domain.StatusCreatedPayload{
 		Status: makeMinimalStatus("status-1", "author-1", domain.VisibilityPrivate, true),
@@ -679,7 +697,9 @@ func TestProcessMessage_StatusCreated_Direct_NoListStreams(t *testing.T) {
 	t.Parallel()
 	sub, pub, store, _ := newTestSubscriber(t)
 
-	store.listsByMember["author-1"] = []string{"list-1"}
+	store.lists["author-1"] = []domain.List{
+		{ID: "list-1", AccountID: "owner-1", RepliesPolicy: domain.ListRepliesPolicyList},
+	}
 
 	payload := domain.StatusCreatedPayload{
 		Status:              makeMinimalStatus("status-1", "author-1", domain.VisibilityDirect, true),
@@ -781,4 +801,255 @@ func TestProcessMessage_StatusUpdatedRemote_IsHandled(t *testing.T) {
 
 	assert.True(t, msg.wasAcked())
 	assert.NotEmpty(t, pub.published(), "status.updated.remote should be handled")
+}
+
+// --- replies_policy SSE tests ---
+
+func makeReplyStatus() *domain.Status {
+	s := makeMinimalStatus("status-1", "author-1", domain.VisibilityPublic, true)
+	parentID := "parent-1"
+	targetID := "target-1"
+	s.InReplyToID = &parentID
+	s.InReplyToAccountID = &targetID
+	return s
+}
+
+func TestProcessMessage_StatusCreated_Reply_PolicyNone_NotPublishedToList(t *testing.T) {
+	t.Parallel()
+	sub, pub, store, _ := newTestSubscriber(t)
+
+	store.followers["author-1"] = []string{}
+	store.lists["author-1"] = []domain.List{
+		{ID: "list-1", AccountID: "owner-1", RepliesPolicy: domain.ListRepliesPolicyNone},
+	}
+
+	payload := domain.StatusCreatedPayload{
+		Status: makeReplyStatus(),
+		Author: makeMinimalAccount("author-1", "alice"),
+	}
+	data := makeDomainEvent(t, domain.EventStatusCreated, payload)
+	msg := &fakeMsg{data: data}
+
+	sub.processMessage(context.Background(), msg)
+
+	msgs := pub.published()
+	for _, m := range msgs {
+		assert.NotEqual(t, SubjectPrefixList+"list-1", m.Subject, "replies should not go to list with none policy")
+	}
+}
+
+func TestProcessMessage_StatusCreated_Reply_PolicyList_PublishedWhenReplyToMember(t *testing.T) {
+	t.Parallel()
+	sub, pub, store, _ := newTestSubscriber(t)
+
+	store.followers["author-1"] = []string{}
+	store.lists["author-1"] = []domain.List{
+		{ID: "list-1", AccountID: "owner-1", RepliesPolicy: domain.ListRepliesPolicyList},
+	}
+	store.listMembers["list-1"] = []string{"author-1", "target-1"}
+
+	payload := domain.StatusCreatedPayload{
+		Status: makeReplyStatus(),
+		Author: makeMinimalAccount("author-1", "alice"),
+	}
+	data := makeDomainEvent(t, domain.EventStatusCreated, payload)
+	msg := &fakeMsg{data: data}
+
+	sub.processMessage(context.Background(), msg)
+
+	msgs := pub.published()
+	subjects := make(map[string]bool)
+	for _, m := range msgs {
+		subjects[m.Subject] = true
+	}
+	assert.True(t, subjects[SubjectPrefixList+"list-1"], "reply to list member should be published")
+}
+
+func TestProcessMessage_StatusCreated_Reply_PolicyList_NotPublishedWhenReplyToNonMember(t *testing.T) {
+	t.Parallel()
+	sub, pub, store, _ := newTestSubscriber(t)
+
+	store.followers["author-1"] = []string{}
+	store.lists["author-1"] = []domain.List{
+		{ID: "list-1", AccountID: "owner-1", RepliesPolicy: domain.ListRepliesPolicyList},
+	}
+	store.listMembers["list-1"] = []string{"author-1"} // target-1 is NOT a member
+
+	payload := domain.StatusCreatedPayload{
+		Status: makeReplyStatus(),
+		Author: makeMinimalAccount("author-1", "alice"),
+	}
+	data := makeDomainEvent(t, domain.EventStatusCreated, payload)
+	msg := &fakeMsg{data: data}
+
+	sub.processMessage(context.Background(), msg)
+
+	msgs := pub.published()
+	for _, m := range msgs {
+		assert.NotEqual(t, SubjectPrefixList+"list-1", m.Subject, "reply to non-member should not be published to list")
+	}
+}
+
+func TestProcessMessage_StatusCreated_Reply_PolicyFollowed_PublishedWhenOwnerFollowsTarget(t *testing.T) {
+	t.Parallel()
+	sub, pub, store, _ := newTestSubscriber(t)
+
+	store.followers["author-1"] = []string{}
+	store.lists["author-1"] = []domain.List{
+		{ID: "list-1", AccountID: "owner-1", RepliesPolicy: domain.ListRepliesPolicyFollowed},
+	}
+	store.follows["owner-1"] = map[string]bool{"target-1": true}
+
+	payload := domain.StatusCreatedPayload{
+		Status: makeReplyStatus(),
+		Author: makeMinimalAccount("author-1", "alice"),
+	}
+	data := makeDomainEvent(t, domain.EventStatusCreated, payload)
+	msg := &fakeMsg{data: data}
+
+	sub.processMessage(context.Background(), msg)
+
+	msgs := pub.published()
+	subjects := make(map[string]bool)
+	for _, m := range msgs {
+		subjects[m.Subject] = true
+	}
+	assert.True(t, subjects[SubjectPrefixList+"list-1"], "reply to followed account should be published")
+}
+
+func TestProcessMessage_StatusCreated_Reply_PolicyFollowed_NotPublishedWhenOwnerDoesNotFollowTarget(t *testing.T) {
+	t.Parallel()
+	sub, pub, store, _ := newTestSubscriber(t)
+
+	store.followers["author-1"] = []string{}
+	store.lists["author-1"] = []domain.List{
+		{ID: "list-1", AccountID: "owner-1", RepliesPolicy: domain.ListRepliesPolicyFollowed},
+	}
+	// owner-1 does NOT follow target-1
+
+	payload := domain.StatusCreatedPayload{
+		Status: makeReplyStatus(),
+		Author: makeMinimalAccount("author-1", "alice"),
+	}
+	data := makeDomainEvent(t, domain.EventStatusCreated, payload)
+	msg := &fakeMsg{data: data}
+
+	sub.processMessage(context.Background(), msg)
+
+	msgs := pub.published()
+	for _, m := range msgs {
+		assert.NotEqual(t, SubjectPrefixList+"list-1", m.Subject, "reply to non-followed should not be published")
+	}
+}
+
+func TestProcessMessage_StatusCreated_NonReply_AlwaysPublishedToList(t *testing.T) {
+	t.Parallel()
+	sub, pub, store, _ := newTestSubscriber(t)
+
+	store.followers["author-1"] = []string{}
+	store.lists["author-1"] = []domain.List{
+		{ID: "list-1", AccountID: "owner-1", RepliesPolicy: domain.ListRepliesPolicyNone},
+	}
+
+	payload := domain.StatusCreatedPayload{
+		Status: makeMinimalStatus("status-1", "author-1", domain.VisibilityPublic, true),
+		Author: makeMinimalAccount("author-1", "alice"),
+	}
+	data := makeDomainEvent(t, domain.EventStatusCreated, payload)
+	msg := &fakeMsg{data: data}
+
+	sub.processMessage(context.Background(), msg)
+
+	msgs := pub.published()
+	subjects := make(map[string]bool)
+	for _, m := range msgs {
+		subjects[m.Subject] = true
+	}
+	assert.True(t, subjects[SubjectPrefixList+"list-1"], "non-reply should always be published regardless of policy")
+}
+
+func TestProcessMessage_StatusDeleted_AlwaysPublishedToList(t *testing.T) {
+	t.Parallel()
+	sub, pub, store, _ := newTestSubscriber(t)
+
+	store.followers["author-1"] = []string{}
+	store.lists["author-1"] = []domain.List{
+		{ID: "list-1", AccountID: "owner-1", RepliesPolicy: domain.ListRepliesPolicyNone},
+	}
+
+	payload := domain.StatusDeletedPayload{
+		StatusID:  "status-1",
+		AccountID: "author-1",
+		Local:     true,
+	}
+	data := makeDomainEvent(t, domain.EventStatusDeleted, payload)
+	msg := &fakeMsg{data: data}
+
+	sub.processMessage(context.Background(), msg)
+
+	msgs := pub.published()
+	subjects := make(map[string]bool)
+	for _, m := range msgs {
+		subjects[m.Subject] = true
+	}
+	assert.True(t, subjects[SubjectPrefixList+"list-1"], "delete events should always be published to list streams")
+}
+
+// --- exclusive flag SSE tests ---
+
+func TestProcessMessage_StatusCreated_ExclusiveList_SkipsHomeStreamForOwner(t *testing.T) {
+	t.Parallel()
+	sub, pub, store, _ := newTestSubscriber(t)
+
+	store.followers["author-1"] = []string{"owner-1", "other-follower"}
+	store.lists["author-1"] = []domain.List{
+		{ID: "list-1", AccountID: "owner-1", Exclusive: true, RepliesPolicy: domain.ListRepliesPolicyList},
+	}
+
+	payload := domain.StatusCreatedPayload{
+		Status: makeMinimalStatus("status-1", "author-1", domain.VisibilityPublic, true),
+		Author: makeMinimalAccount("author-1", "alice"),
+	}
+	data := makeDomainEvent(t, domain.EventStatusCreated, payload)
+	msg := &fakeMsg{data: data}
+
+	sub.processMessage(context.Background(), msg)
+
+	msgs := pub.published()
+	subjects := make(map[string]bool)
+	for _, m := range msgs {
+		subjects[m.Subject] = true
+	}
+
+	assert.False(t, subjects[SubjectPrefixUser+"owner-1"], "exclusive list owner should not receive on home stream")
+	assert.True(t, subjects[SubjectPrefixUser+"other-follower"], "other followers should still receive on home stream")
+	assert.True(t, subjects[SubjectPrefixList+"list-1"], "exclusive list should still receive the event")
+}
+
+func TestProcessMessage_StatusCreated_NonExclusiveList_StillPublishesToHome(t *testing.T) {
+	t.Parallel()
+	sub, pub, store, _ := newTestSubscriber(t)
+
+	store.followers["author-1"] = []string{"owner-1"}
+	store.lists["author-1"] = []domain.List{
+		{ID: "list-1", AccountID: "owner-1", Exclusive: false, RepliesPolicy: domain.ListRepliesPolicyList},
+	}
+
+	payload := domain.StatusCreatedPayload{
+		Status: makeMinimalStatus("status-1", "author-1", domain.VisibilityPublic, true),
+		Author: makeMinimalAccount("author-1", "alice"),
+	}
+	data := makeDomainEvent(t, domain.EventStatusCreated, payload)
+	msg := &fakeMsg{data: data}
+
+	sub.processMessage(context.Background(), msg)
+
+	msgs := pub.published()
+	subjects := make(map[string]bool)
+	for _, m := range msgs {
+		subjects[m.Subject] = true
+	}
+
+	assert.True(t, subjects[SubjectPrefixUser+"owner-1"], "non-exclusive list owner should still receive on home stream")
+	assert.True(t, subjects[SubjectPrefixList+"list-1"], "list stream should receive the event")
 }
