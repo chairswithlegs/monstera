@@ -51,6 +51,7 @@ type StatusCreatedPayload struct {
 	Local               bool              `json:"local"`
 	Poll                *Poll             `json:"poll,omitempty"`
 	PollOptions         []PollOption      `json:"poll_options,omitempty"`
+	PollVotersCount     int               `json:"poll_voters_count,omitempty"`
 }
 
 // StatusDeletedPayload carries data for a deleted status.
@@ -78,6 +79,7 @@ type StatusUpdatedPayload struct {
 	Local               bool              `json:"local"`
 	Poll                *Poll             `json:"poll,omitempty"`
 	PollOptions         []PollOption      `json:"poll_options,omitempty"`
+	PollVotersCount     int               `json:"poll_voters_count,omitempty"`
 }
 
 // FollowCreatedPayload carries data when a follow is created.

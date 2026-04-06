@@ -468,31 +468,35 @@ func (svc *statusInteractionService) RecordVote(ctx context.Context, pollID, acc
 			return nil, fmt.Errorf("RecordVote: %w", domain.ErrValidation)
 		}
 	}
-	if err := svc.store.DeletePollVotesByAccount(ctx, pollID, accountID); err != nil {
+	// Vote creation, count denormalization, and event emission in one transaction.
+	if err := svc.store.WithTx(ctx, func(tx store.Store) error {
+		if err := tx.DeletePollVotesByAccount(ctx, pollID, accountID); err != nil {
+			return fmt.Errorf("DeletePollVotesByAccount: %w", err)
+		}
+		for _, idx := range optionIndices {
+			voteID := uid.New()
+			if err := tx.CreatePollVote(ctx, voteID, pollID, accountID, opts[idx].ID); err != nil {
+				return fmt.Errorf("CreatePollVote: %w", err)
+			}
+		}
+		counts, err := tx.GetVoteCountsByPoll(ctx, pollID)
+		if err != nil {
+			return fmt.Errorf("GetVoteCountsByPoll: %w", err)
+		}
+		for i, o := range opts {
+			c := 0
+			if n, ok := counts[o.ID]; ok {
+				c = n
+			}
+			if err := tx.SetPollOptionVoteCount(ctx, pollID, i, c); err != nil {
+				return fmt.Errorf("SetPollOptionVoteCount: %w", err)
+			}
+		}
+		return nil
+	}); err != nil {
 		return nil, fmt.Errorf("RecordVote: %w", err)
 	}
-	for _, idx := range optionIndices {
-		optionID := opts[idx].ID
-		voteID := uid.New()
-		if err := svc.store.CreatePollVote(ctx, voteID, pollID, accountID, optionID); err != nil {
-			return nil, fmt.Errorf("RecordVote: %w", err)
-		}
-	}
-	// Update denormalized vote counts on poll_options.
-	counts, err := svc.store.GetVoteCountsByPoll(ctx, pollID)
-	if err != nil {
-		return nil, fmt.Errorf("RecordVote GetVoteCountsByPoll: %w", err)
-	}
-	for i, o := range opts {
-		c := 0
-		if n, ok := counts[o.ID]; ok {
-			c = n
-		}
-		if err := svc.store.SetPollOptionVoteCount(ctx, pollID, i, c); err != nil {
-			return nil, fmt.Errorf("RecordVote SetPollOptionVoteCount: %w", err)
-		}
-	}
-	// Emit poll.updated event for federation and SSE.
+	// Emit poll.updated event (best-effort, outside vote tx so a failure doesn't roll back the vote).
 	if emitErr := svc.emitPollUpdated(ctx, st, poll); emitErr != nil {
 		slog.WarnContext(ctx, "RecordVote: failed to emit poll.updated", slog.Any("error", emitErr))
 	}

@@ -463,9 +463,24 @@ func (svc *remoteStatusWriteService) UpdateRemotePollVoteCounts(ctx context.Cont
 	if err != nil {
 		return fmt.Errorf("UpdateRemotePollVoteCounts GetPollByStatusID: %w", err)
 	}
+	// Validate option count matches local poll.
+	localOpts, err := svc.store.ListPollOptions(ctx, poll.ID)
+	if err != nil {
+		return fmt.Errorf("UpdateRemotePollVoteCounts ListPollOptions: %w", err)
+	}
+	if len(optionVoteCounts) != len(localOpts) {
+		slog.WarnContext(ctx, "UpdateRemotePollVoteCounts: option count mismatch",
+			slog.String("status_apid", statusAPID),
+			slog.Int("remote_options", len(optionVoteCounts)),
+			slog.Int("local_options", len(localOpts)))
+	}
 	// Update vote counts and emit event in one transaction for atomicity.
+	// Only update positions that exist locally.
 	if err := svc.store.WithTx(ctx, func(tx store.Store) error {
 		for i, count := range optionVoteCounts {
+			if i >= len(localOpts) {
+				break
+			}
 			if err := tx.SetPollOptionVoteCount(ctx, poll.ID, i, count); err != nil {
 				return fmt.Errorf("SetPollOptionVoteCount(%d): %w", i, err)
 			}

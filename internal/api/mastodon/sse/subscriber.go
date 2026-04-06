@@ -129,8 +129,8 @@ func (s *Subscriber) handleStatusCreated(ctx context.Context, event domain.Domai
 	s.routeStatusEvent(ctx, EventUpdate, payload.Status.AccountID, payload.Status.Visibility, isReblog, payload.Status.Local, statusJSON, hashtagNames, payload.MentionedAccountIDs, payload.Status)
 }
 
-// handlePollUpdated re-enriches the status from the store (to get full mentions,
-// tags, media, and updated poll data) and pushes a status.update SSE event.
+// handlePollUpdated builds the SSE status update from the payload data directly
+// (avoiding a DB round trip) and pushes a status.update SSE event.
 func (s *Subscriber) handlePollUpdated(ctx context.Context, event domain.DomainEvent) {
 	var payload domain.PollUpdatedPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
@@ -140,10 +140,23 @@ func (s *Subscriber) handlePollUpdated(ctx context.Context, event domain.DomainE
 	if payload.Status == nil || payload.Author == nil {
 		return
 	}
-	enriched, err := s.statusSvc.GetByIDEnriched(ctx, payload.Status.ID, nil)
-	if err != nil {
-		slog.WarnContext(ctx, "sse subscriber: enrich status for poll update", slog.Any("error", err), slog.String("status_id", payload.Status.ID))
-		return
+	// Build enriched status from payload data.
+	enriched := service.EnrichedStatus{
+		Status:   payload.Status,
+		Author:   payload.Author,
+		Mentions: payload.Mentions,
+		Tags:     payload.Tags,
+		Media:    payload.Media,
+	}
+	if payload.Poll != nil {
+		opts := make([]service.PollOptionWithCount, len(payload.PollOptions))
+		for i, o := range payload.PollOptions {
+			opts[i] = service.PollOptionWithCount{Title: o.Title, VotesCount: o.VotesCount}
+		}
+		enriched.Poll = &service.EnrichedPoll{
+			Poll:    *payload.Poll,
+			Options: opts,
+		}
 	}
 	apiStatus := apimodel.StatusFromEnriched(enriched, s.instanceDomain)
 	statusJSON, err := json.Marshal(apiStatus)
@@ -151,15 +164,9 @@ func (s *Subscriber) handlePollUpdated(ctx context.Context, event domain.DomainE
 		slog.ErrorContext(ctx, "sse subscriber: marshal status (poll update)", slog.Any("error", err))
 		return
 	}
-	var hashtagNames []string
-	if enriched.Tags != nil {
-		hashtagNames = make([]string, 0, len(enriched.Tags))
-		for _, t := range enriched.Tags {
-			hashtagNames = append(hashtagNames, t.Name)
-		}
-	}
+	hashtagNames := hashtagNamesFromTags(payload.Tags)
 	var mentionedIDs []string
-	for _, m := range enriched.Mentions {
+	for _, m := range payload.Mentions {
 		if m != nil {
 			mentionedIDs = append(mentionedIDs, m.ID)
 		}

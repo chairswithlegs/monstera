@@ -183,7 +183,7 @@ func (s *FederationSubscriber) handleStatusCreated(ctx context.Context, event do
 		ParentAPID:   payload.ParentAPID,
 	}
 	if payload.Poll != nil && len(payload.PollOptions) > 0 {
-		noteInput.Poll = pollDataFromPayload(payload.Poll, payload.PollOptions)
+		noteInput.Poll = pollDataFromPayloadWithVoters(payload.Poll, payload.PollOptions, payload.PollVotersCount)
 	}
 	note, err := vocab.LocalStatusToNote(noteInput)
 	if err != nil {
@@ -262,7 +262,7 @@ func (s *FederationSubscriber) handleStatusUpdated(ctx context.Context, event do
 		ParentAPID:   payload.ParentAPID,
 	}
 	if payload.Poll != nil && len(payload.PollOptions) > 0 {
-		noteInput.Poll = pollDataFromPayload(payload.Poll, payload.PollOptions)
+		noteInput.Poll = pollDataFromPayloadWithVoters(payload.Poll, payload.PollOptions, payload.PollVotersCount)
 	}
 	note, err := vocab.LocalStatusToNote(noteInput)
 	if err != nil {
@@ -353,18 +353,6 @@ func pollDataFromPayloadWithVoters(poll *domain.Poll, opts []domain.PollOption, 
 		Options:     options,
 		VotersCount: votersCount,
 	}
-}
-
-// pollDataFromPayload converts domain poll and options into the vocab outbound format.
-// VotersCount is approximated from option counts (correct for single-choice, approximate for multiple).
-func pollDataFromPayload(poll *domain.Poll, opts []domain.PollOption) *vocab.LocalPollData {
-	votersCount := 0
-	if !poll.Multiple {
-		for _, o := range opts {
-			votersCount += o.VotesCount
-		}
-	}
-	return pollDataFromPayloadWithVoters(poll, opts, votersCount)
 }
 
 func (s *FederationSubscriber) handleFollowCreated(ctx context.Context, event domain.DomainEvent) error {
