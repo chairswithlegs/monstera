@@ -153,3 +153,389 @@ func TestTimelineService_ListTimelineEnriched_includes_private_status_when_list_
 	assert.Equal(t, domain.VisibilityPrivate, enriched[0].Status.Visibility)
 	assert.Equal(t, bob.ID, enriched[0].Status.AccountID)
 }
+
+// --- replies_policy tests ---
+
+func newTimelineTestEnv(t *testing.T) (context.Context, *testutil.FakeStore, AccountService, StatusWriteService, TimelineService) {
+	t.Helper()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
+	timelineSvc := NewTimelineService(fake, accountSvc, statusSvc)
+	return ctx, fake, accountSvc, statusWriteSvc, timelineSvc
+}
+
+func TestTimelineService_ListTimelineEnriched_RepliesPolicy_None_ExcludesReplies(t *testing.T) {
+	t.Parallel()
+	ctx, fake, accountSvc, statusWriteSvc, timelineSvc := newTimelineTestEnv(t)
+
+	alice, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	bob, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
+	require.NoError(t, err)
+	carol, err := accountSvc.Create(ctx, CreateAccountInput{Username: "carol"})
+	require.NoError(t, err)
+
+	// Alice follows bob and carol so she can see their statuses.
+	_, err = fake.CreateFollow(ctx, store.CreateFollowInput{ID: uid.New(), AccountID: alice.ID, TargetID: bob.ID, State: domain.FollowStateAccepted})
+	require.NoError(t, err)
+	_, err = fake.CreateFollow(ctx, store.CreateFollowInput{ID: uid.New(), AccountID: alice.ID, TargetID: carol.ID, State: domain.FollowStateAccepted})
+	require.NoError(t, err)
+
+	listID := uid.New()
+	_, err = fake.CreateList(ctx, store.CreateListInput{
+		ID: listID, AccountID: alice.ID, Title: "None policy", RepliesPolicy: domain.ListRepliesPolicyNone,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.AddAccountToList(ctx, listID, bob.ID))
+
+	// Bob creates a non-reply status.
+	_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID: bob.ID, Username: bob.Username, Text: "hello", Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+
+	// Carol creates a status, then Bob replies to it.
+	carolStatus, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID: carol.ID, Username: carol.Username, Text: "original", Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+	_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID: bob.ID, Username: bob.Username, Text: "reply", Visibility: domain.VisibilityPublic, InReplyToID: &carolStatus.Status.ID,
+	})
+	require.NoError(t, err)
+
+	enriched, err := timelineSvc.ListTimelineEnriched(ctx, alice.ID, listID, nil, 10)
+	require.NoError(t, err)
+	require.Len(t, enriched, 1, "only non-reply should appear with none policy")
+	assert.Equal(t, "hello", *enriched[0].Status.Text)
+}
+
+func TestTimelineService_ListTimelineEnriched_RepliesPolicy_List_IncludesRepliesToMembers(t *testing.T) {
+	t.Parallel()
+	ctx, fake, accountSvc, statusWriteSvc, timelineSvc := newTimelineTestEnv(t)
+
+	alice, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	bob, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
+	require.NoError(t, err)
+	carol, err := accountSvc.Create(ctx, CreateAccountInput{Username: "carol"})
+	require.NoError(t, err)
+
+	_, err = fake.CreateFollow(ctx, store.CreateFollowInput{ID: uid.New(), AccountID: alice.ID, TargetID: bob.ID, State: domain.FollowStateAccepted})
+	require.NoError(t, err)
+	_, err = fake.CreateFollow(ctx, store.CreateFollowInput{ID: uid.New(), AccountID: alice.ID, TargetID: carol.ID, State: domain.FollowStateAccepted})
+	require.NoError(t, err)
+
+	listID := uid.New()
+	_, err = fake.CreateList(ctx, store.CreateListInput{
+		ID: listID, AccountID: alice.ID, Title: "List policy", RepliesPolicy: domain.ListRepliesPolicyList,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.AddAccountToList(ctx, listID, bob.ID))
+	require.NoError(t, fake.AddAccountToList(ctx, listID, carol.ID))
+
+	// Carol creates a status, Bob replies to Carol (a list member).
+	carolStatus, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID: carol.ID, Username: carol.Username, Text: "original", Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+	_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID: bob.ID, Username: bob.Username, Text: "reply to member", Visibility: domain.VisibilityPublic, InReplyToID: &carolStatus.Status.ID,
+	})
+	require.NoError(t, err)
+
+	enriched, err := timelineSvc.ListTimelineEnriched(ctx, alice.ID, listID, nil, 10)
+	require.NoError(t, err)
+
+	texts := make([]string, 0, len(enriched))
+	for _, e := range enriched {
+		texts = append(texts, *e.Status.Text)
+	}
+	assert.Contains(t, texts, "reply to member", "reply to list member should be included")
+}
+
+func TestTimelineService_ListTimelineEnriched_RepliesPolicy_List_ExcludesRepliesToNonMembers(t *testing.T) {
+	t.Parallel()
+	ctx, fake, accountSvc, statusWriteSvc, timelineSvc := newTimelineTestEnv(t)
+
+	alice, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	bob, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
+	require.NoError(t, err)
+	dave, err := accountSvc.Create(ctx, CreateAccountInput{Username: "dave"})
+	require.NoError(t, err)
+
+	_, err = fake.CreateFollow(ctx, store.CreateFollowInput{ID: uid.New(), AccountID: alice.ID, TargetID: bob.ID, State: domain.FollowStateAccepted})
+	require.NoError(t, err)
+
+	listID := uid.New()
+	_, err = fake.CreateList(ctx, store.CreateListInput{
+		ID: listID, AccountID: alice.ID, Title: "List policy", RepliesPolicy: domain.ListRepliesPolicyList,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.AddAccountToList(ctx, listID, bob.ID))
+	// dave is NOT a member
+
+	daveStatus, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID: dave.ID, Username: dave.Username, Text: "dave post", Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+	_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID: bob.ID, Username: bob.Username, Text: "reply to non-member", Visibility: domain.VisibilityPublic, InReplyToID: &daveStatus.Status.ID,
+	})
+	require.NoError(t, err)
+
+	enriched, err := timelineSvc.ListTimelineEnriched(ctx, alice.ID, listID, nil, 10)
+	require.NoError(t, err)
+	for _, e := range enriched {
+		assert.NotEqual(t, "reply to non-member", *e.Status.Text, "reply to non-member should be excluded")
+	}
+}
+
+func TestTimelineService_ListTimelineEnriched_RepliesPolicy_Followed_IncludesRepliesToFollowed(t *testing.T) {
+	t.Parallel()
+	ctx, fake, accountSvc, statusWriteSvc, timelineSvc := newTimelineTestEnv(t)
+
+	alice, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	bob, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
+	require.NoError(t, err)
+	carol, err := accountSvc.Create(ctx, CreateAccountInput{Username: "carol"})
+	require.NoError(t, err)
+
+	// Alice follows both bob and carol.
+	_, err = fake.CreateFollow(ctx, store.CreateFollowInput{ID: uid.New(), AccountID: alice.ID, TargetID: bob.ID, State: domain.FollowStateAccepted})
+	require.NoError(t, err)
+	_, err = fake.CreateFollow(ctx, store.CreateFollowInput{ID: uid.New(), AccountID: alice.ID, TargetID: carol.ID, State: domain.FollowStateAccepted})
+	require.NoError(t, err)
+
+	listID := uid.New()
+	_, err = fake.CreateList(ctx, store.CreateListInput{
+		ID: listID, AccountID: alice.ID, Title: "Followed policy", RepliesPolicy: domain.ListRepliesPolicyFollowed,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.AddAccountToList(ctx, listID, bob.ID))
+
+	carolStatus, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID: carol.ID, Username: carol.Username, Text: "carol post", Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+	_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID: bob.ID, Username: bob.Username, Text: "reply to followed", Visibility: domain.VisibilityPublic, InReplyToID: &carolStatus.Status.ID,
+	})
+	require.NoError(t, err)
+
+	enriched, err := timelineSvc.ListTimelineEnriched(ctx, alice.ID, listID, nil, 10)
+	require.NoError(t, err)
+
+	texts := make([]string, 0, len(enriched))
+	for _, e := range enriched {
+		texts = append(texts, *e.Status.Text)
+	}
+	assert.Contains(t, texts, "reply to followed", "reply to followed account should be included")
+}
+
+func TestTimelineService_ListTimelineEnriched_RepliesPolicy_Followed_ExcludesRepliesToNotFollowed(t *testing.T) {
+	t.Parallel()
+	ctx, fake, accountSvc, statusWriteSvc, timelineSvc := newTimelineTestEnv(t)
+
+	alice, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	bob, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
+	require.NoError(t, err)
+	dave, err := accountSvc.Create(ctx, CreateAccountInput{Username: "dave"})
+	require.NoError(t, err)
+
+	// Alice follows bob but NOT dave.
+	_, err = fake.CreateFollow(ctx, store.CreateFollowInput{ID: uid.New(), AccountID: alice.ID, TargetID: bob.ID, State: domain.FollowStateAccepted})
+	require.NoError(t, err)
+
+	listID := uid.New()
+	_, err = fake.CreateList(ctx, store.CreateListInput{
+		ID: listID, AccountID: alice.ID, Title: "Followed policy", RepliesPolicy: domain.ListRepliesPolicyFollowed,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.AddAccountToList(ctx, listID, bob.ID))
+
+	daveStatus, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID: dave.ID, Username: dave.Username, Text: "dave post", Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+	_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID: bob.ID, Username: bob.Username, Text: "reply to not followed", Visibility: domain.VisibilityPublic, InReplyToID: &daveStatus.Status.ID,
+	})
+	require.NoError(t, err)
+
+	enriched, err := timelineSvc.ListTimelineEnriched(ctx, alice.ID, listID, nil, 10)
+	require.NoError(t, err)
+	for _, e := range enriched {
+		assert.NotEqual(t, "reply to not followed", *e.Status.Text, "reply to unfollowed account should be excluded")
+	}
+}
+
+func TestTimelineService_ListTimelineEnriched_NonRepliesAlwaysIncluded(t *testing.T) {
+	t.Parallel()
+	policies := []string{domain.ListRepliesPolicyNone, domain.ListRepliesPolicyList, domain.ListRepliesPolicyFollowed}
+
+	for _, policy := range policies {
+		t.Run(policy, func(t *testing.T) {
+			t.Parallel()
+			ctx, fake, accountSvc, statusWriteSvc, timelineSvc := newTimelineTestEnv(t)
+
+			alice, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+			require.NoError(t, err)
+			bob, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
+			require.NoError(t, err)
+
+			_, err = fake.CreateFollow(ctx, store.CreateFollowInput{ID: uid.New(), AccountID: alice.ID, TargetID: bob.ID, State: domain.FollowStateAccepted})
+			require.NoError(t, err)
+
+			listID := uid.New()
+			_, err = fake.CreateList(ctx, store.CreateListInput{
+				ID: listID, AccountID: alice.ID, Title: "Test", RepliesPolicy: policy,
+			})
+			require.NoError(t, err)
+			require.NoError(t, fake.AddAccountToList(ctx, listID, bob.ID))
+
+			_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
+				AccountID: bob.ID, Username: bob.Username, Text: "non-reply", Visibility: domain.VisibilityPublic,
+			})
+			require.NoError(t, err)
+
+			enriched, err := timelineSvc.ListTimelineEnriched(ctx, alice.ID, listID, nil, 10)
+			require.NoError(t, err)
+			require.Len(t, enriched, 1, "non-reply should always be included for policy %s", policy)
+			assert.Equal(t, "non-reply", *enriched[0].Status.Text)
+		})
+	}
+}
+
+// --- exclusive flag tests ---
+
+func TestTimelineService_HomeEnriched_ExclusiveList_ExcludesFromHome(t *testing.T) {
+	t.Parallel()
+	ctx, fake, accountSvc, statusWriteSvc, timelineSvc := newTimelineTestEnv(t)
+
+	alice, err := accountSvc.Register(ctx, RegisterInput{Username: "alice", Email: "alice@example.com", Password: "hash"})
+	require.NoError(t, err)
+	bob, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
+	require.NoError(t, err)
+
+	_, err = fake.CreateFollow(ctx, store.CreateFollowInput{ID: uid.New(), AccountID: alice.ID, TargetID: bob.ID, State: domain.FollowStateAccepted})
+	require.NoError(t, err)
+
+	listID := uid.New()
+	_, err = fake.CreateList(ctx, store.CreateListInput{
+		ID: listID, AccountID: alice.ID, Title: "Exclusive", RepliesPolicy: domain.ListRepliesPolicyList, Exclusive: true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.AddAccountToList(ctx, listID, bob.ID))
+
+	_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID: bob.ID, Username: bob.Username, Text: "exclusive post", Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+
+	enriched, err := timelineSvc.HomeEnriched(ctx, alice.ID, nil, 10)
+	require.NoError(t, err)
+	assert.Empty(t, enriched, "status from exclusive list member should not appear in home timeline")
+}
+
+func TestTimelineService_HomeEnriched_NonExclusiveList_StillAppearsInHome(t *testing.T) {
+	t.Parallel()
+	ctx, fake, accountSvc, statusWriteSvc, timelineSvc := newTimelineTestEnv(t)
+
+	alice, err := accountSvc.Register(ctx, RegisterInput{Username: "alice", Email: "alice@example.com", Password: "hash"})
+	require.NoError(t, err)
+	bob, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
+	require.NoError(t, err)
+
+	_, err = fake.CreateFollow(ctx, store.CreateFollowInput{ID: uid.New(), AccountID: alice.ID, TargetID: bob.ID, State: domain.FollowStateAccepted})
+	require.NoError(t, err)
+
+	listID := uid.New()
+	_, err = fake.CreateList(ctx, store.CreateListInput{
+		ID: listID, AccountID: alice.ID, Title: "Non-exclusive", RepliesPolicy: domain.ListRepliesPolicyList, Exclusive: false,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.AddAccountToList(ctx, listID, bob.ID))
+
+	_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID: bob.ID, Username: bob.Username, Text: "normal post", Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+
+	enriched, err := timelineSvc.HomeEnriched(ctx, alice.ID, nil, 10)
+	require.NoError(t, err)
+	require.Len(t, enriched, 1, "status from non-exclusive list member should appear in home timeline")
+	assert.Equal(t, "normal post", *enriched[0].Status.Text)
+}
+
+func TestTimelineService_ExclusiveList_StillAppearsInListTimeline(t *testing.T) {
+	t.Parallel()
+	ctx, fake, accountSvc, statusWriteSvc, timelineSvc := newTimelineTestEnv(t)
+
+	alice, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	bob, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
+	require.NoError(t, err)
+
+	_, err = fake.CreateFollow(ctx, store.CreateFollowInput{ID: uid.New(), AccountID: alice.ID, TargetID: bob.ID, State: domain.FollowStateAccepted})
+	require.NoError(t, err)
+
+	listID := uid.New()
+	_, err = fake.CreateList(ctx, store.CreateListInput{
+		ID: listID, AccountID: alice.ID, Title: "Exclusive", RepliesPolicy: domain.ListRepliesPolicyList, Exclusive: true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.AddAccountToList(ctx, listID, bob.ID))
+
+	_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID: bob.ID, Username: bob.Username, Text: "exclusive post", Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+
+	enriched, err := timelineSvc.ListTimelineEnriched(ctx, alice.ID, listID, nil, 10)
+	require.NoError(t, err)
+	require.Len(t, enriched, 1, "status should still appear in the exclusive list timeline")
+	assert.Equal(t, "exclusive post", *enriched[0].Status.Text)
+}
+
+func TestTimelineService_HomeEnriched_OwnStatuses_NotExcluded(t *testing.T) {
+	t.Parallel()
+	ctx, fake, accountSvc, statusWriteSvc, timelineSvc := newTimelineTestEnv(t)
+
+	alice, err := accountSvc.Register(ctx, RegisterInput{Username: "alice", Email: "alice@example.com", Password: "hash"})
+	require.NoError(t, err)
+	bob, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
+	require.NoError(t, err)
+
+	_, err = fake.CreateFollow(ctx, store.CreateFollowInput{ID: uid.New(), AccountID: alice.ID, TargetID: bob.ID, State: domain.FollowStateAccepted})
+	require.NoError(t, err)
+
+	// Alice has an exclusive list with bob. Bob's posts should be excluded,
+	// but alice's own posts should still appear.
+	listID := uid.New()
+	_, err = fake.CreateList(ctx, store.CreateListInput{
+		ID: listID, AccountID: alice.ID, Title: "Exclusive", RepliesPolicy: domain.ListRepliesPolicyList, Exclusive: true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.AddAccountToList(ctx, listID, bob.ID))
+
+	_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID: bob.ID, Username: bob.Username, Text: "bob post", Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+	_, err = statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID: alice.ID, Username: alice.Username, Text: "my own post", Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+
+	enriched, err := timelineSvc.HomeEnriched(ctx, alice.ID, nil, 10)
+	require.NoError(t, err)
+	require.Len(t, enriched, 1, "only alice's own status should appear; bob's should be excluded")
+	assert.Equal(t, "my own post", *enriched[0].Status.Text)
+}

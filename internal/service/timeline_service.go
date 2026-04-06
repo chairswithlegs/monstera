@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -196,7 +197,86 @@ func (svc *timelineService) ListTimelineEnriched(ctx context.Context, accountID,
 			filtered = append(filtered, out[i])
 		}
 	}
+	filtered, err = svc.filterByRepliesPolicy(ctx, filtered, list)
+	if err != nil {
+		return nil, err
+	}
 	return filtered, nil
+}
+
+// filterByRepliesPolicy removes replies that don't match the list's replies_policy.
+// Non-reply statuses always pass through.
+func (svc *timelineService) filterByRepliesPolicy(ctx context.Context, statuses []EnrichedStatus, list *domain.List) ([]EnrichedStatus, error) {
+	if list.RepliesPolicy == domain.ListRepliesPolicyFollowed {
+		return svc.filterRepliesByFollowed(ctx, statuses, list.AccountID)
+	}
+
+	// For "list" policy, pre-fetch member IDs once.
+	var memberSet map[string]struct{}
+	if list.RepliesPolicy == domain.ListRepliesPolicyList {
+		memberIDs, err := svc.store.ListListAccountIDs(ctx, list.ID)
+		if err != nil {
+			return nil, fmt.Errorf("ListListAccountIDs(%s): %w", list.ID, err)
+		}
+		memberSet = make(map[string]struct{}, len(memberIDs))
+		for _, id := range memberIDs {
+			memberSet[id] = struct{}{}
+		}
+	}
+
+	out := make([]EnrichedStatus, 0, len(statuses))
+	for i := range statuses {
+		s := statuses[i].Status
+		if s.InReplyToID == nil {
+			out = append(out, statuses[i])
+			continue
+		}
+		switch list.RepliesPolicy {
+		case domain.ListRepliesPolicyNone:
+			// Skip all replies.
+		case domain.ListRepliesPolicyList:
+			if s.InReplyToAccountID != nil {
+				if _, ok := memberSet[*s.InReplyToAccountID]; ok {
+					out = append(out, statuses[i])
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
+// filterRepliesByFollowed keeps replies only when the list owner follows the reply target.
+func (svc *timelineService) filterRepliesByFollowed(ctx context.Context, statuses []EnrichedStatus, ownerAccountID string) ([]EnrichedStatus, error) {
+	// Cache follow lookups for the page.
+	followCache := make(map[string]bool)
+	out := make([]EnrichedStatus, 0, len(statuses))
+	for i := range statuses {
+		s := statuses[i].Status
+		if s.InReplyToID == nil {
+			out = append(out, statuses[i])
+			continue
+		}
+		if s.InReplyToAccountID == nil {
+			continue
+		}
+		targetID := *s.InReplyToAccountID
+		follows, cached := followCache[targetID]
+		if !cached {
+			_, err := svc.store.GetFollow(ctx, ownerAccountID, targetID)
+			if errors.Is(err, domain.ErrNotFound) {
+				follows = false
+			} else if err != nil {
+				return nil, fmt.Errorf("GetFollow(%s, %s): %w", ownerAccountID, targetID, err)
+			} else {
+				follows = true
+			}
+			followCache[targetID] = follows
+		}
+		if follows {
+			out = append(out, statuses[i])
+		}
+	}
+	return out, nil
 }
 
 // PublicLocalEnriched returns the public timeline with author, mentions, tags, and media loaded for each status.

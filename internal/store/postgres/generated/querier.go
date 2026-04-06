@@ -163,6 +163,7 @@ type Querier interface {
 	GetListByID(ctx context.Context, id string) (List, error)
 	GetListIDsByMemberAccountID(ctx context.Context, accountID string) ([]string, error)
 	GetListTimeline(ctx context.Context, arg GetListTimelineParams) ([]Status, error)
+	GetListsByMemberAccountID(ctx context.Context, accountID string) ([]List, error)
 	GetLocalAccountByUsername(ctx context.Context, username string) (Account, error)
 	GetLocalFollowerAccountIDs(ctx context.Context, targetID string) ([]string, error)
 	GetMarkers(ctx context.Context, arg GetMarkersParams) ([]Marker, error)

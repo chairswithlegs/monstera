@@ -30,6 +30,12 @@ INNER JOIN lists l ON l.id = la.list_id
 WHERE la.account_id = $1
 ORDER BY la.list_id;
 
+-- name: GetListsByMemberAccountID :many
+SELECT l.* FROM lists l
+INNER JOIN list_accounts la ON la.list_id = l.id
+WHERE la.account_id = $1
+ORDER BY l.id;
+
 -- name: GetListTimeline :many
 SELECT s.* FROM statuses s
 INNER JOIN list_accounts la ON la.account_id = s.account_id

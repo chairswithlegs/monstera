@@ -24,7 +24,6 @@ type FakeStore struct {
 	statusesByID           map[string]*domain.Status
 	statusesByAPID         map[string]*domain.Status
 	statusesCount          map[string]int
-	homeTimeline           map[string][]*domain.Status
 	publicTimeline         []*domain.Status
 	followsByKey           map[string]*domain.Follow // "accountID:targetID"
 	blocksByKey            map[string]struct{}       // "accountID:targetID"
@@ -171,7 +170,6 @@ func NewFakeStore() *FakeStore {
 		statusesByID:                    make(map[string]*domain.Status),
 		statusesByAPID:                  make(map[string]*domain.Status),
 		statusesCount:                   make(map[string]int),
-		homeTimeline:                    make(map[string][]*domain.Status),
 		followsByKey:                    make(map[string]*domain.Follow),
 		blocksByKey:                     make(map[string]struct{}),
 		mutesByKey:                      make(map[string]struct{}),
@@ -554,6 +552,7 @@ func (f *FakeStore) CreateStatus(ctx context.Context, in store.CreateStatusInput
 		Visibility:          in.Visibility,
 		Language:            in.Language,
 		InReplyToID:         in.InReplyToID,
+		InReplyToAccountID:  in.InReplyToAccountID,
 		ReblogOfID:          in.ReblogOfID,
 		QuotedStatusID:      in.QuotedStatusID,
 		QuoteApprovalPolicy: policy,
@@ -568,10 +567,6 @@ func (f *FakeStore) CreateStatus(ctx context.Context, in store.CreateStatusInput
 	if in.APID != "" {
 		f.statusesByAPID[in.APID] = s
 	}
-	if f.homeTimeline[in.AccountID] == nil {
-		f.homeTimeline[in.AccountID] = []*domain.Status{}
-	}
-	f.homeTimeline[in.AccountID] = append([]*domain.Status{s}, f.homeTimeline[in.AccountID]...)
 	if in.Visibility == domain.VisibilityPublic {
 		f.publicTimeline = append([]*domain.Status{s}, f.publicTimeline...)
 	}
@@ -718,13 +713,6 @@ func (f *FakeStore) SoftDeleteStatus(ctx context.Context, id string) error {
 	}
 	now := time.Now()
 	s.DeletedAt = &now
-	newList := make([]*domain.Status, 0, len(f.homeTimeline[s.AccountID]))
-	for _, st := range f.homeTimeline[s.AccountID] {
-		if st.ID != id {
-			newList = append(newList, st)
-		}
-	}
-	f.homeTimeline[s.AccountID] = newList
 	newPublic := make([]*domain.Status, 0, len(f.publicTimeline))
 	for _, st := range f.publicTimeline {
 		if st.ID != id {
@@ -752,22 +740,52 @@ func (f *FakeStore) DecrementStatusesCount(ctx context.Context, accountID string
 func (f *FakeStore) GetHomeTimeline(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Status, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	list := f.homeTimeline[accountID]
-	if list == nil {
-		return nil, nil
+
+	// Build set of account IDs whose statuses should appear: self + accepted follows.
+	visible := map[string]struct{}{accountID: {}}
+	for _, fol := range f.followsByKey {
+		if fol.AccountID == accountID && fol.State == domain.FollowStateAccepted {
+			visible[fol.TargetID] = struct{}{}
+		}
 	}
+
+	// Build set of account IDs in exclusive lists owned by the requesting account.
+	exclusiveMembers := make(map[string]struct{})
+	for listID, l := range f.listsByID {
+		if l.AccountID == accountID && l.Exclusive {
+			for _, mid := range f.listAccountIDs[listID] {
+				exclusiveMembers[mid] = struct{}{}
+			}
+		}
+	}
+
+	// Collect matching statuses.
+	var candidates []*domain.Status
+	for _, s := range f.statusesByID {
+		if s.DeletedAt != nil {
+			continue
+		}
+		if _, ok := visible[s.AccountID]; !ok {
+			continue
+		}
+		if _, excluded := exclusiveMembers[s.AccountID]; excluded {
+			continue
+		}
+		candidates = append(candidates, s)
+	}
+	sort.Slice(candidates, func(i, j int) bool { return candidates[j].ID < candidates[i].ID })
+
 	cursor := noCursorSentinel
 	if maxID != nil && *maxID != "" {
 		cursor = *maxID
 	}
 	out := make([]domain.Status, 0, limit)
-	for i := 0; i < len(list) && len(out) < limit; i++ {
-		s := list[i]
-		if s.DeletedAt != nil {
-			continue
-		}
+	for _, s := range candidates {
 		if cursor != noCursorSentinel && s.ID >= cursor {
 			continue
+		}
+		if len(out) >= limit {
+			break
 		}
 		out = append(out, *s)
 	}
@@ -2404,6 +2422,23 @@ func (f *FakeStore) GetListIDsByMemberAccountID(_ context.Context, accountID str
 		for _, mid := range members {
 			if mid == accountID {
 				result = append(result, listID)
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
+func (f *FakeStore) GetListsByMemberAccountID(_ context.Context, accountID string) ([]domain.List, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var result []domain.List
+	for listID, members := range f.listAccountIDs {
+		for _, mid := range members {
+			if mid == accountID {
+				if l, ok := f.listsByID[listID]; ok {
+					result = append(result, *l)
+				}
 				break
 			}
 		}

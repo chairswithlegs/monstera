@@ -3,6 +3,7 @@ package sse
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -22,7 +23,9 @@ const streamNameUser = "user"
 // routing events to the correct streams.
 type SubscriberStore interface {
 	GetLocalFollowerAccountIDs(ctx context.Context, targetID string) ([]string, error)
-	GetListIDsByMemberAccountID(ctx context.Context, accountID string) ([]string, error)
+	GetListsByMemberAccountID(ctx context.Context, accountID string) ([]domain.List, error)
+	ListListAccountIDs(ctx context.Context, listID string) ([]string, error)
+	GetFollow(ctx context.Context, accountID, targetID string) (*domain.Follow, error)
 }
 
 // subscriberStatusService is the minimal StatusService interface the SSE subscriber
@@ -121,7 +124,7 @@ func (s *Subscriber) handleStatusCreated(ctx context.Context, event domain.Domai
 
 	hashtagNames := hashtagNamesFromTags(payload.Tags)
 	isReblog := payload.Status.ReblogOfID != nil
-	s.routeStatusEvent(ctx, EventUpdate, payload.Status.AccountID, payload.Status.Visibility, isReblog, payload.Status.Local, statusJSON, hashtagNames, payload.MentionedAccountIDs)
+	s.routeStatusEvent(ctx, EventUpdate, payload.Status.AccountID, payload.Status.Visibility, isReblog, payload.Status.Local, statusJSON, hashtagNames, payload.MentionedAccountIDs, payload.Status)
 }
 
 func (s *Subscriber) handleStatusUpdated(ctx context.Context, event domain.DomainEvent) {
@@ -142,7 +145,7 @@ func (s *Subscriber) handleStatusUpdated(ctx context.Context, event domain.Domai
 	}
 
 	hashtagNames := hashtagNamesFromTags(payload.Tags)
-	s.routeStatusEvent(ctx, EventStatusUpdate, payload.Status.AccountID, payload.Status.Visibility, false, payload.Status.Local, statusJSON, hashtagNames, payload.MentionedAccountIDs)
+	s.routeStatusEvent(ctx, EventStatusUpdate, payload.Status.AccountID, payload.Status.Visibility, false, payload.Status.Local, statusJSON, hashtagNames, payload.MentionedAccountIDs, payload.Status)
 }
 
 func hashtagNamesFromTags(tags []domain.Hashtag) []string {
@@ -153,8 +156,17 @@ func hashtagNamesFromTags(tags []domain.Hashtag) []string {
 	return names
 }
 
-func (s *Subscriber) routeStatusEvent(ctx context.Context, eventType, accountID, visibility string, isReblog, local bool, statusJSON []byte, hashtagNames, mentionedAccountIDs []string) {
+func (s *Subscriber) routeStatusEvent(ctx context.Context, eventType, accountID, visibility string, isReblog, local bool, statusJSON []byte, hashtagNames, mentionedAccountIDs []string, status *domain.Status) {
 	ev := SSEEvent{Event: eventType, Data: string(statusJSON)}
+
+	// Fetch lists containing the status author (used for both list streaming and exclusive filtering).
+	lists, err := s.store.GetListsByMemberAccountID(ctx, accountID)
+	if err != nil {
+		slog.ErrorContext(ctx, "sse subscriber: get lists for account", slog.Any("error", err), slog.String("account_id", accountID))
+		lists = nil
+	}
+
+	exclusiveOwners := exclusiveOwnerSet(lists)
 
 	switch visibility {
 	case domain.VisibilityPublic:
@@ -175,6 +187,9 @@ func (s *Subscriber) routeStatusEvent(ctx context.Context, eventType, accountID,
 		} else {
 			ev.Stream = streamNameUser
 			for _, fid := range followerIDs {
+				if _, excluded := exclusiveOwners[fid]; excluded {
+					continue
+				}
 				subj := StreamKeyToSubject(StreamUserPrefix + fid)
 				if subj != "" {
 					s.publish(ctx, subj, ev, "events.user.*")
@@ -193,7 +208,7 @@ func (s *Subscriber) routeStatusEvent(ctx context.Context, eventType, accountID,
 				}
 			}
 		}
-		s.publishToListStreams(ctx, accountID, ev)
+		s.publishToListStreams(ctx, lists, status, ev)
 	case domain.VisibilityPrivate:
 		followerIDs, err := s.store.GetLocalFollowerAccountIDs(ctx, accountID)
 		if err != nil {
@@ -201,13 +216,16 @@ func (s *Subscriber) routeStatusEvent(ctx context.Context, eventType, accountID,
 		} else {
 			ev.Stream = streamNameUser
 			for _, fid := range followerIDs {
+				if _, excluded := exclusiveOwners[fid]; excluded {
+					continue
+				}
 				subj := StreamKeyToSubject(StreamUserPrefix + fid)
 				if subj != "" {
 					s.publish(ctx, subj, ev, "events.user.*")
 				}
 			}
 		}
-		s.publishToListStreams(ctx, accountID, ev)
+		s.publishToListStreams(ctx, lists, status, ev)
 	case domain.VisibilityDirect:
 		// Deliver to the author's own streams so they see the DM they sent in real time.
 		ev.Stream = streamNameUser
@@ -236,18 +254,70 @@ func (s *Subscriber) routeStatusEvent(ctx context.Context, eventType, accountID,
 	}
 }
 
-func (s *Subscriber) publishToListStreams(ctx context.Context, accountID string, ev SSEEvent) {
-	listIDs, err := s.store.GetListIDsByMemberAccountID(ctx, accountID)
-	if err != nil {
-		slog.ErrorContext(ctx, "sse subscriber: get lists for account", slog.Any("error", err), slog.String("account_id", accountID))
-		return
+// exclusiveOwnerSet returns the set of list-owner account IDs that have the
+// status author in an exclusive list. Used to skip home-stream delivery for
+// those owners.
+func exclusiveOwnerSet(lists []domain.List) map[string]struct{} {
+	owners := make(map[string]struct{})
+	for _, l := range lists {
+		if l.Exclusive {
+			owners[l.AccountID] = struct{}{}
+		}
 	}
-	for _, lid := range listIDs {
-		ev.Stream = StreamListPrefix + lid
+	return owners
+}
+
+// publishToListStreams publishes SSE events to list streams, applying replies_policy filtering.
+// For delete events (status is nil), events are published to all lists without filtering.
+func (s *Subscriber) publishToListStreams(ctx context.Context, lists []domain.List, status *domain.Status, ev SSEEvent) {
+	isReply := status != nil && status.InReplyToID != nil
+	for _, list := range lists {
+		if isReply {
+			if !s.passesRepliesPolicy(ctx, list, status) {
+				continue
+			}
+		}
+		ev.Stream = StreamListPrefix + list.ID
 		subj := StreamKeyToSubject(ev.Stream)
 		if subj != "" {
 			s.publish(ctx, subj, ev, "events.list.*")
 		}
+	}
+}
+
+// passesRepliesPolicy checks whether a reply should be delivered to the given list
+// based on its replies_policy setting.
+func (s *Subscriber) passesRepliesPolicy(ctx context.Context, list domain.List, status *domain.Status) bool {
+	if status.InReplyToAccountID == nil {
+		return false
+	}
+	switch list.RepliesPolicy {
+	case domain.ListRepliesPolicyNone:
+		return false
+	case domain.ListRepliesPolicyList:
+		memberIDs, err := s.store.ListListAccountIDs(ctx, list.ID)
+		if err != nil {
+			slog.ErrorContext(ctx, "sse subscriber: get list member IDs", slog.Any("error", err), slog.String("list_id", list.ID))
+			return false
+		}
+		for _, mid := range memberIDs {
+			if mid == *status.InReplyToAccountID {
+				return true
+			}
+		}
+		return false
+	case domain.ListRepliesPolicyFollowed:
+		_, err := s.store.GetFollow(ctx, list.AccountID, *status.InReplyToAccountID)
+		if errors.Is(err, domain.ErrNotFound) {
+			return false
+		}
+		if err != nil {
+			slog.ErrorContext(ctx, "sse subscriber: check follow for list replies_policy", slog.Any("error", err))
+			return false
+		}
+		return true
+	default:
+		return true
 	}
 }
 
@@ -273,6 +343,20 @@ func (s *Subscriber) handleStatusDeleted(ctx context.Context, event domain.Domai
 
 	ev := SSEEvent{Event: EventDelete, Data: payload.StatusID}
 
+	// Fetch lists for the author (for list stream delivery and exclusive filtering).
+	lists, err := s.store.GetListsByMemberAccountID(ctx, payload.AccountID)
+	if err != nil {
+		slog.ErrorContext(ctx, "sse subscriber: get lists for account (delete)", slog.Any("error", err), slog.String("account_id", payload.AccountID))
+		lists = nil
+	}
+
+	exclusiveOwners := make(map[string]struct{})
+	for _, l := range lists {
+		if l.Exclusive {
+			exclusiveOwners[l.AccountID] = struct{}{}
+		}
+	}
+
 	if payload.Visibility == domain.VisibilityPublic {
 		ev.Stream = StreamPublic
 		s.publish(ctx, SubjectPrefixPublic, ev, "events.public")
@@ -288,6 +372,9 @@ func (s *Subscriber) handleStatusDeleted(ctx context.Context, event domain.Domai
 	} else {
 		ev.Stream = streamNameUser
 		for _, fid := range followerIDs {
+			if _, excluded := exclusiveOwners[fid]; excluded {
+				continue
+			}
 			subj := StreamKeyToSubject(StreamUserPrefix + fid)
 			if subj != "" {
 				s.publish(ctx, subj, ev, "events.user.*")
@@ -305,6 +392,9 @@ func (s *Subscriber) handleStatusDeleted(ctx context.Context, event domain.Domai
 			s.publish(ctx, subj, ev, "events.hashtag.*")
 		}
 	}
+
+	// Publish delete to list streams (no replies_policy filtering for deletes).
+	s.publishToListStreams(ctx, lists, nil, ev)
 
 	if payload.Visibility == domain.VisibilityDirect {
 		ev.Stream = streamNameUser

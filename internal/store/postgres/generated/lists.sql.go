@@ -173,6 +173,40 @@ func (q *Queries) GetListTimeline(ctx context.Context, arg GetListTimelineParams
 	return items, nil
 }
 
+const getListsByMemberAccountID = `-- name: GetListsByMemberAccountID :many
+SELECT l.id, l.account_id, l.title, l.replies_policy, l.exclusive, l.created_at FROM lists l
+INNER JOIN list_accounts la ON la.list_id = l.id
+WHERE la.account_id = $1
+ORDER BY l.id
+`
+
+func (q *Queries) GetListsByMemberAccountID(ctx context.Context, accountID string) ([]List, error) {
+	rows, err := q.db.Query(ctx, getListsByMemberAccountID, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []List{}
+	for rows.Next() {
+		var i List
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.Title,
+			&i.RepliesPolicy,
+			&i.Exclusive,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listListAccountIDs = `-- name: ListListAccountIDs :many
 SELECT account_id FROM list_accounts WHERE list_id = $1 ORDER BY account_id
 `
