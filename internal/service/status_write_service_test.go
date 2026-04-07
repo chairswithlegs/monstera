@@ -181,7 +181,7 @@ func TestStatusWriteService_Create_no_mention_notification_when_mentionee_muted_
 	})
 	require.NoError(t, err)
 
-	notifs, err := fake.ListNotifications(ctx, bob.ID, nil, 10)
+	notifs, err := fake.ListNotifications(ctx, bob.ID, nil, 10, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, notifs, "bob should receive no mention notification when conversation is muted")
 }
@@ -466,7 +466,7 @@ func TestStatusWriteService_Update_quoted_update_notification(t *testing.T) {
 	_, err = statusWriteSvc.Update(ctx, UpdateStatusInput{AccountID: alice.ID, StatusID: quotedID, Text: "edited text"})
 	require.NoError(t, err)
 
-	notifications, err := fake.ListNotifications(ctx, bob.ID, nil, 20)
+	notifications, err := fake.ListNotifications(ctx, bob.ID, nil, 20, nil, nil)
 	require.NoError(t, err)
 	var quotedUpdate *domain.Notification
 	for i := range notifications {

@@ -22,10 +22,12 @@ type Querier interface {
 	BulkInsertTrendingLinks(ctx context.Context, arg BulkInsertTrendingLinksParams) error
 	BulkUpsertTrendingStatuses(ctx context.Context, arg BulkUpsertTrendingStatusesParams) error
 	ClearNotifications(ctx context.Context, accountID string) error
+	ClosePoll(ctx context.Context, id string) error
 	ConfirmUser(ctx context.Context, id string) error
 	ConsumeEmailToken(ctx context.Context, tokenHash string) error
 	CountAccountPins(ctx context.Context, accountID string) (int64, error)
 	CountAccountPublicStatuses(ctx context.Context, accountID string) (int64, error)
+	CountDistinctVoters(ctx context.Context, pollID string) (int32, error)
 	CountFollowers(ctx context.Context, targetID string) (int64, error)
 	CountFollowing(ctx context.Context, accountID string) (int64, error)
 	CountGroupedNotifications(ctx context.Context, accountID string) (int64, error)
@@ -239,6 +241,7 @@ type Querier interface {
 	ListBlockedAccountsPaginated(ctx context.Context, arg ListBlockedAccountsPaginatedParams) ([]ListBlockedAccountsPaginatedRow, error)
 	ListDirectoryAccounts(ctx context.Context, arg ListDirectoryAccountsParams) ([]Account, error)
 	ListDomainBlocks(ctx context.Context) ([]DomainBlock, error)
+	ListExpiredOpenPollStatusIDs(ctx context.Context, limit int32) ([]string, error)
 	ListFeaturedTagsByAccount(ctx context.Context, accountID string) ([]ListFeaturedTagsByAccountRow, error)
 	ListFilterKeywords(ctx context.Context, filterID string) ([]UserFilterKeyword, error)
 	ListFilterStatuses(ctx context.Context, filterID string) ([]UserFilterStatus, error)
@@ -284,6 +287,7 @@ type Querier interface {
 	SearchAccountsFollowing(ctx context.Context, arg SearchAccountsFollowingParams) ([]Account, error)
 	SearchHashtagsByPrefix(ctx context.Context, arg SearchHashtagsByPrefixParams) ([]Hashtag, error)
 	SetMarker(ctx context.Context, arg SetMarkerParams) error
+	SetPollOptionVoteCount(ctx context.Context, arg SetPollOptionVoteCountParams) error
 	SetStatusConversationID(ctx context.Context, arg SetStatusConversationIDParams) error
 	SilenceAccount(ctx context.Context, id string) error
 	SoftDeleteStatus(ctx context.Context, id string) error

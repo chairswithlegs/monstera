@@ -79,7 +79,7 @@ func (svc *timelineService) enrichStatuses(ctx context.Context, statuses []domai
 	for i := range statuses {
 		ptrs[i] = &statuses[i]
 	}
-	enriched, err := svc.statusSvc.EnrichStatuses(ctx, ptrs, EnrichOpts{IncludeCard: true, ViewerID: viewerAccountID})
+	enriched, err := svc.statusSvc.EnrichStatuses(ctx, ptrs, EnrichOpts{IncludeCard: true, IncludePoll: true, ViewerID: viewerAccountID})
 	if err != nil {
 		return nil, fmt.Errorf("enrichStatuses: %w", err)
 	}
@@ -150,6 +150,10 @@ func (svc *timelineService) FavouritesEnriched(ctx context.Context, accountID st
 	if err != nil {
 		return nil, nil, err
 	}
+	out, err = svc.filterBlockedStatuses(ctx, out, accountID)
+	if err != nil {
+		return nil, nil, err
+	}
 	return out, nextCursor, nil
 }
 
@@ -161,6 +165,10 @@ func (svc *timelineService) BookmarksEnriched(ctx context.Context, accountID str
 		return nil, nil, fmt.Errorf("GetBookmarks: %w", err)
 	}
 	out, err := svc.enrichStatuses(ctx, statuses, &accountID)
+	if err != nil {
+		return nil, nil, err
+	}
+	out, err = svc.filterBlockedStatuses(ctx, out, accountID)
 	if err != nil {
 		return nil, nil, err
 	}

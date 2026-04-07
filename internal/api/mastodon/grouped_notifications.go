@@ -35,7 +35,9 @@ func (h *GroupedNotificationsHandler) GETGroupedNotifications(w http.ResponseWri
 	}
 	params := PageParamsFromRequest(r)
 	maxID := optionalString(params.MaxID)
-	groups, err := h.notifications.ListGrouped(r.Context(), account.ID, maxID, params.Limit)
+	types := parseArrayParam(r, "types[]")
+	excludeTypes := parseArrayParam(r, "exclude_types[]")
+	groups, err := h.notifications.ListGrouped(r.Context(), account.ID, maxID, params.Limit, types, excludeTypes)
 	if err != nil {
 		api.HandleError(w, r, err)
 		return

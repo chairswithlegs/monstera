@@ -349,14 +349,16 @@ type Poll struct {
 	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
 	Multiple  bool               `json:"multiple"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ClosedAt  pgtype.Timestamptz `json:"closed_at"`
 }
 
 type PollOption struct {
-	ID        string             `json:"id"`
-	PollID    string             `json:"poll_id"`
-	Title     string             `json:"title"`
-	Position  int32              `json:"position"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ID         string             `json:"id"`
+	PollID     string             `json:"poll_id"`
+	Title      string             `json:"title"`
+	Position   int32              `json:"position"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	VotesCount int32              `json:"votes_count"`
 }
 
 type PollVote struct {

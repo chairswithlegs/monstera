@@ -293,14 +293,14 @@ func TestAccountsHandler_GETAccountStatuses(t *testing.T) {
 	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc)
 	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, timelineSvc, statusSvc, nil, nil, nil, nil, 0, "example.com")
 
-	t.Run("unauthenticated returns 401", func(t *testing.T) {
+	t.Run("unauthenticated returns 200", func(t *testing.T) {
 		acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
 		require.NoError(t, err)
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+acc.ID+"/statuses", nil)
 		req = testutil.AddChiURLParam(req, "id", acc.ID)
 		rec := httptest.NewRecorder()
 		handler.GETAccountStatuses(rec, req)
-		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+		assert.Equal(t, http.StatusOK, rec.Code)
 	})
 
 	t.Run("timeline nil returns 422", func(t *testing.T) {
@@ -432,12 +432,12 @@ func TestAccountsHandler_GETFollowers(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	t.Run("unauthenticated returns 401", func(t *testing.T) {
+	t.Run("unauthenticated returns 200", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+alice.ID+"/followers", nil)
 		req = testutil.AddChiURLParam(req, "id", alice.ID)
 		rec := httptest.NewRecorder()
 		handler.GETFollowers(rec, req)
-		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+		assert.Equal(t, http.StatusOK, rec.Code)
 	})
 
 	t.Run("target not found returns 404", func(t *testing.T) {
@@ -506,6 +506,26 @@ func TestAccountsHandler_GETFollowers(t *testing.T) {
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
 		assert.Empty(t, body)
 	})
+
+	t.Run("locked account followers hidden from unauthenticated viewer", func(t *testing.T) {
+		lockedUser, err := accountSvc.Register(ctx, service.RegisterInput{
+			Username: "locked-unauth-followers",
+			Email:    "locked-unauth-followers@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
+		})
+		require.NoError(t, err)
+		_, _, err = accountSvc.UpdateCredentials(ctx, service.UpdateCredentialsInput{AccountID: lockedUser.ID, Locked: true})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+lockedUser.ID+"/followers", nil)
+		req = testutil.AddChiURLParam(req, "id", lockedUser.ID)
+		rec := httptest.NewRecorder()
+		handler.GETFollowers(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body []any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Empty(t, body)
+	})
 }
 
 func TestAccountsHandler_GETFollowing(t *testing.T) {
@@ -524,12 +544,12 @@ func TestAccountsHandler_GETFollowing(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	t.Run("unauthenticated returns 401", func(t *testing.T) {
+	t.Run("unauthenticated returns 200", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+alice.ID+"/following", nil)
 		req = testutil.AddChiURLParam(req, "id", alice.ID)
 		rec := httptest.NewRecorder()
 		handler.GETFollowing(rec, req)
-		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+		assert.Equal(t, http.StatusOK, rec.Code)
 	})
 
 	t.Run("authenticated returns 200", func(t *testing.T) {
@@ -563,6 +583,26 @@ func TestAccountsHandler_GETFollowing(t *testing.T) {
 		require.NoError(t, err)
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+lockedUser.ID+"/following", nil)
 		req = req.WithContext(middleware.WithAccount(req.Context(), viewer))
+		req = testutil.AddChiURLParam(req, "id", lockedUser.ID)
+		rec := httptest.NewRecorder()
+		handler.GETFollowing(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body []any
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Empty(t, body)
+	})
+
+	t.Run("locked account following hidden from unauthenticated viewer", func(t *testing.T) {
+		lockedUser, err := accountSvc.Register(ctx, service.RegisterInput{
+			Username: "locked-unauth-following",
+			Email:    "locked-unauth-following@example.com",
+			Password: "hash",
+			Role:     domain.RoleUser,
+		})
+		require.NoError(t, err)
+		_, _, err = accountSvc.UpdateCredentials(ctx, service.UpdateCredentialsInput{AccountID: lockedUser.ID, Locked: true})
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/"+lockedUser.ID+"/following", nil)
 		req = testutil.AddChiURLParam(req, "id", lockedUser.ID)
 		rec := httptest.NewRecorder()
 		handler.GETFollowing(rec, req)

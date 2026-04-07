@@ -299,6 +299,11 @@ func registerSchedulerJobs(s *svcs, i *infra) scheduler.Scheduler {
 		Interval: time.Hour,
 		Handler:  schedulerjobs.CleanupOutboxEvents(i.store, 24*time.Hour),
 	})
+	sched.Register(scheduler.Job{
+		Name:     "close-expired-polls",
+		Interval: 5 * time.Minute,
+		Handler:  schedulerjobs.CloseExpiredPolls(i.store),
+	})
 	return sched
 }
 
@@ -325,6 +330,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 		Accounts:           s.account,
 		Conversations:      s.statusRead,
 		Follows:            s.follow,
+		Blocks:             i.store,
 		NotificationPolicy: s.notificationPolicy,
 	})
 	cardSub := events.NewCardSubscriber(i.nats.JS, s.card)

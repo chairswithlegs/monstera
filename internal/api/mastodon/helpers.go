@@ -144,6 +144,11 @@ func parseOffsetParam(r *http.Request) int {
 	return 0
 }
 
+// parseArrayParam reads repeated query parameters like types[]=foo&types[]=bar.
+func parseArrayParam(r *http.Request, key string) []string {
+	return r.URL.Query()[key]
+}
+
 // optionalString returns a pointer to s if non-empty, otherwise nil.
 func optionalString(s string) *string {
 	if s == "" {

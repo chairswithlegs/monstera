@@ -21,7 +21,7 @@ func TestNotificationService_List_empty(t *testing.T) {
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 
-	list, err := notifSvc.List(ctx, acc.ID, nil, 20)
+	list, err := notifSvc.List(ctx, acc.ID, nil, 20, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, list)
 }
@@ -46,7 +46,7 @@ func TestNotificationService_List_returns_notifications(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	list, err := notifSvc.List(ctx, target.ID, nil, 20)
+	list, err := notifSvc.List(ctx, target.ID, nil, 20, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, list, 1)
 	assert.Equal(t, target.ID, list[0].AccountID)
@@ -78,7 +78,7 @@ func TestNotificationService_List_respects_limit(t *testing.T) {
 		Type:      domain.NotificationTypeFollow,
 	})
 
-	list, err := notifSvc.List(ctx, target.ID, nil, 1)
+	list, err := notifSvc.List(ctx, target.ID, nil, 1, nil, nil)
 	require.NoError(t, err)
 	assert.Len(t, list, 1)
 }
@@ -93,7 +93,7 @@ func TestNotificationService_List_zero_limit_uses_default(t *testing.T) {
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
 
-	list, err := notifSvc.List(ctx, acc.ID, nil, 0)
+	list, err := notifSvc.List(ctx, acc.ID, nil, 0, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, list)
 }
@@ -104,7 +104,7 @@ func TestNotificationService_List_clamps_to_max_limit(t *testing.T) {
 	fake := testutil.NewFakeStore()
 	notifSvc := NewNotificationService(fake)
 
-	list, err := notifSvc.List(ctx, "any-account", nil, 100)
+	list, err := notifSvc.List(ctx, "any-account", nil, 100, nil, nil)
 	require.NoError(t, err)
 	// Limit is clamped to maxNotificationLimit (40); no error and empty result for unknown account
 	assert.Empty(t, list)

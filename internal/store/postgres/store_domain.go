@@ -1024,15 +1024,23 @@ func (s *PostgresStore) CreateNotification(ctx context.Context, in store.CreateN
 	return &d, nil
 }
 
-func (s *PostgresStore) ListNotifications(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Notification, error) {
+func (s *PostgresStore) ListNotifications(ctx context.Context, accountID string, maxID *string, limit int, types, excludeTypes []string) ([]domain.Notification, error) {
 	cursor := noCursorSentinel
 	if maxID != nil && *maxID != "" {
 		cursor = *maxID
+	}
+	if types == nil {
+		types = []string{}
+	}
+	if excludeTypes == nil {
+		excludeTypes = []string{}
 	}
 	rows, err := s.q.ListNotifications(ctx, db.ListNotificationsParams{
 		AccountID: accountID,
 		Column2:   cursor,
 		Limit:     int32(limit), //nolint:gosec // limit clamped by caller
+		Column4:   types,
+		Column5:   excludeTypes,
 	})
 	if err != nil {
 		return nil, mapErr(err)
@@ -1061,15 +1069,23 @@ func (s *PostgresStore) DismissNotification(ctx context.Context, id, accountID s
 	return mapErr(s.q.DismissNotification(ctx, db.DismissNotificationParams{ID: id, AccountID: accountID}))
 }
 
-func (s *PostgresStore) ListGroupedNotifications(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.NotificationGroup, error) {
+func (s *PostgresStore) ListGroupedNotifications(ctx context.Context, accountID string, maxID *string, limit int, types, excludeTypes []string) ([]domain.NotificationGroup, error) {
 	cursor := noCursorSentinel
 	if maxID != nil && *maxID != "" {
 		cursor = *maxID
+	}
+	if types == nil {
+		types = []string{}
+	}
+	if excludeTypes == nil {
+		excludeTypes = []string{}
 	}
 	rows, err := s.q.ListGroupedNotifications(ctx, db.ListGroupedNotificationsParams{
 		AccountID: accountID,
 		Column2:   cursor,
 		Limit:     int32(limit), //nolint:gosec // limit clamped by caller
+		Column4:   types,
+		Column5:   excludeTypes,
 	})
 	if err != nil {
 		return nil, mapErr(err)
@@ -2882,6 +2898,34 @@ func (s *PostgresStore) ListPollOptions(ctx context.Context, pollID string) ([]d
 		out = append(out, ToDomainPollOption(r))
 	}
 	return out, nil
+}
+
+func (s *PostgresStore) SetPollOptionVoteCount(ctx context.Context, pollID string, position, count int) error {
+	return mapErr(s.q.SetPollOptionVoteCount(ctx, db.SetPollOptionVoteCountParams{
+		PollID:     pollID,
+		Position:   int32(position), //nolint:gosec // position is a small index
+		VotesCount: int32(count),    //nolint:gosec // count is bounded by voters
+	}))
+}
+
+func (s *PostgresStore) CountDistinctVoters(ctx context.Context, pollID string) (int, error) {
+	n, err := s.q.CountDistinctVoters(ctx, pollID)
+	if err != nil {
+		return 0, fmt.Errorf("CountDistinctVoters: %w", mapErr(err))
+	}
+	return int(n), nil
+}
+
+func (s *PostgresStore) ClosePoll(ctx context.Context, pollID string) error {
+	return mapErr(s.q.ClosePoll(ctx, pollID))
+}
+
+func (s *PostgresStore) ListExpiredOpenPollStatusIDs(ctx context.Context, limit int) ([]string, error) {
+	rows, err := s.q.ListExpiredOpenPollStatusIDs(ctx, int32(limit)) //nolint:gosec // limit is small
+	if err != nil {
+		return nil, fmt.Errorf("ListExpiredOpenPollStatusIDs: %w", mapErr(err))
+	}
+	return rows, nil
 }
 
 func (s *PostgresStore) DeletePollVotesByAccount(ctx context.Context, pollID, accountID string) error {

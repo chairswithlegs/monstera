@@ -14,14 +14,18 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 )
 
-// handleCreate handles a Create{Note} activity.
+// handleCreate handles a Create{Note} or Create{Question} activity.
 func (p *inbox) handleCreate(ctx context.Context, activity *vocab.Activity, _ string) error {
 	note, err := activity.ObjectNote()
 	if err != nil {
 		return fmt.Errorf("%w: create object is not a note: %w", ErrInboxFatal, err)
 	}
-	if note.Type != vocab.ObjectTypeNote {
+	if note.Type != vocab.ObjectTypeNote && note.Type != vocab.ObjectTypeQuestion {
 		return fmt.Errorf("%w: create object type %q is not supported", ErrInboxFatal, note.Type)
+	}
+	// Detect poll vote Notes: has `name` (option text), no `content`, with `inReplyTo`.
+	if note.IsPollVote() {
+		return p.handlePollVote(ctx, activity, note)
 	}
 	if note.ID != "" {
 		if _, err := p.statuses.GetByAPID(ctx, note.ID); err == nil {
@@ -68,6 +72,36 @@ func (p *inbox) handleCreate(ctx context.Context, activity *vocab.Activity, _ st
 	return nil
 }
 
+// handlePollVote processes an inbound Create{Note} that represents a poll vote.
+// Per Mastodon convention, a vote Note has `name` (option text), no `content`, and
+// `inReplyTo` pointing to the Question IRI. Only votes on local polls are processed.
+func (p *inbox) handlePollVote(ctx context.Context, activity *vocab.Activity, note *vocab.Note) error {
+	questionIRI := *note.InReplyTo
+	// Look up the poll's status by the Question IRI.
+	status, err := p.statuses.GetByAPID(ctx, questionIRI)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			slog.DebugContext(ctx, "inbox: poll vote for unknown status", slog.String("question_iri", questionIRI))
+			return nil // unknown poll, silently drop
+		}
+		return fmt.Errorf("inbox: GetByAPID for poll vote: %w", err)
+	}
+	// Only process votes on local polls — we are the authoritative instance.
+	if !status.IsLocal() {
+		slog.DebugContext(ctx, "inbox: ignoring poll vote for remote poll", slog.String("status_id", status.ID))
+		return nil
+	}
+	// Resolve the voter's account.
+	voter, err := p.remoteResolver.ResolveRemoteAccountByIRI(ctx, activity.Actor)
+	if err != nil {
+		return fmt.Errorf("inbox: resolve voter %q: %w", activity.Actor, err)
+	}
+	if err := p.remoteStatusWrites.RecordRemoteVote(ctx, status.ID, voter.ID, note.Name); err != nil {
+		return fmt.Errorf("inbox: RecordRemoteVote: %w", err)
+	}
+	return nil
+}
+
 // handleAnnounce handles an Announce activity.
 func (p *inbox) handleAnnounce(ctx context.Context, activity *vocab.Activity, _ string) error {
 	if activity.ID != "" {
@@ -94,8 +128,8 @@ func (p *inbox) handleAnnounce(ctx context.Context, activity *vocab.Activity, _ 
 		if fetchErr := p.remoteResolver.resolveIRIDocument(ctx, objectID, &note); fetchErr != nil {
 			return fmt.Errorf("inbox: fetch Note for Announce: %w", fetchErr)
 		}
-		if note.Type != vocab.ObjectTypeNote {
-			return fmt.Errorf("%w: announce object is not a Note", ErrInboxFatal)
+		if note.Type != vocab.ObjectTypeNote && note.Type != vocab.ObjectTypeQuestion {
+			return fmt.Errorf("%w: announce object is not a Note or Question", ErrInboxFatal)
 		}
 		author, resolveErr := p.remoteResolver.ResolveRemoteAccountByIRI(ctx, note.AttributedTo)
 		if resolveErr != nil {
@@ -184,7 +218,7 @@ func (p *inbox) handleLike(ctx context.Context, activity *vocab.Activity) error 
 func (p *inbox) handleDelete(ctx context.Context, activity *vocab.Activity) error {
 	objectType := activity.ObjectType()
 	switch objectType {
-	case vocab.ObjectTypeTombstone, vocab.ObjectTypeNote, "":
+	case vocab.ObjectTypeTombstone, vocab.ObjectTypeNote, vocab.ObjectTypeQuestion, "":
 		objectID, ok := activity.ObjectID()
 		if !ok || objectID == "" {
 			return nil
@@ -227,7 +261,7 @@ func (p *inbox) handleDelete(ctx context.Context, activity *vocab.Activity) erro
 func (p *inbox) handleUpdate(ctx context.Context, activity *vocab.Activity) error {
 	objectType := activity.ObjectType()
 	switch objectType {
-	case vocab.ObjectTypeNote:
+	case vocab.ObjectTypeNote, vocab.ObjectTypeQuestion:
 		note, err := activity.ObjectNote()
 		if err != nil {
 			return fmt.Errorf("%w: update{Note}: %w", ErrInboxFatal, err)
@@ -258,6 +292,12 @@ func (p *inbox) handleUpdate(ctx context.Context, activity *vocab.Activity) erro
 			Sensitive:      note.Sensitive,
 		}); updateErr != nil {
 			return fmt.Errorf("inbox: UpdateRemote: %w", updateErr)
+		}
+		// For Question objects, also update poll vote counts from the authoritative server.
+		if pollFields := vocab.NoteToPollFields(note); pollFields != nil {
+			if updateErr := p.remoteStatusWrites.UpdateRemotePollVoteCounts(ctx, note.ID, pollFields.VoteCounts); updateErr != nil {
+				slog.WarnContext(ctx, "inbox: UpdateRemotePollVoteCounts failed", slog.Any("error", updateErr), slog.String("status_apid", note.ID))
+			}
 		}
 		return nil
 	case vocab.ObjectTypePerson, vocab.ObjectTypeService:

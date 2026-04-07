@@ -114,16 +114,18 @@ func ToDomainPoll(p db.Poll) domain.Poll {
 		CreatedAt: pgTime(p.CreatedAt),
 	}
 	out.ExpiresAt = pgTimePtr(p.ExpiresAt)
+	out.ClosedAt = pgTimePtr(p.ClosedAt)
 	return out
 }
 
 // ToDomainPollOption converts a sqlc db.PollOption to a domain.PollOption.
 func ToDomainPollOption(o db.PollOption) domain.PollOption {
 	return domain.PollOption{
-		ID:       o.ID,
-		PollID:   o.PollID,
-		Title:    o.Title,
-		Position: int(o.Position),
+		ID:         o.ID,
+		PollID:     o.PollID,
+		Title:      o.Title,
+		Position:   int(o.Position),
+		VotesCount: int(o.VotesCount),
 	}
 }
 

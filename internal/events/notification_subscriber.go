@@ -24,6 +24,7 @@ type NotificationDeps struct {
 	Accounts           AccountLookup
 	Conversations      ConversationMuteChecker
 	Follows            FollowChecker
+	Blocks             BlockChecker
 	NotificationPolicy NotificationPolicyProvider
 }
 
@@ -45,6 +46,11 @@ type ConversationMuteChecker interface {
 // FollowChecker checks follow relationships between accounts.
 type FollowChecker interface {
 	GetFollow(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Follow, error)
+}
+
+// BlockChecker checks block relationships between accounts.
+type BlockChecker interface {
+	IsBlockedEitherDirection(ctx context.Context, accountID, targetID string) (bool, error)
 }
 
 // NotificationPolicyProvider retrieves notification policies and creates notification requests.
@@ -103,6 +109,8 @@ func (n *NotificationSubscriber) processMessage(ctx context.Context, msg jetstre
 		n.handleReblogCreated(ctx, event)
 	case domain.EventStatusCreated, domain.EventStatusCreatedRemote:
 		n.handleStatusCreatedMentions(ctx, event)
+	case domain.EventPollExpired:
+		n.handlePollExpired(ctx, event)
 	}
 	_ = msg.Ack()
 }
@@ -222,6 +230,28 @@ func (n *NotificationSubscriber) handleStatusCreatedMentions(ctx context.Context
 	}
 }
 
+// handlePollExpired notifies the poll author when their poll closes.
+// Per Mastodon behavior, poll authors are only notified on expiry, not on each vote.
+func (n *NotificationSubscriber) handlePollExpired(ctx context.Context, event domain.DomainEvent) {
+	var payload domain.PollUpdatedPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		slog.ErrorContext(ctx, "notification subscriber: unmarshal poll event", slog.Any("error", err))
+		return
+	}
+	if payload.Status == nil || payload.Author == nil {
+		return
+	}
+	// Only notify local poll authors.
+	if payload.Author.IsRemote() {
+		return
+	}
+	statusID := payload.Status.ID
+	// Use the author as both the "from" and recipient for poll expiry notifications
+	// (Mastodon sends "your poll has ended" from the author to themselves).
+	fc := filterContext{fromAccount: payload.Author}
+	n.createOrFilterNotification(ctx, payload.Author.ID, payload.Author.ID, domain.NotificationTypePoll, &statusID, fc)
+}
+
 // filterContext carries optional context needed for notification policy filtering.
 type filterContext struct {
 	// fromAccount is the sender account (used for FilterNewAccounts).
@@ -232,6 +262,21 @@ type filterContext struct {
 }
 
 func (n *NotificationSubscriber) createOrFilterNotification(ctx context.Context, recipientID, fromAccountID, notifType string, statusID *string, fc filterContext) {
+	if recipientID != fromAccountID && n.deps.Blocks != nil {
+		blocked, err := n.deps.Blocks.IsBlockedEitherDirection(ctx, recipientID, fromAccountID)
+		if err != nil {
+			slog.WarnContext(ctx, "notification subscriber: block check failed, dropping notification",
+				slog.String("type", notifType),
+				slog.String("recipient", recipientID),
+				slog.Any("error", err),
+			)
+			return
+		}
+		if blocked {
+			return
+		}
+	}
+
 	if n.deps.NotificationPolicy != nil {
 		filtered, err := n.shouldFilter(ctx, recipientID, fromAccountID, notifType, fc)
 		if err != nil {

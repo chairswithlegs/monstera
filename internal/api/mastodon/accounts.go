@@ -311,9 +311,9 @@ func parseFieldsAttributes(form map[string][]string) json.RawMessage {
 // GETAccountStatuses handles GET /api/v1/accounts/:id/statuses.
 func (h *AccountsHandler) GETAccountStatuses(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
+	var viewerID *string
+	if account != nil {
+		viewerID = &account.ID
 	}
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -334,7 +334,6 @@ func (h *AccountsHandler) GETAccountStatuses(w http.ResponseWriter, r *http.Requ
 			slog.WarnContext(r.Context(), "backfill request failed", slog.String("account_id", target.ID), slog.Any("error", err))
 		}
 	}
-	viewerID := &account.ID
 
 	// pinned=true: return only this account's pinned statuses.
 	// Remote accounts: full support requires fetching the AP `featured` collection

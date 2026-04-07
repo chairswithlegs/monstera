@@ -96,6 +96,20 @@ func (svc *searchService) Search(ctx context.Context, viewer *domain.Account, q 
 		if !following && resolve && acctPattern.MatchString(q) {
 			out.Accounts = svc.resolveAndMergeAccount(ctx, q, out.Accounts, limit)
 		}
+
+		if viewer != nil {
+			filtered := make([]*domain.Account, 0, len(out.Accounts))
+			for _, a := range out.Accounts {
+				blocked, err := svc.store.IsBlockedEitherDirection(ctx, viewer.ID, a.ID)
+				if err != nil {
+					return nil, fmt.Errorf("IsBlockedEitherDirection: %w", err)
+				}
+				if !blocked {
+					filtered = append(filtered, a)
+				}
+			}
+			out.Accounts = filtered
+		}
 	}
 
 	if wantHashtags {

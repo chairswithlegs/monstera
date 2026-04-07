@@ -136,7 +136,7 @@ func (svc *trendsService) fill(ctx context.Context) (*trendingCache, error) {
 		}
 		statuses = append(statuses, s)
 	}
-	enriched, err := svc.statusSvc.EnrichStatuses(ctx, statuses, EnrichOpts{})
+	enriched, err := svc.statusSvc.EnrichStatuses(ctx, statuses, EnrichOpts{IncludeCard: true, IncludePoll: true})
 	if err != nil {
 		return nil, fmt.Errorf("EnrichStatuses: %w", err)
 	}
