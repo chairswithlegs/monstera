@@ -24,6 +24,7 @@ type NotificationDeps struct {
 	Accounts           AccountLookup
 	Conversations      ConversationMuteChecker
 	Follows            FollowChecker
+	Blocks             BlockChecker
 	NotificationPolicy NotificationPolicyProvider
 }
 
@@ -45,6 +46,11 @@ type ConversationMuteChecker interface {
 // FollowChecker checks follow relationships between accounts.
 type FollowChecker interface {
 	GetFollow(ctx context.Context, actorAccountID, targetAccountID string) (*domain.Follow, error)
+}
+
+// BlockChecker checks block relationships between accounts.
+type BlockChecker interface {
+	IsBlockedEitherDirection(ctx context.Context, accountID, targetID string) (bool, error)
 }
 
 // NotificationPolicyProvider retrieves notification policies and creates notification requests.
@@ -256,6 +262,21 @@ type filterContext struct {
 }
 
 func (n *NotificationSubscriber) createOrFilterNotification(ctx context.Context, recipientID, fromAccountID, notifType string, statusID *string, fc filterContext) {
+	if recipientID != fromAccountID && n.deps.Blocks != nil {
+		blocked, err := n.deps.Blocks.IsBlockedEitherDirection(ctx, recipientID, fromAccountID)
+		if err != nil {
+			slog.WarnContext(ctx, "notification subscriber: block check failed, dropping notification",
+				slog.String("type", notifType),
+				slog.String("recipient", recipientID),
+				slog.Any("error", err),
+			)
+			return
+		}
+		if blocked {
+			return
+		}
+	}
+
 	if n.deps.NotificationPolicy != nil {
 		filtered, err := n.shouldFilter(ctx, recipientID, fromAccountID, notifType, fc)
 		if err != nil {

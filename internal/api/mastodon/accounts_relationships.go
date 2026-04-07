@@ -109,9 +109,9 @@ func (h *AccountsHandler) GETRelationships(w http.ResponseWriter, r *http.Reques
 // GETFollowers handles GET /api/v1/accounts/:id/followers.
 func (h *AccountsHandler) GETFollowers(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
+	var viewerID *string
+	if account != nil {
+		viewerID = &account.ID
 	}
 	targetID := chi.URLParam(r, "id")
 	if targetID == "" {
@@ -127,8 +127,11 @@ func (h *AccountsHandler) GETFollowers(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	if target.Locked && target.ID != account.ID {
-		follow, _ := h.follows.GetFollow(r.Context(), account.ID, target.ID)
+	if target.Locked && (viewerID == nil || target.ID != *viewerID) {
+		var follow *domain.Follow
+		if viewerID != nil {
+			follow, _ = h.follows.GetFollow(r.Context(), *viewerID, target.ID)
+		}
 		if follow == nil || follow.State != domain.FollowStateAccepted {
 			api.WriteJSON(w, http.StatusOK, []apimodel.Account{})
 			return
@@ -161,9 +164,9 @@ func firstLastIDsFromAccounts(list []domain.Account) (firstID, lastID string) {
 // GETFollowing handles GET /api/v1/accounts/:id/following.
 func (h *AccountsHandler) GETFollowing(w http.ResponseWriter, r *http.Request) {
 	account := middleware.AccountFromContext(r.Context())
-	if account == nil {
-		api.HandleError(w, r, api.ErrUnauthorized)
-		return
+	var viewerID *string
+	if account != nil {
+		viewerID = &account.ID
 	}
 	targetID := chi.URLParam(r, "id")
 	if targetID == "" {
@@ -179,8 +182,11 @@ func (h *AccountsHandler) GETFollowing(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	if target.Locked && target.ID != account.ID {
-		follow, _ := h.follows.GetFollow(r.Context(), account.ID, target.ID)
+	if target.Locked && (viewerID == nil || target.ID != *viewerID) {
+		var follow *domain.Follow
+		if viewerID != nil {
+			follow, _ = h.follows.GetFollow(r.Context(), *viewerID, target.ID)
+		}
 		if follow == nil || follow.State != domain.FollowStateAccepted {
 			api.WriteJSON(w, http.StatusOK, []apimodel.Account{})
 			return
