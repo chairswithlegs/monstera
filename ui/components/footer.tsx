@@ -11,7 +11,7 @@ export function Footer() {
 
   return (
     <footer className="border-t bg-white py-3">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-2 px-6">
+      <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-2 px-4 md:flex-row md:justify-between md:px-6">
         <p className="text-sm text-muted-foreground">
           {t('poweredBy')}{' '}
           <Link

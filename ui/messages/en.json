@@ -17,7 +17,9 @@
     "account": "Account",
     "moderation": "Moderation",
     "admin": "Admin",
-    "logout": "Log out"
+    "logout": "Log out",
+    "openMenu": "Open menu",
+    "navigation": "Navigation"
   },
   "auth": {
     "signIn": "Sign in",
