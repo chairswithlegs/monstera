@@ -6,8 +6,9 @@ Overview of the Monstera documentation layout.
 
 | Document | Description |
 |----------|-------------|
+| [configuration.md](configuration.md) | Environment variable reference. |
 | [tech_stack.md](tech_stack.md) | Technologies and libraries. |
-| [roadmap.md](roadmap.md) | Open questions, unimplemented/deferred features. |
+| [adding-a-locale.md](adding-a-locale.md) | Adding a locale. |
 
 ## Architecture and design
 
