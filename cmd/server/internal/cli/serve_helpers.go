@@ -249,7 +249,7 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 		statusInteraction:  interactionSvc,
 		remoteStatusWrite:  remoteStatusWriteSvc,
 		scheduled:          scheduledSvc,
-		timeline:           service.NewTimelineService(i.store, accountSvc, statusSvc),
+		timeline:           service.NewTimelineService(i.store, accountSvc, statusSvc, i.blocklist),
 		conversation:       conversationSvc,
 		instance:           service.NewInstanceService(i.store),
 		follow:             followSvc,
@@ -332,6 +332,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 		Follows:            s.follow,
 		Blocks:             i.store,
 		NotificationPolicy: s.notificationPolicy,
+		DomainSilence:      i.blocklist,
 	})
 	cardSub := events.NewCardSubscriber(i.nats.JS, s.card)
 	backfillWorker := ap.NewBackfillWorker(i.nats.JS, s.account, s.backfill, s.remoteResolver,

@@ -18,7 +18,7 @@ func TestTimelineService_HomeEnriched_empty(t *testing.T) {
 	fake := testutil.NewFakeStore()
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
-	timelineSvc := NewTimelineService(fake, accountSvc, statusSvc)
+	timelineSvc := NewTimelineService(fake, accountSvc, statusSvc, nil)
 
 	acc, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -35,7 +35,7 @@ func TestTimelineService_HomeEnriched_one_status(t *testing.T) {
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
-	timelineSvc := NewTimelineService(fake, accountSvc, statusSvc)
+	timelineSvc := NewTimelineService(fake, accountSvc, statusSvc, nil)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
 		Username: "alice",
@@ -71,7 +71,7 @@ func TestTimelineService_ListTimelineEnriched_excludes_private_status_when_list_
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
-	timelineSvc := NewTimelineService(fake, accountSvc, statusSvc)
+	timelineSvc := NewTimelineService(fake, accountSvc, statusSvc, nil)
 
 	alice, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -110,7 +110,7 @@ func TestTimelineService_ListTimelineEnriched_includes_private_status_when_list_
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
-	timelineSvc := NewTimelineService(fake, accountSvc, statusSvc)
+	timelineSvc := NewTimelineService(fake, accountSvc, statusSvc, nil)
 
 	alice, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -163,7 +163,7 @@ func newTimelineTestEnv(t *testing.T) (context.Context, *testutil.FakeStore, Acc
 	accountSvc := NewAccountService(fake, "https://example.com")
 	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
 	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
-	timelineSvc := NewTimelineService(fake, accountSvc, statusSvc)
+	timelineSvc := NewTimelineService(fake, accountSvc, statusSvc, nil)
 	return ctx, fake, accountSvc, statusWriteSvc, timelineSvc
 }
 
@@ -538,4 +538,150 @@ func TestTimelineService_HomeEnriched_OwnStatuses_NotExcluded(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, enriched, 1, "only alice's own status should appear; bob's should be excluded")
 	assert.Equal(t, "my own post", *enriched[0].Status.Text)
+}
+
+// ── Silenced domain filtering tests ────────────────────────────────────────
+
+type fakeSilenceChecker struct {
+	silenced map[string]bool
+}
+
+func (f *fakeSilenceChecker) IsSilenced(_ context.Context, domain string) bool {
+	return f.silenced[domain]
+}
+
+func TestTimelineService_PublicLocalEnriched_filters_silenced_domain(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	sc := &fakeSilenceChecker{silenced: map[string]bool{"silenced.example": true}}
+	timelineSvc := NewTimelineService(fake, accountSvc, statusSvc, sc)
+
+	// Create a local account.
+	local, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+
+	// Create a remote account on a silenced domain.
+	silencedDomain := "silenced.example"
+	remoteAcc, err := fake.CreateAccount(ctx, store.CreateAccountInput{
+		ID:       uid.New(),
+		Username: "bob",
+		Domain:   &silencedDomain,
+		APID:     "https://silenced.example/users/bob",
+	})
+	require.NoError(t, err)
+
+	// Create a public status from each account.
+	localText := "local post"
+	_, err = fake.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         uid.New(),
+		URI:        "https://example.com/statuses/1",
+		AccountID:  local.ID,
+		Text:       &localText,
+		Visibility: domain.VisibilityPublic,
+		Local:      true,
+	})
+	require.NoError(t, err)
+
+	remoteText := "remote silenced post"
+	_, err = fake.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         uid.New(),
+		URI:        "https://silenced.example/statuses/1",
+		AccountID:  remoteAcc.ID,
+		Text:       &remoteText,
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+
+	enriched, err := timelineSvc.PublicLocalEnriched(ctx, false, nil, nil, 10)
+	require.NoError(t, err)
+	require.Len(t, enriched, 1, "silenced domain status should be filtered")
+	assert.Equal(t, "local post", *enriched[0].Status.Text)
+}
+
+func TestTimelineService_PublicLocalEnriched_allows_non_silenced_remote(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	sc := &fakeSilenceChecker{silenced: map[string]bool{"silenced.example": true}}
+	timelineSvc := NewTimelineService(fake, accountSvc, statusSvc, sc)
+
+	// Create a remote account on a non-silenced domain.
+	okDomain := "ok.example"
+	remoteAcc, err := fake.CreateAccount(ctx, store.CreateAccountInput{
+		ID:       uid.New(),
+		Username: "carol",
+		Domain:   &okDomain,
+		APID:     "https://ok.example/users/carol",
+	})
+	require.NoError(t, err)
+
+	text := "non-silenced remote post"
+	_, err = fake.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         uid.New(),
+		URI:        "https://ok.example/statuses/1",
+		AccountID:  remoteAcc.ID,
+		Text:       &text,
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+
+	enriched, err := timelineSvc.PublicLocalEnriched(ctx, false, nil, nil, 10)
+	require.NoError(t, err)
+	require.Len(t, enriched, 1, "non-silenced remote status should appear")
+	assert.Equal(t, "non-silenced remote post", *enriched[0].Status.Text)
+}
+
+func TestTimelineService_HomeEnriched_does_not_filter_silenced_domain(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	sc := &fakeSilenceChecker{silenced: map[string]bool{"silenced.example": true}}
+	timelineSvc := NewTimelineService(fake, accountSvc, statusSvc, sc)
+
+	alice, err := accountSvc.Register(ctx, RegisterInput{
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+	})
+	require.NoError(t, err)
+
+	silencedDomain := "silenced.example"
+	remoteAcc, err := fake.CreateAccount(ctx, store.CreateAccountInput{
+		ID:       uid.New(),
+		Username: "bob",
+		Domain:   &silencedDomain,
+		APID:     "https://silenced.example/users/bob",
+	})
+	require.NoError(t, err)
+
+	// Alice follows the silenced account.
+	_, err = fake.CreateFollow(ctx, store.CreateFollowInput{
+		ID:        uid.New(),
+		AccountID: alice.ID,
+		TargetID:  remoteAcc.ID,
+		State:     domain.FollowStateAccepted,
+	})
+	require.NoError(t, err)
+
+	remoteText := "silenced but followed post"
+	_, err = fake.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         uid.New(),
+		URI:        "https://silenced.example/statuses/1",
+		AccountID:  remoteAcc.ID,
+		Text:       &remoteText,
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+
+	enriched, err := timelineSvc.HomeEnriched(ctx, alice.ID, nil, 10)
+	require.NoError(t, err)
+	require.Len(t, enriched, 1, "silenced domain statuses should still appear on home timeline")
+	assert.Equal(t, "silenced but followed post", *enriched[0].Status.Text)
 }

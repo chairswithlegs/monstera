@@ -63,15 +63,21 @@ type TimelineService interface {
 	ListTimelineEnriched(ctx context.Context, accountID, listID string, maxID *string, limit int) ([]EnrichedStatus, error)
 }
 
+// DomainSilenceChecker checks whether a domain is silenced (limited).
+type DomainSilenceChecker interface {
+	IsSilenced(ctx context.Context, domain string) bool
+}
+
 type timelineService struct {
-	store      store.Store
-	accountSvc AccountService
-	statusSvc  StatusService
+	store          store.Store
+	accountSvc     AccountService
+	statusSvc      StatusService
+	silenceChecker DomainSilenceChecker
 }
 
 // NewTimelineService returns a TimelineService that uses the given store and status service.
-func NewTimelineService(s store.Store, accountSvc AccountService, statusSvc StatusService) TimelineService {
-	return &timelineService{store: s, accountSvc: accountSvc, statusSvc: statusSvc}
+func NewTimelineService(s store.Store, accountSvc AccountService, statusSvc StatusService, silenceChecker DomainSilenceChecker) TimelineService {
+	return &timelineService{store: s, accountSvc: accountSvc, statusSvc: statusSvc, silenceChecker: silenceChecker}
 }
 
 func (svc *timelineService) enrichStatuses(ctx context.Context, statuses []domain.Status, viewerAccountID *string) ([]EnrichedStatus, error) {
@@ -103,6 +109,29 @@ func (svc *timelineService) filterBlockedStatuses(ctx context.Context, statuses 
 		}
 	}
 	return filtered, nil
+}
+
+// filterSilencedStatuses removes statuses authored by accounts on silenced domains,
+// matching Mastodon's behavior of hiding silenced content from public timelines.
+func (svc *timelineService) filterSilencedStatuses(ctx context.Context, statuses []EnrichedStatus) []EnrichedStatus {
+	if svc.silenceChecker == nil {
+		return statuses
+	}
+	filtered := make([]EnrichedStatus, 0, len(statuses))
+	for i := range statuses {
+		if svc.isSilencedAuthor(ctx, statuses[i].Author) {
+			continue
+		}
+		if statuses[i].ReblogOf != nil && svc.isSilencedAuthor(ctx, statuses[i].ReblogOf.Author) {
+			continue
+		}
+		filtered = append(filtered, statuses[i])
+	}
+	return filtered
+}
+
+func (svc *timelineService) isSilencedAuthor(ctx context.Context, author *domain.Account) bool {
+	return author != nil && author.IsRemote() && svc.silenceChecker.IsSilenced(ctx, *author.Domain)
 }
 
 // HomeEnriched returns the home timeline with author, mentions, tags, and media loaded for each status.
@@ -299,6 +328,7 @@ func (svc *timelineService) PublicLocalEnriched(ctx context.Context, localOnly b
 	if err != nil {
 		return nil, err
 	}
+	out = svc.filterSilencedStatuses(ctx, out)
 	if viewerAccountID != nil {
 		out, err = svc.filterBlockedStatuses(ctx, out, *viewerAccountID)
 		if err != nil {
@@ -374,6 +404,7 @@ func (svc *timelineService) HashtagTimelineEnriched(ctx context.Context, tagName
 	if err != nil {
 		return nil, err
 	}
+	out = svc.filterSilencedStatuses(ctx, out)
 	if viewerAccountID != nil {
 		out, err = svc.filterBlockedStatuses(ctx, out, *viewerAccountID)
 		if err != nil {

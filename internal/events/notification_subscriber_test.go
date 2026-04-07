@@ -637,6 +637,144 @@ func TestShouldFilter_FilterPrivateMentions(t *testing.T) {
 	})
 }
 
+// ── Silenced domain tests ──────────────────────────────────────────────────
+
+type fakeDomainSilenceChecker struct {
+	silenced map[string]bool
+}
+
+func (f *fakeDomainSilenceChecker) IsSilenced(_ context.Context, domain string) bool {
+	return f.silenced[domain]
+}
+
+func TestSilencedDomain_NotificationFilteredToRequests(t *testing.T) {
+	t.Parallel()
+	nc := &fakeNotifCreator{}
+	al := &fakeAccountLookup{accounts: make(map[string]*domain.Account)}
+	cm := &fakeConversationMuteChecker{muted: make(map[string]bool)}
+	fc := &fakeFollowChecker{follows: make(map[string]*domain.Follow)}
+	pp := &fakeNotifPolicyProvider{policies: make(map[string]*domain.NotificationPolicy)}
+	sc := &fakeDomainSilenceChecker{silenced: map[string]bool{"silenced.example": true}}
+	sub := &NotificationSubscriber{deps: NotificationDeps{
+		Notifications:      nc,
+		Accounts:           al,
+		Conversations:      cm,
+		Follows:            fc,
+		NotificationPolicy: pp,
+		DomainSilence:      sc,
+	}}
+
+	sender := remoteAccount("sender-1", "alice", "silenced.example")
+	recipient := localAccount("recipient-1", "bob")
+	al.accounts[sender.ID] = sender
+	al.accounts[recipient.ID] = recipient
+
+	event := makeEvent(t, domain.EventFavouriteCreated, domain.FavouriteCreatedPayload{
+		AccountID:      sender.ID,
+		StatusID:       "status-1",
+		StatusAuthorID: recipient.ID,
+		FromAccount:    sender,
+	})
+	sub.handleFavouriteCreated(context.Background(), event)
+
+	assert.Empty(t, nc.calls, "notification should not be created for silenced domain sender")
+	require.Len(t, pp.requests, 1, "notification should be routed to requests")
+	assert.Equal(t, recipient.ID, pp.requests[0].AccountID)
+	assert.Equal(t, sender.ID, pp.requests[0].FromAccountID)
+}
+
+func TestSilencedDomain_NotificationAllowedWhenFollowing(t *testing.T) {
+	t.Parallel()
+	nc := &fakeNotifCreator{}
+	al := &fakeAccountLookup{accounts: make(map[string]*domain.Account)}
+	cm := &fakeConversationMuteChecker{muted: make(map[string]bool)}
+	fc := &fakeFollowChecker{follows: make(map[string]*domain.Follow)}
+	pp := &fakeNotifPolicyProvider{policies: make(map[string]*domain.NotificationPolicy)}
+	sc := &fakeDomainSilenceChecker{silenced: map[string]bool{"silenced.example": true}}
+	sub := &NotificationSubscriber{deps: NotificationDeps{
+		Notifications:      nc,
+		Accounts:           al,
+		Conversations:      cm,
+		Follows:            fc,
+		NotificationPolicy: pp,
+		DomainSilence:      sc,
+	}}
+
+	sender := remoteAccount("sender-1", "alice", "silenced.example")
+	recipient := localAccount("recipient-1", "bob")
+	al.accounts[sender.ID] = sender
+	al.accounts[recipient.ID] = recipient
+
+	// Recipient follows the sender.
+	fc.follows["recipient-1:sender-1"] = acceptedFollow("recipient-1", "sender-1")
+
+	event := makeEvent(t, domain.EventFavouriteCreated, domain.FavouriteCreatedPayload{
+		AccountID:      sender.ID,
+		StatusID:       "status-1",
+		StatusAuthorID: recipient.ID,
+		FromAccount:    sender,
+	})
+	sub.handleFavouriteCreated(context.Background(), event)
+
+	require.Len(t, nc.calls, 1, "notification should be created when recipient follows silenced sender")
+	assert.Empty(t, pp.requests)
+}
+
+func TestSilencedDomain_LocalSenderNotAffected(t *testing.T) {
+	t.Parallel()
+	nc := &fakeNotifCreator{}
+	al := &fakeAccountLookup{accounts: make(map[string]*domain.Account)}
+	cm := &fakeConversationMuteChecker{muted: make(map[string]bool)}
+	fc := &fakeFollowChecker{follows: make(map[string]*domain.Follow)}
+	pp := &fakeNotifPolicyProvider{policies: make(map[string]*domain.NotificationPolicy)}
+	sc := &fakeDomainSilenceChecker{silenced: map[string]bool{"silenced.example": true}}
+	sub := &NotificationSubscriber{deps: NotificationDeps{
+		Notifications:      nc,
+		Accounts:           al,
+		Conversations:      cm,
+		Follows:            fc,
+		NotificationPolicy: pp,
+		DomainSilence:      sc,
+	}}
+
+	sender := localAccount("sender-1", "alice")
+	recipient := localAccount("recipient-1", "bob")
+	al.accounts[sender.ID] = sender
+	al.accounts[recipient.ID] = recipient
+
+	event := makeEvent(t, domain.EventFavouriteCreated, domain.FavouriteCreatedPayload{
+		AccountID:      sender.ID,
+		StatusID:       "status-1",
+		StatusAuthorID: recipient.ID,
+		FromAccount:    sender,
+	})
+	sub.handleFavouriteCreated(context.Background(), event)
+
+	require.Len(t, nc.calls, 1, "local sender should not be affected by silenced domain check")
+	assert.Empty(t, pp.requests)
+}
+
+func TestSilencedDomain_NilCheckerSkips(t *testing.T) {
+	t.Parallel()
+	// Use newTestSub which doesn't set DomainSilence.
+	sub, nc, al, _ := newTestSub()
+
+	sender := remoteAccount("sender-1", "alice", "silenced.example")
+	recipient := localAccount("recipient-1", "bob")
+	al.accounts[sender.ID] = sender
+	al.accounts[recipient.ID] = recipient
+
+	event := makeEvent(t, domain.EventFavouriteCreated, domain.FavouriteCreatedPayload{
+		AccountID:      sender.ID,
+		StatusID:       "status-1",
+		StatusAuthorID: recipient.ID,
+		FromAccount:    sender,
+	})
+	sub.handleFavouriteCreated(context.Background(), event)
+
+	require.Len(t, nc.calls, 1, "notification should be created when DomainSilence is nil")
+}
+
 func TestShouldFilter_NoPolicyProvider_AllowsNotification(t *testing.T) {
 	t.Parallel()
 	// Use newTestSub which doesn't set NotificationPolicy

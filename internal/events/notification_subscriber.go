@@ -26,6 +26,7 @@ type NotificationDeps struct {
 	Follows            FollowChecker
 	Blocks             BlockChecker
 	NotificationPolicy NotificationPolicyProvider
+	DomainSilence      DomainSilenceChecker
 }
 
 // NotificationCreator is the service interface for creating notifications with events.
@@ -51,6 +52,11 @@ type FollowChecker interface {
 // BlockChecker checks block relationships between accounts.
 type BlockChecker interface {
 	IsBlockedEitherDirection(ctx context.Context, accountID, targetID string) (bool, error)
+}
+
+// DomainSilenceChecker checks whether a domain is silenced (limited).
+type DomainSilenceChecker interface {
+	IsSilenced(ctx context.Context, domain string) bool
 }
 
 // NotificationPolicyProvider retrieves notification policies and creates notification requests.
@@ -274,6 +280,40 @@ func (n *NotificationSubscriber) createOrFilterNotification(ctx context.Context,
 		}
 		if blocked {
 			return
+		}
+	}
+
+	if n.deps.DomainSilence != nil && n.deps.NotificationPolicy != nil {
+		from := fc.fromAccount
+		if from == nil {
+			var lookupErr error
+			from, lookupErr = n.deps.Accounts.GetByID(ctx, fromAccountID)
+			if lookupErr != nil {
+				slog.WarnContext(ctx, "notification subscriber: account lookup for silence check failed",
+					slog.String("from_account_id", fromAccountID),
+					slog.Any("error", lookupErr),
+				)
+			}
+		}
+		if from != nil && from.IsRemote() && n.deps.DomainSilence.IsSilenced(ctx, *from.Domain) {
+			following, followErr := n.isFollowing(ctx, recipientID, fromAccountID)
+			if followErr != nil {
+				slog.WarnContext(ctx, "notification subscriber: follow check for silenced domain failed",
+					slog.String("recipient", recipientID),
+					slog.String("from_account_id", fromAccountID),
+					slog.Any("error", followErr),
+				)
+			}
+			if !following {
+				if err := n.deps.NotificationPolicy.UpsertNotificationRequest(ctx, recipientID, fromAccountID, statusID); err != nil {
+					slog.WarnContext(ctx, "notification subscriber: upsert notification request for silenced domain failed",
+						slog.String("recipient", recipientID),
+						slog.String("from_account_id", fromAccountID),
+						slog.Any("error", err),
+					)
+				}
+				return
+			}
 		}
 	}
 

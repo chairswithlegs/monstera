@@ -23,7 +23,7 @@ func TestTimelinesHandler_Home(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
-	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc)
+	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc, nil)
 	handler := NewTimelinesHandler(timelineSvc, "example.com")
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
@@ -112,7 +112,7 @@ func TestTimelinesHandler_GETPublic(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
-	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc)
+	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc, nil)
 	handler := NewTimelinesHandler(timelineSvc, "example.com")
 
 	t.Run("returns 200 and array", func(t *testing.T) {
@@ -165,7 +165,7 @@ func TestTimelinesHandler_GETBookmarks(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
-	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc)
+	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc, nil)
 	handler := NewTimelinesHandler(timelineSvc, "example.com")
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
@@ -200,7 +200,7 @@ func TestTimelinesHandler_GETTag(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
-	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc)
+	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc, nil)
 	handler := NewTimelinesHandler(timelineSvc, "example.com")
 
 	t.Run("empty hashtag returns 404", func(t *testing.T) {
@@ -229,7 +229,7 @@ func TestTimelinesHandler_GETFavourites(t *testing.T) {
 	st := testutil.NewFakeStore()
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
-	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc)
+	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc, nil)
 	handler := NewTimelinesHandler(timelineSvc, "example.com")
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
