@@ -25,3 +25,4 @@ Design documents describe how the system is built and how components interact. T
 | [07-notifications-and-push.md](architecture/07-notifications-and-push.md) | Notification creation, Web Push subscriptions, and push delivery. |
 | [08-rate-limiting-and-shared-cache.md](architecture/08-rate-limiting-and-shared-cache.md) | Rate limiting, shared cache, and the NATS KV store. |
 | [09-background-scheduler.md](architecture/09-background-scheduler.md) | Distributed background job scheduler and registered jobs. |
+| [10-remote-data-hydration.md](architecture/10-remote-data-hydration.md) | Proactive remote data fetching: backfill triggers, worker, account resolution, and link cards. |
