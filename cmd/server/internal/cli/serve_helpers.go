@@ -330,6 +330,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 		Accounts:           s.account,
 		Conversations:      s.statusRead,
 		Follows:            s.follow,
+		Blocks:             i.store,
 		NotificationPolicy: s.notificationPolicy,
 	})
 	cardSub := events.NewCardSubscriber(i.nats.JS, s.card)

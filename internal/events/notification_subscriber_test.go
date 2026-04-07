@@ -53,6 +53,14 @@ func (f *fakeConversationMuteChecker) IsConversationMutedForViewer(_ context.Con
 	return f.muted[viewerAccountID+":"+statusID], nil
 }
 
+type fakeBlockChecker struct {
+	blocked map[string]bool // key: "accountID:targetID" (either direction)
+}
+
+func (f *fakeBlockChecker) IsBlockedEitherDirection(_ context.Context, accountID, targetID string) (bool, error) {
+	return f.blocked[accountID+":"+targetID] || f.blocked[targetID+":"+accountID], nil
+}
+
 func newTestSub() (*NotificationSubscriber, *fakeNotifCreator, *fakeAccountLookup, *fakeConversationMuteChecker) {
 	nc := &fakeNotifCreator{}
 	al := &fakeAccountLookup{accounts: make(map[string]*domain.Account)}
@@ -120,6 +128,56 @@ func TestHandleFollowCreated_SkipsRemoteTarget(t *testing.T) {
 	sub.handleFollowCreated(context.Background(), event)
 
 	assert.Empty(t, nc.calls)
+}
+
+func TestBlockedSenderDoesNotGenerateNotification(t *testing.T) {
+	t.Parallel()
+	nc := &fakeNotifCreator{}
+	al := &fakeAccountLookup{accounts: make(map[string]*domain.Account)}
+	cm := &fakeConversationMuteChecker{muted: make(map[string]bool)}
+	bc := &fakeBlockChecker{blocked: map[string]bool{"target-1:actor-1": true}}
+	sub := &NotificationSubscriber{deps: NotificationDeps{
+		Notifications: nc,
+		Accounts:      al,
+		Conversations: cm,
+		Blocks:        bc,
+	}}
+
+	actor := localAccount("actor-1", "alice")
+	target := localAccount("target-1", "bob")
+	al.accounts[target.ID] = target
+
+	t.Run("follow notification suppressed when blocked", func(t *testing.T) {
+		event := makeEvent(t, domain.EventFollowCreated, domain.FollowCreatedPayload{
+			Follow: &domain.Follow{ID: "f-1", AccountID: actor.ID, TargetID: target.ID, State: "accepted"},
+			Actor:  actor,
+			Target: target,
+		})
+		sub.handleFollowCreated(context.Background(), event)
+		assert.Empty(t, nc.calls)
+	})
+
+	t.Run("favourite notification suppressed when blocked", func(t *testing.T) {
+		event := makeEvent(t, domain.EventFavouriteCreated, domain.FavouriteCreatedPayload{
+			AccountID:      actor.ID,
+			StatusID:       "status-1",
+			StatusAuthorID: target.ID,
+			FromAccount:    actor,
+		})
+		sub.handleFavouriteCreated(context.Background(), event)
+		assert.Empty(t, nc.calls)
+	})
+
+	t.Run("mention notification suppressed when blocked", func(t *testing.T) {
+		status := &domain.Status{ID: "status-2", AccountID: actor.ID, Visibility: domain.VisibilityPublic}
+		event := makeEvent(t, domain.EventStatusCreated, domain.StatusCreatedPayload{
+			Status:   status,
+			Author:   actor,
+			Mentions: []*domain.Account{target},
+		})
+		sub.handleStatusCreatedMentions(context.Background(), event)
+		assert.Empty(t, nc.calls)
+	})
 }
 
 func TestHandleFollowRequested_LocalTarget(t *testing.T) {
