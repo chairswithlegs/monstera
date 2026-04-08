@@ -372,3 +372,157 @@ func TestStatusService_ListQuotesOfStatus(t *testing.T) {
 		assert.ErrorIs(t, err, domain.ErrNotFound)
 	})
 }
+
+func TestGetFavouritedBy_filters_blocked_accounts(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
+
+	viewer, err := accountSvc.Create(ctx, CreateAccountInput{Username: "viewer"})
+	require.NoError(t, err)
+	faver1, err := accountSvc.Create(ctx, CreateAccountInput{Username: "faver1"})
+	require.NoError(t, err)
+	faver2, err := accountSvc.Create(ctx, CreateAccountInput{Username: "faver2"})
+	require.NoError(t, err)
+
+	st, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID:  viewer.ID,
+		Username:   viewer.Username,
+		Text:       "hello",
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+
+	// Both accounts favourite the status.
+	_, err = fake.CreateFavourite(ctx, store.CreateFavouriteInput{ID: uid.New(), AccountID: faver1.ID, StatusID: st.Status.ID})
+	require.NoError(t, err)
+	_, err = fake.CreateFavourite(ctx, store.CreateFavouriteInput{ID: uid.New(), AccountID: faver2.ID, StatusID: st.Status.ID})
+	require.NoError(t, err)
+
+	// Viewer blocks faver1.
+	err = fake.CreateBlock(ctx, store.CreateBlockInput{ID: uid.New(), AccountID: viewer.ID, TargetID: faver1.ID})
+	require.NoError(t, err)
+
+	accounts, err := statusSvc.GetFavouritedBy(ctx, st.Status.ID, &viewer.ID, nil, 10)
+	require.NoError(t, err)
+	require.Len(t, accounts, 1, "blocked account should be filtered out")
+	assert.Equal(t, faver2.ID, accounts[0].ID)
+}
+
+func TestGetRebloggedBy_filters_blocked_accounts(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
+
+	viewer, err := accountSvc.Create(ctx, CreateAccountInput{Username: "viewer"})
+	require.NoError(t, err)
+	reblogger1, err := accountSvc.Create(ctx, CreateAccountInput{Username: "reblogger1"})
+	require.NoError(t, err)
+	reblogger2, err := accountSvc.Create(ctx, CreateAccountInput{Username: "reblogger2"})
+	require.NoError(t, err)
+
+	st, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID:  viewer.ID,
+		Username:   viewer.Username,
+		Text:       "hello",
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+
+	// Both accounts reblog the status.
+	_, err = fake.CreateStatus(ctx, store.CreateStatusInput{
+		ID: uid.New(), URI: "https://example.com/reblogs/1", AccountID: reblogger1.ID,
+		ReblogOfID: &st.Status.ID, Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+	_, err = fake.CreateStatus(ctx, store.CreateStatusInput{
+		ID: uid.New(), URI: "https://example.com/reblogs/2", AccountID: reblogger2.ID,
+		ReblogOfID: &st.Status.ID, Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+
+	// Viewer blocks reblogger1.
+	err = fake.CreateBlock(ctx, store.CreateBlockInput{ID: uid.New(), AccountID: viewer.ID, TargetID: reblogger1.ID})
+	require.NoError(t, err)
+
+	accounts, err := statusSvc.GetRebloggedBy(ctx, st.Status.ID, &viewer.ID, nil, 10)
+	require.NoError(t, err)
+	require.Len(t, accounts, 1, "blocked account should be filtered out")
+	assert.Equal(t, reblogger2.ID, accounts[0].ID)
+}
+
+func TestGetFavouritedBy_filters_suspended_accounts(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
+
+	author, err := accountSvc.Create(ctx, CreateAccountInput{Username: "author"})
+	require.NoError(t, err)
+	// Create a suspended account directly via the store so the Suspended flag is set.
+	suspendedFaver, err := fake.CreateAccount(ctx, store.CreateAccountInput{
+		ID: uid.New(), Username: "suspended_faver", APID: uid.New(),
+	})
+	require.NoError(t, err)
+	suspendedFaver.Suspended = true
+	faver2, err := accountSvc.Create(ctx, CreateAccountInput{Username: "faver2"})
+	require.NoError(t, err)
+
+	st, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID:  author.ID,
+		Username:   author.Username,
+		Text:       "hello",
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+
+	_, err = fake.CreateFavourite(ctx, store.CreateFavouriteInput{ID: uid.New(), AccountID: suspendedFaver.ID, StatusID: st.Status.ID})
+	require.NoError(t, err)
+	_, err = fake.CreateFavourite(ctx, store.CreateFavouriteInput{ID: uid.New(), AccountID: faver2.ID, StatusID: st.Status.ID})
+	require.NoError(t, err)
+
+	// Even unauthenticated, suspended accounts should be filtered.
+	accounts, err := statusSvc.GetFavouritedBy(ctx, st.Status.ID, nil, nil, 10)
+	require.NoError(t, err)
+	require.Len(t, accounts, 1, "suspended account should be filtered out")
+	assert.Equal(t, faver2.ID, accounts[0].ID)
+}
+
+func TestGetFavouritedBy_unauthenticated_returns_all(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
+
+	author, err := accountSvc.Create(ctx, CreateAccountInput{Username: "author"})
+	require.NoError(t, err)
+	faver, err := accountSvc.Create(ctx, CreateAccountInput{Username: "faver"})
+	require.NoError(t, err)
+
+	st, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID:  author.ID,
+		Username:   author.Username,
+		Text:       "hello",
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+
+	_, err = fake.CreateFavourite(ctx, store.CreateFavouriteInput{ID: uid.New(), AccountID: faver.ID, StatusID: st.Status.ID})
+	require.NoError(t, err)
+
+	// Unauthenticated (nil viewerAccountID) — no block filtering.
+	accounts, err := statusSvc.GetFavouritedBy(ctx, st.Status.ID, nil, nil, 10)
+	require.NoError(t, err)
+	require.Len(t, accounts, 1, "unauthenticated should see all accounts")
+	assert.Equal(t, faver.ID, accounts[0].ID)
+}
