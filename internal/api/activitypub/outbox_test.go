@@ -31,7 +31,7 @@ func TestOutboxHandler_GETOutbox_collection(t *testing.T) {
 	require.NoError(t, fake.ConfirmUser(ctx, "01USERALICE"))
 	accountSvc := service.NewAccountService(fake, "https://example.com")
 	statusSvc := service.NewStatusService(fake, "https://example.com", "example.com", 500)
-	timelineSvc := service.NewTimelineService(fake, accountSvc, statusSvc)
+	timelineSvc := service.NewTimelineService(fake, accountSvc, statusSvc, nil)
 	h := NewOutbox(accountSvc, timelineSvc, "https://example.com")
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/outbox", nil)
 	r = r.WithContext(ctx)
@@ -71,7 +71,7 @@ func TestOutboxHandler_GETOutbox_page(t *testing.T) {
 
 	accountSvc := service.NewAccountService(fake, "https://example.com")
 	statusSvc := service.NewStatusService(fake, "https://example.com", "example.com", 500)
-	timelineSvc := service.NewTimelineService(fake, accountSvc, statusSvc)
+	timelineSvc := service.NewTimelineService(fake, accountSvc, statusSvc, nil)
 	h := NewOutbox(accountSvc, timelineSvc, "https://example.com")
 	r := httptest.NewRequest(http.MethodGet, "/users/alice/outbox?page=true", nil)
 	r = r.WithContext(ctx)

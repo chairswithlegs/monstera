@@ -290,7 +290,7 @@ func TestAccountsHandler_GETAccountStatuses(t *testing.T) {
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	followSvc, tagFollowSvc := newTestFollowServices(st)
 	statusSvc := service.NewStatusService(st, "https://example.com", "example.com", 500)
-	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc)
+	timelineSvc := service.NewTimelineService(st, accountSvc, statusSvc, nil)
 	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, timelineSvc, statusSvc, nil, nil, nil, nil, 0, "example.com")
 
 	t.Run("unauthenticated returns 200", func(t *testing.T) {

@@ -29,7 +29,7 @@ func TestIntegration_RegisterUser_CreateStatus_HomeTimeline(t *testing.T) {
 	instanceBaseURL := "https://test.example.com"
 	accountSvc := NewAccountService(s, instanceBaseURL)
 	statusSvc := NewStatusService(s, instanceBaseURL, "test.example.com", 500)
-	timelineSvc := NewTimelineService(s, accountSvc, statusSvc)
+	timelineSvc := NewTimelineService(s, accountSvc, statusSvc, nil)
 	statusWriteSvc := NewStatusWriteService(s, statusSvc, NewConversationService(s, statusSvc), instanceBaseURL, "test.example.com", 500)
 
 	acc, err := accountSvc.Register(ctx, RegisterInput{
