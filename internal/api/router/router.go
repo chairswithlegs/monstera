@@ -35,6 +35,10 @@ type Deps struct {
 	// UIBaseURL is the base URL of the Monstera web UI
 	UIBaseURL string
 
+	// UseHSTS enables the Strict-Transport-Security header.
+	// Set to true when MonsteraServerURL uses the "https" scheme.
+	UseHSTS bool
+
 	OAuthServer     *oauthpkg.Server
 	AccountsService service.AccountService
 	RateLimit       *RateLimitConfig
@@ -114,6 +118,7 @@ func New(deps Deps) http.Handler {
 	r.Use(observability.MetricsMiddleware())
 	r.Use(middleware.Recoverer())
 	r.Use(middleware.CORS)
+	r.Use(middleware.SecurityHeaders(deps.UseHSTS))
 
 	r.Group(func(r chi.Router) {
 		r.Use(chimw.Timeout(30 * time.Second))
