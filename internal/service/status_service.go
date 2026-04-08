@@ -595,7 +595,22 @@ func (svc *statusService) GetFavouritedBy(ctx context.Context, statusID string, 
 	}
 	out := make([]*domain.Account, 0, len(accounts))
 	for i := range accounts {
-		out = append(out, &accounts[i])
+		if !accounts[i].Suspended {
+			out = append(out, &accounts[i])
+		}
+	}
+	if viewerAccountID != nil {
+		filtered := make([]*domain.Account, 0, len(out))
+		for _, a := range out {
+			blocked, blockErr := svc.store.IsBlockedEitherDirection(ctx, *viewerAccountID, a.ID)
+			if blockErr != nil {
+				return nil, fmt.Errorf("GetFavouritedBy IsBlockedEitherDirection: %w", blockErr)
+			}
+			if !blocked {
+				filtered = append(filtered, a)
+			}
+		}
+		out = filtered
 	}
 	return out, nil
 }
@@ -623,7 +638,22 @@ func (svc *statusService) GetRebloggedBy(ctx context.Context, statusID string, v
 	}
 	out := make([]*domain.Account, 0, len(accounts))
 	for i := range accounts {
-		out = append(out, &accounts[i])
+		if !accounts[i].Suspended {
+			out = append(out, &accounts[i])
+		}
+	}
+	if viewerAccountID != nil {
+		filtered := make([]*domain.Account, 0, len(out))
+		for _, a := range out {
+			blocked, blockErr := svc.store.IsBlockedEitherDirection(ctx, *viewerAccountID, a.ID)
+			if blockErr != nil {
+				return nil, fmt.Errorf("GetRebloggedBy IsBlockedEitherDirection: %w", blockErr)
+			}
+			if !blocked {
+				filtered = append(filtered, a)
+			}
+		}
+		out = filtered
 	}
 	return out, nil
 }
