@@ -391,6 +391,7 @@ func createRouter(cfg *config.Config, s *svcs, i *infra, sseHub *sse.Hub) http.H
 
 	return router.New(router.Deps{
 		UIBaseURL:              cfg.MonsteraUIURL.String(),
+		UseHSTS:                cfg.MonsteraServerURL != nil && cfg.MonsteraServerURL.Scheme == "https",
 		MaxRequestBodyBytes:    cfg.MaxRequestBodyBytes,
 		MediaMaxBytes:          cfg.MediaMaxBytes,
 		RateLimit:              rlCfg,

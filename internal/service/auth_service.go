@@ -48,10 +48,20 @@ func NewAuthService(s store.Store, monsteraUIHost, monsteraUIClientID string) Au
 
 const outOfBandRedirectURI = "urn:ietf:wg:oauth:2.0:oob"
 
+// dummyHash is a pre-computed bcrypt hash used to perform a constant-time
+// comparison when the user is not found, preventing timing side-channel
+// enumeration of registered email addresses.
+//
+//nolint:gosec // G101: this is not a credential
+var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-timing-pad"), bcrypt.DefaultCost)
+
 func (svc *authService) Authenticate(ctx context.Context, email, password string) (string, error) {
 	user, err := svc.store.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
+			// Compare against a dummy hash so the response time is
+			// indistinguishable from a wrong-password attempt.
+			_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 			return "", domain.ErrNotFound
 		}
 		return "", fmt.Errorf("GetUserByEmail: %w", err)
