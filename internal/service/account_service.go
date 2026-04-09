@@ -497,6 +497,17 @@ func (svc *accountService) GetRelationship(ctx context.Context, accountID, targe
 		rel.Muting = true
 		rel.MutingNotifications = m.HideNotifications
 	}
+	target, err := svc.store.GetAccountByID(ctx, targetID)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return nil, fmt.Errorf("GetAccountByID(target): %w", err)
+	}
+	if target != nil && target.IsRemote() && target.Domain != nil {
+		blocked, dbErr := svc.store.IsUserDomainBlocked(ctx, accountID, *target.Domain)
+		if dbErr != nil {
+			return nil, fmt.Errorf("IsUserDomainBlocked: %w", dbErr)
+		}
+		rel.DomainBlocking = blocked
+	}
 	return rel, nil
 }
 

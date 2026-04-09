@@ -157,9 +157,15 @@ type InteractionStore interface {
 	IsBlockedEitherDirection(ctx context.Context, accountID, targetID string) (bool, error)
 	ListBlockedAccounts(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, *string, error)
 	GetMute(ctx context.Context, accountID, targetID string) (*domain.Mute, error)
+	IsMuted(ctx context.Context, accountID, targetID string) (bool, error)
 	CreateMute(ctx context.Context, in CreateMuteInput) error
 	DeleteMute(ctx context.Context, accountID, targetID string) error
 	ListMutedAccounts(ctx context.Context, accountID string, maxID *string, limit int) ([]domain.Account, *string, error)
+	CreateUserDomainBlock(ctx context.Context, in CreateUserDomainBlockInput) error
+	DeleteUserDomainBlock(ctx context.Context, accountID, domain string) error
+	ListUserDomainBlocks(ctx context.Context, accountID string, maxID *string, limit int) ([]string, *string, error)
+	IsUserDomainBlocked(ctx context.Context, accountID, domain string) (bool, error)
+	DeleteFollowersByDomain(ctx context.Context, targetAccountID, domain string) error
 	CreateFavourite(ctx context.Context, in CreateFavouriteInput) (*domain.Favourite, error)
 	DeleteFavourite(ctx context.Context, accountID, statusID string) error
 	GetFavouriteByAPID(ctx context.Context, apID string) (*domain.Favourite, error)

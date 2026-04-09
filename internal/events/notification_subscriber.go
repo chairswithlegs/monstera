@@ -25,6 +25,8 @@ type NotificationDeps struct {
 	Conversations      ConversationMuteChecker
 	Follows            FollowChecker
 	Blocks             BlockChecker
+	Mutes              MuteChecker
+	UserDomainBlocks   UserDomainBlockChecker
 	NotificationPolicy NotificationPolicyProvider
 	DomainSilence      DomainSilenceChecker
 }
@@ -52,6 +54,16 @@ type FollowChecker interface {
 // BlockChecker checks block relationships between accounts.
 type BlockChecker interface {
 	IsBlockedEitherDirection(ctx context.Context, accountID, targetID string) (bool, error)
+}
+
+// MuteChecker checks account-level mutes between accounts.
+type MuteChecker interface {
+	GetMute(ctx context.Context, accountID, targetID string) (*domain.Mute, error)
+}
+
+// UserDomainBlockChecker checks per-user domain blocks.
+type UserDomainBlockChecker interface {
+	IsUserDomainBlocked(ctx context.Context, accountID, domain string) (bool, error)
 }
 
 // DomainSilenceChecker checks whether a domain is silenced (limited).
@@ -283,18 +295,49 @@ func (n *NotificationSubscriber) createOrFilterNotification(ctx context.Context,
 		}
 	}
 
-	if n.deps.DomainSilence != nil && n.deps.NotificationPolicy != nil {
-		from := fc.fromAccount
-		if from == nil {
-			var lookupErr error
-			from, lookupErr = n.deps.Accounts.GetByID(ctx, fromAccountID)
-			if lookupErr != nil {
-				slog.WarnContext(ctx, "notification subscriber: account lookup for silence check failed",
-					slog.String("from_account_id", fromAccountID),
-					slog.Any("error", lookupErr),
+	if recipientID != fromAccountID && n.deps.Mutes != nil {
+		mute, err := n.deps.Mutes.GetMute(ctx, recipientID, fromAccountID)
+		if err != nil && !errors.Is(err, domain.ErrNotFound) {
+			slog.WarnContext(ctx, "notification subscriber: mute check failed, allowing notification",
+				slog.String("type", notifType),
+				slog.String("recipient", recipientID),
+				slog.Any("error", err),
+			)
+		}
+		if mute != nil && mute.HideNotifications {
+			return
+		}
+	}
+
+	// Resolve the sender account once for domain-level checks (user domain blocks, domain silence).
+	from := fc.fromAccount
+	if from == nil && recipientID != fromAccountID && (n.deps.UserDomainBlocks != nil || (n.deps.DomainSilence != nil && n.deps.NotificationPolicy != nil)) {
+		var lookupErr error
+		from, lookupErr = n.deps.Accounts.GetByID(ctx, fromAccountID)
+		if lookupErr != nil {
+			slog.WarnContext(ctx, "notification subscriber: account lookup for domain checks failed",
+				slog.String("from_account_id", fromAccountID),
+				slog.Any("error", lookupErr),
+			)
+		}
+	}
+
+	if recipientID != fromAccountID && n.deps.UserDomainBlocks != nil {
+		if from != nil && from.IsRemote() && from.Domain != nil {
+			blocked, err := n.deps.UserDomainBlocks.IsUserDomainBlocked(ctx, recipientID, *from.Domain)
+			if err != nil {
+				slog.WarnContext(ctx, "notification subscriber: user domain block check failed",
+					slog.String("type", notifType),
+					slog.String("recipient", recipientID),
+					slog.Any("error", err),
 				)
+			} else if blocked {
+				return
 			}
 		}
+	}
+
+	if n.deps.DomainSilence != nil && n.deps.NotificationPolicy != nil {
 		if from != nil && from.IsRemote() && n.deps.DomainSilence.IsSilenced(ctx, *from.Domain) {
 			following, followErr := n.isFollowing(ctx, recipientID, fromAccountID)
 			if followErr != nil {

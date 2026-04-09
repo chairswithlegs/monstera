@@ -1498,6 +1498,14 @@ func (s *PostgresStore) IsBlockedEitherDirection(ctx context.Context, accountID,
 	return ok, nil
 }
 
+func (s *PostgresStore) IsMuted(ctx context.Context, accountID, targetID string) (bool, error) {
+	ok, err := s.q.IsMuted(ctx, db.IsMutedParams{AccountID: accountID, TargetID: targetID})
+	if err != nil {
+		return false, mapErr(err)
+	}
+	return ok, nil
+}
+
 func (s *PostgresStore) CreateMute(ctx context.Context, in store.CreateMuteInput) error {
 	_, err := s.q.CreateMute(ctx, db.CreateMuteParams{
 		ID:                in.ID,
@@ -1534,6 +1542,63 @@ func (s *PostgresStore) ListMutedAccounts(ctx context.Context, accountID string,
 		}
 	}
 	return out, nextCursor, nil
+}
+
+func (s *PostgresStore) CreateUserDomainBlock(ctx context.Context, in store.CreateUserDomainBlockInput) error {
+	return mapErr(s.q.CreateUserDomainBlock(ctx, db.CreateUserDomainBlockParams{
+		ID:        in.ID,
+		AccountID: in.AccountID,
+		Domain:    in.Domain,
+	}))
+}
+
+func (s *PostgresStore) DeleteUserDomainBlock(ctx context.Context, accountID, domain string) error {
+	return mapErr(s.q.DeleteUserDomainBlock(ctx, db.DeleteUserDomainBlockParams{
+		AccountID: accountID,
+		Domain:    domain,
+	}))
+}
+
+func (s *PostgresStore) ListUserDomainBlocks(ctx context.Context, accountID string, maxID *string, limit int) ([]string, *string, error) {
+	cursor := noCursorSentinel
+	if maxID != nil && *maxID != "" {
+		cursor = *maxID
+	}
+	rows, err := s.q.ListUserDomainBlocksPaginated(ctx, db.ListUserDomainBlocksPaginatedParams{
+		AccountID: accountID,
+		Column2:   cursor,
+		Limit:     int32(limit), //nolint:gosec // limit clamped by caller
+	})
+	if err != nil {
+		return nil, nil, mapErr(err)
+	}
+	out := make([]string, 0, len(rows))
+	var nextCursor *string
+	for i, r := range rows {
+		out = append(out, r.Domain)
+		if i == len(rows)-1 && len(rows) == limit {
+			nextCursor = &r.Cursor
+		}
+	}
+	return out, nextCursor, nil
+}
+
+func (s *PostgresStore) IsUserDomainBlocked(ctx context.Context, accountID, domain string) (bool, error) {
+	ok, err := s.q.IsUserDomainBlocked(ctx, db.IsUserDomainBlockedParams{
+		AccountID: accountID,
+		Domain:    domain,
+	})
+	if err != nil {
+		return false, mapErr(err)
+	}
+	return ok, nil
+}
+
+func (s *PostgresStore) DeleteFollowersByDomain(ctx context.Context, targetAccountID, domain string) error {
+	return mapErr(s.q.DeleteFollowersByDomain(ctx, db.DeleteFollowersByDomainParams{
+		TargetID: targetAccountID,
+		Domain:   &domain,
+	}))
 }
 
 func toDbCreateFavouriteParams(in store.CreateFavouriteInput) db.CreateFavouriteParams {

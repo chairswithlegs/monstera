@@ -685,3 +685,131 @@ func TestTimelineService_HomeEnriched_does_not_filter_silenced_domain(t *testing
 	require.Len(t, enriched, 1, "silenced domain statuses should still appear on home timeline")
 	assert.Equal(t, "silenced but followed post", *enriched[0].Status.Text)
 }
+
+func TestFilterMutedStatuses(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := &timelineService{store: fake}
+
+	viewerID := uid.New()
+	mutedAuthor := &domain.Account{ID: uid.New(), Username: "muted"}
+	normalAuthor := &domain.Account{ID: uid.New(), Username: "normal"}
+
+	require.NoError(t, fake.CreateMute(ctx, store.CreateMuteInput{
+		ID: uid.New(), AccountID: viewerID, TargetID: mutedAuthor.ID,
+	}))
+
+	tests := []struct {
+		name     string
+		statuses []EnrichedStatus
+		wantLen  int
+	}{
+		{
+			name: "filters muted author",
+			statuses: []EnrichedStatus{
+				{Status: &domain.Status{ID: "s1", AccountID: mutedAuthor.ID}, Author: mutedAuthor},
+				{Status: &domain.Status{ID: "s2", AccountID: normalAuthor.ID}, Author: normalAuthor},
+			},
+			wantLen: 1,
+		},
+		{
+			name: "filters reblog of muted author",
+			statuses: []EnrichedStatus{
+				{
+					Status: &domain.Status{ID: "s3", AccountID: normalAuthor.ID},
+					Author: normalAuthor,
+					ReblogOf: &EnrichedStatus{
+						Status: &domain.Status{ID: "s4", AccountID: mutedAuthor.ID},
+						Author: mutedAuthor,
+					},
+				},
+			},
+			wantLen: 0,
+		},
+		{
+			name: "keeps non-muted author",
+			statuses: []EnrichedStatus{
+				{Status: &domain.Status{ID: "s5", AccountID: normalAuthor.ID}, Author: normalAuthor},
+			},
+			wantLen: 1,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := svc.filterMutedStatuses(ctx, tc.statuses, viewerID)
+			require.NoError(t, err)
+			assert.Len(t, result, tc.wantLen)
+		})
+	}
+}
+
+func TestFilterUserDomainBlockedStatuses(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := &timelineService{store: fake}
+
+	viewerID := uid.New()
+
+	blockedDomain := "evil.example"
+	okDomain := "good.example"
+
+	require.NoError(t, fake.CreateUserDomainBlock(ctx, store.CreateUserDomainBlockInput{
+		ID: uid.New(), AccountID: viewerID, Domain: blockedDomain,
+	}))
+
+	remoteBlocked := &domain.Account{ID: uid.New(), Username: "bad", Domain: &blockedDomain}
+	remoteOK := &domain.Account{ID: uid.New(), Username: "good", Domain: &okDomain}
+	localAuthor := &domain.Account{ID: uid.New(), Username: "local"}
+
+	tests := []struct {
+		name     string
+		statuses []EnrichedStatus
+		wantLen  int
+	}{
+		{
+			name: "filters author from blocked domain",
+			statuses: []EnrichedStatus{
+				{Status: &domain.Status{ID: "s1", AccountID: remoteBlocked.ID}, Author: remoteBlocked},
+			},
+			wantLen: 0,
+		},
+		{
+			name: "keeps author from non-blocked domain",
+			statuses: []EnrichedStatus{
+				{Status: &domain.Status{ID: "s2", AccountID: remoteOK.ID}, Author: remoteOK},
+			},
+			wantLen: 1,
+		},
+		{
+			name: "keeps local author",
+			statuses: []EnrichedStatus{
+				{Status: &domain.Status{ID: "s3", AccountID: localAuthor.ID}, Author: localAuthor},
+			},
+			wantLen: 1,
+		},
+		{
+			name: "filters reblog from blocked domain",
+			statuses: []EnrichedStatus{
+				{
+					Status: &domain.Status{ID: "s4", AccountID: localAuthor.ID},
+					Author: localAuthor,
+					ReblogOf: &EnrichedStatus{
+						Status: &domain.Status{ID: "s5", AccountID: remoteBlocked.ID},
+						Author: remoteBlocked,
+					},
+				},
+			},
+			wantLen: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := svc.filterUserDomainBlockedStatuses(ctx, tc.statuses, viewerID)
+			assert.Len(t, result, tc.wantLen)
+		})
+	}
+}

@@ -1353,3 +1353,93 @@ func TestAccountsHandler_POSTAccounts(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
 	})
 }
+
+func TestAccountsHandler_DomainBlocks(t *testing.T) {
+	t.Parallel()
+	st := testutil.NewFakeStore()
+	accountSvc := service.NewAccountService(st, "https://example.com")
+	followSvc, tagFollowSvc := newTestFollowServices(st)
+	handler := NewAccountsHandler(accountSvc, followSvc, tagFollowSvc, nil, nil, nil, nil, nil, nil, 0, "example.com")
+
+	actor, err := accountSvc.Register(context.Background(), service.RegisterInput{
+		Username: "alice",
+		Email:    "alice@example.com",
+		Password: "hash",
+		Role:     domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	t.Run("GET unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/domain_blocks", nil)
+		rec := httptest.NewRecorder()
+		handler.GETDomainBlocks(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("GET empty returns 200 and empty array", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/domain_blocks", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), actor))
+		rec := httptest.NewRecorder()
+		handler.GETDomainBlocks(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body []string
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Empty(t, body)
+	})
+
+	t.Run("POST missing domain returns 400", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/domain_blocks", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), actor))
+		rec := httptest.NewRecorder()
+		handler.POSTDomainBlock(rec, req)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("POST creates domain block and GET returns it", func(t *testing.T) {
+		form := strings.NewReader("domain=evil.example")
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/domain_blocks", form)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req = req.WithContext(middleware.WithAccount(req.Context(), actor))
+		rec := httptest.NewRecorder()
+		handler.POSTDomainBlock(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		req2 := httptest.NewRequest(http.MethodGet, "/api/v1/domain_blocks", nil)
+		req2 = req2.WithContext(middleware.WithAccount(req2.Context(), actor))
+		rec2 := httptest.NewRecorder()
+		handler.GETDomainBlocks(rec2, req2)
+		assert.Equal(t, http.StatusOK, rec2.Code)
+		var domains []string
+		require.NoError(t, json.NewDecoder(rec2.Body).Decode(&domains))
+		assert.Contains(t, domains, "evil.example")
+	})
+
+	t.Run("DELETE removes domain block", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/domain_blocks?domain=evil.example", nil)
+		req = req.WithContext(middleware.WithAccount(req.Context(), actor))
+		rec := httptest.NewRecorder()
+		handler.DELETEDomainBlock(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		req2 := httptest.NewRequest(http.MethodGet, "/api/v1/domain_blocks", nil)
+		req2 = req2.WithContext(middleware.WithAccount(req2.Context(), actor))
+		rec2 := httptest.NewRecorder()
+		handler.GETDomainBlocks(rec2, req2)
+		assert.Equal(t, http.StatusOK, rec2.Code)
+		var domains []string
+		require.NoError(t, json.NewDecoder(rec2.Body).Decode(&domains))
+		assert.NotContains(t, domains, "evil.example")
+	})
+
+	t.Run("POST is idempotent", func(t *testing.T) {
+		for range 2 {
+			form := strings.NewReader("domain=spam.example")
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/domain_blocks", form)
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req = req.WithContext(middleware.WithAccount(req.Context(), actor))
+			rec := httptest.NewRecorder()
+			handler.POSTDomainBlock(rec, req)
+			assert.Equal(t, http.StatusOK, rec.Code)
+		}
+	})
+}
