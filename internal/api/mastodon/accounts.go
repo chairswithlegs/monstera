@@ -137,7 +137,7 @@ func (h *AccountsHandler) GETDirectory(w http.ResponseWriter, r *http.Request) {
 	offset := 0
 	if o := q.Get("offset"); o != "" {
 		if n, err := strconv.Atoi(o); err == nil && n > 0 {
-			offset = n
+			offset = api.ClampOffset(n)
 		}
 	}
 	order := q.Get("order")

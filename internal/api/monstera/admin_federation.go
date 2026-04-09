@@ -33,7 +33,7 @@ func (h *AdminFederationHandler) GETInstances(w http.ResponseWriter, r *http.Req
 	offset := 0
 	if o := r.URL.Query().Get("offset"); o != "" {
 		if n, _ := strconv.Atoi(o); n >= 0 {
-			offset = n
+			offset = api.ClampOffset(n)
 		}
 	}
 	instances, err := h.instance.ListKnownInstances(r.Context(), limit, offset)

@@ -34,7 +34,7 @@ func (h *AdminUsersHandler) GETUsers(w http.ResponseWriter, r *http.Request) {
 	offset := 0
 	if o := r.URL.Query().Get("offset"); o != "" {
 		if n, _ := strconv.Atoi(o); n >= 0 {
-			offset = n
+			offset = api.ClampOffset(n)
 		}
 	}
 	users, err := h.accounts.ListLocalUsers(r.Context(), limit, offset)
