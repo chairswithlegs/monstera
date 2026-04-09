@@ -2634,8 +2634,26 @@ func (f *FakeStore) DeleteUserFilter(ctx context.Context, id string) error {
 	return nil
 }
 
-func (f *FakeStore) GetActiveUserFiltersByContext(ctx context.Context, accountID, filterContext string) ([]domain.UserFilter, error) {
-	return nil, nil
+func (f *FakeStore) GetActiveUserFiltersByContext(_ context.Context, accountID, filterContext string) ([]domain.UserFilter, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.UserFilter
+	now := time.Now()
+	for _, uf := range f.userFiltersByID {
+		if uf.AccountID != accountID {
+			continue
+		}
+		if uf.ExpiresAt != nil && uf.ExpiresAt.Before(now) {
+			continue
+		}
+		for _, c := range uf.Context {
+			if c == filterContext {
+				out = append(out, *copyUserFilter(uf))
+				break
+			}
+		}
+	}
+	return out, nil
 }
 
 func (f *FakeStore) CreateFilter(ctx context.Context, in store.CreateFilterInput) (*domain.UserFilter, error) {

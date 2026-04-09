@@ -30,7 +30,7 @@ func TestStatusesHandler_Create(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {
 		body := bytes.NewBufferString(`{"status":"hello world"}`)
@@ -188,7 +188,7 @@ func TestStatusesHandler_Create_account_without_user_returns_401(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "nouser"})
 	require.NoError(t, err)
@@ -212,7 +212,7 @@ func TestStatusesHandler_POSTReblog(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -266,7 +266,7 @@ func TestStatusesHandler_POSTUnreblog(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -316,7 +316,7 @@ func TestStatusesHandler_POSTPin(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -385,7 +385,7 @@ func TestStatusesHandler_POSTUnpin(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -439,7 +439,7 @@ func TestStatusesHandler_ConversationMute(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -528,7 +528,7 @@ func TestStatusesHandler_PUTStatuses(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -605,7 +605,7 @@ func TestStatusesHandler_GETStatusHistory(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -684,7 +684,7 @@ func TestStatusesHandler_GETStatusSource(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -732,7 +732,7 @@ func TestStatusesHandler_POSTFavourite(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -792,7 +792,7 @@ func TestStatusesHandler_POSTUnfavourite(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -842,7 +842,7 @@ func TestStatusesHandler_DELETEStatuses(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	alice, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -920,7 +920,7 @@ func TestStatusesHandler_POSTBookmark(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -982,7 +982,7 @@ func TestStatusesHandler_POSTUnbookmark(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -1035,7 +1035,7 @@ func TestStatusesHandler_GETContext(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	statusID := uid.New()
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
@@ -1075,7 +1075,7 @@ func TestStatusesHandler_GETStatuses_private_returns_404_when_unauthenticated(t 
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -1110,7 +1110,7 @@ func TestStatusesHandler_GETFavouritedBy(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -1141,7 +1141,7 @@ func TestStatusesHandler_GETRebloggedBy(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Create(ctx, service.CreateAccountInput{Username: "alice"})
 	require.NoError(t, err)
@@ -1200,7 +1200,7 @@ func TestStatusesHandler_POSTStatuses_idempotency(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", cacheStore, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", cacheStore, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -1245,7 +1245,7 @@ func TestStatusesHandler_POSTStatuses_quote(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	alice, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -1356,7 +1356,7 @@ func TestStatusesHandler_GETQuotes(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -1443,7 +1443,7 @@ func TestStatusesHandler_POSTRevokeQuote(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	alice, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -1536,7 +1536,7 @@ func TestStatusesHandler_PUTInteractionPolicy(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -1645,7 +1645,7 @@ func TestStatusesHandler_POSTTranslate(t *testing.T) {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
 	acc := &domain.Account{ID: "01H0000000000000000000001", Username: "alice"}
 
 	t.Run("unauthenticated returns 401", func(t *testing.T) {

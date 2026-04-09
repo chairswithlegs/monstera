@@ -17,6 +17,7 @@ type UserFilterService interface {
 	ListFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error)
 	UpdateFilter(ctx context.Context, accountID, filterID string, phrase string, context []string, wholeWord bool, expiresAt *string, irreversible bool) (*domain.UserFilter, error)
 	DeleteFilter(ctx context.Context, accountID, filterID string) error
+	GetActiveFiltersByContext(ctx context.Context, accountID, filterContext string) ([]domain.UserFilter, error)
 }
 
 type userFilterService struct {
@@ -131,4 +132,12 @@ func (svc *userFilterService) DeleteFilter(ctx context.Context, accountID, filte
 		return fmt.Errorf("DeleteUserFilter: %w", err)
 	}
 	return nil
+}
+
+func (svc *userFilterService) GetActiveFiltersByContext(ctx context.Context, accountID, filterContext string) ([]domain.UserFilter, error) {
+	filters, err := svc.store.GetActiveUserFiltersByContext(ctx, accountID, filterContext)
+	if err != nil {
+		return nil, fmt.Errorf("GetActiveUserFiltersByContext: %w", err)
+	}
+	return filters, nil
 }

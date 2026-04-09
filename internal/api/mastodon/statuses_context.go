@@ -2,6 +2,7 @@ package mastodon
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -10,6 +11,7 @@ import (
 	"github.com/chairswithlegs/monstera/internal/api/mastodon/apimodel"
 	"github.com/chairswithlegs/monstera/internal/api/middleware"
 	"github.com/chairswithlegs/monstera/internal/domain"
+	"github.com/chairswithlegs/monstera/internal/service"
 )
 
 // GETContext handles GET /api/v1/statuses/:id/context.
@@ -37,10 +39,6 @@ func (h *StatusesHandler) GETContext(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	ancestors := make([]apimodel.Status, 0, len(enrichedAncestors))
-	for i := range enrichedAncestors {
-		ancestors = append(ancestors, apimodel.StatusFromEnriched(enrichedAncestors[i], h.instanceDomain))
-	}
 	descendantIDs := make([]string, len(ctxResult.Descendants))
 	for i := range ctxResult.Descendants {
 		descendantIDs[i] = ctxResult.Descendants[i].ID
@@ -49,6 +47,19 @@ func (h *StatusesHandler) GETContext(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
+	}
+	if viewerID != nil && h.userFilters != nil {
+		filters, filterErr := h.userFilters.GetActiveFiltersByContext(r.Context(), *viewerID, domain.FilterContextThread)
+		if filterErr != nil {
+			slog.WarnContext(r.Context(), "failed to load user filters for thread", slog.Any("error", filterErr))
+		} else {
+			enrichedAncestors = service.ApplyUserFiltersToEnriched(enrichedAncestors, filters)
+			enrichedDescendants = service.ApplyUserFiltersToEnriched(enrichedDescendants, filters)
+		}
+	}
+	ancestors := make([]apimodel.Status, 0, len(enrichedAncestors))
+	for i := range enrichedAncestors {
+		ancestors = append(ancestors, apimodel.StatusFromEnriched(enrichedAncestors[i], h.instanceDomain))
 	}
 	descendants := make([]apimodel.Status, 0, len(enrichedDescendants))
 	for i := range enrichedDescendants {
