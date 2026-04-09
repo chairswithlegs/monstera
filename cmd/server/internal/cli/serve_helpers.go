@@ -331,6 +331,8 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 		Conversations:      s.statusRead,
 		Follows:            s.follow,
 		Blocks:             i.store,
+		Mutes:              i.store,
+		UserDomainBlocks:   i.store,
 		NotificationPolicy: s.notificationPolicy,
 		DomainSilence:      i.blocklist,
 	})

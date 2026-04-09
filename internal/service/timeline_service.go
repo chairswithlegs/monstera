@@ -111,6 +111,71 @@ func (svc *timelineService) filterBlockedStatuses(ctx context.Context, statuses 
 	return filtered, nil
 }
 
+// filterMutedStatuses removes statuses where the viewer has muted the author,
+// including reblogs of muted authors.
+func (svc *timelineService) filterMutedStatuses(ctx context.Context, statuses []EnrichedStatus, viewerAccountID string) ([]EnrichedStatus, error) {
+	filtered := make([]EnrichedStatus, 0, len(statuses))
+	for i := range statuses {
+		if statuses[i].Status == nil {
+			continue
+		}
+		muted, err := svc.store.IsMuted(ctx, viewerAccountID, statuses[i].Status.AccountID)
+		if err != nil {
+			return nil, fmt.Errorf("IsMuted: %w", err)
+		}
+		if muted {
+			continue
+		}
+		if statuses[i].ReblogOf != nil && statuses[i].ReblogOf.Status != nil {
+			muted, err = svc.store.IsMuted(ctx, viewerAccountID, statuses[i].ReblogOf.Status.AccountID)
+			if err != nil {
+				return nil, fmt.Errorf("IsMuted (reblog): %w", err)
+			}
+			if muted {
+				continue
+			}
+		}
+		filtered = append(filtered, statuses[i])
+	}
+	return filtered, nil
+}
+
+// filterUserDomainBlockedStatuses removes statuses authored by accounts on domains
+// the viewer has blocked. Local authors are never filtered. Domain lookups are
+// cached per page to avoid redundant queries.
+func (svc *timelineService) filterUserDomainBlockedStatuses(ctx context.Context, statuses []EnrichedStatus, viewerAccountID string) []EnrichedStatus {
+	filtered := make([]EnrichedStatus, 0, len(statuses))
+	cache := make(map[string]bool)
+	for i := range statuses {
+		if svc.isUserDomainBlocked(ctx, viewerAccountID, statuses[i].Author, cache) {
+			continue
+		}
+		if statuses[i].ReblogOf != nil && svc.isUserDomainBlocked(ctx, viewerAccountID, statuses[i].ReblogOf.Author, cache) {
+			continue
+		}
+		filtered = append(filtered, statuses[i])
+	}
+	return filtered
+}
+
+func (svc *timelineService) isUserDomainBlocked(ctx context.Context, viewerAccountID string, author *domain.Account, cache map[string]bool) bool {
+	if author == nil || author.Domain == nil {
+		return false
+	}
+	d := *author.Domain
+	if blocked, ok := cache[d]; ok {
+		return blocked
+	}
+	blocked, err := svc.store.IsUserDomainBlocked(ctx, viewerAccountID, d)
+	if err != nil {
+		slog.WarnContext(ctx, "IsUserDomainBlocked check failed", slog.String("domain", d), slog.Any("error", err))
+		cache[d] = false
+		return false
+	}
+	cache[d] = blocked
+	return blocked
+}
+
 // filterSilencedStatuses removes statuses authored by accounts on silenced domains,
 // matching Mastodon's behavior of hiding silenced content from public timelines.
 func (svc *timelineService) filterSilencedStatuses(ctx context.Context, statuses []EnrichedStatus) []EnrichedStatus {
@@ -158,6 +223,15 @@ func (svc *timelineService) HomeEnriched(ctx context.Context, accountID string, 
 		}
 	}
 	out = filtered
+	out, err = svc.filterBlockedStatuses(ctx, out, accountID)
+	if err != nil {
+		return nil, err
+	}
+	out, err = svc.filterMutedStatuses(ctx, out, accountID)
+	if err != nil {
+		return nil, err
+	}
+	out = svc.filterUserDomainBlockedStatuses(ctx, out, accountID)
 	filters, err := svc.store.GetActiveUserFiltersByContext(ctx, accountID, domain.FilterContextHome)
 	if err != nil {
 		slog.WarnContext(ctx, "failed to load user filters, returning unfiltered timeline", slog.Any("error", err))
@@ -183,6 +257,11 @@ func (svc *timelineService) FavouritesEnriched(ctx context.Context, accountID st
 	if err != nil {
 		return nil, nil, err
 	}
+	out, err = svc.filterMutedStatuses(ctx, out, accountID)
+	if err != nil {
+		return nil, nil, err
+	}
+	out = svc.filterUserDomainBlockedStatuses(ctx, out, accountID)
 	return out, nextCursor, nil
 }
 
@@ -201,6 +280,11 @@ func (svc *timelineService) BookmarksEnriched(ctx context.Context, accountID str
 	if err != nil {
 		return nil, nil, err
 	}
+	out, err = svc.filterMutedStatuses(ctx, out, accountID)
+	if err != nil {
+		return nil, nil, err
+	}
+	out = svc.filterUserDomainBlockedStatuses(ctx, out, accountID)
 	return out, nextCursor, nil
 }
 
@@ -237,6 +321,21 @@ func (svc *timelineService) ListTimelineEnriched(ctx context.Context, accountID,
 	filtered, err = svc.filterByRepliesPolicy(ctx, filtered, list)
 	if err != nil {
 		return nil, err
+	}
+	filtered, err = svc.filterBlockedStatuses(ctx, filtered, accountID)
+	if err != nil {
+		return nil, err
+	}
+	filtered, err = svc.filterMutedStatuses(ctx, filtered, accountID)
+	if err != nil {
+		return nil, err
+	}
+	filtered = svc.filterUserDomainBlockedStatuses(ctx, filtered, accountID)
+	filters, err := svc.store.GetActiveUserFiltersByContext(ctx, accountID, domain.FilterContextHome)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to load user filters for list timeline", slog.Any("error", err))
+	} else {
+		filtered = ApplyUserFiltersToEnriched(filtered, filters)
 	}
 	return filtered, nil
 }
@@ -334,6 +433,17 @@ func (svc *timelineService) PublicLocalEnriched(ctx context.Context, localOnly b
 		if err != nil {
 			return nil, err
 		}
+		out, err = svc.filterMutedStatuses(ctx, out, *viewerAccountID)
+		if err != nil {
+			return nil, err
+		}
+		out = svc.filterUserDomainBlockedStatuses(ctx, out, *viewerAccountID)
+		filters, err := svc.store.GetActiveUserFiltersByContext(ctx, *viewerAccountID, domain.FilterContextPublic)
+		if err != nil {
+			slog.WarnContext(ctx, "failed to load user filters for public timeline", slog.Any("error", err))
+		} else {
+			out = ApplyUserFiltersToEnriched(out, filters)
+		}
 	}
 	return out, nil
 }
@@ -359,6 +469,17 @@ func (svc *timelineService) AccountStatusesEnriched(ctx context.Context, account
 		out, err = svc.filterBlockedStatuses(ctx, out, *viewerAccountID)
 		if err != nil {
 			return nil, err
+		}
+		out, err = svc.filterMutedStatuses(ctx, out, *viewerAccountID)
+		if err != nil {
+			return nil, err
+		}
+		out = svc.filterUserDomainBlockedStatuses(ctx, out, *viewerAccountID)
+		filters, err := svc.store.GetActiveUserFiltersByContext(ctx, *viewerAccountID, domain.FilterContextAccount)
+		if err != nil {
+			slog.WarnContext(ctx, "failed to load user filters for account timeline", slog.Any("error", err))
+		} else {
+			out = ApplyUserFiltersToEnriched(out, filters)
 		}
 	}
 	return out, nil
@@ -409,6 +530,17 @@ func (svc *timelineService) HashtagTimelineEnriched(ctx context.Context, tagName
 		out, err = svc.filterBlockedStatuses(ctx, out, *viewerAccountID)
 		if err != nil {
 			return nil, err
+		}
+		out, err = svc.filterMutedStatuses(ctx, out, *viewerAccountID)
+		if err != nil {
+			return nil, err
+		}
+		out = svc.filterUserDomainBlockedStatuses(ctx, out, *viewerAccountID)
+		filters, err := svc.store.GetActiveUserFiltersByContext(ctx, *viewerAccountID, domain.FilterContextPublic)
+		if err != nil {
+			slog.WarnContext(ctx, "failed to load user filters for hashtag timeline", slog.Any("error", err))
+		} else {
+			out = ApplyUserFiltersToEnriched(out, filters)
 		}
 	}
 	return out, nil

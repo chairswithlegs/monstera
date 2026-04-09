@@ -37,6 +37,7 @@ type FakeStore struct {
 	hashtagsByID           map[string]*domain.Hashtag
 	followedTagsList       []followedTagEntry      // for ListFollowedTags order
 	featuredTagsList       []featuredTagEntry      // for ListFeaturedTags order
+	userDomainBlocksByKey  map[string]struct{}     // "accountID:domain"
 	conversationMutesByKey map[string]struct{}     // "accountID:conversationID"
 	conversationMutesList  []conversationMuteEntry // for ListMutedConversationIDs
 	conversationIDs        map[string]struct{}     // for CreateConversation
@@ -173,6 +174,7 @@ func NewFakeStore() *FakeStore {
 		followsByKey:                    make(map[string]*domain.Follow),
 		blocksByKey:                     make(map[string]struct{}),
 		mutesByKey:                      make(map[string]struct{}),
+		userDomainBlocksByKey:           make(map[string]struct{}),
 		suspendedAccountIDs:             make(map[string]struct{}),
 		mediaByID:                       make(map[string]*domain.MediaAttachment),
 		notificationsByAccount:          make(map[string][]*domain.Notification),
@@ -3047,6 +3049,13 @@ func (f *FakeStore) CreateMute(ctx context.Context, in store.CreateMuteInput) er
 	f.mutesList = append(f.mutesList, muteEntry{ID: in.ID, AccountID: in.AccountID, TargetID: in.TargetID})
 	return nil
 }
+func (f *FakeStore) IsMuted(_ context.Context, accountID, targetID string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.mutesByKey[followKey(accountID, targetID)]
+	return ok, nil
+}
+
 func (f *FakeStore) DeleteMute(ctx context.Context, accountID, targetID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -3093,6 +3102,46 @@ func (f *FakeStore) ListMutedAccounts(ctx context.Context, accountID string, max
 	}
 	return out, nextCursor, nil
 }
+func userDomainBlockKey(accountID, domain string) string { return accountID + ":" + domain }
+
+func (f *FakeStore) CreateUserDomainBlock(_ context.Context, in store.CreateUserDomainBlockInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.userDomainBlocksByKey[userDomainBlockKey(in.AccountID, in.Domain)] = struct{}{}
+	return nil
+}
+
+func (f *FakeStore) DeleteUserDomainBlock(_ context.Context, accountID, domain string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.userDomainBlocksByKey, userDomainBlockKey(accountID, domain))
+	return nil
+}
+
+func (f *FakeStore) ListUserDomainBlocks(_ context.Context, accountID string, _ *string, _ int) ([]string, *string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	prefix := accountID + ":"
+	var out []string
+	for k := range f.userDomainBlocksByKey {
+		if len(k) > len(prefix) && k[:len(prefix)] == prefix {
+			out = append(out, k[len(prefix):])
+		}
+	}
+	return out, nil, nil
+}
+
+func (f *FakeStore) IsUserDomainBlocked(_ context.Context, accountID, domain string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.userDomainBlocksByKey[userDomainBlockKey(accountID, domain)]
+	return ok, nil
+}
+
+func (f *FakeStore) DeleteFollowersByDomain(_ context.Context, _, _ string) error {
+	return nil
+}
+
 func favouriteAccountStatusKey(accountID, statusID string) string { return accountID + ":" + statusID }
 
 func (f *FakeStore) CreateFavourite(ctx context.Context, in store.CreateFavouriteInput) (*domain.Favourite, error) {

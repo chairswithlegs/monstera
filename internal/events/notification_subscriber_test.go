@@ -180,6 +180,90 @@ func TestBlockedSenderDoesNotGenerateNotification(t *testing.T) {
 	})
 }
 
+type fakeMuteChecker struct {
+	mutes map[string]*domain.Mute // "accountID:targetID" -> Mute
+}
+
+func (f *fakeMuteChecker) GetMute(_ context.Context, accountID, targetID string) (*domain.Mute, error) {
+	m, ok := f.mutes[accountID+":"+targetID]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return m, nil
+}
+
+func TestMutedSenderWithHideNotifications(t *testing.T) {
+	t.Parallel()
+	nc := &fakeNotifCreator{}
+	al := &fakeAccountLookup{accounts: make(map[string]*domain.Account)}
+	cm := &fakeConversationMuteChecker{muted: make(map[string]bool)}
+	mc := &fakeMuteChecker{mutes: map[string]*domain.Mute{
+		"target-1:actor-1": {AccountID: "target-1", TargetID: "actor-1", HideNotifications: true},
+	}}
+	sub := &NotificationSubscriber{deps: NotificationDeps{
+		Notifications: nc,
+		Accounts:      al,
+		Conversations: cm,
+		Mutes:         mc,
+	}}
+
+	actor := localAccount("actor-1", "alice")
+	target := localAccount("target-1", "bob")
+	al.accounts[target.ID] = target
+
+	t.Run("favourite notification suppressed when muted with hide_notifications", func(t *testing.T) {
+		event := makeEvent(t, domain.EventFavouriteCreated, domain.FavouriteCreatedPayload{
+			AccountID:      actor.ID,
+			StatusID:       "status-1",
+			StatusAuthorID: target.ID,
+			FromAccount:    actor,
+		})
+		sub.handleFavouriteCreated(context.Background(), event)
+		assert.Empty(t, nc.calls)
+	})
+
+	t.Run("follow notification suppressed when muted with hide_notifications", func(t *testing.T) {
+		event := makeEvent(t, domain.EventFollowCreated, domain.FollowCreatedPayload{
+			Follow: &domain.Follow{ID: "f-1", AccountID: actor.ID, TargetID: target.ID, State: "accepted"},
+			Actor:  actor,
+			Target: target,
+		})
+		sub.handleFollowCreated(context.Background(), event)
+		assert.Empty(t, nc.calls)
+	})
+}
+
+func TestMutedSenderWithoutHideNotifications(t *testing.T) {
+	t.Parallel()
+	nc := &fakeNotifCreator{}
+	al := &fakeAccountLookup{accounts: make(map[string]*domain.Account)}
+	cm := &fakeConversationMuteChecker{muted: make(map[string]bool)}
+	mc := &fakeMuteChecker{mutes: map[string]*domain.Mute{
+		"target-1:actor-1": {AccountID: "target-1", TargetID: "actor-1", HideNotifications: false},
+	}}
+	sub := &NotificationSubscriber{deps: NotificationDeps{
+		Notifications: nc,
+		Accounts:      al,
+		Conversations: cm,
+		Mutes:         mc,
+	}}
+
+	actor := localAccount("actor-1", "alice")
+	target := localAccount("target-1", "bob")
+	al.accounts[target.ID] = target
+
+	event := makeEvent(t, domain.EventFavouriteCreated, domain.FavouriteCreatedPayload{
+		AccountID:      actor.ID,
+		StatusID:       "status-1",
+		StatusAuthorID: target.ID,
+		FromAccount:    actor,
+	})
+	sub.handleFavouriteCreated(context.Background(), event)
+
+	require.Len(t, nc.calls, 1, "notification should still be delivered when hide_notifications is false")
+	assert.Equal(t, target.ID, nc.calls[0].RecipientID)
+}
+
 func TestHandleFollowRequested_LocalTarget(t *testing.T) {
 	t.Parallel()
 	sub, nc, _, _ := newTestSub()

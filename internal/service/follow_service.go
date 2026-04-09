@@ -29,6 +29,9 @@ type FollowService interface {
 	AuthorizeFollowRequest(ctx context.Context, targetAccountID, requesterAccountID string) error
 	RejectFollowRequest(ctx context.Context, targetAccountID, requesterAccountID string) error
 	GetFamiliarFollowers(ctx context.Context, viewerID, targetID string, limit int) ([]domain.Account, error)
+	DomainBlock(ctx context.Context, actorAccountID, domain string) error
+	DomainUnblock(ctx context.Context, actorAccountID, domain string) error
+	ListDomainBlocks(ctx context.Context, accountID string, maxID *string, limit int) ([]string, *string, error)
 }
 
 type followService struct {
@@ -435,4 +438,40 @@ func (svc *followService) RejectFollowRequest(ctx context.Context, targetAccount
 		return fmt.Errorf("DeleteFollow: %w", err)
 	}
 	return nil
+}
+
+// DomainBlock blocks a domain for the given account. Idempotent.
+// Also removes followers from the blocked domain within the same transaction.
+func (svc *followService) DomainBlock(ctx context.Context, actorAccountID, domainName string) error {
+	return svc.store.WithTx(ctx, func(tx store.Store) error {
+		if err := tx.CreateUserDomainBlock(ctx, store.CreateUserDomainBlockInput{
+			ID:        uid.New(),
+			AccountID: actorAccountID,
+			Domain:    domainName,
+		}); err != nil {
+			return fmt.Errorf("CreateUserDomainBlock: %w", err)
+		}
+		if err := tx.DeleteFollowersByDomain(ctx, actorAccountID, domainName); err != nil {
+			return fmt.Errorf("DeleteFollowersByDomain: %w", err)
+		}
+		return nil
+	})
+}
+
+// DomainUnblock removes a domain block for the given account. Idempotent.
+func (svc *followService) DomainUnblock(ctx context.Context, actorAccountID, domain string) error {
+	if err := svc.store.DeleteUserDomainBlock(ctx, actorAccountID, domain); err != nil {
+		return fmt.Errorf("DeleteUserDomainBlock: %w", err)
+	}
+	return nil
+}
+
+// ListDomainBlocks returns the blocked domains for the given account with cursor pagination.
+func (svc *followService) ListDomainBlocks(ctx context.Context, accountID string, maxID *string, limit int) ([]string, *string, error) {
+	limit = ClampLimit(limit, DefaultServiceListLimit, MaxServicePageLimit)
+	domains, nextCursor, err := svc.store.ListUserDomainBlocks(ctx, accountID, maxID, limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("ListUserDomainBlocks: %w", err)
+	}
+	return domains, nextCursor, nil
 }

@@ -131,6 +131,13 @@ type CreateMuteInput struct {
 	HideNotifications bool
 }
 
+// CreateUserDomainBlockInput is the input for creating a user-level domain block.
+type CreateUserDomainBlockInput struct {
+	ID        string
+	AccountID string
+	Domain    string
+}
+
 // CreateFavouriteInput is the input for creating a favourite.
 type CreateFavouriteInput struct {
 	ID        string

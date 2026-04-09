@@ -520,6 +520,13 @@ type User struct {
 	DefaultQuotePolicy string             `json:"default_quote_policy"`
 }
 
+type UserDomainBlock struct {
+	ID        string             `json:"id"`
+	AccountID string             `json:"account_id"`
+	Domain    string             `json:"domain"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type UserFilter struct {
 	ID           string             `json:"id"`
 	AccountID    string             `json:"account_id"`

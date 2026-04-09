@@ -75,6 +75,7 @@ type Querier interface {
 	CreateStatusEdit(ctx context.Context, arg CreateStatusEditParams) (StatusEdit, error)
 	CreateStatusMention(ctx context.Context, arg CreateStatusMentionParams) error
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	CreateUserDomainBlock(ctx context.Context, arg CreateUserDomainBlockParams) error
 	CreateUserFilter(ctx context.Context, arg CreateUserFilterParams) (UserFilter, error)
 	// ─── Filter v2 CRUD ──────────────────────────────────────────────────────────
 	CreateUserFilterV2(ctx context.Context, arg CreateUserFilterV2Params) (UserFilter, error)
@@ -101,6 +102,7 @@ type Querier interface {
 	DeleteFilterKeyword(ctx context.Context, id string) error
 	DeleteFilterStatus(ctx context.Context, id string) error
 	DeleteFollow(ctx context.Context, arg DeleteFollowParams) error
+	DeleteFollowersByDomain(ctx context.Context, arg DeleteFollowersByDomainParams) error
 	DeleteFollowsByDomain(ctx context.Context, domain *string) error
 	DeleteInvite(ctx context.Context, id string) error
 	DeleteList(ctx context.Context, id string) error
@@ -114,6 +116,7 @@ type Querier interface {
 	DeleteStatusHashtags(ctx context.Context, statusID string) error
 	DeleteStatusMentions(ctx context.Context, statusID string) error
 	DeleteUser(ctx context.Context, id string) error
+	DeleteUserDomainBlock(ctx context.Context, arg DeleteUserDomainBlockParams) error
 	DeleteUserFilter(ctx context.Context, id string) error
 	DeleteUserFilterV2(ctx context.Context, id string) error
 	DismissAnnouncement(ctx context.Context, arg DismissAnnouncementParams) error
@@ -228,6 +231,7 @@ type Querier interface {
 	IsFollowingTag(ctx context.Context, arg IsFollowingTagParams) (bool, error)
 	IsMuted(ctx context.Context, arg IsMutedParams) (bool, error)
 	IsTrendingLinkFiltered(ctx context.Context, url string) (bool, error)
+	IsUserDomainBlocked(ctx context.Context, arg IsUserDomainBlockedParams) (bool, error)
 	ListAccountAnnouncementReactionNames(ctx context.Context, arg ListAccountAnnouncementReactionNamesParams) ([]string, error)
 	ListAccountConversationsPaginated(ctx context.Context, arg ListAccountConversationsPaginatedParams) ([]AccountConversation, error)
 	ListAccountTagSuggestions(ctx context.Context, arg ListAccountTagSuggestionsParams) ([]ListAccountTagSuggestionsRow, error)
@@ -270,6 +274,7 @@ type Querier interface {
 	ListStatusEdits(ctx context.Context, statusID string) ([]StatusEdit, error)
 	ListTrendingLinkFilters(ctx context.Context) ([]TrendingLinkFilter, error)
 	ListUnattachedMedia(ctx context.Context, accountID string) ([]MediaAttachment, error)
+	ListUserDomainBlocksPaginated(ctx context.Context, arg ListUserDomainBlocksPaginatedParams) ([]ListUserDomainBlocksPaginatedRow, error)
 	ListUserFilters(ctx context.Context, accountID string) ([]UserFilter, error)
 	ListUserFiltersV2(ctx context.Context, accountID string) ([]UserFilter, error)
 	MarkAccountConversationRead(ctx context.Context, arg MarkAccountConversationReadParams) error
