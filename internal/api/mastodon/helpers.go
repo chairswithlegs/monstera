@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/chairswithlegs/monstera/internal/api"
 )
 
 // PageParams holds cursor-based pagination parameters.
@@ -134,11 +136,12 @@ func parseLimitParam(r *http.Request, defaultLimit, maxLimit int) int { //nolint
 	return defaultLimit
 }
 
-// parseOffsetParam reads the "offset" query parameter. Invalid or missing values return 0.
+// parseOffsetParam reads the "offset" query parameter. Invalid or missing
+// values return 0. The result is clamped to [0, api.MaxOffset].
 func parseOffsetParam(r *http.Request) int {
 	if s := r.URL.Query().Get("offset"); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n > 0 {
-			return n
+			return api.ClampOffset(n)
 		}
 	}
 	return 0

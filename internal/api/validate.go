@@ -5,6 +5,22 @@ import (
 	"time"
 )
 
+// MaxOffset is the upper bound for offset-based pagination across all API
+// endpoints. Values above this cap are clamped to MaxOffset to prevent
+// expensive database scans.
+const MaxOffset = 10_000
+
+// ClampOffset returns offset clamped to [0, MaxOffset].
+func ClampOffset(offset int) int {
+	if offset < 0 {
+		return 0
+	}
+	if offset > MaxOffset {
+		return MaxOffset
+	}
+	return offset
+}
+
 // ValidateRequiredField returns ErrUnprocessable if value is empty.
 // Use for required request body fields (semantic validation → 422).
 func ValidateRequiredField(value, fieldName string) error {

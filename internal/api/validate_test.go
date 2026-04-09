@@ -100,3 +100,26 @@ func TestValidatePositiveInt(t *testing.T) {
 		assert.Equal(t, 100, n)
 	})
 }
+
+func TestClampOffset(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		input  int
+		expect int
+	}{
+		{name: "negative returns 0", input: -1, expect: 0},
+		{name: "zero returns 0", input: 0, expect: 0},
+		{name: "within range passes through", input: 500, expect: 500},
+		{name: "at max returns max", input: MaxOffset, expect: MaxOffset},
+		{name: "above max returns max", input: MaxOffset + 1, expect: MaxOffset},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.expect, ClampOffset(tc.input))
+		})
+	}
+}

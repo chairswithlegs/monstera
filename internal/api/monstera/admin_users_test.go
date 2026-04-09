@@ -34,6 +34,18 @@ func TestAdminUsersHandler_GETUsers(t *testing.T) {
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
 		assert.GreaterOrEqual(t, len(body.Users), 1)
 	})
+
+	t.Run("caps offset at MaxOffset", func(t *testing.T) {
+		// With an excessive offset the value is clamped to api.MaxOffset,
+		// which exceeds the number of seeded users, so the result is empty.
+		req := httptest.NewRequest(http.MethodGet, "/admin/users?offset=999999999", nil)
+		rec := httptest.NewRecorder()
+		handler.GETUsers(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var body apimodel.AdminUserList
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		assert.Empty(t, body.Users)
+	})
 }
 
 func TestAdminUsersHandler_GETUser(t *testing.T) {

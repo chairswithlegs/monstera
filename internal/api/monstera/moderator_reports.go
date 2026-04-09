@@ -33,7 +33,7 @@ func (h *ModeratorReportsHandler) GETReports(w http.ResponseWriter, r *http.Requ
 	offset := 0
 	if o := r.URL.Query().Get("offset"); o != "" {
 		if n, _ := strconv.Atoi(o); n >= 0 {
-			offset = n
+			offset = api.ClampOffset(n)
 		}
 	}
 	reports, err := h.moderation.ListReports(r.Context(), state, limit, offset)
