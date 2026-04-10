@@ -264,6 +264,117 @@ func TestMutedSenderWithoutHideNotifications(t *testing.T) {
 	assert.Equal(t, target.ID, nc.calls[0].RecipientID)
 }
 
+type fakeContentFilterMatcher struct {
+	matches map[string]bool // recipientID -> matches
+}
+
+func (f *fakeContentFilterMatcher) StatusMatchesNotificationFilters(_ context.Context, recipientID string, _ *domain.Status) (bool, error) {
+	return f.matches[recipientID], nil
+}
+
+type fakeStatusLookup struct {
+	statuses map[string]*domain.Status
+}
+
+func (f *fakeStatusLookup) GetStatusByID(_ context.Context, id string) (*domain.Status, error) {
+	s, ok := f.statuses[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return s, nil
+}
+
+func TestContentFilterDropsMatchingNotification(t *testing.T) {
+	t.Parallel()
+	nc := &fakeNotifCreator{}
+	al := &fakeAccountLookup{accounts: make(map[string]*domain.Account)}
+	cm := &fakeConversationMuteChecker{muted: make(map[string]bool)}
+	content := "this contains a spoiler"
+	sl := &fakeStatusLookup{statuses: map[string]*domain.Status{
+		"status-1": {ID: "status-1", AccountID: "actor-1", Content: &content},
+	}}
+	cf := &fakeContentFilterMatcher{matches: map[string]bool{"target-1": true}}
+	sub := &NotificationSubscriber{deps: NotificationDeps{
+		Notifications:  nc,
+		Accounts:       al,
+		Conversations:  cm,
+		Statuses:       sl,
+		ContentFilters: cf,
+	}}
+
+	actor := localAccount("actor-1", "alice")
+	target := localAccount("target-1", "bob")
+	al.accounts[target.ID] = target
+
+	event := makeEvent(t, domain.EventFavouriteCreated, domain.FavouriteCreatedPayload{
+		AccountID:      actor.ID,
+		StatusID:       "status-1",
+		StatusAuthorID: target.ID,
+		FromAccount:    actor,
+	})
+	sub.handleFavouriteCreated(context.Background(), event)
+	assert.Empty(t, nc.calls, "notification should be dropped when content filter matches")
+}
+
+func TestContentFilterAllowsNonMatchingNotification(t *testing.T) {
+	t.Parallel()
+	nc := &fakeNotifCreator{}
+	al := &fakeAccountLookup{accounts: make(map[string]*domain.Account)}
+	cm := &fakeConversationMuteChecker{muted: make(map[string]bool)}
+	content := "harmless post"
+	sl := &fakeStatusLookup{statuses: map[string]*domain.Status{
+		"status-1": {ID: "status-1", AccountID: "actor-1", Content: &content},
+	}}
+	cf := &fakeContentFilterMatcher{matches: map[string]bool{}} // no matches
+	sub := &NotificationSubscriber{deps: NotificationDeps{
+		Notifications:  nc,
+		Accounts:       al,
+		Conversations:  cm,
+		Statuses:       sl,
+		ContentFilters: cf,
+	}}
+
+	actor := localAccount("actor-1", "alice")
+	target := localAccount("target-1", "bob")
+	al.accounts[target.ID] = target
+
+	event := makeEvent(t, domain.EventFavouriteCreated, domain.FavouriteCreatedPayload{
+		AccountID:      actor.ID,
+		StatusID:       "status-1",
+		StatusAuthorID: target.ID,
+		FromAccount:    actor,
+	})
+	sub.handleFavouriteCreated(context.Background(), event)
+	require.Len(t, nc.calls, 1, "notification should be delivered when content filter does not match")
+}
+
+func TestContentFilterSkippedForFollowNotifications(t *testing.T) {
+	t.Parallel()
+	nc := &fakeNotifCreator{}
+	al := &fakeAccountLookup{accounts: make(map[string]*domain.Account)}
+	cm := &fakeConversationMuteChecker{muted: make(map[string]bool)}
+	// ContentFilters set but no Statuses — follow has no statusID so it should never trigger
+	cf := &fakeContentFilterMatcher{matches: map[string]bool{"target-1": true}}
+	sub := &NotificationSubscriber{deps: NotificationDeps{
+		Notifications:  nc,
+		Accounts:       al,
+		Conversations:  cm,
+		ContentFilters: cf,
+	}}
+
+	actor := localAccount("actor-1", "alice")
+	target := localAccount("target-1", "bob")
+	al.accounts[target.ID] = target
+
+	event := makeEvent(t, domain.EventFollowCreated, domain.FollowCreatedPayload{
+		Follow: &domain.Follow{ID: "f-1", AccountID: actor.ID, TargetID: target.ID, State: "accepted"},
+		Actor:  actor,
+		Target: target,
+	})
+	sub.handleFollowCreated(context.Background(), event)
+	require.Len(t, nc.calls, 1, "follow notification should not be affected by content filters")
+}
+
 func TestHandleFollowRequested_LocalTarget(t *testing.T) {
 	t.Parallel()
 	sub, nc, _, _ := newTestSub()

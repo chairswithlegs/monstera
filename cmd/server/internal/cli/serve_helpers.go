@@ -333,6 +333,8 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 		Blocks:             i.store,
 		Mutes:              i.store,
 		UserDomainBlocks:   i.store,
+		Statuses:           i.store,
+		ContentFilters:     service.NewContentFilterMatcher(i.store),
 		NotificationPolicy: s.notificationPolicy,
 		DomainSilence:      i.blocklist,
 	})

@@ -27,6 +27,8 @@ type NotificationDeps struct {
 	Blocks             BlockChecker
 	Mutes              MuteChecker
 	UserDomainBlocks   UserDomainBlockChecker
+	Statuses           StatusLookup
+	ContentFilters     ContentFilterMatcher
 	NotificationPolicy NotificationPolicyProvider
 	DomainSilence      DomainSilenceChecker
 }
@@ -64,6 +66,16 @@ type MuteChecker interface {
 // UserDomainBlockChecker checks per-user domain blocks.
 type UserDomainBlockChecker interface {
 	IsUserDomainBlocked(ctx context.Context, accountID, domain string) (bool, error)
+}
+
+// StatusLookup retrieves a status by ID.
+type StatusLookup interface {
+	GetStatusByID(ctx context.Context, id string) (*domain.Status, error)
+}
+
+// ContentFilterMatcher checks whether a status matches any of a user's content filters.
+type ContentFilterMatcher interface {
+	StatusMatchesNotificationFilters(ctx context.Context, recipientID string, status *domain.Status) (bool, error)
 }
 
 // DomainSilenceChecker checks whether a domain is silenced (limited).
@@ -377,6 +389,25 @@ func (n *NotificationSubscriber) createOrFilterNotification(ctx context.Context,
 				)
 			}
 			return
+		}
+	}
+	if statusID != nil && n.deps.ContentFilters != nil && n.deps.Statuses != nil {
+		status, err := n.deps.Statuses.GetStatusByID(ctx, *statusID)
+		if err != nil {
+			slog.WarnContext(ctx, "notification subscriber: status lookup for content filter failed",
+				slog.String("status_id", *statusID),
+				slog.Any("error", err),
+			)
+		} else {
+			matched, matchErr := n.deps.ContentFilters.StatusMatchesNotificationFilters(ctx, recipientID, status)
+			if matchErr != nil {
+				slog.WarnContext(ctx, "notification subscriber: content filter check failed",
+					slog.String("recipient", recipientID),
+					slog.Any("error", matchErr),
+				)
+			} else if matched {
+				return
+			}
 		}
 	}
 	if err := n.deps.Notifications.CreateAndEmit(ctx, recipientID, fromAccountID, notifType, statusID); err != nil {
