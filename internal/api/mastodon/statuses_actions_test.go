@@ -22,7 +22,7 @@ func newStatusesActionsHandler(st *testutil.FakeStore) *StatusesHandler {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	return NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
+	return NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 }
 
 func TestStatusesActions_Unauthenticated(t *testing.T) {

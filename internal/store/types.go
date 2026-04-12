@@ -179,27 +179,6 @@ type UpdateListInput struct {
 	Exclusive     bool
 }
 
-// CreateUserFilterInput is the input for creating a user filter.
-type CreateUserFilterInput struct {
-	ID           string
-	AccountID    string
-	Phrase       string
-	Context      []string
-	WholeWord    bool
-	ExpiresAt    *time.Time
-	Irreversible bool
-}
-
-// UpdateUserFilterInput is the input for updating a user filter.
-type UpdateUserFilterInput struct {
-	ID           string
-	Phrase       string
-	Context      []string
-	WholeWord    bool
-	ExpiresAt    *time.Time
-	Irreversible bool
-}
-
 // CreateFilterInput is the input for creating a keyword-based user filter.
 type CreateFilterInput struct {
 	ID           string

@@ -8,6 +8,9 @@ const (
 	FilterContextPublic        = "public"
 	FilterContextThread        = "thread"
 	FilterContextAccount       = "account"
+
+	FilterActionWarn = "warn"
+	FilterActionHide = "hide"
 )
 
 // FilterKeyword is one keyword entry within a user filter.
@@ -25,20 +28,15 @@ type FilterStatus struct {
 	StatusID string
 }
 
-// UserFilter is a per-account content filter. It supports both the v1 API
-// (single phrase, stored in Phrase/WholeWord/Irreversible) and the v2 API
-// (title, filter_action, and multiple Keywords/Statuses). The v1 and v2 fields
-// are populated by their respective store paths.
+// UserFilter is a per-account content filter with multiple keywords and
+// optional status-based filter entries.
 type UserFilter struct {
 	ID           string
 	AccountID    string
 	Title        string
-	Phrase       string // v1 legacy; also stored as first keyword after migration
 	Context      []string
 	ExpiresAt    *time.Time
 	FilterAction string // "warn" or "hide"
-	WholeWord    bool   // v1 legacy
-	Irreversible bool   // v1 legacy; corresponds to filter_action "hide"
 	Keywords     []FilterKeyword
 	Statuses     []FilterStatus
 	CreatedAt    time.Time

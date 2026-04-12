@@ -79,7 +79,6 @@ type svcs struct {
 	monsteraSettings   service.MonsteraSettingsService
 	moderation         service.ModerationService
 	list               service.ListService
-	userFilter         service.UserFilterService
 	filter             service.FilterService
 	marker             service.MarkerService
 	featuredTag        service.FeaturedTagService
@@ -267,7 +266,6 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 		moderation:         service.NewModerationService(i.store, i.blocklist),
 		adminMetrics:       service.NewAdminMetricsService(i.store, i.nats.JS, i.cache, ap.StreamOutboxDeliveryDLQ, ap.StreamOutboxFanoutDLQ),
 		list:               service.NewListService(i.store),
-		userFilter:         service.NewUserFilterService(i.store),
 		filter:             service.NewFilterService(i.store),
 		marker:             service.NewMarkerService(i.store),
 		featuredTag:        service.NewFeaturedTagService(i.store),
@@ -405,7 +403,7 @@ func createRouter(cfg *config.Config, s *svcs, i *infra, sseHub *sse.Hub) http.H
 		OAuthHandler:           oauthhandlers.NewHandler(s.oauthServer, s.auth, cfg.MonsteraUIURL),
 		OAuthServer:            s.oauthServer,
 		Accounts:               mastodon.NewAccountsHandler(s.account, s.follow, s.tagFollow, s.timeline, s.statusRead, s.monsteraSettings, s.media, s.backfill, s.featuredTag, cfg.MediaMaxBytes, cfg.MonsteraInstanceDomain),
-		Statuses:               mastodon.NewStatusesHandler(s.account, s.statusRead, s.statusWrite, s.statusInteraction, s.scheduled, s.conversation, s.userFilter, cfg.MonsteraInstanceDomain, i.sharedCache, nil),
+		Statuses:               mastodon.NewStatusesHandler(s.account, s.statusRead, s.statusWrite, s.statusInteraction, s.scheduled, s.conversation, cfg.MonsteraInstanceDomain, i.sharedCache, nil),
 		ScheduledStatuses:      mastodon.NewScheduledStatusesHandler(s.statusRead, s.scheduled, cfg.MonsteraInstanceDomain),
 		Polls:                  mastodon.NewPollsHandler(s.statusRead, s.statusInteraction),
 		Timelines:              mastodon.NewTimelinesHandler(s.timeline, cfg.MonsteraInstanceDomain),
@@ -422,7 +420,6 @@ func createRouter(cfg *config.Config, s *svcs, i *infra, sseHub *sse.Hub) http.H
 		Reports:                mastodon.NewReportsHandler(s.moderation, s.account, cfg.MonsteraInstanceDomain),
 		FollowRequests:         mastodon.NewFollowRequestsHandler(s.follow, s.account, cfg.MonsteraInstanceDomain),
 		Lists:                  mastodon.NewListsHandler(s.list, s.account, cfg.MonsteraInstanceDomain),
-		Filters:                mastodon.NewFiltersHandler(s.userFilter),
 		FiltersV2:              mastodon.NewFiltersV2Handler(s.filter),
 		Preferences:            mastodon.NewPreferencesHandler(s.account),
 		Markers:                mastodon.NewMarkersHandler(s.marker),

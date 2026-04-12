@@ -47,10 +47,7 @@ func ToDomainUserFilter(u db.UserFilter) domain.UserFilter {
 	d := domain.UserFilter{
 		ID:           u.ID,
 		AccountID:    u.AccountID,
-		Phrase:       u.Phrase,
 		Context:      u.Context,
-		WholeWord:    u.WholeWord,
-		Irreversible: u.Irreversible,
 		Title:        u.Title,
 		FilterAction: u.FilterAction,
 		Keywords:     []domain.FilterKeyword{},

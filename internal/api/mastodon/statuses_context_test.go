@@ -24,7 +24,7 @@ func newStatusesContextHandler(st *testutil.FakeStore) *StatusesHandler {
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	return NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, nil, "example.com", nil, nil)
+	return NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 }
 
 func TestStatusesContext_GETContext_Success(t *testing.T) {
@@ -100,8 +100,8 @@ func TestStatusesContext_GETContext_ThreadFilterRemovesMatchingDescendant(t *tes
 	statusWriteSvc := service.NewStatusWriteService(st, statusSvc, conversationSvc, "https://example.com", "example.com", 500)
 	interactionSvc := service.NewStatusInteractionService(st, statusSvc, "https://example.com")
 	scheduledSvc := service.NewScheduledStatusService(st, statusWriteSvc)
-	userFilterSvc := service.NewUserFilterService(st)
-	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, userFilterSvc, "example.com", nil, nil)
+	filterSvc := service.NewFilterService(st)
+	handler := NewStatusesHandler(accountSvc, statusSvc, statusWriteSvc, interactionSvc, scheduledSvc, conversationSvc, "example.com", nil, nil)
 
 	acc, err := accountSvc.Register(ctx, service.RegisterInput{
 		Username: "alice",
@@ -129,8 +129,10 @@ func TestStatusesContext_GETContext_ThreadFilterRemovesMatchingDescendant(t *tes
 	})
 	require.NoError(t, err)
 
-	// Create a v1 filter matching "bad word" in thread context.
-	_, err = userFilterSvc.CreateFilter(ctx, acc.ID, "bad word", []string{domain.FilterContextThread}, false, nil, false)
+	// Create a v2 filter with keyword "bad word" in thread context with hide action.
+	filter, err := filterSvc.CreateFilter(ctx, acc.ID, "bad word filter", []string{domain.FilterContextThread}, nil, domain.FilterActionHide)
+	require.NoError(t, err)
+	_, err = filterSvc.AddKeyword(ctx, acc.ID, filter.ID, "bad word", false)
 	require.NoError(t, err)
 
 	t.Run("authenticated viewer with thread filter sees reply removed", func(t *testing.T) {

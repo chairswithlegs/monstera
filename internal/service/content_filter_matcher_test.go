@@ -12,6 +12,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// createV2FilterWithKeyword is a test helper that creates a v2 filter with a single keyword.
+func createV2FilterWithKeyword(t *testing.T, ctx context.Context, st *testutil.FakeStore, accountID, keyword, filterAction string, contexts []string) {
+	t.Helper()
+	filterID := uid.New()
+	_, err := st.CreateFilter(ctx, store.CreateFilterInput{
+		ID:           filterID,
+		AccountID:    accountID,
+		Title:        keyword,
+		Context:      contexts,
+		FilterAction: filterAction,
+	})
+	require.NoError(t, err)
+	_, err = st.AddFilterKeyword(ctx, filterID, uid.New(), keyword, false)
+	require.NoError(t, err)
+}
+
 func TestContentFilterMatcher(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -19,40 +35,49 @@ func TestContentFilterMatcher(t *testing.T) {
 	content := "this post contains a spoiler about the movie"
 
 	tests := []struct {
-		name      string
-		filters   []store.CreateUserFilterInput
-		status    *domain.Status
-		wantMatch bool
+		name         string
+		keyword      string
+		action       string
+		contexts     []string
+		createFilter bool
+		wantMatch    bool
 	}{
 		{
-			name:      "no filters returns false",
-			filters:   nil,
-			status:    &domain.Status{ID: "s1", Content: &content},
-			wantMatch: false,
+			name:         "no filters returns false",
+			createFilter: false,
+			wantMatch:    false,
 		},
 		{
-			name: "matching phrase returns true",
-			filters: []store.CreateUserFilterInput{
-				{ID: uid.New(), AccountID: recipientID, Phrase: "spoiler", Context: []string{domain.FilterContextNotifications}},
-			},
-			status:    &domain.Status{ID: "s2", Content: &content},
-			wantMatch: true,
+			name:         "matching keyword with hide action returns true",
+			keyword:      "spoiler",
+			action:       domain.FilterActionHide,
+			contexts:     []string{domain.FilterContextNotifications},
+			createFilter: true,
+			wantMatch:    true,
 		},
 		{
-			name: "non-matching phrase returns false",
-			filters: []store.CreateUserFilterInput{
-				{ID: uid.New(), AccountID: recipientID, Phrase: "unrelated", Context: []string{domain.FilterContextNotifications}},
-			},
-			status:    &domain.Status{ID: "s3", Content: &content},
-			wantMatch: false,
+			name:         "matching keyword with warn action returns false",
+			keyword:      "spoiler",
+			action:       domain.FilterActionWarn,
+			contexts:     []string{domain.FilterContextNotifications},
+			createFilter: true,
+			wantMatch:    false,
 		},
 		{
-			name: "filter with different context not loaded",
-			filters: []store.CreateUserFilterInput{
-				{ID: uid.New(), AccountID: recipientID, Phrase: "spoiler", Context: []string{domain.FilterContextHome}},
-			},
-			status:    &domain.Status{ID: "s4", Content: &content},
-			wantMatch: false,
+			name:         "non-matching keyword returns false",
+			keyword:      "unrelated",
+			action:       domain.FilterActionHide,
+			contexts:     []string{domain.FilterContextNotifications},
+			createFilter: true,
+			wantMatch:    false,
+		},
+		{
+			name:         "filter with different context returns false",
+			keyword:      "spoiler",
+			action:       domain.FilterActionHide,
+			contexts:     []string{domain.FilterContextHome},
+			createFilter: true,
+			wantMatch:    false,
 		},
 	}
 
@@ -60,11 +85,11 @@ func TestContentFilterMatcher(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			st := testutil.NewFakeStore()
 			m := &contentFilterMatcher{store: st}
-			for _, f := range tc.filters {
-				_, err := st.CreateUserFilter(ctx, f)
-				require.NoError(t, err)
+			if tc.createFilter {
+				createV2FilterWithKeyword(t, ctx, st, recipientID, tc.keyword, tc.action, tc.contexts)
 			}
-			matched, err := m.StatusMatchesNotificationFilters(ctx, recipientID, tc.status)
+			status := &domain.Status{ID: uid.New(), Content: &content}
+			matched, err := m.StatusMatchesNotificationFilters(ctx, recipientID, status)
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantMatch, matched)
 		})

@@ -80,12 +80,12 @@ func NewTimelineService(s store.Store, accountSvc AccountService, statusSvc Stat
 	return &timelineService{store: s, accountSvc: accountSvc, statusSvc: statusSvc, silenceChecker: silenceChecker}
 }
 
-func (svc *timelineService) enrichStatuses(ctx context.Context, statuses []domain.Status, viewerAccountID *string) ([]EnrichedStatus, error) {
+func (svc *timelineService) enrichStatuses(ctx context.Context, statuses []domain.Status, viewerAccountID *string, filterContext string) ([]EnrichedStatus, error) {
 	ptrs := make([]*domain.Status, len(statuses))
 	for i := range statuses {
 		ptrs[i] = &statuses[i]
 	}
-	enriched, err := svc.statusSvc.EnrichStatuses(ctx, ptrs, EnrichOpts{IncludeCard: true, IncludePoll: true, ViewerID: viewerAccountID})
+	enriched, err := svc.statusSvc.EnrichStatuses(ctx, ptrs, EnrichOpts{IncludeCard: true, IncludePoll: true, ViewerID: viewerAccountID, FilterContext: filterContext})
 	if err != nil {
 		return nil, fmt.Errorf("enrichStatuses: %w", err)
 	}
@@ -208,7 +208,7 @@ func (svc *timelineService) HomeEnriched(ctx context.Context, accountID string, 
 		return nil, fmt.Errorf("GetHomeTimeline: %w", err)
 	}
 	viewerID := &accountID
-	out, err := svc.enrichStatuses(ctx, statuses, viewerID)
+	out, err := svc.enrichStatuses(ctx, statuses, viewerID, domain.FilterContextHome)
 	if err != nil {
 		return nil, err
 	}
@@ -232,12 +232,6 @@ func (svc *timelineService) HomeEnriched(ctx context.Context, accountID string, 
 		return nil, err
 	}
 	out = svc.filterUserDomainBlockedStatuses(ctx, out, accountID)
-	filters, err := svc.store.GetActiveUserFiltersByContext(ctx, accountID, domain.FilterContextHome)
-	if err != nil {
-		slog.WarnContext(ctx, "failed to load user filters, returning unfiltered timeline", slog.Any("error", err))
-	} else {
-		out = ApplyUserFiltersToEnriched(out, filters)
-	}
 	return out, nil
 }
 
@@ -249,7 +243,7 @@ func (svc *timelineService) FavouritesEnriched(ctx context.Context, accountID st
 	if err != nil {
 		return nil, nil, fmt.Errorf("GetFavouritesTimeline: %w", err)
 	}
-	out, err := svc.enrichStatuses(ctx, statuses, &accountID)
+	out, err := svc.enrichStatuses(ctx, statuses, &accountID, "")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -272,7 +266,7 @@ func (svc *timelineService) BookmarksEnriched(ctx context.Context, accountID str
 	if err != nil {
 		return nil, nil, fmt.Errorf("GetBookmarks: %w", err)
 	}
-	out, err := svc.enrichStatuses(ctx, statuses, &accountID)
+	out, err := svc.enrichStatuses(ctx, statuses, &accountID, "")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -303,7 +297,7 @@ func (svc *timelineService) ListTimelineEnriched(ctx context.Context, accountID,
 	if err != nil {
 		return nil, fmt.Errorf("GetListTimeline: %w", err)
 	}
-	out, err := svc.enrichStatuses(ctx, statuses, &accountID)
+	out, err := svc.enrichStatuses(ctx, statuses, &accountID, domain.FilterContextHome)
 	if err != nil {
 		return nil, err
 	}
@@ -331,12 +325,6 @@ func (svc *timelineService) ListTimelineEnriched(ctx context.Context, accountID,
 		return nil, err
 	}
 	filtered = svc.filterUserDomainBlockedStatuses(ctx, filtered, accountID)
-	filters, err := svc.store.GetActiveUserFiltersByContext(ctx, accountID, domain.FilterContextHome)
-	if err != nil {
-		slog.WarnContext(ctx, "failed to load user filters for list timeline", slog.Any("error", err))
-	} else {
-		filtered = ApplyUserFiltersToEnriched(filtered, filters)
-	}
 	return filtered, nil
 }
 
@@ -423,7 +411,7 @@ func (svc *timelineService) PublicLocalEnriched(ctx context.Context, localOnly b
 	if err != nil {
 		return nil, fmt.Errorf("GetPublicTimeline: %w", err)
 	}
-	out, err := svc.enrichStatuses(ctx, statuses, viewerAccountID)
+	out, err := svc.enrichStatuses(ctx, statuses, viewerAccountID, domain.FilterContextPublic)
 	if err != nil {
 		return nil, err
 	}
@@ -438,12 +426,6 @@ func (svc *timelineService) PublicLocalEnriched(ctx context.Context, localOnly b
 			return nil, err
 		}
 		out = svc.filterUserDomainBlockedStatuses(ctx, out, *viewerAccountID)
-		filters, err := svc.store.GetActiveUserFiltersByContext(ctx, *viewerAccountID, domain.FilterContextPublic)
-		if err != nil {
-			slog.WarnContext(ctx, "failed to load user filters for public timeline", slog.Any("error", err))
-		} else {
-			out = ApplyUserFiltersToEnriched(out, filters)
-		}
 	}
 	return out, nil
 }
@@ -461,7 +443,7 @@ func (svc *timelineService) AccountStatusesEnriched(ctx context.Context, account
 	if err != nil {
 		return nil, fmt.Errorf("GetAccountStatuses/GetAccountPublicStatuses: %w", err)
 	}
-	out, err := svc.enrichStatuses(ctx, statuses, viewerAccountID)
+	out, err := svc.enrichStatuses(ctx, statuses, viewerAccountID, domain.FilterContextAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -475,12 +457,6 @@ func (svc *timelineService) AccountStatusesEnriched(ctx context.Context, account
 			return nil, err
 		}
 		out = svc.filterUserDomainBlockedStatuses(ctx, out, *viewerAccountID)
-		filters, err := svc.store.GetActiveUserFiltersByContext(ctx, *viewerAccountID, domain.FilterContextAccount)
-		if err != nil {
-			slog.WarnContext(ctx, "failed to load user filters for account timeline", slog.Any("error", err))
-		} else {
-			out = ApplyUserFiltersToEnriched(out, filters)
-		}
 	}
 	return out, nil
 }
@@ -521,7 +497,7 @@ func (svc *timelineService) HashtagTimelineEnriched(ctx context.Context, tagName
 	if err != nil {
 		return nil, err
 	}
-	out, err := svc.enrichStatuses(ctx, statuses, viewerAccountID)
+	out, err := svc.enrichStatuses(ctx, statuses, viewerAccountID, domain.FilterContextPublic)
 	if err != nil {
 		return nil, err
 	}
@@ -536,12 +512,6 @@ func (svc *timelineService) HashtagTimelineEnriched(ctx context.Context, tagName
 			return nil, err
 		}
 		out = svc.filterUserDomainBlockedStatuses(ctx, out, *viewerAccountID)
-		filters, err := svc.store.GetActiveUserFiltersByContext(ctx, *viewerAccountID, domain.FilterContextPublic)
-		if err != nil {
-			slog.WarnContext(ctx, "failed to load user filters for hashtag timeline", slog.Any("error", err))
-		} else {
-			out = ApplyUserFiltersToEnriched(out, filters)
-		}
 	}
 	return out, nil
 }

@@ -67,7 +67,6 @@ type Deps struct {
 	Reports              *mastodon.ReportsHandler
 	FollowRequests       *mastodon.FollowRequestsHandler
 	Lists                *mastodon.ListsHandler
-	Filters              *mastodon.FiltersHandler
 	FiltersV2            *mastodon.FiltersV2Handler
 	Preferences          *mastodon.PreferencesHandler
 	Markers              *mastodon.MarkersHandler
@@ -379,13 +378,6 @@ func New(deps Deps) http.Handler {
 				r.Route("/follow_requests/{id}", func(r chi.Router) {
 					r.Method("POST", "/authorize", middleware.RequiredScopes("write:follows")(http.HandlerFunc(deps.FollowRequests.POSTAuthorize)))
 					r.Method("POST", "/reject", middleware.RequiredScopes("write:follows")(http.HandlerFunc(deps.FollowRequests.POSTReject)))
-				})
-				r.Method("GET", "/filters", middleware.RequiredScopes("read:filters")(http.HandlerFunc(deps.Filters.GETFilters)))
-				r.Method("POST", "/filters", middleware.RequiredScopes("write:filters")(http.HandlerFunc(deps.Filters.POSTFilters)))
-				r.Route("/filters/{id}", func(r chi.Router) {
-					r.Method("GET", "/", middleware.RequiredScopes("read:filters")(http.HandlerFunc(deps.Filters.GETFilter)))
-					r.Method("PUT", "/", middleware.RequiredScopes("write:filters")(http.HandlerFunc(deps.Filters.PUTFilter)))
-					r.Method("DELETE", "/", middleware.RequiredScopes("write:filters")(http.HandlerFunc(deps.Filters.DELETEFilter)))
 				})
 			})
 		})

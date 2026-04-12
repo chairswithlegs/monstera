@@ -337,15 +337,6 @@ type ListStore interface {
 
 // FilterStore handles user filter persistence.
 type FilterStore interface {
-	// v1 filter CRUD (phrase-based, legacy)
-	CreateUserFilter(ctx context.Context, in CreateUserFilterInput) (*domain.UserFilter, error)
-	GetUserFilterByID(ctx context.Context, id string) (*domain.UserFilter, error)
-	ListUserFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error)
-	UpdateUserFilter(ctx context.Context, in UpdateUserFilterInput) (*domain.UserFilter, error)
-	DeleteUserFilter(ctx context.Context, id string) error
-	GetActiveUserFiltersByContext(ctx context.Context, accountID, context string) ([]domain.UserFilter, error)
-
-	// filter CRUD (keyword-based, v2 API)
 	CreateFilter(ctx context.Context, in CreateFilterInput) (*domain.UserFilter, error)
 	GetFilterByID(ctx context.Context, id string) (*domain.UserFilter, error)
 	ListFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error)

@@ -35,14 +35,13 @@ type StatusesHandler struct {
 	interactions   service.StatusInteractionService
 	scheduled      service.ScheduledStatusService
 	conversations  service.ConversationService
-	userFilters    service.UserFilterService
 	instanceDomain string
 	cache          cache.SharedStore // optional; when set, Idempotency-Key is honored
 	pollLimits     *service.PollLimits
 }
 
 // NewStatusesHandler returns a new StatusesHandler. idempotencyCache may be nil to disable idempotency. pollLimits may be nil to use defaults.
-func NewStatusesHandler(accounts service.AccountService, statuses service.StatusService, statusWrites service.StatusWriteService, interactions service.StatusInteractionService, scheduled service.ScheduledStatusService, conversations service.ConversationService, userFilters service.UserFilterService, instanceDomain string, idempotencyCache cache.SharedStore, pollLimits *service.PollLimits) *StatusesHandler {
+func NewStatusesHandler(accounts service.AccountService, statuses service.StatusService, statusWrites service.StatusWriteService, interactions service.StatusInteractionService, scheduled service.ScheduledStatusService, conversations service.ConversationService, instanceDomain string, idempotencyCache cache.SharedStore, pollLimits *service.PollLimits) *StatusesHandler {
 	if pollLimits == nil {
 		pollLimits = &service.PollLimits{
 			MaxOptions:    DefaultPollMaxOptions,
@@ -50,7 +49,7 @@ func NewStatusesHandler(accounts service.AccountService, statuses service.Status
 			MaxExpiration: DefaultPollMaxExpiration,
 		}
 	}
-	return &StatusesHandler{accounts: accounts, statuses: statuses, statusWrites: statusWrites, interactions: interactions, scheduled: scheduled, conversations: conversations, userFilters: userFilters, instanceDomain: instanceDomain, cache: idempotencyCache, pollLimits: pollLimits}
+	return &StatusesHandler{accounts: accounts, statuses: statuses, statusWrites: statusWrites, interactions: interactions, scheduled: scheduled, conversations: conversations, instanceDomain: instanceDomain, cache: idempotencyCache, pollLimits: pollLimits}
 }
 
 type idempotencyCached struct {
