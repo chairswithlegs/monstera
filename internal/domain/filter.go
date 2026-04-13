@@ -2,12 +2,23 @@ package domain
 
 import "time"
 
+// FilterContext identifies where a content filter should be applied.
+type FilterContext string
+
 const (
-	FilterContextHome          = "home"
-	FilterContextNotifications = "notifications"
-	FilterContextPublic        = "public"
-	FilterContextThread        = "thread"
-	FilterContextAccount       = "account"
+	FilterContextHome          FilterContext = "home"
+	FilterContextNotifications FilterContext = "notifications"
+	FilterContextPublic        FilterContext = "public"
+	FilterContextThread        FilterContext = "thread"
+	FilterContextAccount       FilterContext = "account"
+)
+
+// FilterAction determines the server/client behavior when a filter matches.
+type FilterAction string
+
+const (
+	FilterActionWarn FilterAction = "warn"
+	FilterActionHide FilterAction = "hide"
 )
 
 // FilterKeyword is one keyword entry within a user filter.
@@ -25,20 +36,15 @@ type FilterStatus struct {
 	StatusID string
 }
 
-// UserFilter is a per-account content filter. It supports both the v1 API
-// (single phrase, stored in Phrase/WholeWord/Irreversible) and the v2 API
-// (title, filter_action, and multiple Keywords/Statuses). The v1 and v2 fields
-// are populated by their respective store paths.
+// UserFilter is a per-account content filter with multiple keywords and
+// optional status-based filter entries.
 type UserFilter struct {
 	ID           string
 	AccountID    string
 	Title        string
-	Phrase       string // v1 legacy; also stored as first keyword after migration
-	Context      []string
+	Context      []FilterContext
 	ExpiresAt    *time.Time
-	FilterAction string // "warn" or "hide"
-	WholeWord    bool   // v1 legacy
-	Irreversible bool   // v1 legacy; corresponds to filter_action "hide"
+	FilterAction FilterAction
 	Keywords     []FilterKeyword
 	Statuses     []FilterStatus
 	CreatedAt    time.Time

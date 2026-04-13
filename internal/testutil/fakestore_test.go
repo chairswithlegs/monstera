@@ -862,50 +862,6 @@ func TestListLifecycle(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
 
-// ---------- UserFilter Operations ----------
-
-func TestUserFilterLifecycle(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	f := NewFakeStore()
-
-	accID := uid.New()
-	filterID := uid.New()
-
-	uf, err := f.CreateUserFilter(ctx, store.CreateUserFilterInput{
-		ID:        filterID,
-		AccountID: accID,
-		Phrase:    "badword",
-		Context:   []string{domain.FilterContextHome, domain.FilterContextPublic},
-		WholeWord: true,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "badword", uf.Phrase)
-
-	got, err := f.GetUserFilterByID(ctx, filterID)
-	require.NoError(t, err)
-	assert.Equal(t, "badword", got.Phrase)
-	assert.True(t, got.WholeWord)
-
-	filters, err := f.ListUserFilters(ctx, accID)
-	require.NoError(t, err)
-	assert.Len(t, filters, 1)
-
-	updated, err := f.UpdateUserFilter(ctx, store.UpdateUserFilterInput{
-		ID:      filterID,
-		Phrase:  "worse",
-		Context: []string{domain.FilterContextHome},
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "worse", updated.Phrase)
-
-	err = f.DeleteUserFilter(ctx, filterID)
-	require.NoError(t, err)
-
-	_, err = f.GetUserFilterByID(ctx, filterID)
-	assert.ErrorIs(t, err, domain.ErrNotFound)
-}
-
 // ---------- Notification Operations ----------
 
 func TestNotificationLifecycle(t *testing.T) {

@@ -44,15 +44,16 @@ func timePtrToPg(t *time.Time) pgtype.Timestamptz {
 // ToDomainUserFilter converts a sqlc db.UserFilter to a domain.UserFilter.
 // Keywords and Statuses are not populated; load them separately when needed.
 func ToDomainUserFilter(u db.UserFilter) domain.UserFilter {
+	ctx := make([]domain.FilterContext, len(u.Context))
+	for i, c := range u.Context {
+		ctx[i] = domain.FilterContext(c)
+	}
 	d := domain.UserFilter{
 		ID:           u.ID,
 		AccountID:    u.AccountID,
-		Phrase:       u.Phrase,
-		Context:      u.Context,
-		WholeWord:    u.WholeWord,
-		Irreversible: u.Irreversible,
+		Context:      ctx,
 		Title:        u.Title,
-		FilterAction: u.FilterAction,
+		FilterAction: domain.FilterAction(u.FilterAction),
 		Keywords:     []domain.FilterKeyword{},
 		Statuses:     []domain.FilterStatus{},
 		CreatedAt:    pgTime(u.CreatedAt),

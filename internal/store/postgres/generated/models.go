@@ -530,11 +530,8 @@ type UserDomainBlock struct {
 type UserFilter struct {
 	ID           string             `json:"id"`
 	AccountID    string             `json:"account_id"`
-	Phrase       string             `json:"phrase"`
 	Context      []string           `json:"context"`
-	WholeWord    bool               `json:"whole_word"`
 	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
-	Irreversible bool               `json:"irreversible"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	Title        string             `json:"title"`
 	FilterAction string             `json:"filter_action"`

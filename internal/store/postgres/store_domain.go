@@ -2434,79 +2434,6 @@ func (s *PostgresStore) ListLocalAccounts(ctx context.Context, limit, offset int
 	return out, nil
 }
 
-func (s *PostgresStore) CreateUserFilter(ctx context.Context, in store.CreateUserFilterInput) (*domain.UserFilter, error) {
-	u, err := s.q.CreateUserFilter(ctx, db.CreateUserFilterParams{
-		ID:           in.ID,
-		AccountID:    in.AccountID,
-		Phrase:       in.Phrase,
-		Context:      in.Context,
-		WholeWord:    in.WholeWord,
-		ExpiresAt:    timePtrToPg(in.ExpiresAt),
-		Irreversible: in.Irreversible,
-	})
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	d := ToDomainUserFilter(u)
-	return &d, nil
-}
-
-func (s *PostgresStore) GetUserFilterByID(ctx context.Context, id string) (*domain.UserFilter, error) {
-	u, err := s.q.GetUserFilter(ctx, id)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	d := ToDomainUserFilter(u)
-	return &d, nil
-}
-
-func (s *PostgresStore) ListUserFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error) {
-	rows, err := s.q.ListUserFilters(ctx, accountID)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	out := make([]domain.UserFilter, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, ToDomainUserFilter(r))
-	}
-	return out, nil
-}
-
-func (s *PostgresStore) UpdateUserFilter(ctx context.Context, in store.UpdateUserFilterInput) (*domain.UserFilter, error) {
-	u, err := s.q.UpdateUserFilter(ctx, db.UpdateUserFilterParams{
-		ID:           in.ID,
-		Phrase:       in.Phrase,
-		Context:      in.Context,
-		WholeWord:    in.WholeWord,
-		ExpiresAt:    timePtrToPg(in.ExpiresAt),
-		Irreversible: in.Irreversible,
-	})
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	d := ToDomainUserFilter(u)
-	return &d, nil
-}
-
-func (s *PostgresStore) DeleteUserFilter(ctx context.Context, id string) error {
-	return mapErr(s.q.DeleteUserFilter(ctx, id))
-}
-
-func (s *PostgresStore) GetActiveUserFiltersByContext(ctx context.Context, accountID, filterContext string) ([]domain.UserFilter, error) {
-	rows, err := s.q.GetActiveUserFiltersByContext(ctx, db.GetActiveUserFiltersByContextParams{
-		AccountID: accountID,
-		Column2:   filterContext,
-	})
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	out := make([]domain.UserFilter, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, ToDomainUserFilter(r))
-	}
-	return out, nil
-}
-
 // getFilterWithRelated loads a filter row and its keywords + statuses.
 func (s *PostgresStore) getFilterWithRelated(ctx context.Context, id string) (*domain.UserFilter, error) {
 	row, err := s.q.GetUserFilterV2(ctx, id)
@@ -2531,14 +2458,22 @@ func (s *PostgresStore) getFilterWithRelated(ctx context.Context, id string) (*d
 	return &d, nil
 }
 
+func filterContextsToStrings(contexts []domain.FilterContext) []string {
+	out := make([]string, len(contexts))
+	for i, c := range contexts {
+		out[i] = string(c)
+	}
+	return out
+}
+
 func (s *PostgresStore) CreateFilter(ctx context.Context, in store.CreateFilterInput) (*domain.UserFilter, error) {
 	_, err := s.q.CreateUserFilterV2(ctx, db.CreateUserFilterV2Params{
 		ID:           in.ID,
 		AccountID:    in.AccountID,
 		Title:        in.Title,
-		Context:      in.Context,
+		Context:      filterContextsToStrings(in.Context),
 		ExpiresAt:    timePtrToPg(in.ExpiresAt),
-		FilterAction: in.FilterAction,
+		FilterAction: string(in.FilterAction),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("CreateFilter: %w", mapErr(err))
@@ -2594,9 +2529,9 @@ func (s *PostgresStore) UpdateFilter(ctx context.Context, in store.UpdateFilterI
 	_, err := s.q.UpdateUserFilterV2(ctx, db.UpdateUserFilterV2Params{
 		ID:           in.ID,
 		Title:        in.Title,
-		Context:      in.Context,
+		Context:      filterContextsToStrings(in.Context),
 		ExpiresAt:    timePtrToPg(in.ExpiresAt),
-		FilterAction: in.FilterAction,
+		FilterAction: string(in.FilterAction),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("UpdateFilter: %w", mapErr(err))

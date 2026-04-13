@@ -12,9 +12,9 @@ import (
 	"github.com/chairswithlegs/monstera/internal/uid"
 )
 
-var validFilterActions = map[string]bool{"warn": true, "hide": true}
+var validFilterActions = map[domain.FilterAction]bool{domain.FilterActionWarn: true, domain.FilterActionHide: true}
 
-var validFilterContexts = map[string]bool{
+var validFilterContexts = map[domain.FilterContext]bool{
 	domain.FilterContextHome:          true,
 	domain.FilterContextNotifications: true,
 	domain.FilterContextPublic:        true,
@@ -25,10 +25,10 @@ var validFilterContexts = map[string]bool{
 // FilterService manages per-account content filters (multi-keyword, filter_action).
 type FilterService interface {
 	// Filter CRUD
-	CreateFilter(ctx context.Context, accountID, title string, context []string, expiresIn *int, filterAction string) (*domain.UserFilter, error)
+	CreateFilter(ctx context.Context, accountID, title string, context []domain.FilterContext, expiresIn *int, filterAction domain.FilterAction) (*domain.UserFilter, error)
 	GetFilter(ctx context.Context, accountID, filterID string) (*domain.UserFilter, error)
 	ListFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error)
-	UpdateFilter(ctx context.Context, accountID, filterID, title string, context []string, expiresIn *int, filterAction string) (*domain.UserFilter, error)
+	UpdateFilter(ctx context.Context, accountID, filterID, title string, context []domain.FilterContext, expiresIn *int, filterAction domain.FilterAction) (*domain.UserFilter, error)
 	DeleteFilter(ctx context.Context, accountID, filterID string) error
 
 	// Keyword CRUD
@@ -67,7 +67,7 @@ func expiresInToTime(expiresIn *int) *time.Time {
 }
 
 // validateFilterAction returns ErrUnprocessable if the value is not "warn" or "hide".
-func validateFilterAction(filterAction string) error {
+func validateFilterAction(filterAction domain.FilterAction) error {
 	if !validFilterActions[filterAction] {
 		return fmt.Errorf("filter_action %q: %w", filterAction, domain.ErrUnprocessable)
 	}
@@ -75,7 +75,7 @@ func validateFilterAction(filterAction string) error {
 }
 
 // validateFilterContext returns ErrUnprocessable for any unknown context value.
-func validateFilterContext(ctx []string) error {
+func validateFilterContext(ctx []domain.FilterContext) error {
 	for _, c := range ctx {
 		if !validFilterContexts[c] {
 			return fmt.Errorf("context %q: %w", c, domain.ErrUnprocessable)
@@ -84,18 +84,18 @@ func validateFilterContext(ctx []string) error {
 	return nil
 }
 
-func (svc *filterService) CreateFilter(ctx context.Context, accountID, title string, filterContext []string, expiresIn *int, filterAction string) (*domain.UserFilter, error) {
+func (svc *filterService) CreateFilter(ctx context.Context, accountID, title string, filterContext []domain.FilterContext, expiresIn *int, filterAction domain.FilterAction) (*domain.UserFilter, error) {
 	if title == "" {
 		return nil, fmt.Errorf("CreateFilter: %w", domain.ErrValidation)
 	}
 	if len(filterContext) == 0 {
-		filterContext = []string{domain.FilterContextHome}
+		filterContext = []domain.FilterContext{domain.FilterContextHome}
 	}
 	if err := validateFilterContext(filterContext); err != nil {
 		return nil, fmt.Errorf("CreateFilter: %w", err)
 	}
 	if filterAction == "" {
-		filterAction = "warn"
+		filterAction = domain.FilterActionWarn
 	}
 	if err := validateFilterAction(filterAction); err != nil {
 		return nil, fmt.Errorf("CreateFilter: %w", err)
@@ -133,7 +133,7 @@ func (svc *filterService) ListFilters(ctx context.Context, accountID string) ([]
 	return list, nil
 }
 
-func (svc *filterService) UpdateFilter(ctx context.Context, accountID, filterID, title string, filterContext []string, expiresIn *int, filterAction string) (*domain.UserFilter, error) {
+func (svc *filterService) UpdateFilter(ctx context.Context, accountID, filterID, title string, filterContext []domain.FilterContext, expiresIn *int, filterAction domain.FilterAction) (*domain.UserFilter, error) {
 	existing, err := svc.store.GetFilterByID(ctx, filterID)
 	if err != nil {
 		return nil, fmt.Errorf("UpdateFilter: %w", err)

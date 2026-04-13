@@ -20,9 +20,10 @@ type StatusVisibilityChecker interface {
 
 // EnrichOpts controls which optional fields are loaded when enriching statuses.
 type EnrichOpts struct {
-	IncludeCard bool
-	IncludePoll bool
-	ViewerID    *string
+	IncludeCard   bool
+	IncludePoll   bool
+	ViewerID      *string
+	FilterContext domain.FilterContext // When set (e.g. domain.FilterContextHome), statuses matching a "hide" filter for this context are excluded from results. This is an optimization — clients also handle hide filters via the filtered array.
 }
 
 // StatusService handles status lookup, enrichment, and read-only queries.
@@ -34,7 +35,7 @@ type StatusService interface {
 	GetByID(ctx context.Context, id string) (*domain.Status, error)
 	GetByAPID(ctx context.Context, apID string) (*domain.Status, error)
 	GetByIDEnriched(ctx context.Context, id string, viewerAccountID *string) (EnrichedStatus, error)
-	GetByIDsEnriched(ctx context.Context, ids []string, viewerAccountID *string) ([]EnrichedStatus, error)
+	GetByIDsEnriched(ctx context.Context, ids []string, viewerAccountID *string, filterContext domain.FilterContext) ([]EnrichedStatus, error)
 	EnrichStatuses(ctx context.Context, statuses []*domain.Status, opts EnrichOpts) ([]EnrichedStatus, error)
 	GetContext(ctx context.Context, statusID string, viewerAccountID *string) (ContextResult, error)
 	GetStatusHistory(ctx context.Context, statusID string, viewerAccountID *string) ([]domain.StatusEdit, error)
@@ -211,7 +212,7 @@ func (svc *statusService) GetByIDEnriched(ctx context.Context, id string, viewer
 // GetByIDsEnriched fetches multiple statuses, filters out deleted or invisible
 // ones, and enriches the remainder in a single batch call. Statuses that cannot
 // be found or cannot be viewed are silently skipped (order is preserved).
-func (svc *statusService) GetByIDsEnriched(ctx context.Context, ids []string, viewerAccountID *string) ([]EnrichedStatus, error) {
+func (svc *statusService) GetByIDsEnriched(ctx context.Context, ids []string, viewerAccountID *string, filterContext domain.FilterContext) ([]EnrichedStatus, error) {
 	var visible []*domain.Status
 	for _, id := range ids {
 		st, err := svc.store.GetStatusByID(ctx, id)
@@ -237,9 +238,10 @@ func (svc *statusService) GetByIDsEnriched(ctx context.Context, ids []string, vi
 		return nil, nil
 	}
 	return svc.EnrichStatuses(ctx, visible, EnrichOpts{
-		IncludeCard: true,
-		IncludePoll: true,
-		ViewerID:    viewerAccountID,
+		IncludeCard:   true,
+		IncludePoll:   true,
+		ViewerID:      viewerAccountID,
+		FilterContext: filterContext,
 	})
 }
 
@@ -343,6 +345,13 @@ func (svc *statusService) EnrichStatuses(ctx context.Context, statuses []*domain
 				e.FilterResults = matchCompiledFilters(compiledViewerFilters, st.ID, content, cw)
 			}
 		}
+		// Server-side removal of hide-filtered statuses is an optimization — clients
+		// also handle this via the filtered array. When FilterContext is set, we exclude
+		// statuses that match a "hide" filter for the requested context so the client
+		// never receives them.
+		if opts.FilterContext != "" && shouldHideByFilter(e.FilterResults, opts.FilterContext) {
+			continue
+		}
 		if st.ReblogOfID != nil {
 			origSt, origErr := svc.store.GetStatusByID(ctx, *st.ReblogOfID)
 			if origErr == nil && origSt.DeletedAt == nil {
@@ -355,6 +364,17 @@ func (svc *statusService) EnrichStatuses(ctx context.Context, statuses []*domain
 		out = append(out, e)
 	}
 	return out, nil
+}
+
+// shouldHideByFilter reports whether any filter result has filter_action "hide"
+// and the filter's context includes the given filterContext.
+func shouldHideByFilter(results []domain.FilterResult, filterContext domain.FilterContext) bool {
+	for _, r := range results {
+		if r.Filter.FilterAction == domain.FilterActionHide && slices.Contains(r.Filter.Context, filterContext) {
+			return true
+		}
+	}
+	return false
 }
 
 // getPollEnriched loads a poll by ID, enforces visibility via the parent status, and attaches options, counts, voted, own_votes.
@@ -439,7 +459,7 @@ func (svc *statusService) PinnedStatusesEnriched(ctx context.Context, accountID 
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	enriched, err := svc.GetByIDsEnriched(ctx, ids, viewerAccountID)
+	enriched, err := svc.GetByIDsEnriched(ctx, ids, viewerAccountID, domain.FilterContextAccount)
 	if err != nil {
 		return nil, fmt.Errorf("PinnedStatusesEnriched: %w", err)
 	}

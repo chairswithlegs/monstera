@@ -76,7 +76,6 @@ type Querier interface {
 	CreateStatusMention(ctx context.Context, arg CreateStatusMentionParams) error
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateUserDomainBlock(ctx context.Context, arg CreateUserDomainBlockParams) error
-	CreateUserFilter(ctx context.Context, arg CreateUserFilterParams) (UserFilter, error)
 	// ─── Filter v2 CRUD ──────────────────────────────────────────────────────────
 	CreateUserFilterV2(ctx context.Context, arg CreateUserFilterV2Params) (UserFilter, error)
 	DecrementFavouritesCount(ctx context.Context, id string) error
@@ -117,7 +116,6 @@ type Querier interface {
 	DeleteStatusMentions(ctx context.Context, statusID string) error
 	DeleteUser(ctx context.Context, id string) error
 	DeleteUserDomainBlock(ctx context.Context, arg DeleteUserDomainBlockParams) error
-	DeleteUserFilter(ctx context.Context, id string) error
 	DeleteUserFilterV2(ctx context.Context, id string) error
 	DismissAnnouncement(ctx context.Context, arg DismissAnnouncementParams) error
 	DismissNotification(ctx context.Context, arg DismissNotificationParams) error
@@ -131,7 +129,6 @@ type Querier interface {
 	GetAccountStatuses(ctx context.Context, arg GetAccountStatusesParams) ([]Status, error)
 	GetAccountStatusesWithBoosts(ctx context.Context, arg GetAccountStatusesWithBoostsParams) ([]Status, error)
 	GetAccountsByIDs(ctx context.Context, dollar_1 []string) ([]Account, error)
-	GetActiveUserFiltersByContext(ctx context.Context, arg GetActiveUserFiltersByContextParams) ([]UserFilter, error)
 	GetActiveUserFiltersV2(ctx context.Context, accountID string) ([]UserFilter, error)
 	GetAndLockUnpublishedOutboxEvents(ctx context.Context, limit int32) ([]GetAndLockUnpublishedOutboxEventsRow, error)
 	GetAnnouncementByID(ctx context.Context, id string) (Announcement, error)
@@ -210,7 +207,6 @@ type Querier interface {
 	GetUserByAccountID(ctx context.Context, accountID string) (User, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
-	GetUserFilter(ctx context.Context, id string) (UserFilter, error)
 	GetUserFilterV2(ctx context.Context, id string) (UserFilter, error)
 	GetVoteCountsByPoll(ctx context.Context, pollID string) ([]GetVoteCountsByPollRow, error)
 	HasVotedOnPoll(ctx context.Context, arg HasVotedOnPollParams) (bool, error)
@@ -275,7 +271,6 @@ type Querier interface {
 	ListTrendingLinkFilters(ctx context.Context) ([]TrendingLinkFilter, error)
 	ListUnattachedMedia(ctx context.Context, accountID string) ([]MediaAttachment, error)
 	ListUserDomainBlocksPaginated(ctx context.Context, arg ListUserDomainBlocksPaginatedParams) ([]ListUserDomainBlocksPaginatedRow, error)
-	ListUserFilters(ctx context.Context, accountID string) ([]UserFilter, error)
 	ListUserFiltersV2(ctx context.Context, accountID string) ([]UserFilter, error)
 	MarkAccountConversationRead(ctx context.Context, arg MarkAccountConversationReadParams) error
 	MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) error
@@ -322,7 +317,6 @@ type Querier interface {
 	UpdateStatusQuoteApprovalPolicy(ctx context.Context, arg UpdateStatusQuoteApprovalPolicyParams) error
 	UpdateUserDefaultQuotePolicy(ctx context.Context, arg UpdateUserDefaultQuotePolicyParams) error
 	UpdateUserEmail(ctx context.Context, arg UpdateUserEmailParams) error
-	UpdateUserFilter(ctx context.Context, arg UpdateUserFilterParams) (UserFilter, error)
 	UpdateUserFilterV2(ctx context.Context, arg UpdateUserFilterV2Params) (UserFilter, error)
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
 	UpdateUserPreferences(ctx context.Context, arg UpdateUserPreferencesParams) error

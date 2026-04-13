@@ -92,7 +92,11 @@ func (h *FiltersV2Handler) POSTFiltersV2(w http.ResponseWriter, r *http.Request)
 		api.HandleError(w, r, err)
 		return
 	}
-	f, err := h.filters.CreateFilter(r.Context(), account.ID, body.Title, body.Context, body.ExpiresIn, body.FilterAction)
+	filterContexts := make([]domain.FilterContext, len(body.Context))
+	for i, c := range body.Context {
+		filterContexts[i] = domain.FilterContext(c)
+	}
+	f, err := h.filters.CreateFilter(r.Context(), account.ID, body.Title, filterContexts, body.ExpiresIn, domain.FilterAction(body.FilterAction))
 	if err != nil {
 		if errors.Is(err, domain.ErrValidation) {
 			api.HandleError(w, r, api.NewMissingRequiredFieldError("title"))
@@ -133,7 +137,11 @@ func (h *FiltersV2Handler) PUTFilterV2(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	f, err := h.filters.UpdateFilter(r.Context(), account.ID, id, body.Title, body.Context, body.ExpiresIn, body.FilterAction)
+	updateContexts := make([]domain.FilterContext, len(body.Context))
+	for i, c := range body.Context {
+		updateContexts[i] = domain.FilterContext(c)
+	}
+	f, err := h.filters.UpdateFilter(r.Context(), account.ID, id, body.Title, updateContexts, body.ExpiresIn, domain.FilterAction(body.FilterAction))
 	if err != nil {
 		if errors.Is(err, domain.ErrForbidden) || errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)

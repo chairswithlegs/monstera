@@ -53,8 +53,6 @@ type FakeStore struct {
 	authCodes        map[string]*domain.OAuthAuthorizationCode
 	tokens           map[string]*domain.OAuthAccessToken
 
-	userFiltersByID map[string]*domain.UserFilter
-
 	userFiltersV2ByID  map[string]*domain.UserFilter
 	filterKeywordsByID map[string]*domain.FilterKeyword
 	filterStatusesByID map[string]*domain.FilterStatus
@@ -184,7 +182,6 @@ func NewFakeStore() *FakeStore {
 		applicationsByID:                make(map[string]*domain.OAuthApplication),
 		authCodes:                       make(map[string]*domain.OAuthAuthorizationCode),
 		tokens:                          make(map[string]*domain.OAuthAccessToken),
-		userFiltersByID:                 make(map[string]*domain.UserFilter),
 		userFiltersV2ByID:               make(map[string]*domain.UserFilter),
 		filterKeywordsByID:              make(map[string]*domain.FilterKeyword),
 		filterStatusesByID:              make(map[string]*domain.FilterStatus),
@@ -2546,112 +2543,6 @@ func (f *FakeStore) GetListTimeline(ctx context.Context, listID string, maxID *s
 			break
 		}
 		out = append(out, *s)
-	}
-	return out, nil
-}
-
-func copyUserFilter(uf *domain.UserFilter) *domain.UserFilter {
-	if uf == nil {
-		return nil
-	}
-	ctxCopy := make([]string, len(uf.Context))
-	copy(ctxCopy, uf.Context)
-	var exp *time.Time
-	if uf.ExpiresAt != nil {
-		t := *uf.ExpiresAt
-		exp = &t
-	}
-	return &domain.UserFilter{
-		ID:           uf.ID,
-		AccountID:    uf.AccountID,
-		Phrase:       uf.Phrase,
-		Context:      ctxCopy,
-		WholeWord:    uf.WholeWord,
-		ExpiresAt:    exp,
-		Irreversible: uf.Irreversible,
-		CreatedAt:    uf.CreatedAt,
-	}
-}
-
-func (f *FakeStore) CreateUserFilter(ctx context.Context, in store.CreateUserFilterInput) (*domain.UserFilter, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	uf := &domain.UserFilter{
-		ID:           in.ID,
-		AccountID:    in.AccountID,
-		Phrase:       in.Phrase,
-		Context:      append([]string(nil), in.Context...),
-		WholeWord:    in.WholeWord,
-		ExpiresAt:    in.ExpiresAt,
-		Irreversible: in.Irreversible,
-		CreatedAt:    time.Now().UTC(),
-	}
-	f.userFiltersByID[in.ID] = uf
-	return copyUserFilter(uf), nil
-}
-
-func (f *FakeStore) GetUserFilterByID(ctx context.Context, id string) (*domain.UserFilter, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	uf, ok := f.userFiltersByID[id]
-	if !ok {
-		return nil, domain.ErrNotFound
-	}
-	return copyUserFilter(uf), nil
-}
-
-func (f *FakeStore) ListUserFilters(ctx context.Context, accountID string) ([]domain.UserFilter, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var out []domain.UserFilter
-	for _, uf := range f.userFiltersByID {
-		if uf.AccountID == accountID {
-			out = append(out, *copyUserFilter(uf))
-		}
-	}
-	return out, nil
-}
-
-func (f *FakeStore) UpdateUserFilter(ctx context.Context, in store.UpdateUserFilterInput) (*domain.UserFilter, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	uf, ok := f.userFiltersByID[in.ID]
-	if !ok {
-		return nil, domain.ErrNotFound
-	}
-	uf.Phrase = in.Phrase
-	uf.Context = append([]string(nil), in.Context...)
-	uf.WholeWord = in.WholeWord
-	uf.ExpiresAt = in.ExpiresAt
-	uf.Irreversible = in.Irreversible
-	return copyUserFilter(uf), nil
-}
-
-func (f *FakeStore) DeleteUserFilter(ctx context.Context, id string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	delete(f.userFiltersByID, id)
-	return nil
-}
-
-func (f *FakeStore) GetActiveUserFiltersByContext(_ context.Context, accountID, filterContext string) ([]domain.UserFilter, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var out []domain.UserFilter
-	now := time.Now()
-	for _, uf := range f.userFiltersByID {
-		if uf.AccountID != accountID {
-			continue
-		}
-		if uf.ExpiresAt != nil && uf.ExpiresAt.Before(now) {
-			continue
-		}
-		for _, c := range uf.Context {
-			if c == filterContext {
-				out = append(out, *copyUserFilter(uf))
-				break
-			}
-		}
 	}
 	return out, nil
 }

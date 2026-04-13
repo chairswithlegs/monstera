@@ -74,7 +74,7 @@ const createUserFilterV2 = `-- name: CreateUserFilterV2 :one
 
 INSERT INTO user_filters (id, account_id, title, context, expires_at, filter_action, phrase, whole_word, irreversible)
 VALUES ($1, $2, $3, $4, $5, $6, '', FALSE, FALSE)
-RETURNING id, account_id, phrase, context, whole_word, expires_at, irreversible, created_at, title, filter_action
+RETURNING id, account_id, context, expires_at, created_at, title, filter_action
 `
 
 type CreateUserFilterV2Params struct {
@@ -100,11 +100,8 @@ func (q *Queries) CreateUserFilterV2(ctx context.Context, arg CreateUserFilterV2
 	err := row.Scan(
 		&i.ID,
 		&i.AccountID,
-		&i.Phrase,
 		&i.Context,
-		&i.WholeWord,
 		&i.ExpiresAt,
-		&i.Irreversible,
 		&i.CreatedAt,
 		&i.Title,
 		&i.FilterAction,
@@ -140,7 +137,7 @@ func (q *Queries) DeleteUserFilterV2(ctx context.Context, id string) error {
 }
 
 const getActiveUserFiltersV2 = `-- name: GetActiveUserFiltersV2 :many
-SELECT id, account_id, phrase, context, whole_word, expires_at, irreversible, created_at, title, filter_action FROM user_filters
+SELECT id, account_id, context, expires_at, created_at, title, filter_action FROM user_filters
 WHERE account_id = $1
   AND (expires_at IS NULL OR expires_at > NOW())
 ORDER BY created_at DESC
@@ -158,11 +155,8 @@ func (q *Queries) GetActiveUserFiltersV2(ctx context.Context, accountID string) 
 		if err := rows.Scan(
 			&i.ID,
 			&i.AccountID,
-			&i.Phrase,
 			&i.Context,
-			&i.WholeWord,
 			&i.ExpiresAt,
-			&i.Irreversible,
 			&i.CreatedAt,
 			&i.Title,
 			&i.FilterAction,
@@ -270,7 +264,7 @@ func (q *Queries) GetFilterStatusesByFilterIDs(ctx context.Context, dollar_1 []s
 }
 
 const getUserFilterV2 = `-- name: GetUserFilterV2 :one
-SELECT id, account_id, phrase, context, whole_word, expires_at, irreversible, created_at, title, filter_action FROM user_filters WHERE id = $1
+SELECT id, account_id, context, expires_at, created_at, title, filter_action FROM user_filters WHERE id = $1
 `
 
 func (q *Queries) GetUserFilterV2(ctx context.Context, id string) (UserFilter, error) {
@@ -279,11 +273,8 @@ func (q *Queries) GetUserFilterV2(ctx context.Context, id string) (UserFilter, e
 	err := row.Scan(
 		&i.ID,
 		&i.AccountID,
-		&i.Phrase,
 		&i.Context,
-		&i.WholeWord,
 		&i.ExpiresAt,
-		&i.Irreversible,
 		&i.CreatedAt,
 		&i.Title,
 		&i.FilterAction,
@@ -351,7 +342,7 @@ func (q *Queries) ListFilterStatuses(ctx context.Context, filterID string) ([]Us
 }
 
 const listUserFiltersV2 = `-- name: ListUserFiltersV2 :many
-SELECT id, account_id, phrase, context, whole_word, expires_at, irreversible, created_at, title, filter_action FROM user_filters WHERE account_id = $1 ORDER BY created_at DESC
+SELECT id, account_id, context, expires_at, created_at, title, filter_action FROM user_filters WHERE account_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListUserFiltersV2(ctx context.Context, accountID string) ([]UserFilter, error) {
@@ -366,11 +357,8 @@ func (q *Queries) ListUserFiltersV2(ctx context.Context, accountID string) ([]Us
 		if err := rows.Scan(
 			&i.ID,
 			&i.AccountID,
-			&i.Phrase,
 			&i.Context,
-			&i.WholeWord,
 			&i.ExpiresAt,
-			&i.Irreversible,
 			&i.CreatedAt,
 			&i.Title,
 			&i.FilterAction,
@@ -412,7 +400,7 @@ const updateUserFilterV2 = `-- name: UpdateUserFilterV2 :one
 UPDATE user_filters
 SET title = $2, context = $3, expires_at = $4, filter_action = $5
 WHERE id = $1
-RETURNING id, account_id, phrase, context, whole_word, expires_at, irreversible, created_at, title, filter_action
+RETURNING id, account_id, context, expires_at, created_at, title, filter_action
 `
 
 type UpdateUserFilterV2Params struct {
@@ -435,11 +423,8 @@ func (q *Queries) UpdateUserFilterV2(ctx context.Context, arg UpdateUserFilterV2
 	err := row.Scan(
 		&i.ID,
 		&i.AccountID,
-		&i.Phrase,
 		&i.Context,
-		&i.WholeWord,
 		&i.ExpiresAt,
-		&i.Irreversible,
 		&i.CreatedAt,
 		&i.Title,
 		&i.FilterAction,
