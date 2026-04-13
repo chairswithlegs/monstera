@@ -184,18 +184,18 @@ type CreateFilterInput struct {
 	ID           string
 	AccountID    string
 	Title        string
-	Context      []string
+	Context      []domain.FilterContext
 	ExpiresAt    *time.Time
-	FilterAction string
+	FilterAction domain.FilterAction
 }
 
 // UpdateFilterInput is the input for updating a keyword-based user filter.
 type UpdateFilterInput struct {
 	ID           string
 	Title        string
-	Context      []string
+	Context      []domain.FilterContext
 	ExpiresAt    *time.Time
-	FilterAction string
+	FilterAction domain.FilterAction
 }
 
 // UpdateUserPreferencesInput is the input for updating a user's post preferences.

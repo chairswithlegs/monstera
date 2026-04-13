@@ -2,15 +2,23 @@ package domain
 
 import "time"
 
-const (
-	FilterContextHome          = "home"
-	FilterContextNotifications = "notifications"
-	FilterContextPublic        = "public"
-	FilterContextThread        = "thread"
-	FilterContextAccount       = "account"
+// FilterContext identifies where a content filter should be applied.
+type FilterContext string
 
-	FilterActionWarn = "warn"
-	FilterActionHide = "hide"
+const (
+	FilterContextHome          FilterContext = "home"
+	FilterContextNotifications FilterContext = "notifications"
+	FilterContextPublic        FilterContext = "public"
+	FilterContextThread        FilterContext = "thread"
+	FilterContextAccount       FilterContext = "account"
+)
+
+// FilterAction determines the server/client behavior when a filter matches.
+type FilterAction string
+
+const (
+	FilterActionWarn FilterAction = "warn"
+	FilterActionHide FilterAction = "hide"
 )
 
 // FilterKeyword is one keyword entry within a user filter.
@@ -34,9 +42,9 @@ type UserFilter struct {
 	ID           string
 	AccountID    string
 	Title        string
-	Context      []string
+	Context      []FilterContext
 	ExpiresAt    *time.Time
-	FilterAction string // "warn" or "hide"
+	FilterAction FilterAction
 	Keywords     []FilterKeyword
 	Statuses     []FilterStatus
 	CreatedAt    time.Time

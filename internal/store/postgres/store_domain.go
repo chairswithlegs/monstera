@@ -2458,14 +2458,22 @@ func (s *PostgresStore) getFilterWithRelated(ctx context.Context, id string) (*d
 	return &d, nil
 }
 
+func filterContextsToStrings(contexts []domain.FilterContext) []string {
+	out := make([]string, len(contexts))
+	for i, c := range contexts {
+		out[i] = string(c)
+	}
+	return out
+}
+
 func (s *PostgresStore) CreateFilter(ctx context.Context, in store.CreateFilterInput) (*domain.UserFilter, error) {
 	_, err := s.q.CreateUserFilterV2(ctx, db.CreateUserFilterV2Params{
 		ID:           in.ID,
 		AccountID:    in.AccountID,
 		Title:        in.Title,
-		Context:      in.Context,
+		Context:      filterContextsToStrings(in.Context),
 		ExpiresAt:    timePtrToPg(in.ExpiresAt),
-		FilterAction: in.FilterAction,
+		FilterAction: string(in.FilterAction),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("CreateFilter: %w", mapErr(err))
@@ -2521,9 +2529,9 @@ func (s *PostgresStore) UpdateFilter(ctx context.Context, in store.UpdateFilterI
 	_, err := s.q.UpdateUserFilterV2(ctx, db.UpdateUserFilterV2Params{
 		ID:           in.ID,
 		Title:        in.Title,
-		Context:      in.Context,
+		Context:      filterContextsToStrings(in.Context),
 		ExpiresAt:    timePtrToPg(in.ExpiresAt),
-		FilterAction: in.FilterAction,
+		FilterAction: string(in.FilterAction),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("UpdateFilter: %w", mapErr(err))

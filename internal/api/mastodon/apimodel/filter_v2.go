@@ -39,11 +39,15 @@ type FilterResult struct {
 
 // ToFilterV2 converts a domain UserFilter to the Mastodon API v2 FilterV2 shape.
 func ToFilterV2(f *domain.UserFilter) FilterV2 {
+	ctx := make([]string, len(f.Context))
+	for i, c := range f.Context {
+		ctx[i] = string(c)
+	}
 	out := FilterV2{
 		ID:           f.ID,
 		Title:        f.Title,
-		Context:      f.Context,
-		FilterAction: f.FilterAction,
+		Context:      ctx,
+		FilterAction: string(f.FilterAction),
 		Keywords:     make([]FilterKeyword, 0, len(f.Keywords)),
 		Statuses:     make([]FilterStatus, 0, len(f.Statuses)),
 	}

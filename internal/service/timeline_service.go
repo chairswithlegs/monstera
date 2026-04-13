@@ -80,7 +80,7 @@ func NewTimelineService(s store.Store, accountSvc AccountService, statusSvc Stat
 	return &timelineService{store: s, accountSvc: accountSvc, statusSvc: statusSvc, silenceChecker: silenceChecker}
 }
 
-func (svc *timelineService) enrichStatuses(ctx context.Context, statuses []domain.Status, viewerAccountID *string, filterContext string) ([]EnrichedStatus, error) {
+func (svc *timelineService) enrichStatuses(ctx context.Context, statuses []domain.Status, viewerAccountID *string, filterContext domain.FilterContext) ([]EnrichedStatus, error) {
 	ptrs := make([]*domain.Status, len(statuses))
 	for i := range statuses {
 		ptrs[i] = &statuses[i]

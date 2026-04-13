@@ -13,7 +13,7 @@ import (
 )
 
 // createV2FilterWithKeyword is a test helper that creates a v2 filter with a single keyword.
-func createV2FilterWithKeyword(t *testing.T, ctx context.Context, st *testutil.FakeStore, accountID, keyword, filterAction string, contexts []string) {
+func createV2FilterWithKeyword(t *testing.T, ctx context.Context, st *testutil.FakeStore, accountID, keyword string, filterAction domain.FilterAction, contexts []domain.FilterContext) {
 	t.Helper()
 	filterID := uid.New()
 	_, err := st.CreateFilter(ctx, store.CreateFilterInput{
@@ -37,8 +37,8 @@ func TestContentFilterMatcher(t *testing.T) {
 	tests := []struct {
 		name         string
 		keyword      string
-		action       string
-		contexts     []string
+		action       domain.FilterAction
+		contexts     []domain.FilterContext
 		createFilter bool
 		wantMatch    bool
 	}{
@@ -51,7 +51,7 @@ func TestContentFilterMatcher(t *testing.T) {
 			name:         "matching keyword with hide action returns true",
 			keyword:      "spoiler",
 			action:       domain.FilterActionHide,
-			contexts:     []string{domain.FilterContextNotifications},
+			contexts:     []domain.FilterContext{domain.FilterContextNotifications},
 			createFilter: true,
 			wantMatch:    true,
 		},
@@ -59,7 +59,7 @@ func TestContentFilterMatcher(t *testing.T) {
 			name:         "matching keyword with warn action returns false",
 			keyword:      "spoiler",
 			action:       domain.FilterActionWarn,
-			contexts:     []string{domain.FilterContextNotifications},
+			contexts:     []domain.FilterContext{domain.FilterContextNotifications},
 			createFilter: true,
 			wantMatch:    false,
 		},
@@ -67,7 +67,7 @@ func TestContentFilterMatcher(t *testing.T) {
 			name:         "non-matching keyword returns false",
 			keyword:      "unrelated",
 			action:       domain.FilterActionHide,
-			contexts:     []string{domain.FilterContextNotifications},
+			contexts:     []domain.FilterContext{domain.FilterContextNotifications},
 			createFilter: true,
 			wantMatch:    false,
 		},
@@ -75,7 +75,7 @@ func TestContentFilterMatcher(t *testing.T) {
 			name:         "filter with different context returns false",
 			keyword:      "spoiler",
 			action:       domain.FilterActionHide,
-			contexts:     []string{domain.FilterContextHome},
+			contexts:     []domain.FilterContext{domain.FilterContextHome},
 			createFilter: true,
 			wantMatch:    false,
 		},

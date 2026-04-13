@@ -68,7 +68,7 @@ func TestFiltersV2Handler_GETFiltersV2(t *testing.T) {
 	ctx := middleware.WithAccount(context.Background(), account)
 
 	// Create a filter
-	f, err := svc.CreateFilter(ctx, account.ID, "test filter", []string{"home"}, nil, "warn")
+	f, err := svc.CreateFilter(ctx, account.ID, "test filter", []domain.FilterContext{domain.FilterContextHome}, nil, domain.FilterActionWarn)
 	require.NoError(t, err)
 	require.NotNil(t, f)
 
@@ -196,7 +196,7 @@ func TestFiltersV2Handler_GETFilterV2(t *testing.T) {
 	account := &domain.Account{ID: "acc1"}
 	ctx := middleware.WithAccount(context.Background(), account)
 
-	f, err := svc.CreateFilter(ctx, account.ID, "get me", []string{"home"}, nil, "hide")
+	f, err := svc.CreateFilter(ctx, account.ID, "get me", []domain.FilterContext{domain.FilterContextHome}, nil, domain.FilterActionHide)
 	require.NoError(t, err)
 
 	r := chi.NewRouter()
@@ -235,7 +235,7 @@ func TestFiltersV2Handler_DELETEFilterV2(t *testing.T) {
 	account := &domain.Account{ID: "acc1"}
 	ctx := middleware.WithAccount(context.Background(), account)
 
-	f, err := svc.CreateFilter(ctx, account.ID, "delete me", []string{"home"}, nil, "warn")
+	f, err := svc.CreateFilter(ctx, account.ID, "delete me", []domain.FilterContext{domain.FilterContextHome}, nil, domain.FilterActionWarn)
 	require.NoError(t, err)
 
 	r := chi.NewRouter()
@@ -255,7 +255,7 @@ func TestFiltersV2Handler_KeywordCRUD(t *testing.T) {
 	account := &domain.Account{ID: "acc1"}
 	ctx := middleware.WithAccount(context.Background(), account)
 
-	f, err := svc.CreateFilter(ctx, account.ID, "kw filter", []string{"home"}, nil, "warn")
+	f, err := svc.CreateFilter(ctx, account.ID, "kw filter", []domain.FilterContext{domain.FilterContextHome}, nil, domain.FilterActionWarn)
 	require.NoError(t, err)
 
 	r := chi.NewRouter()
@@ -310,7 +310,7 @@ func TestFiltersV2Handler_FilterStatusCRUD(t *testing.T) {
 	account := &domain.Account{ID: "acc1"}
 	ctx := middleware.WithAccount(context.Background(), account)
 
-	f, err := svc.CreateFilter(ctx, account.ID, "status filter", []string{"home"}, nil, "warn")
+	f, err := svc.CreateFilter(ctx, account.ID, "status filter", []domain.FilterContext{domain.FilterContextHome}, nil, domain.FilterActionWarn)
 	require.NoError(t, err)
 
 	r := chi.NewRouter()

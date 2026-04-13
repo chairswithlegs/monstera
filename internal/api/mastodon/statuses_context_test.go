@@ -130,7 +130,7 @@ func TestStatusesContext_GETContext_ThreadFilterRemovesMatchingDescendant(t *tes
 	require.NoError(t, err)
 
 	// Create a v2 filter with keyword "bad word" in thread context with hide action.
-	filter, err := filterSvc.CreateFilter(ctx, acc.ID, "bad word filter", []string{domain.FilterContextThread}, nil, domain.FilterActionHide)
+	filter, err := filterSvc.CreateFilter(ctx, acc.ID, "bad word filter", []domain.FilterContext{domain.FilterContextThread}, nil, domain.FilterActionHide)
 	require.NoError(t, err)
 	_, err = filterSvc.AddKeyword(ctx, acc.ID, filter.ID, "bad word", false)
 	require.NoError(t, err)
