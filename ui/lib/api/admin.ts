@@ -84,9 +84,13 @@ export async function setUserRole(id: string, role: string): Promise<void> {
   if (!res.ok) await throwApiError(res);
 }
 
-export async function deleteUser(id: string): Promise<void> {
+// deleteUser soft-deletes a local account (admin-only). Pass { force: true }
+// to skip the 30-day grace and hard-delete inline — intended for urgent
+// takedowns (CSAM, legal) where the data must be removed immediately.
+export async function deleteUser(id: string, opts: { force?: boolean } = {}): Promise<void> {
   const base = await adminPrefix();
-  const res = await authFetch(`${base}/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  const qs = opts.force ? '?force=true' : '';
+  const res = await authFetch(`${base}/users/${encodeURIComponent(id)}${qs}`, { method: 'DELETE' });
   if (!res.ok) await throwApiError(res);
 }
 
