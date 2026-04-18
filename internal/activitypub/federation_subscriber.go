@@ -134,6 +134,8 @@ func (s *FederationSubscriber) processMessage(ctx context.Context, msg jetstream
 		err = s.handleBlockRemoved(ctx, event)
 	case domain.EventAccountUpdated:
 		err = s.handleAccountUpdated(ctx, event)
+	case domain.EventAccountDeleted:
+		err = s.handleAccountDeleted(ctx, event)
 	case domain.EventReblogCreated:
 		err = s.handleReblogCreated(ctx, event)
 	case domain.EventReblogRemoved:
@@ -597,6 +599,40 @@ func (s *FederationSubscriber) handleAccountUpdated(ctx context.Context, event d
 	})
 	if err != nil {
 		return fmt.Errorf("publish account updated: %w", err)
+	}
+	return nil
+}
+
+// handleAccountDeleted fans out a Delete{Actor} activity to every follower's
+// inbox so remote instances tombstone the actor immediately. The local row
+// lives until the purge scheduler runs, so fanout (which reads follows rows)
+// and the delivery worker (which signs with the actor's private key) still
+// work during the grace window.
+func (s *FederationSubscriber) handleAccountDeleted(ctx context.Context, event domain.DomainEvent) error {
+	var payload domain.AccountDeletedPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return fmt.Errorf("unmarshal account.deleted payload: %w", err)
+	}
+	if !payload.Local || payload.Account == nil {
+		return nil
+	}
+	actorID := vocab.AccountActorID(payload.Account, s.instanceBaseURL)
+	activityID := actorID + "#delete"
+	// For actor deletion the wrapped Tombstone IRI equals the actor IRI.
+	del, err := vocab.NewDeleteActivity(activityID, actorID, actorID)
+	if err != nil {
+		return fmt.Errorf("new delete activity: %w", err)
+	}
+	raw, err := json.Marshal(del)
+	if err != nil {
+		return fmt.Errorf("marshal delete: %w", err)
+	}
+	if err := s.fanout.Publish(ctx, "delete", internal.OutboxFanoutMessage{
+		ActivityID: activityID,
+		Activity:   raw,
+		SenderID:   payload.Account.ID,
+	}); err != nil {
+		return fmt.Errorf("publish account deleted: %w", err)
 	}
 	return nil
 }

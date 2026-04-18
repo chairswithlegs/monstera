@@ -125,3 +125,25 @@ func (h *UserHandler) PATCHPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// DELETEUser soft-deletes the authenticated user's account after password
+// confirmation. The account enters a 30-day grace period during which the
+// scheduler purges it; OAuth tokens are revoked immediately and federation
+// followers are told to tombstone the actor.
+func (h *UserHandler) DELETEUser(w http.ResponseWriter, r *http.Request) {
+	user := middleware.UserFromContext(r.Context())
+	if user == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	var body apimodel.DeleteAccountRequest
+	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	if err := h.accounts.RequestSelfDeletion(r.Context(), user.ID, body.CurrentPassword); err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

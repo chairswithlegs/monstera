@@ -277,6 +277,30 @@ func (s *Server) RevokeToken(ctx context.Context, token string) error {
 	return nil
 }
 
+// InvalidateAccountTokensCache evicts every cached claim entry for access
+// tokens owned by the account. Paired with store.RevokeAllAccessTokensForAccount
+// — the store call marks tokens revoked in the DB, this call clears the cache
+// so a stale entry can't authenticate a just-revoked token for up to 24h.
+//
+// Best-effort: cache deletion failures are logged and swallowed. The downstream
+// Suspended check in RequireAuth is the authoritative gate; this function is
+// defense-in-depth against any future code path that skips that check.
+func (s *Server) InvalidateAccountTokensCache(ctx context.Context, accountID string) error {
+	tokens, err := s.store.ListAccessTokenStringsForAccount(ctx, accountID)
+	if err != nil {
+		return fmt.Errorf("InvalidateAccountTokensCache list: %w", err)
+	}
+	for _, t := range tokens {
+		if cerr := s.cache.Delete(ctx, tokenCacheKey(t)); cerr != nil {
+			slog.WarnContext(ctx, "InvalidateAccountTokensCache: cache delete failed",
+				slog.String("account_id", accountID),
+				slog.Any("error", cerr),
+			)
+		}
+	}
+	return nil
+}
+
 // LookupToken verifies a Bearer token and returns the associated claims.
 //
 // Lookup strategy:

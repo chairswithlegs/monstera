@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/store"
@@ -541,4 +544,231 @@ func TestAccountService_SetRemotePins_local_account_returns_forbidden(t *testing
 
 	err = svc.SetRemotePins(ctx, acc.ID, []string{"status-1"})
 	assert.ErrorIs(t, err, domain.ErrForbidden)
+}
+
+// seedLocalUserWithPassword creates a local account + confirmed user + active
+// OAuth access token, all with a fixed "alice" identity (each test has its
+// own FakeStore so the names don't collide across tests).
+// Returns accountID, userID, and the raw password.
+func seedLocalUserWithPassword(t *testing.T, fake *testutil.FakeStore, svc AccountService) (accountID, userID, password string) {
+	t.Helper()
+	ctx := context.Background()
+	const username = "alice"
+	acc, err := svc.Create(ctx, CreateAccountInput{Username: username})
+	require.NoError(t, err)
+	password = "correct-horse-battery-staple"
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+	require.NoError(t, err)
+	userID = "user-" + username
+	_, err = fake.CreateUser(ctx, store.CreateUserInput{
+		ID:           userID,
+		AccountID:    acc.ID,
+		Email:        username + "@example.com",
+		PasswordHash: string(hash),
+		Role:         domain.RoleUser,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.ConfirmUser(ctx, userID))
+	// Seed an OAuth token so we can assert revocation.
+	_, err = fake.CreateApplication(ctx, store.CreateApplicationInput{
+		ID: "app-" + username, Name: "Test", ClientID: "client-" + username, ClientSecret: "secret",
+	})
+	require.NoError(t, err)
+	accID := acc.ID
+	_, err = fake.CreateAccessToken(ctx, store.CreateAccessTokenInput{
+		ID: "tok-" + username, ApplicationID: "app-" + username, AccountID: &accID,
+		Token: "token-" + username, Scopes: "read write",
+	})
+	require.NoError(t, err)
+	return acc.ID, userID, password
+}
+
+func TestAccountService_RequestSelfDeletion_success(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+	accID, userID, password := seedLocalUserWithPassword(t, fake, svc)
+
+	err := svc.RequestSelfDeletion(ctx, userID, password)
+	require.NoError(t, err)
+
+	// Account is suspended and flagged for deletion.
+	acc, err := svc.GetByID(ctx, accID)
+	require.NoError(t, err)
+	assert.True(t, acc.Suspended)
+	require.NotNil(t, acc.DeletionRequestedAt)
+	assert.WithinDuration(t, time.Now(), *acc.DeletionRequestedAt, 5*time.Second)
+
+	// OAuth token is revoked: GetAccessToken filters revoked tokens out.
+	_, err = fake.GetAccessToken(ctx, "token-alice")
+	require.ErrorIs(t, err, domain.ErrNotFound)
+
+	// Federation event is queued in the outbox.
+	var found bool
+	for _, ev := range fake.OutboxEvents {
+		if ev.EventType == domain.EventAccountDeleted && ev.AggregateID == accID {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "expected account.deleted outbox event for %s", accID)
+}
+
+func TestAccountService_RequestSelfDeletion_wrong_password(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+	accID, userID, _ := seedLocalUserWithPassword(t, fake, svc)
+
+	err := svc.RequestSelfDeletion(ctx, userID, "nope")
+	require.ErrorIs(t, err, domain.ErrForbidden)
+
+	// No state change.
+	acc, err := svc.GetByID(ctx, accID)
+	require.NoError(t, err)
+	assert.False(t, acc.Suspended)
+	assert.Nil(t, acc.DeletionRequestedAt)
+	assert.Empty(t, fake.OutboxEvents)
+}
+
+func TestAccountService_RequestSelfDeletion_double_request(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+	_, userID, password := seedLocalUserWithPassword(t, fake, svc)
+
+	require.NoError(t, svc.RequestSelfDeletion(ctx, userID, password))
+	err := svc.RequestSelfDeletion(ctx, userID, password)
+	assert.ErrorIs(t, err, domain.ErrDeletionAlreadyRequested)
+}
+
+func TestAccountService_RequestAccountDeletion_remote_account_refused(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+
+	remoteDomain := testRemoteDomain
+	acc, err := fake.CreateAccount(ctx, store.CreateAccountInput{
+		ID: "01remote", Username: "bob", Domain: &remoteDomain,
+	})
+	require.NoError(t, err)
+
+	err = svc.RequestAccountDeletion(ctx, acc.ID)
+	assert.ErrorIs(t, err, domain.ErrForbidden)
+}
+
+func TestAccountService_PurgeAccount_hard_deletes_soft_deleted_account(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+	accID, userID, password := seedLocalUserWithPassword(t, fake, svc)
+
+	require.NoError(t, svc.RequestSelfDeletion(ctx, userID, password))
+
+	err := svc.PurgeAccount(ctx, accID)
+	require.NoError(t, err)
+
+	_, err = svc.GetByID(ctx, accID)
+	require.ErrorIs(t, err, domain.ErrNotFound)
+	_, err = fake.GetUserByAccountID(ctx, accID)
+	require.ErrorIs(t, err, domain.ErrNotFound)
+}
+
+func TestAccountService_PurgeAccount_noop_when_not_pending(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+
+	acc, err := svc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+
+	// No deletion requested → purge is a no-op, account row still there.
+	require.NoError(t, svc.PurgeAccount(ctx, acc.ID))
+	got, err := svc.GetByID(ctx, acc.ID)
+	require.NoError(t, err)
+	assert.Equal(t, acc.ID, got.ID)
+}
+
+func TestAccountService_PurgeAccount_missing_account_is_noop(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+
+	require.NoError(t, svc.PurgeAccount(ctx, "01does-not-exist"))
+}
+
+// Race safety: if the deletion is cancelled (flag cleared) between the
+// scheduler listing the ID and the purge running, the conditional DELETE
+// must be a no-op instead of clobbering the cancel.
+func TestAccountService_PurgeAccount_skips_account_with_cancelled_deletion(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+	_, userID, password := seedLocalUserWithPassword(t, fake, svc)
+
+	require.NoError(t, svc.RequestSelfDeletion(ctx, userID, password))
+	// Simulate a cancel: clear deletion_requested_at.
+	u, err := fake.GetUserByID(ctx, userID)
+	require.NoError(t, err)
+	require.NoError(t, fake.CancelAccountDeletion(ctx, u.AccountID))
+
+	// Purge should be a no-op; account survives.
+	require.NoError(t, svc.PurgeAccount(ctx, u.AccountID))
+	got, err := svc.GetByID(ctx, u.AccountID)
+	require.NoError(t, err)
+	assert.Equal(t, u.AccountID, got.ID)
+}
+
+// The optional token-cache invalidator must be called after a successful
+// deletion so cached OAuth claims are evicted before the 24h TTL.
+func TestAccountService_RequestSelfDeletion_invokes_token_cache_invalidator(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+
+	var called []string
+	invalidator := func(_ context.Context, accountID string) error {
+		called = append(called, accountID)
+		return nil
+	}
+	svc := NewAccountService(fake, "https://example.com", WithTokenCacheInvalidator(invalidator))
+	accID, userID, password := seedLocalUserWithPassword(t, fake, svc)
+
+	require.NoError(t, svc.RequestSelfDeletion(ctx, userID, password))
+	assert.Equal(t, []string{accID}, called)
+}
+
+// Outstanding OAuth authorization codes must be revoked at deletion-request
+// time so a captured code can't be exchanged during the grace window.
+func TestAccountService_RequestSelfDeletion_revokes_authorization_codes(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+	accID, userID, password := seedLocalUserWithPassword(t, fake, svc)
+
+	// Seed an outstanding authorization code for alice.
+	_, err := fake.CreateAuthorizationCode(ctx, store.CreateAuthorizationCodeInput{
+		ID:            "code-1",
+		Code:          "code-raw",
+		ApplicationID: "app-alice",
+		AccountID:     accID,
+		RedirectURI:   "https://client/callback",
+		Scopes:        "read",
+		ExpiresAt:     time.Now().Add(5 * time.Minute),
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, svc.RequestSelfDeletion(ctx, userID, password))
+
+	_, err = fake.GetAuthorizationCode(ctx, "code-raw")
+	require.ErrorIs(t, err, domain.ErrNotFound)
 }

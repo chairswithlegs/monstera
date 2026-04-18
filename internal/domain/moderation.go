@@ -35,9 +35,13 @@ const (
 
 // Report is a moderation report filed by a user against an account or content.
 type Report struct {
-	ID           string
-	AccountID    string
-	TargetID     string
+	ID string
+	// AccountID is the reporter. Nullable because the reporter's account may
+	// have been deleted since the report was filed (FK ON DELETE SET NULL).
+	AccountID *string
+	// TargetID is the reported account. Nullable for the same reason as
+	// AccountID — preserves moderation history after account deletion.
+	TargetID     *string
 	StatusIDs    []string
 	Comment      *string
 	Category     string

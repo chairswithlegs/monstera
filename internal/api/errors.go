@@ -22,17 +22,18 @@ var (
 
 const (
 	// Error code constants for machine-readable error identification.
-	CodeNotFound         = "not_found"
-	CodeConflict         = "conflict"
-	CodeForbidden        = "forbidden"
-	CodeUnauthorized     = "unauthorized"
-	CodeBadRequest       = "bad_request"
-	CodeValidationFailed = "validation_failed"
-	CodeRateLimited      = "rate_limited"
-	CodePayloadTooLarge  = "payload_too_large"
-	CodeGone             = "gone"
-	CodeAccountSuspended = "account_suspended"
-	CodeInternalError    = "internal_error"
+	CodeNotFound                 = "not_found"
+	CodeConflict                 = "conflict"
+	CodeForbidden                = "forbidden"
+	CodeUnauthorized             = "unauthorized"
+	CodeBadRequest               = "bad_request"
+	CodeValidationFailed         = "validation_failed"
+	CodeRateLimited              = "rate_limited"
+	CodePayloadTooLarge          = "payload_too_large"
+	CodeGone                     = "gone"
+	CodeAccountSuspended         = "account_suspended"
+	CodeDeletionAlreadyRequested = "deletion_already_requested"
+	CodeInternalError            = "internal_error"
 
 	// Parameter names for error responses.
 	ParamKeyReason = "reason"
@@ -217,6 +218,9 @@ func classifyError(err error) (int, ErrorResponse) {
 	switch {
 	case errors.Is(err, domain.ErrNotFound) || errors.Is(err, ErrNotFound):
 		return http.StatusNotFound, ErrorResponse{Error: "Record not found", Code: CodeNotFound, Params: params}
+
+	case errors.Is(err, domain.ErrDeletionAlreadyRequested):
+		return http.StatusConflict, ErrorResponse{Error: err.Error(), Code: CodeDeletionAlreadyRequested, Params: params}
 
 	case errors.Is(err, domain.ErrConflict):
 		return http.StatusConflict, ErrorResponse{Error: err.Error(), Code: CodeConflict, Params: params}

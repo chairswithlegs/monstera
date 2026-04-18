@@ -11,36 +11,37 @@ import (
 )
 
 type Account struct {
-	ID               string             `json:"id"`
-	Username         string             `json:"username"`
-	Domain           *string            `json:"domain"`
-	DisplayName      *string            `json:"display_name"`
-	Note             *string            `json:"note"`
-	PublicKey        string             `json:"public_key"`
-	PrivateKey       *string            `json:"private_key"`
-	InboxUrl         string             `json:"inbox_url"`
-	OutboxUrl        string             `json:"outbox_url"`
-	FollowersUrl     string             `json:"followers_url"`
-	FollowingUrl     string             `json:"following_url"`
-	ApID             string             `json:"ap_id"`
-	Bot              bool               `json:"bot"`
-	Locked           bool               `json:"locked"`
-	Suspended        bool               `json:"suspended"`
-	Silenced         bool               `json:"silenced"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
-	AvatarMediaID    *string            `json:"avatar_media_id"`
-	HeaderMediaID    *string            `json:"header_media_id"`
-	FollowersCount   int32              `json:"followers_count"`
-	FollowingCount   int32              `json:"following_count"`
-	StatusesCount    int32              `json:"statuses_count"`
-	Fields           []byte             `json:"fields"`
-	LastStatusAt     pgtype.Timestamptz `json:"last_status_at"`
-	Url              *string            `json:"url"`
-	AvatarUrl        string             `json:"avatar_url"`
-	HeaderUrl        string             `json:"header_url"`
-	LastBackfilledAt pgtype.Timestamptz `json:"last_backfilled_at"`
-	FeaturedUrl      string             `json:"featured_url"`
+	ID                  string             `json:"id"`
+	Username            string             `json:"username"`
+	Domain              *string            `json:"domain"`
+	DisplayName         *string            `json:"display_name"`
+	Note                *string            `json:"note"`
+	PublicKey           string             `json:"public_key"`
+	PrivateKey          *string            `json:"private_key"`
+	InboxUrl            string             `json:"inbox_url"`
+	OutboxUrl           string             `json:"outbox_url"`
+	FollowersUrl        string             `json:"followers_url"`
+	FollowingUrl        string             `json:"following_url"`
+	ApID                string             `json:"ap_id"`
+	Bot                 bool               `json:"bot"`
+	Locked              bool               `json:"locked"`
+	Suspended           bool               `json:"suspended"`
+	Silenced            bool               `json:"silenced"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	AvatarMediaID       *string            `json:"avatar_media_id"`
+	HeaderMediaID       *string            `json:"header_media_id"`
+	FollowersCount      int32              `json:"followers_count"`
+	FollowingCount      int32              `json:"following_count"`
+	StatusesCount       int32              `json:"statuses_count"`
+	Fields              []byte             `json:"fields"`
+	LastStatusAt        pgtype.Timestamptz `json:"last_status_at"`
+	Url                 *string            `json:"url"`
+	AvatarUrl           string             `json:"avatar_url"`
+	HeaderUrl           string             `json:"header_url"`
+	LastBackfilledAt    pgtype.Timestamptz `json:"last_backfilled_at"`
+	FeaturedUrl         string             `json:"featured_url"`
+	DeletionRequestedAt pgtype.Timestamptz `json:"deletion_requested_at"`
 }
 
 type AccountConversation struct {
@@ -390,8 +391,8 @@ type QuoteApproval struct {
 
 type Report struct {
 	ID           string             `json:"id"`
-	AccountID    string             `json:"account_id"`
-	TargetID     string             `json:"target_id"`
+	AccountID    *string            `json:"account_id"`
+	TargetID     *string            `json:"target_id"`
 	StatusIds    []string           `json:"status_ids"`
 	Comment      *string            `json:"comment"`
 	Category     string             `json:"category"`

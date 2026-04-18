@@ -222,7 +222,13 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 		monsteraUIHost = cfg.MonsteraUIURL.Host
 	}
 
-	accountSvc := service.NewAccountService(i.store, instanceBaseURL)
+	// OAuth server is built before account service so the account service can
+	// call its InvalidateAccountTokensCache hook on deletion — clears cached
+	// token claims after bulk revocation.
+	oauthServer := oauth.NewServer(i.store, i.sharedCache, cfg.VAPIDPublicKey)
+	accountSvc := service.NewAccountService(i.store, instanceBaseURL,
+		service.WithTokenCacheInvalidator(oauthServer.InvalidateAccountTokensCache),
+	)
 	statusSvc := service.NewStatusService(i.store, instanceBaseURL, cfg.MonsteraInstanceDomain, cfg.MaxStatusChars)
 	conversationSvc := service.NewConversationService(i.store, statusSvc)
 	backfillSvc := service.NewBackfillService(i.store, i.nats.JS, cfg.BackfillCooldown)
@@ -273,14 +279,14 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 		announcement:       service.NewAnnouncementService(i.store),
 		pushSubscription:   service.NewPushSubscriptionService(i.store),
 
-		oauthServer:      oauth.NewServer(i.store, i.sharedCache, cfg.VAPIDPublicKey),
+		oauthServer:      oauthServer,
 		remoteResolver:   remoteResolver,
 		signatureService: signatureService,
 		inboxProcessor:   ap.NewInbox(accountSvc, followSvc, remoteFollowSvc, statusSvc, remoteStatusWriteSvc, mediaSvc, remoteResolver, i.blocklist, cfg.MonsteraInstanceDomain),
 	}
 }
 
-func registerSchedulerJobs(s *svcs, i *infra) scheduler.Scheduler {
+func registerSchedulerJobs(cfg *config.Config, s *svcs, i *infra) scheduler.Scheduler {
 	sched := scheduler.New(i.nats.JS)
 	sched.Register(scheduler.Job{
 		Name:     "scheduled-statuses",
@@ -301,6 +307,11 @@ func registerSchedulerJobs(s *svcs, i *infra) scheduler.Scheduler {
 		Name:     "close-expired-polls",
 		Interval: 5 * time.Minute,
 		Handler:  schedulerjobs.CloseExpiredPolls(i.store),
+	})
+	sched.Register(scheduler.Job{
+		Name:     "purge-deleted-accounts",
+		Interval: time.Hour,
+		Handler:  schedulerjobs.PurgeDeletedAccounts(i.store, s.account, cfg.AccountDeletionGracePeriod),
 	})
 	return sched
 }

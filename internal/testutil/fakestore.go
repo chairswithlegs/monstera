@@ -104,6 +104,8 @@ type FakeStore struct {
 
 	OutboxEvents []domain.DomainEvent // transactional outbox events
 
+	AdminActions []store.CreateAdminActionInput // recorded moderator actions
+
 	pushSubscriptions []*domain.PushSubscription
 
 	notificationPoliciesByAccountID map[string]*domain.NotificationPolicy
@@ -1049,6 +1051,38 @@ func (f *FakeStore) RevokeAccessToken(ctx context.Context, token string) error {
 		tok.RevokedAt = &now
 	}
 	return nil
+}
+func (f *FakeStore) RevokeAllAccessTokensForAccount(ctx context.Context, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	now := time.Now()
+	for _, tok := range f.tokens {
+		if tok.AccountID != nil && *tok.AccountID == accountID && tok.RevokedAt == nil {
+			tok.RevokedAt = &now
+		}
+	}
+	return nil
+}
+func (f *FakeStore) DeleteAuthorizationCodesForAccount(ctx context.Context, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for code, c := range f.authCodes {
+		if c.AccountID == accountID {
+			delete(f.authCodes, code)
+		}
+	}
+	return nil
+}
+func (f *FakeStore) ListAccessTokenStringsForAccount(ctx context.Context, accountID string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, 0)
+	for tokStr, tok := range f.tokens {
+		if tok.AccountID != nil && *tok.AccountID == accountID {
+			out = append(out, tokStr)
+		}
+	}
+	return out, nil
 }
 func (f *FakeStore) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
 	f.mu.Lock()
@@ -3558,10 +3592,12 @@ func (f *FakeStore) getDistinctFollowerInboxURLsPaginated(_ context.Context, acc
 }
 
 func (f *FakeStore) CreateReport(ctx context.Context, in store.CreateReportInput) (*domain.Report, error) {
+	accountID := in.AccountID
+	targetID := in.TargetID
 	return &domain.Report{
 		ID:        in.ID,
-		AccountID: in.AccountID,
-		TargetID:  in.TargetID,
+		AccountID: &accountID,
+		TargetID:  &targetID,
 		StatusIDs: in.StatusIDs,
 		Comment:   in.Comment,
 		Category:  in.Category,
@@ -3601,6 +3637,9 @@ func (f *FakeStore) DeleteDomainBlock(ctx context.Context, domain string) error 
 	return nil
 }
 func (f *FakeStore) CreateAdminAction(ctx context.Context, in store.CreateAdminActionInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.AdminActions = append(f.AdminActions, in)
 	return nil
 }
 func (f *FakeStore) CreateInvite(ctx context.Context, in store.CreateInviteInput) (*domain.Invite, error) {
@@ -3773,7 +3812,70 @@ func (f *FakeStore) DeleteAccount(ctx context.Context, id string) error {
 	defer f.mu.Unlock()
 	delete(f.accountsByID, id)
 	delete(f.suspendedAccountIDs, id)
+	// Emulates ON DELETE CASCADE on users.account_id, which is the only
+	// cascade relationship the current service tests rely on. Postgres handles
+	// the full set; the fake store adds them as tests require them.
+	delete(f.usersByAccountID, id)
 	return nil
+}
+func (f *FakeStore) DeleteAccountIfDeletionPending(ctx context.Context, id string) (bool, error) {
+	f.mu.Lock()
+	acc, ok := f.accountsByID[id]
+	if !ok || acc.DeletionRequestedAt == nil {
+		f.mu.Unlock()
+		return false, nil
+	}
+	delete(f.accountsByID, id)
+	delete(f.suspendedAccountIDs, id)
+	delete(f.usersByAccountID, id)
+	f.mu.Unlock()
+	return true, nil
+}
+func (f *FakeStore) RequestAccountDeletion(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	acc, ok := f.accountsByID[id]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	if acc.DeletionRequestedAt != nil {
+		return domain.ErrConflict
+	}
+	now := time.Now()
+	acc.DeletionRequestedAt = &now
+	acc.Suspended = true
+	f.suspendedAccountIDs[id] = struct{}{}
+	return nil
+}
+func (f *FakeStore) CancelAccountDeletion(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	acc, ok := f.accountsByID[id]
+	if !ok || acc.DeletionRequestedAt == nil {
+		return domain.ErrNotFound
+	}
+	acc.DeletionRequestedAt = nil
+	acc.Suspended = false
+	delete(f.suspendedAccountIDs, id)
+	return nil
+}
+func (f *FakeStore) ListLocalAccountsPastDeletionGrace(ctx context.Context, before time.Time, limit int) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, 0)
+	for _, acc := range f.accountsByID {
+		if acc.Domain != nil && *acc.Domain != "" {
+			continue
+		}
+		if acc.DeletionRequestedAt == nil || acc.DeletionRequestedAt.After(before) {
+			continue
+		}
+		out = append(out, acc.ID)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
 }
 func (f *FakeStore) ListLocalAccounts(ctx context.Context, limit, offset int) ([]domain.Account, error) {
 	f.mu.Lock()

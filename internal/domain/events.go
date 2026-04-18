@@ -21,6 +21,7 @@ const (
 	EventBlockCreated        = "block.created"
 	EventBlockRemoved        = "block.removed"
 	EventAccountUpdated      = "account.updated"
+	EventAccountDeleted      = "account.deleted"
 	EventStatusUpdatedRemote = "status.updated.remote"
 	EventPollUpdated         = "poll.updated"
 	EventPollExpired         = "poll.expired"
@@ -176,6 +177,15 @@ type ReblogRemovedPayload struct {
 
 // AccountUpdatedPayload carries data when a user updates their profile.
 type AccountUpdatedPayload struct {
+	Account *Account `json:"account"`
+	Local   bool     `json:"local"`
+}
+
+// AccountDeletedPayload carries data when a deletion is requested for an
+// account. The federation subscriber fans out a Delete{Actor} to followers.
+// Account is a full snapshot (including PrivateKey and APID) so signing
+// still works if the row is purged before the fanout completes.
+type AccountDeletedPayload struct {
 	Account *Account `json:"account"`
 	Local   bool     `json:"local"`
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -40,6 +41,25 @@ type AccountService interface {
 	UpdatePreferences(ctx context.Context, userID string, in UpdatePreferencesInput) (*domain.User, error)
 	ChangeEmail(ctx context.Context, userID, newEmail string) (*domain.User, error)
 	ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error
+	// RequestSelfDeletion verifies the user's current password then soft-deletes
+	// their local account. Sets deletion_requested_at, suspends the account,
+	// revokes all OAuth tokens, and emits EventAccountDeleted — all in a single
+	// transaction. The account is hard-deleted later by the purge scheduler
+	// once the grace period elapses.
+	//
+	// Returns domain.ErrForbidden if the password does not match or the
+	// account is remote; domain.ErrDeletionAlreadyRequested if a deletion is
+	// already pending.
+	RequestSelfDeletion(ctx context.Context, userID, currentPassword string) error
+	// RequestAccountDeletion is the admin/moderation entry point. It performs
+	// the same soft-delete flow as RequestSelfDeletion without a password
+	// check. Used by ModerationService.DeleteAccount.
+	RequestAccountDeletion(ctx context.Context, accountID string) error
+	// PurgeAccount permanently removes a soft-deleted local account and all
+	// its cascading rows. No-op if the account does not have a pending
+	// deletion. Called by the scheduler after the grace period or by the
+	// admin force-delete path.
+	PurgeAccount(ctx context.Context, accountID string) error
 }
 
 // UpdatePreferencesInput is the input for updating a user's post preferences.
@@ -55,12 +75,36 @@ type accountService struct {
 	store store.Store
 	// instanceBaseURL is the scheme + host for the instance (e.g. "https://example.com").
 	instanceBaseURL string
+	// tokenCacheInvalidator is an optional hook called after bulk token
+	// revocation (during account deletion) so cached OAuth claims are evicted.
+	// Nil means skip cache invalidation (safe: the Suspended check downstream
+	// is the authoritative gate). Wire via WithTokenCacheInvalidator at startup.
+	tokenCacheInvalidator TokenCacheInvalidator
+}
+
+// TokenCacheInvalidator evicts cached OAuth token claims for an account. Matches
+// oauth.Server.InvalidateAccountTokensCache so the OAuth server can be wired in
+// without the service package importing the oauth package.
+type TokenCacheInvalidator func(ctx context.Context, accountID string) error
+
+// AccountServiceOption is a functional option for NewAccountService.
+type AccountServiceOption func(*accountService)
+
+// WithTokenCacheInvalidator wires an OAuth token cache invalidator so
+// account deletion evicts cached token claims. Pass
+// oauth.Server.InvalidateAccountTokensCache or a compatible function.
+func WithTokenCacheInvalidator(fn TokenCacheInvalidator) AccountServiceOption {
+	return func(svc *accountService) { svc.tokenCacheInvalidator = fn }
 }
 
 // NewAccountService returns an AccountService that uses the given store and instance base URL.
-func NewAccountService(s store.Store, instanceBaseURL string) AccountService {
+func NewAccountService(s store.Store, instanceBaseURL string, opts ...AccountServiceOption) AccountService {
 	base := strings.TrimSuffix(instanceBaseURL, "/")
-	return &accountService{store: s, instanceBaseURL: base}
+	svc := &accountService{store: s, instanceBaseURL: base}
+	for _, o := range opts {
+		o(svc)
+	}
+	return svc
 }
 
 // CreateAccountInput is the input for creating a local account (no user record).
@@ -673,6 +717,125 @@ func (svc *accountService) ChangePassword(ctx context.Context, userID, currentPa
 	}
 	if err := svc.store.UpdateUserPassword(ctx, userID, string(hash)); err != nil {
 		return fmt.Errorf("ChangePassword: %w", err)
+	}
+	return nil
+}
+
+// RequestSelfDeletion — see interface doc comment.
+func (svc *accountService) RequestSelfDeletion(ctx context.Context, userID, currentPassword string) error {
+	u, err := svc.store.GetUserByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("RequestSelfDeletion GetUserByID(%s): %w", userID, err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(currentPassword)); err != nil {
+		return fmt.Errorf("RequestSelfDeletion: %w", domain.ErrForbidden)
+	}
+	if err := requestAccountDeletion(ctx, svc.store, u.AccountID, nil); err != nil {
+		return fmt.Errorf("RequestSelfDeletion: %w", err)
+	}
+	svc.invalidateTokenCache(ctx, u.AccountID)
+	return nil
+}
+
+// RequestAccountDeletion — see interface doc comment.
+func (svc *accountService) RequestAccountDeletion(ctx context.Context, accountID string) error {
+	if err := requestAccountDeletion(ctx, svc.store, accountID, nil); err != nil {
+		return fmt.Errorf("RequestAccountDeletion(%s): %w", accountID, err)
+	}
+	svc.invalidateTokenCache(ctx, accountID)
+	return nil
+}
+
+// invalidateTokenCache is a best-effort call to the OAuth cache invalidator
+// (if wired). Failures are logged but non-fatal: the soft-delete has already
+// committed, and RequireAuth's Suspended check catches any stale cache hit.
+func (svc *accountService) invalidateTokenCache(ctx context.Context, accountID string) {
+	if svc.tokenCacheInvalidator == nil {
+		return
+	}
+	if err := svc.tokenCacheInvalidator(ctx, accountID); err != nil {
+		slog.WarnContext(ctx, "account deletion: token cache invalidation failed",
+			slog.String("account_id", accountID),
+			slog.Any("error", err),
+		)
+	}
+}
+
+// requestAccountDeletion is the package-level soft-delete flow shared by
+// AccountService.RequestSelfDeletion and ModerationService.DeleteAccount. It
+// sets deletion_requested_at + suspended, revokes every access token and
+// authorization code, emits EventAccountDeleted, and (optionally) runs a
+// caller-supplied auditFn inside the same transaction so a failed audit write
+// rolls back the soft-delete. Moderation uses auditFn to record the admin
+// action atomically; self-service passes nil.
+func requestAccountDeletion(ctx context.Context, s store.Store, accountID string, auditFn func(ctx context.Context, tx store.Store) error) error {
+	acc, err := s.GetAccountByID(ctx, accountID)
+	if err != nil {
+		return fmt.Errorf("GetAccountByID(%s): %w", accountID, err)
+	}
+	if err := requireLocal(acc.IsLocal(), "requestAccountDeletion"); err != nil {
+		return err
+	}
+	return s.WithTx(ctx, func(tx store.Store) error {
+		if err := tx.RequestAccountDeletion(ctx, accountID); err != nil {
+			if errors.Is(err, domain.ErrConflict) {
+				return domain.ErrDeletionAlreadyRequested
+			}
+			return fmt.Errorf("RequestAccountDeletion: %w", err)
+		}
+		if err := tx.RevokeAllAccessTokensForAccount(ctx, accountID); err != nil {
+			return fmt.Errorf("RevokeAllAccessTokensForAccount: %w", err)
+		}
+		if err := tx.DeleteAuthorizationCodesForAccount(ctx, accountID); err != nil {
+			return fmt.Errorf("DeleteAuthorizationCodesForAccount: %w", err)
+		}
+		snapshot, err := tx.GetAccountByID(ctx, accountID)
+		if err != nil {
+			return fmt.Errorf("GetAccountByID(snapshot): %w", err)
+		}
+		if err := events.EmitEvent(ctx, tx, domain.EventAccountDeleted, "account", accountID, domain.AccountDeletedPayload{
+			Account: snapshot,
+			Local:   true,
+		}); err != nil {
+			return err
+		}
+		if auditFn != nil {
+			if err := auditFn(ctx, tx); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// purgeAccount is the package-level implementation shared between
+// AccountService.PurgeAccount and any moderation force-delete path.
+//
+// Hard-deletes via DeleteAccountIfDeletionPending, which is conditional on
+// deletion_requested_at IS NOT NULL. A cancel-deletion arriving after the
+// purge scheduler listed this ID but before the delete is applied will clear
+// the flag and make the purge a no-op.
+func purgeAccount(ctx context.Context, s store.Store, accountID string) error {
+	acc, err := s.GetAccountByID(ctx, accountID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil
+		}
+		return fmt.Errorf("GetAccountByID(%s): %w", accountID, err)
+	}
+	if err := requireLocal(acc.IsLocal(), "purgeAccount"); err != nil {
+		return err
+	}
+	if _, err := s.DeleteAccountIfDeletionPending(ctx, accountID); err != nil {
+		return fmt.Errorf("DeleteAccountIfDeletionPending(%s): %w", accountID, err)
+	}
+	return nil
+}
+
+// PurgeAccount — see interface doc comment.
+func (svc *accountService) PurgeAccount(ctx context.Context, accountID string) error {
+	if err := purgeAccount(ctx, svc.store, accountID); err != nil {
+		return fmt.Errorf("PurgeAccount(%s): %w", accountID, err)
 	}
 	return nil
 }

@@ -146,6 +146,15 @@ func (q *Queries) DeleteAuthorizationCode(ctx context.Context, code string) erro
 	return err
 }
 
+const deleteAuthorizationCodesForAccount = `-- name: DeleteAuthorizationCodesForAccount :exec
+DELETE FROM oauth_authorization_codes WHERE account_id = $1
+`
+
+func (q *Queries) DeleteAuthorizationCodesForAccount(ctx context.Context, accountID string) error {
+	_, err := q.db.Exec(ctx, deleteAuthorizationCodesForAccount, accountID)
+	return err
+}
+
 const getAccessToken = `-- name: GetAccessToken :one
 SELECT id, application_id, account_id, token, scopes, expires_at, revoked_at, created_at FROM oauth_access_tokens
 WHERE token = $1 AND revoked_at IS NULL
@@ -208,6 +217,33 @@ func (q *Queries) GetAuthorizationCode(ctx context.Context, code string) (OauthA
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const listAccessTokenStringsForAccount = `-- name: ListAccessTokenStringsForAccount :many
+SELECT token FROM oauth_access_tokens WHERE account_id = $1
+`
+
+// Lists every access-token string ever issued to an account (including
+// already-revoked ones). Used by the OAuth cache invalidator after bulk
+// revocation so cached entries can be deleted by hash.
+func (q *Queries) ListAccessTokenStringsForAccount(ctx context.Context, accountID *string) ([]string, error) {
+	rows, err := q.db.Query(ctx, listAccessTokenStringsForAccount, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var token string
+		if err := rows.Scan(&token); err != nil {
+			return nil, err
+		}
+		items = append(items, token)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const revokeAccessToken = `-- name: RevokeAccessToken :exec

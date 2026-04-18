@@ -87,3 +87,15 @@ func (b *PatchPasswordRequest) Validate() error {
 	}
 	return nil
 }
+
+// DeleteAccountRequest is the body for self-service account deletion.
+type DeleteAccountRequest struct {
+	CurrentPassword string `json:"current_password"`
+}
+
+func (b *DeleteAccountRequest) Validate() error {
+	if err := api.ValidateRequiredField(b.CurrentPassword, "current_password"); err != nil {
+		return fmt.Errorf("current_password: %w", err)
+	}
+	return nil
+}

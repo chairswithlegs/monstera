@@ -58,6 +58,23 @@ type AccountStore interface {
 	SilenceAccount(ctx context.Context, id string) error
 	UnsilenceAccount(ctx context.Context, id string) error
 	DeleteAccount(ctx context.Context, id string) error
+	// DeleteAccountIfDeletionPending hard-deletes an account only if it still
+	// has deletion_requested_at set. Race-safe variant used by the purge
+	// scheduler: a concurrent cancel-deletion clears the flag and the purge
+	// becomes a no-op instead of clobbering the cancel.
+	DeleteAccountIfDeletionPending(ctx context.Context, id string) (bool, error)
+	// RequestAccountDeletion flags an account as pending deletion: sets
+	// deletion_requested_at = NOW() and suspended = TRUE. Returns
+	// domain.ErrConflict if a deletion is already pending, or
+	// domain.ErrNotFound if the account does not exist.
+	RequestAccountDeletion(ctx context.Context, id string) error
+	// CancelAccountDeletion clears a pending deletion and unsuspends the
+	// account. Returns domain.ErrNotFound if no deletion was pending.
+	CancelAccountDeletion(ctx context.Context, id string) error
+	// ListLocalAccountsPastDeletionGrace returns IDs of local accounts whose
+	// deletion_requested_at is at or before `before`. The purge scheduler uses
+	// this to find accounts ready for hard-delete.
+	ListLocalAccountsPastDeletionGrace(ctx context.Context, before time.Time, limit int) ([]string, error)
 	ListLocalAccounts(ctx context.Context, limit, offset int) ([]domain.Account, error)
 	ListDirectoryAccounts(ctx context.Context, order string, localOnly bool, offset, limit int) ([]domain.Account, error)
 	UpdateAccountLastStatusAt(ctx context.Context, accountID string) error
@@ -268,6 +285,20 @@ type OAuthStore interface {
 	CreateAccessToken(ctx context.Context, in CreateAccessTokenInput) (*domain.OAuthAccessToken, error)
 	GetAccessToken(ctx context.Context, token string) (*domain.OAuthAccessToken, error)
 	RevokeAccessToken(ctx context.Context, token string) error
+	// RevokeAllAccessTokensForAccount revokes every access token issued to an
+	// account. Used at deletion-request time to log the user out of every
+	// connected client atomically.
+	RevokeAllAccessTokensForAccount(ctx context.Context, accountID string) error
+	// DeleteAuthorizationCodesForAccount removes any unexchanged OAuth
+	// authorization codes owned by the account. Called in the same transaction
+	// as RevokeAllAccessTokensForAccount at deletion-request time so a
+	// captured code can't be exchanged for a fresh token during the grace
+	// period.
+	DeleteAuthorizationCodesForAccount(ctx context.Context, accountID string) error
+	// ListAccessTokenStringsForAccount returns every access-token string ever
+	// issued to an account (including already-revoked ones). Used by the OAuth
+	// server's cache invalidator to delete cached claims after bulk revocation.
+	ListAccessTokenStringsForAccount(ctx context.Context, accountID string) ([]string, error)
 }
 
 // MediaStore handles media attachment persistence.

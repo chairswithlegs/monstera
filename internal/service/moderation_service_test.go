@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
@@ -263,8 +264,10 @@ func TestModerationService_CreateReport(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.NotNil(t, report)
-		assert.Equal(t, reporter.ID, report.AccountID)
-		assert.Equal(t, target.ID, report.TargetID)
+		require.NotNil(t, report.AccountID)
+		require.NotNil(t, report.TargetID)
+		assert.Equal(t, reporter.ID, *report.AccountID)
+		assert.Equal(t, target.ID, *report.TargetID)
 		assert.Equal(t, domain.ReportCategorySpam, report.Category)
 	})
 }
@@ -412,14 +415,11 @@ func TestModerationService_DeleteDomainBlock_RefreshesBlocklist(t *testing.T) {
 func TestModerationService_DeleteAccount(t *testing.T) {
 	t.Parallel()
 
-	t.Run("success", func(t *testing.T) {
-		t.Parallel()
+	seed := func(t *testing.T, fake *testutil.FakeStore) (mod, target *domain.Account) {
+		t.Helper()
 		ctx := context.Background()
-		fake := testutil.NewFakeStore()
-		svc := NewModerationService(fake, noopBlocklistRefresher{})
-
-		mod := seedLocalAccount(t, fake, "mod-1", "moderator")
-		target := seedLocalAccount(t, fake, "target-1", "target")
+		mod = seedLocalAccount(t, fake, "mod-1", "moderator")
+		target = seedLocalAccount(t, fake, "target-1", "target")
 		_, err := fake.CreateUser(ctx, store.CreateUserInput{
 			ID:           "user-target",
 			AccountID:    target.ID,
@@ -428,16 +428,91 @@ func TestModerationService_DeleteAccount(t *testing.T) {
 			Role:         domain.RoleUser,
 		})
 		require.NoError(t, err)
+		return mod, target
+	}
 
-		err = svc.DeleteAccount(ctx, mod.ID, target.ID)
+	t.Run("soft_delete", func(t *testing.T) {
+		t.Parallel()
+		ctx := context.Background()
+		fake := testutil.NewFakeStore()
+		svc := NewModerationService(fake, noopBlocklistRefresher{})
+		mod, target := seed(t, fake)
+
+		err := svc.DeleteAccount(ctx, mod.ID, target.ID, false)
+		require.NoError(t, err)
+
+		// Account row survives until the grace period elapses.
+		acc, err := fake.GetAccountByID(ctx, target.ID)
+		require.NoError(t, err)
+		assert.True(t, acc.Suspended)
+		assert.NotNil(t, acc.DeletionRequestedAt)
+
+		// Federation event published so followers tombstone immediately.
+		assertOutboxContainsEvent(t, fake, domain.EventAccountDeleted, target.ID)
+
+		// Audit row is written in the same transaction as the soft-delete.
+		assertAdminActionRecorded(t, fake, AdminActionDeleteAccount, target.ID, "soft")
+	})
+
+	t.Run("force_delete", func(t *testing.T) {
+		t.Parallel()
+		ctx := context.Background()
+		fake := testutil.NewFakeStore()
+		svc := NewModerationService(fake, noopBlocklistRefresher{})
+		mod, target := seed(t, fake)
+
+		err := svc.DeleteAccount(ctx, mod.ID, target.ID, true)
 		require.NoError(t, err)
 
 		_, err = fake.GetAccountByID(ctx, target.ID)
-		require.Error(t, err)
 		require.ErrorIs(t, err, domain.ErrNotFound)
-
 		_, err = fake.GetUserByAccountID(ctx, target.ID)
-		require.Error(t, err)
 		require.ErrorIs(t, err, domain.ErrNotFound)
+		assertAdminActionRecorded(t, fake, AdminActionDeleteAccount, target.ID, "force")
 	})
+
+	t.Run("remote_refused", func(t *testing.T) {
+		t.Parallel()
+		ctx := context.Background()
+		fake := testutil.NewFakeStore()
+		svc := NewModerationService(fake, noopBlocklistRefresher{})
+		mod := seedLocalAccount(t, fake, "mod-1", "moderator")
+		remote := seedRemoteAccount(t, fake, "remote-1", "remote", "other.example")
+
+		err := svc.DeleteAccount(ctx, mod.ID, remote.ID, false)
+		assert.ErrorIs(t, err, domain.ErrForbidden)
+	})
+}
+
+func assertOutboxContainsEvent(t *testing.T, fake *testutil.FakeStore, eventType, aggregateID string) {
+	t.Helper()
+	for _, ev := range fake.OutboxEvents {
+		if ev.EventType == eventType && ev.AggregateID == aggregateID {
+			return
+		}
+	}
+	t.Fatalf("expected outbox event %q for %q, found %d events", eventType, aggregateID, len(fake.OutboxEvents))
+}
+
+func assertAdminActionRecorded(t *testing.T, fake *testutil.FakeStore, action, targetAccountID, wantMode string) {
+	t.Helper()
+	for _, a := range fake.AdminActions {
+		if a.Action != action {
+			continue
+		}
+		if a.TargetAccountID == nil || *a.TargetAccountID != targetAccountID {
+			continue
+		}
+		if wantMode != "" {
+			var meta struct {
+				Mode string `json:"mode"`
+			}
+			_ = json.Unmarshal(a.Metadata, &meta)
+			if meta.Mode != wantMode {
+				continue
+			}
+		}
+		return
+	}
+	t.Fatalf("expected admin action %q for target %q mode=%q, found %d actions", action, targetAccountID, wantMode, len(fake.AdminActions))
 }

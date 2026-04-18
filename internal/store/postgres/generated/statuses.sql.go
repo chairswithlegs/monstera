@@ -569,7 +569,7 @@ func (q *Queries) GetReblogByAccountAndTarget(ctx context.Context, arg GetReblog
 }
 
 const getRebloggedBy = `-- name: GetRebloggedBy :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at, a.featured_url
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at, a.featured_url, a.deletion_requested_at
 FROM accounts a
 INNER JOIN statuses s ON s.account_id = a.id
 WHERE s.reblog_of_id = $1 AND s.deleted_at IS NULL
@@ -628,6 +628,7 @@ func (q *Queries) GetRebloggedBy(ctx context.Context, arg GetRebloggedByParams) 
 			&i.Account.HeaderUrl,
 			&i.Account.LastBackfilledAt,
 			&i.Account.FeaturedUrl,
+			&i.Account.DeletionRequestedAt,
 		); err != nil {
 			return nil, err
 		}
