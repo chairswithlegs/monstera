@@ -110,3 +110,18 @@ export async function patchPassword(data: {
     await throwApiError(response);
   }
 }
+
+// deleteAccount soft-deletes the authenticated user's own account. Requires
+// password confirmation; the backend revokes every OAuth token owned by the
+// account in the same transaction, so any subsequent authFetch will 401.
+export async function deleteAccount(data: { current_password: string }): Promise<void> {
+  const config = await getConfig();
+  const response = await authFetch(`${config.server_url}/monstera/api/v1/user`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    await throwApiError(response);
+  }
+}

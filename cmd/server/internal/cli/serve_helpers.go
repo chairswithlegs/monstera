@@ -53,6 +53,7 @@ type infra struct {
 	eventPoller     *events.Poller
 	emailSender     email.Sender
 	emailTemplates  *email.Templates
+	oauthServer     *oauth.Server
 }
 
 // svcs bundles all domain and subsystem services.
@@ -87,7 +88,6 @@ type svcs struct {
 	pushSubscription   service.PushSubscriptionService
 	backfill           service.BackfillService
 	adminMetrics       service.AdminMetricsService
-	oauthServer        *oauth.Server
 	remoteResolver     *ap.RemoteAccountResolver
 	signatureService   ap.HTTPSignatureService
 	inboxProcessor     ap.Inbox
@@ -191,6 +191,8 @@ func setupInfra(ctx context.Context, cfg *config.Config) (*infra, func(), error)
 		return nil, nil, fmt.Errorf("email templates: %w", err)
 	}
 
+	oauthServer := oauth.NewServer(s, sharedCache, cfg.VAPIDPublicKey)
+
 	i := &infra{
 		pool:            pool,
 		store:           s,
@@ -203,6 +205,7 @@ func setupInfra(ctx context.Context, cfg *config.Config) (*infra, func(), error)
 		eventPoller:     poller,
 		emailSender:     emailSender,
 		emailTemplates:  emailTemplates,
+		oauthServer:     oauthServer,
 	}
 
 	cleanup := func() {
@@ -222,12 +225,8 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 		monsteraUIHost = cfg.MonsteraUIURL.Host
 	}
 
-	// OAuth server is built before account service so the account service can
-	// call its InvalidateAccountTokensCache hook on deletion — clears cached
-	// token claims after bulk revocation.
-	oauthServer := oauth.NewServer(i.store, i.sharedCache, cfg.VAPIDPublicKey)
 	accountSvc := service.NewAccountService(i.store, instanceBaseURL,
-		service.WithTokenCacheInvalidator(oauthServer.InvalidateAccountTokensCache),
+		service.WithTokenCacheInvalidator(i.oauthServer.InvalidateAccountTokensCache),
 	)
 	statusSvc := service.NewStatusService(i.store, instanceBaseURL, cfg.MonsteraInstanceDomain, cfg.MaxStatusChars)
 	conversationSvc := service.NewConversationService(i.store, statusSvc)
@@ -279,7 +278,6 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 		announcement:       service.NewAnnouncementService(i.store),
 		pushSubscription:   service.NewPushSubscriptionService(i.store),
 
-		oauthServer:      oauthServer,
 		remoteResolver:   remoteResolver,
 		signatureService: signatureService,
 		inboxProcessor:   ap.NewInbox(accountSvc, followSvc, remoteFollowSvc, statusSvc, remoteStatusWriteSvc, mediaSvc, remoteResolver, i.blocklist, cfg.MonsteraInstanceDomain),
@@ -411,8 +409,8 @@ func createRouter(cfg *config.Config, s *svcs, i *infra, sseHub *sse.Hub) http.H
 		AccountsService:        s.account,
 		Health:                 api.NewHealthChecker(i.pool, i.nats.Conn),
 		MediaFileServer:        i.mediaFileServer,
-		OAuthHandler:           oauthhandlers.NewHandler(s.oauthServer, s.auth, cfg.MonsteraUIURL),
-		OAuthServer:            s.oauthServer,
+		OAuthHandler:           oauthhandlers.NewHandler(i.oauthServer, s.auth, cfg.MonsteraUIURL),
+		OAuthServer:            i.oauthServer,
 		Accounts:               mastodon.NewAccountsHandler(s.account, s.follow, s.tagFollow, s.timeline, s.statusRead, s.monsteraSettings, s.media, s.backfill, s.featuredTag, cfg.MediaMaxBytes, cfg.MonsteraInstanceDomain),
 		Statuses:               mastodon.NewStatusesHandler(s.account, s.statusRead, s.statusWrite, s.statusInteraction, s.scheduled, s.conversation, cfg.MonsteraInstanceDomain, i.sharedCache, nil),
 		ScheduledStatuses:      mastodon.NewScheduledStatusesHandler(s.statusRead, s.scheduled, cfg.MonsteraInstanceDomain),

@@ -282,6 +282,11 @@ func (s *Server) RevokeToken(ctx context.Context, token string) error {
 // — the store call marks tokens revoked in the DB, this call clears the cache
 // so a stale entry can't authenticate a just-revoked token for up to 24h.
 //
+// Multi-pod: s.cache is the shared cache, meaning deletes replicate to
+// every pod, so invalidation on one pod clears the cache everywhere. The
+// SharedStore vs local Store split is enforced at the type level to prevent
+// this path from being accidentally wired with a per-pod memory cache.
+//
 // Best-effort: cache deletion failures are logged and swallowed. The downstream
 // Suspended check in RequireAuth is the authoritative gate; this function is
 // defense-in-depth against any future code path that skips that check.

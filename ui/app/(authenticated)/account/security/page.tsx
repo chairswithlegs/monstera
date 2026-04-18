@@ -1,13 +1,23 @@
 'use client';
 
-import { getUser, patchEmail, patchPassword } from '@/lib/api/user';
+import { deleteAccount, getUser, patchEmail, patchPassword } from '@/lib/api/user';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { translateApiError } from '@/lib/i18n/errors';
+import { logout } from '@/lib/auth/logout';
 
 export default function SecurityPage() {
   const t = useTranslations('account');
@@ -34,6 +44,11 @@ export default function SecurityPage() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const saveEmail = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,6 +81,30 @@ export default function SecurityPage() {
       setPasswordError(translateApiError(tErr, e));
     } finally {
       setSavingPassword(false);
+    }
+  };
+
+  const submitDelete = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteAccount({ current_password: deletePassword });
+      // Backend revoked every token for this account; clear local session and
+      // hard-redirect to /login so a stale token never hits a protected route.
+      logout();
+    } catch (err) {
+      setDeleteError(translateApiError(tErr, err));
+      setDeleting(false);
+    }
+  };
+
+  const openDelete = (open: boolean) => {
+    setDeleteOpen(open);
+    if (!open) {
+      setDeletePassword('');
+      setDeleteError(null);
+      setDeleting(false);
     }
   };
 
@@ -146,6 +185,56 @@ export default function SecurityPage() {
             {savingPassword ? tCommon('saving') : t('changePassword')}
           </Button>
         </form>
+      </section>
+
+      <section className="space-y-4 border-t pt-10">
+        <h2 className="text-lg font-medium text-red-700">{t('dangerZoneTitle')}</h2>
+        <div className="max-w-2xl space-y-3 rounded-lg border border-red-200 bg-red-50 p-4">
+          <h3 className="font-medium text-gray-900">{t('deleteAccountHeading')}</h3>
+          <p className="text-sm text-gray-700">{t('deleteAccountBlurb')}</p>
+          <Dialog open={deleteOpen} onOpenChange={openDelete}>
+            <DialogTrigger asChild>
+              <Button variant="destructive">{t('deleteAccountButton')}</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <form onSubmit={submitDelete} className="space-y-4">
+                <DialogHeader>
+                  <DialogTitle>{t('deleteAccountDialogTitle')}</DialogTitle>
+                  <DialogDescription>{t('deleteAccountDialogBody')}</DialogDescription>
+                </DialogHeader>
+                {deleteError && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{deleteError}</AlertDescription>
+                  </Alert>
+                )}
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="delete-password">{t('currentPassword')}</Label>
+                  <Input
+                    id="delete-password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    required
+                  />
+                </div>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => openDelete(false)}
+                    disabled={deleting}
+                  >
+                    {tCommon('cancel')}
+                  </Button>
+                  <Button type="submit" variant="destructive" disabled={deleting || !deletePassword}>
+                    {deleting ? tCommon('saving') : t('deleteAccountConfirmButton')}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </section>
     </div>
   );

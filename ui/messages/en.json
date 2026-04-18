@@ -105,7 +105,14 @@
     "emailUpdated": "Email updated.",
     "passwordChanged": "Password changed.",
     "language": "Language",
-    "languageHint": "Choose the language for this interface. The page will reload when you select a new language."
+    "languageHint": "Choose the language for this interface. The page will reload when you select a new language.",
+    "dangerZoneTitle": "Danger zone",
+    "deleteAccountHeading": "Delete your account",
+    "deleteAccountBlurb": "Your account will be scheduled for deletion. After 30 days it will be permanently removed along with your statuses, follows, and media. Remote followers will be notified. This cannot be undone.",
+    "deleteAccountButton": "Delete account",
+    "deleteAccountDialogTitle": "Delete your account?",
+    "deleteAccountDialogBody": "Enter your password to confirm. Your account will be scheduled for deletion and permanently removed after 30 days.",
+    "deleteAccountConfirmButton": "Delete my account"
   },
   "home": {
     "welcome": "Welcome, @{username}",
@@ -152,7 +159,7 @@
     "newRole": "New role",
     "deleteAccount": "Delete account",
     "deleteAccountTitle": "Delete account?",
-    "deleteAccountDescription": "This action cannot be undone. This will permanently delete the account and all associated data.",
+    "deleteAccountDescription": "The account will be scheduled for deletion — suspended immediately and federated peers notified. After a 30-day grace period the account and all associated data are permanently removed.",
     "selfActionDisabled": "Role and delete actions are disabled for your own account.",
     "accountId": "Account ID: {id}",
     "role": "Role: {role}",
@@ -290,6 +297,7 @@
     "payload_too_large": "The uploaded file is too large.",
     "gone": "This resource is no longer available.",
     "account_suspended": "This account has been suspended.",
+    "deletion_already_requested": "An account deletion is already pending for this account.",
     "internal_error": "An internal server error occurred.",
     "session_expired": "Your session has expired. Please sign in again.",
     "invalid_credentials": "Invalid credentials.",
