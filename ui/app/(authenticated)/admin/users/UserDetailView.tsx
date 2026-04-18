@@ -34,6 +34,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { translateApiError } from '@/lib/i18n/errors';
 
@@ -53,7 +54,7 @@ export default function AdminUserDetailView({ id }: Props) {
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [newRole, setNewRole] = useState('user');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [forceDelete, setForceDelete] = useState(false);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
 
   const load = useCallback(() => {
     if (!id) return;
@@ -91,7 +92,7 @@ export default function AdminUserDetailView({ id }: Props) {
     if (!user) return;
     setActing(true);
     try {
-      await deleteUser(user.account_id, { force: forceDelete });
+      await deleteUser(user.account_id);
       router.push('/admin/users');
     } catch (e) {
       setError(translateApiError(tErr, e));
@@ -177,7 +178,7 @@ export default function AdminUserDetailView({ id }: Props) {
           open={deleteDialogOpen}
           onOpenChange={(open) => {
             setDeleteDialogOpen(open);
-            if (!open) setForceDelete(false);
+            if (!open) setDeleteConfirmInput('');
           }}
         >
           <AlertDialogTrigger asChild>
@@ -192,26 +193,30 @@ export default function AdminUserDetailView({ id }: Props) {
                 {t('deleteAccountDescription')}
               </AlertDialogDescription>
             </AlertDialogHeader>
-            <label
-              htmlFor="admin-force-delete"
-              className="flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm"
-            >
-              <input
-                id="admin-force-delete"
-                type="checkbox"
-                checked={forceDelete}
-                onChange={(e) => setForceDelete(e.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 accent-destructive"
+            <div className="space-y-2">
+              <Label htmlFor="admin-delete-confirm" className="text-sm">
+                {t('deleteAccountConfirmPrompt', { username: user.username })}
+              </Label>
+              <Input
+                id="admin-delete-confirm"
+                type="text"
+                value={deleteConfirmInput}
+                onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                placeholder={t('deleteAccountConfirmPlaceholder')}
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
               />
-              <div className="space-y-1">
-                <span className="font-medium text-foreground">{t('deleteAccountForceLabel')}</span>
-                <span className="block text-muted-foreground">{t('deleteAccountForceHint')}</span>
-              </div>
-            </label>
+            </div>
             <AlertDialogFooter>
               <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                {forceDelete ? t('deleteAccountForceConfirm') : tCommon('delete')}
+              <AlertDialogAction
+                onClick={handleDelete}
+                disabled={deleteConfirmInput !== user.username || acting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {tCommon('delete')}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

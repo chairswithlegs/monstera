@@ -21,7 +21,6 @@ type Querier interface {
 	AttachMediaToStatus(ctx context.Context, arg AttachMediaToStatusParams) error
 	BulkInsertTrendingLinks(ctx context.Context, arg BulkInsertTrendingLinksParams) error
 	BulkUpsertTrendingStatuses(ctx context.Context, arg BulkUpsertTrendingStatusesParams) error
-	CancelAccountDeletion(ctx context.Context, id string) (int64, error)
 	ClearNotifications(ctx context.Context, accountID string) error
 	ClosePoll(ctx context.Context, id string) error
 	ConfirmUser(ctx context.Context, id string) error
@@ -88,13 +87,9 @@ type Querier interface {
 	DecrementStatusesCount(ctx context.Context, id string) error
 	DeleteAccount(ctx context.Context, id string) error
 	DeleteAccountConversation(ctx context.Context, arg DeleteAccountConversationParams) error
-	// Race-safe purge: only hard-delete if the soft-delete flag is still set, so
-	// a cancel-deletion arriving between list-and-purge can't be clobbered.
-	DeleteAccountIfDeletionPending(ctx context.Context, id string) (int64, error)
 	DeleteAccountPin(ctx context.Context, arg DeleteAccountPinParams) error
 	DeleteAccountPinsByAccountID(ctx context.Context, accountID string) error
 	DeleteAuthorizationCode(ctx context.Context, code string) error
-	DeleteAuthorizationCodesForAccount(ctx context.Context, accountID string) error
 	DeleteBlock(ctx context.Context, arg DeleteBlockParams) error
 	DeleteBookmark(ctx context.Context, arg DeleteBookmarkParams) error
 	DeleteConversationMute(ctx context.Context, arg DeleteConversationMuteParams) error
@@ -233,10 +228,6 @@ type Querier interface {
 	IsMuted(ctx context.Context, arg IsMutedParams) (bool, error)
 	IsTrendingLinkFiltered(ctx context.Context, url string) (bool, error)
 	IsUserDomainBlocked(ctx context.Context, arg IsUserDomainBlockedParams) (bool, error)
-	// Lists every access-token string ever issued to an account (including
-	// already-revoked ones). Used by the OAuth cache invalidator after bulk
-	// revocation so cached entries can be deleted by hash.
-	ListAccessTokenStringsForAccount(ctx context.Context, accountID *string) ([]string, error)
 	ListAccountAnnouncementReactionNames(ctx context.Context, arg ListAccountAnnouncementReactionNamesParams) ([]string, error)
 	ListAccountConversationsPaginated(ctx context.Context, arg ListAccountConversationsPaginatedParams) ([]AccountConversation, error)
 	ListAccountTagSuggestions(ctx context.Context, arg ListAccountTagSuggestionsParams) ([]ListAccountTagSuggestionsRow, error)
@@ -261,7 +252,6 @@ type Querier interface {
 	ListListAccountIDs(ctx context.Context, listID string) ([]string, error)
 	ListListsByAccount(ctx context.Context, accountID string) ([]List, error)
 	ListLocalAccounts(ctx context.Context, arg ListLocalAccountsParams) ([]Account, error)
-	ListLocalAccountsPastDeletionGrace(ctx context.Context, arg ListLocalAccountsPastDeletionGraceParams) ([]string, error)
 	ListLocalUsers(ctx context.Context, arg ListLocalUsersParams) ([]User, error)
 	ListMutedAccountsPaginated(ctx context.Context, arg ListMutedAccountsPaginatedParams) ([]ListMutedAccountsPaginatedRow, error)
 	ListMutedConversationIDs(ctx context.Context, accountID string) ([]string, error)
@@ -289,10 +279,8 @@ type Querier interface {
 	RemoveAnnouncementReaction(ctx context.Context, arg RemoveAnnouncementReactionParams) error
 	RemoveTrendingLinkFilter(ctx context.Context, url string) error
 	ReplaceTrendingLinks(ctx context.Context) error
-	RequestAccountDeletion(ctx context.Context, id string) (int64, error)
 	ResolveReport(ctx context.Context, arg ResolveReportParams) error
 	RevokeAccessToken(ctx context.Context, token string) error
-	RevokeAllAccessTokensForAccount(ctx context.Context, accountID *string) error
 	RevokeQuote(ctx context.Context, arg RevokeQuoteParams) (string, error)
 	SearchAccounts(ctx context.Context, arg SearchAccountsParams) ([]Account, error)
 	SearchAccountsFollowing(ctx context.Context, arg SearchAccountsFollowingParams) ([]Account, error)

@@ -80,12 +80,6 @@ All configuration is via environment variables (12-factor). See `internal/config
 | `BACKFILL_MAX_PAGES` | Max outbox pages to fetch per remote account backfill | `2` |
 | `BACKFILL_COOLDOWN_HOURS` | Minimum hours between backfills for the same account | `24` |
 
-## Account deletion
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `ACCOUNT_DELETION_GRACE_PERIOD_HOURS` | Hours a soft-deleted local account stays recoverable before the purge scheduler hard-deletes it | `720` (30 days) |
-
 ## Push notifications
 
 | Variable | Description | Default |

@@ -126,10 +126,10 @@ func (h *UserHandler) PATCHPassword(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// DELETEUser soft-deletes the authenticated user's account after password
-// confirmation. The account enters a 30-day grace period during which the
-// scheduler purges it; OAuth tokens are revoked immediately and federation
-// followers are told to tombstone the actor.
+// DELETEUser permanently deletes the authenticated user's account after
+// password confirmation. The row is removed immediately (Postgres CASCADE
+// drops all owned rows) and a Delete{Actor} is fanned out to remote
+// followers.
 func (h *UserHandler) DELETEUser(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromContext(r.Context())
 	if user == nil {
@@ -141,7 +141,7 @@ func (h *UserHandler) DELETEUser(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	if err := h.accounts.RequestSelfDeletion(r.Context(), user.ID, body.CurrentPassword); err != nil {
+	if err := h.accounts.DeleteSelf(r.Context(), user.ID, body.CurrentPassword); err != nil {
 		api.HandleError(w, r, err)
 		return
 	}

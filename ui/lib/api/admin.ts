@@ -84,13 +84,12 @@ export async function setUserRole(id: string, role: string): Promise<void> {
   if (!res.ok) await throwApiError(res);
 }
 
-// deleteUser soft-deletes a local account (admin-only). Pass { force: true }
-// to skip the 30-day grace and hard-delete inline — intended for urgent
-// takedowns (CSAM, legal) where the data must be removed immediately.
-export async function deleteUser(id: string, opts: { force?: boolean } = {}): Promise<void> {
+// deleteUser permanently deletes a local account (admin-only). The backend
+// hard-deletes the row; Postgres CASCADE drops statuses, follows, OAuth
+// tokens, etc., and federation fans out a Delete{Actor} to remote followers.
+export async function deleteUser(id: string): Promise<void> {
   const base = await adminPrefix();
-  const qs = opts.force ? '?force=true' : '';
-  const res = await authFetch(`${base}/users/${encodeURIComponent(id)}${qs}`, { method: 'DELETE' });
+  const res = await authFetch(`${base}/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
   if (!res.ok) await throwApiError(res);
 }
 

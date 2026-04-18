@@ -16,7 +16,7 @@ describe('deleteUser', () => {
     authFetchMock.mockReset();
   });
 
-  it('sends DELETE without force by default (soft-delete)', async () => {
+  it('sends DELETE to the admin user endpoint', async () => {
     authFetchMock.mockResolvedValue({ ok: true, status: 204 });
 
     await deleteUser('01ACCOUNT');
@@ -24,15 +24,6 @@ describe('deleteUser', () => {
     const [url, init] = authFetchMock.mock.calls[0];
     expect(url).toBe('https://api.example.com/monstera/api/v1/admin/users/01ACCOUNT');
     expect(init).toMatchObject({ method: 'DELETE' });
-  });
-
-  it('appends ?force=true when force is set', async () => {
-    authFetchMock.mockResolvedValue({ ok: true, status: 204 });
-
-    await deleteUser('01ACCOUNT', { force: true });
-
-    const [url] = authFetchMock.mock.calls[0];
-    expect(url).toBe('https://api.example.com/monstera/api/v1/admin/users/01ACCOUNT?force=true');
   });
 
   it('percent-encodes ids with special characters', async () => {

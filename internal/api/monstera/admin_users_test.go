@@ -182,7 +182,7 @@ func TestAdminUsersHandler_DELETEUser(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, rec.Code)
 	})
 
-	t.Run("soft_delete returns 204 and flags account", func(t *testing.T) {
+	t.Run("returns 204 and hard-deletes account", func(t *testing.T) {
 		t.Parallel()
 		f := seed(t)
 		req := httptest.NewRequest(http.MethodDelete, "/admin/users/"+f.target.ID, nil)
@@ -192,23 +192,9 @@ func TestAdminUsersHandler_DELETEUser(t *testing.T) {
 		f.handler.DELETEUser(rec, req)
 		require.Equal(t, http.StatusNoContent, rec.Code)
 
-		acc, err := f.store.GetAccountByID(req.Context(), f.target.ID)
-		require.NoError(t, err)
-		assert.True(t, acc.Suspended)
-		assert.NotNil(t, acc.DeletionRequestedAt)
-	})
-
-	t.Run("force_delete returns 204 and hard-deletes", func(t *testing.T) {
-		t.Parallel()
-		f := seed(t)
-		req := httptest.NewRequest(http.MethodDelete, "/admin/users/"+f.target.ID+"?force=true", nil)
-		req = req.WithContext(middleware.WithUser(req.Context(), f.adminUser))
-		req = testutil.AddChiURLParam(req, "id", f.target.ID)
-		rec := httptest.NewRecorder()
-		f.handler.DELETEUser(rec, req)
-		require.Equal(t, http.StatusNoContent, rec.Code)
-
 		_, err := f.store.GetAccountByID(req.Context(), f.target.ID)
+		require.ErrorIs(t, err, domain.ErrNotFound)
+		_, err = f.store.GetUserByAccountID(req.Context(), f.target.ID)
 		require.ErrorIs(t, err, domain.ErrNotFound)
 	})
 }

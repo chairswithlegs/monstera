@@ -551,28 +551,6 @@ func (s *PostgresStore) RevokeAccessToken(ctx context.Context, token string) err
 	return mapErr(s.q.RevokeAccessToken(ctx, token))
 }
 
-func (s *PostgresStore) RevokeAllAccessTokensForAccount(ctx context.Context, accountID string) error {
-	if err := s.q.RevokeAllAccessTokensForAccount(ctx, &accountID); err != nil {
-		return fmt.Errorf("RevokeAllAccessTokensForAccount(%s): %w", accountID, err)
-	}
-	return nil
-}
-
-func (s *PostgresStore) DeleteAuthorizationCodesForAccount(ctx context.Context, accountID string) error {
-	if err := s.q.DeleteAuthorizationCodesForAccount(ctx, accountID); err != nil {
-		return fmt.Errorf("DeleteAuthorizationCodesForAccount(%s): %w", accountID, err)
-	}
-	return nil
-}
-
-func (s *PostgresStore) ListAccessTokenStringsForAccount(ctx context.Context, accountID string) ([]string, error) {
-	tokens, err := s.q.ListAccessTokenStringsForAccount(ctx, &accountID)
-	if err != nil {
-		return nil, fmt.Errorf("ListAccessTokenStringsForAccount(%s): %w", accountID, err)
-	}
-	return tokens, nil
-}
-
 func (s *PostgresStore) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
 	u, err := s.q.GetUserByEmail(ctx, email)
 	if err != nil {
@@ -2444,54 +2422,6 @@ func (s *PostgresStore) UnsilenceAccount(ctx context.Context, id string) error {
 
 func (s *PostgresStore) DeleteAccount(ctx context.Context, id string) error {
 	return mapErr(s.q.DeleteAccount(ctx, id))
-}
-
-func (s *PostgresStore) DeleteAccountIfDeletionPending(ctx context.Context, id string) (bool, error) {
-	rows, err := s.q.DeleteAccountIfDeletionPending(ctx, id)
-	if err != nil {
-		return false, fmt.Errorf("DeleteAccountIfDeletionPending(%s): %w", id, err)
-	}
-	return rows > 0, nil
-}
-
-func (s *PostgresStore) RequestAccountDeletion(ctx context.Context, id string) error {
-	rows, err := s.q.RequestAccountDeletion(ctx, id)
-	if err != nil {
-		return fmt.Errorf("RequestAccountDeletion(%s): %w", id, err)
-	}
-	if rows == 0 {
-		existing, getErr := s.q.GetAccountByID(ctx, id)
-		if getErr != nil {
-			return mapErr(getErr)
-		}
-		if existing.DeletionRequestedAt.Valid {
-			return domain.ErrConflict
-		}
-		return domain.ErrNotFound
-	}
-	return nil
-}
-
-func (s *PostgresStore) CancelAccountDeletion(ctx context.Context, id string) error {
-	rows, err := s.q.CancelAccountDeletion(ctx, id)
-	if err != nil {
-		return fmt.Errorf("CancelAccountDeletion(%s): %w", id, err)
-	}
-	if rows == 0 {
-		return domain.ErrNotFound
-	}
-	return nil
-}
-
-func (s *PostgresStore) ListLocalAccountsPastDeletionGrace(ctx context.Context, before time.Time, limit int) ([]string, error) {
-	ids, err := s.q.ListLocalAccountsPastDeletionGrace(ctx, db.ListLocalAccountsPastDeletionGraceParams{
-		DeletionRequestedAt: pgtype.Timestamptz{Time: before, Valid: true},
-		Limit:               int32(limit), //nolint:gosec // G115: caller clamps
-	})
-	if err != nil {
-		return nil, fmt.Errorf("ListLocalAccountsPastDeletionGrace: %w", err)
-	}
-	return ids, nil
 }
 
 func (s *PostgresStore) ListLocalAccounts(ctx context.Context, limit, offset int) ([]domain.Account, error) {

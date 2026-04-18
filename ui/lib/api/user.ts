@@ -111,9 +111,11 @@ export async function patchPassword(data: {
   }
 }
 
-// deleteAccount soft-deletes the authenticated user's own account. Requires
-// password confirmation; the backend revokes every OAuth token owned by the
-// account in the same transaction, so any subsequent authFetch will 401.
+// deleteAccount permanently deletes the authenticated user's own account.
+// Requires password confirmation. The backend hard-deletes the account row
+// (Postgres CASCADE removes statuses, follows, OAuth tokens, etc.) and
+// federates a Delete{Actor} so remote followers tombstone the account.
+// Subsequent authFetch calls will 401.
 export async function deleteAccount(data: { current_password: string }): Promise<void> {
   const config = await getConfig();
   const response = await authFetch(`${config.server_url}/monstera/api/v1/user`, {

@@ -45,21 +45,6 @@ describe('deleteAccount', () => {
     expect(err.code).toBe('forbidden');
   });
 
-  it('throws ApiResponseError with code deletion_already_requested on 409', async () => {
-    authFetchMock.mockResolvedValue({
-      ok: false,
-      status: 409,
-      json: () => Promise.resolve({
-        error: 'deletion already requested',
-        code: 'deletion_already_requested',
-      }),
-    });
-
-    const err = await deleteAccount({ current_password: 'hunter2' }).catch((e) => e);
-    expect(err).toBeInstanceOf(ApiResponseError);
-    expect(err.code).toBe('deletion_already_requested');
-  });
-
   it('throws ApiResponseError with validation code on 422 (empty password)', async () => {
     authFetchMock.mockResolvedValue({
       ok: false,

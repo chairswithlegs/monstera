@@ -73,10 +73,6 @@ type Config struct {
 
 	BackfillMaxPages int
 	BackfillCooldown time.Duration
-
-	// AccountDeletionGracePeriod is how long a soft-deleted local account stays
-	// recoverable before the scheduler purges it. Default 30 days.
-	AccountDeletionGracePeriod time.Duration
 }
 
 func Load() (*Config, error) {
@@ -140,8 +136,6 @@ func Load() (*Config, error) {
 
 		BackfillMaxPages: envInt("BACKFILL_MAX_PAGES", 2),
 		BackfillCooldown: time.Duration(envInt("BACKFILL_COOLDOWN_HOURS", 24)) * time.Hour,
-
-		AccountDeletionGracePeriod: time.Duration(envInt("ACCOUNT_DELETION_GRACE_PERIOD_HOURS", 24*30)) * time.Hour,
 	}
 
 	if cfg.MonsteraServerURL == nil && cfg.MonsteraInstanceDomain != "" {

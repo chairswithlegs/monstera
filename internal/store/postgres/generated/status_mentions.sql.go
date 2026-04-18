@@ -62,7 +62,7 @@ func (q *Queries) GetStatusMentionAccountIDs(ctx context.Context, statusID strin
 }
 
 const getStatusMentions = `-- name: GetStatusMentions :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at, a.featured_url, a.deletion_requested_at
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at, a.featured_url
 FROM accounts a
 INNER JOIN status_mentions sm ON sm.account_id = a.id
 WHERE sm.status_id = $1
@@ -112,7 +112,6 @@ func (q *Queries) GetStatusMentions(ctx context.Context, statusID string) ([]Get
 			&i.Account.HeaderUrl,
 			&i.Account.LastBackfilledAt,
 			&i.Account.FeaturedUrl,
-			&i.Account.DeletionRequestedAt,
 		); err != nil {
 			return nil, err
 		}

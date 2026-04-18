@@ -225,9 +225,7 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 		monsteraUIHost = cfg.MonsteraUIURL.Host
 	}
 
-	accountSvc := service.NewAccountService(i.store, instanceBaseURL,
-		service.WithTokenCacheInvalidator(i.oauthServer.InvalidateAccountTokensCache),
-	)
+	accountSvc := service.NewAccountService(i.store, instanceBaseURL)
 	statusSvc := service.NewStatusService(i.store, instanceBaseURL, cfg.MonsteraInstanceDomain, cfg.MaxStatusChars)
 	conversationSvc := service.NewConversationService(i.store, statusSvc)
 	backfillSvc := service.NewBackfillService(i.store, i.nats.JS, cfg.BackfillCooldown)
@@ -284,7 +282,7 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 	}
 }
 
-func registerSchedulerJobs(cfg *config.Config, s *svcs, i *infra) scheduler.Scheduler {
+func registerSchedulerJobs(s *svcs, i *infra) scheduler.Scheduler {
 	sched := scheduler.New(i.nats.JS)
 	sched.Register(scheduler.Job{
 		Name:     "scheduled-statuses",
@@ -305,11 +303,6 @@ func registerSchedulerJobs(cfg *config.Config, s *svcs, i *infra) scheduler.Sche
 		Name:     "close-expired-polls",
 		Interval: 5 * time.Minute,
 		Handler:  schedulerjobs.CloseExpiredPolls(i.store),
-	})
-	sched.Register(scheduler.Job{
-		Name:     "purge-deleted-accounts",
-		Interval: time.Hour,
-		Handler:  schedulerjobs.PurgeDeletedAccounts(i.store, s.account, cfg.AccountDeletionGracePeriod),
 	})
 	return sched
 }

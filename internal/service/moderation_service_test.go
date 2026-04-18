@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
@@ -431,44 +430,26 @@ func TestModerationService_DeleteAccount(t *testing.T) {
 		return mod, target
 	}
 
-	t.Run("soft_delete", func(t *testing.T) {
+	t.Run("hard_delete", func(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
 		svc := NewModerationService(fake, noopBlocklistRefresher{})
 		mod, target := seed(t, fake)
 
-		err := svc.DeleteAccount(ctx, mod.ID, target.ID, false)
-		require.NoError(t, err)
-
-		// Account row survives until the grace period elapses.
-		acc, err := fake.GetAccountByID(ctx, target.ID)
-		require.NoError(t, err)
-		assert.True(t, acc.Suspended)
-		assert.NotNil(t, acc.DeletionRequestedAt)
-
-		// Federation event published so followers tombstone immediately.
-		assertOutboxContainsEvent(t, fake, domain.EventAccountDeleted, target.ID)
-
-		// Audit row is written in the same transaction as the soft-delete.
-		assertAdminActionRecorded(t, fake, AdminActionDeleteAccount, target.ID, "soft")
-	})
-
-	t.Run("force_delete", func(t *testing.T) {
-		t.Parallel()
-		ctx := context.Background()
-		fake := testutil.NewFakeStore()
-		svc := NewModerationService(fake, noopBlocklistRefresher{})
-		mod, target := seed(t, fake)
-
-		err := svc.DeleteAccount(ctx, mod.ID, target.ID, true)
+		err := svc.DeleteAccount(ctx, mod.ID, target.ID)
 		require.NoError(t, err)
 
 		_, err = fake.GetAccountByID(ctx, target.ID)
 		require.ErrorIs(t, err, domain.ErrNotFound)
 		_, err = fake.GetUserByAccountID(ctx, target.ID)
 		require.ErrorIs(t, err, domain.ErrNotFound)
-		assertAdminActionRecorded(t, fake, AdminActionDeleteAccount, target.ID, "force")
+
+		// Federation event published so followers tombstone the actor.
+		assertOutboxContainsEvent(t, fake, domain.EventAccountDeleted, target.ID)
+
+		// Audit row is written in the same transaction as the delete.
+		assertAdminActionRecorded(t, fake, AdminActionDeleteAccount, target.ID)
 	})
 
 	t.Run("remote_refused", func(t *testing.T) {
@@ -479,7 +460,7 @@ func TestModerationService_DeleteAccount(t *testing.T) {
 		mod := seedLocalAccount(t, fake, "mod-1", "moderator")
 		remote := seedRemoteAccount(t, fake, "remote-1", "remote", "other.example")
 
-		err := svc.DeleteAccount(ctx, mod.ID, remote.ID, false)
+		err := svc.DeleteAccount(ctx, mod.ID, remote.ID)
 		assert.ErrorIs(t, err, domain.ErrForbidden)
 	})
 }
@@ -494,7 +475,7 @@ func assertOutboxContainsEvent(t *testing.T, fake *testutil.FakeStore, eventType
 	t.Fatalf("expected outbox event %q for %q, found %d events", eventType, aggregateID, len(fake.OutboxEvents))
 }
 
-func assertAdminActionRecorded(t *testing.T, fake *testutil.FakeStore, action, targetAccountID, wantMode string) {
+func assertAdminActionRecorded(t *testing.T, fake *testutil.FakeStore, action, targetAccountID string) {
 	t.Helper()
 	for _, a := range fake.AdminActions {
 		if a.Action != action {
@@ -503,16 +484,7 @@ func assertAdminActionRecorded(t *testing.T, fake *testutil.FakeStore, action, t
 		if a.TargetAccountID == nil || *a.TargetAccountID != targetAccountID {
 			continue
 		}
-		if wantMode != "" {
-			var meta struct {
-				Mode string `json:"mode"`
-			}
-			_ = json.Unmarshal(a.Metadata, &meta)
-			if meta.Mode != wantMode {
-				continue
-			}
-		}
 		return
 	}
-	t.Fatalf("expected admin action %q for target %q mode=%q, found %d actions", action, targetAccountID, wantMode, len(fake.AdminActions))
+	t.Fatalf("expected admin action %q for target %q, found %d actions", action, targetAccountID, len(fake.AdminActions))
 }

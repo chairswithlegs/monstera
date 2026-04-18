@@ -147,24 +147,3 @@ UPDATE accounts SET last_backfilled_at = @last_backfilled_at WHERE id = @id;
 
 -- name: DeleteAccount :exec
 DELETE FROM accounts WHERE id = $1;
-
--- Race-safe purge: only hard-delete if the soft-delete flag is still set, so
--- a cancel-deletion arriving between list-and-purge can't be clobbered.
--- name: DeleteAccountIfDeletionPending :execrows
-DELETE FROM accounts WHERE id = $1 AND deletion_requested_at IS NOT NULL;
-
--- name: RequestAccountDeletion :execrows
-UPDATE accounts SET deletion_requested_at = NOW(), suspended = TRUE, updated_at = NOW()
-WHERE id = $1 AND deletion_requested_at IS NULL;
-
--- name: CancelAccountDeletion :execrows
-UPDATE accounts SET deletion_requested_at = NULL, suspended = FALSE, updated_at = NOW()
-WHERE id = $1 AND deletion_requested_at IS NOT NULL;
-
--- name: ListLocalAccountsPastDeletionGrace :many
-SELECT id FROM accounts
-WHERE deletion_requested_at IS NOT NULL
-  AND deletion_requested_at <= $1
-  AND domain IS NULL
-ORDER BY deletion_requested_at
-LIMIT $2;

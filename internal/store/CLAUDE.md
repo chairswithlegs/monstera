@@ -22,4 +22,4 @@ When queries are added or updated, regenerate the code via: `sqlc generate`.
 
 ## Foreign keys to `accounts(id)`
 
-New tables that reference `accounts(id)` MUST declare `ON DELETE CASCADE` (or `ON DELETE SET NULL` for audit tables like `admin_actions`). Account deletion relies on Postgres-level cascade: the purge scheduler (see `internal/scheduler/jobs/purge_deleted_accounts.go`) calls `store.DeleteAccount` inside a single transaction and expects every account-owned row to go with it. A new table without a cascade rule will block purge with an FK violation.
+New tables that reference `accounts(id)` MUST declare `ON DELETE CASCADE` (or `ON DELETE SET NULL` for audit tables like `admin_actions`). Account deletion hard-deletes the row and relies on Postgres-level cascade to drop every account-owned row in the same statement. A new table without a cascade rule will block delete with an FK violation.

@@ -90,8 +90,9 @@ export default function SecurityPage() {
     setDeleteError(null);
     try {
       await deleteAccount({ current_password: deletePassword });
-      // Backend revoked every token for this account; clear local session and
-      // hard-redirect to /login so a stale token never hits a protected route.
+      // Backend hard-deleted the account; CASCADE drops every OAuth token. Clear
+      // local session and hard-redirect to /login so any stale token resolves
+      // to 401 on the next request.
       logout();
     } catch (err) {
       setDeleteError(translateApiError(tErr, err));

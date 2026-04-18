@@ -12,7 +12,4 @@ var (
 	ErrGone             = errors.New("gone")
 	ErrUnprocessable    = errors.New("unprocessable entity")
 	ErrAccountSuspended = errors.New("account suspended")
-	// ErrDeletionAlreadyRequested indicates an account already has a pending
-	// deletion and the request is a no-op / conflict. Maps to HTTP 409.
-	ErrDeletionAlreadyRequested = errors.New("deletion already requested")
 )

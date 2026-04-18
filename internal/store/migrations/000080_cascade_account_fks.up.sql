@@ -1,7 +1,6 @@
 -- Cascade-delete all account-owned rows when an account row is removed.
--- The scheduler purge job (see issue #44) deletes an account row after the
--- grace period; without CASCADE here Postgres blocks the DELETE on the
--- default RESTRICT behavior.
+-- Account deletion is a single DELETE on accounts; without CASCADE here
+-- Postgres blocks the DELETE on the default RESTRICT behavior.
 --
 -- statuses.in_reply_to_account_id uses SET NULL so replies from other users
 -- survive after the replied-to account is deleted.
@@ -10,7 +9,7 @@
 -- preserve the audit trail and is intentionally left alone.
 --
 -- Tables already using ON DELETE CASCADE are not touched here:
---   users_account_id_fkey is changed so purging an account also drops its
+--   users_account_id_fkey is changed so deleting an account also drops its
 --   user row; the 1:1 relationship makes this the correct semantic.
 
 ALTER TABLE users

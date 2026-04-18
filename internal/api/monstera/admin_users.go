@@ -254,8 +254,7 @@ func (h *AdminUsersHandler) DELETEUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if targetUser != nil {
-		force := r.URL.Query().Get("force") == "true"
-		if err := h.moderation.DeleteAccount(r.Context(), user.ID, id, force); err != nil {
+		if err := h.moderation.DeleteAccount(r.Context(), user.ID, id); err != nil {
 			api.HandleError(w, r, err)
 			return
 		}

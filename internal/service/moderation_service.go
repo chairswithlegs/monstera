@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -33,12 +32,11 @@ type ModerationService interface {
 	SilenceAccount(ctx context.Context, moderatorID, targetID string) error
 	UnsilenceAccount(ctx context.Context, moderatorID, targetID string) error
 	SetUserRole(ctx context.Context, moderatorID, targetUserID, role string) error
-	// DeleteAccount soft-deletes a local account: flags it for the purge
-	// scheduler, revokes OAuth tokens, and emits the federation Delete.
-	// When force is true, the hard-delete happens inline after the soft-delete
-	// commits (used for admin-immediate removal); otherwise the scheduler
-	// hard-deletes after the grace period elapses.
-	DeleteAccount(ctx context.Context, moderatorID, targetID string, force bool) error
+	// DeleteAccount permanently removes a local account and all its data
+	// (CASCADE). Emits EventAccountDeleted so federation fans out a
+	// Delete{Actor} to remote followers, and records an admin action entry in
+	// the same transaction.
+	DeleteAccount(ctx context.Context, moderatorID, targetID string) error
 	CreateReport(ctx context.Context, in CreateReportInput) (*domain.Report, error)
 	ListReports(ctx context.Context, state string, limit, offset int) ([]domain.Report, error)
 	CountReportsByState(ctx context.Context, state string) (int64, error)
@@ -171,11 +169,7 @@ func (svc *moderationService) SetUserRole(ctx context.Context, moderatorID, targ
 	return nil
 }
 
-func (svc *moderationService) DeleteAccount(ctx context.Context, moderatorID, targetID string, force bool) error {
-	mode := "soft"
-	if force {
-		mode = "force"
-	}
+func (svc *moderationService) DeleteAccount(ctx context.Context, moderatorID, targetID string) error {
 	t := targetID
 	auditFn := func(ctx context.Context, tx store.Store) error {
 		if err := tx.CreateAdminAction(ctx, store.CreateAdminActionInput{
@@ -183,28 +177,13 @@ func (svc *moderationService) DeleteAccount(ctx context.Context, moderatorID, ta
 			ModeratorID:     moderatorID,
 			TargetAccountID: &t,
 			Action:          AdminActionDeleteAccount,
-			Metadata:        encodeMetadata(map[string]string{"mode": mode}),
 		}); err != nil {
 			return fmt.Errorf("CreateAdminAction(delete_account): %w", err)
 		}
 		return nil
 	}
-	err := requestAccountDeletion(ctx, svc.store, targetID, auditFn)
-	if err != nil {
-		if !force || !errors.Is(err, domain.ErrDeletionAlreadyRequested) {
-			return fmt.Errorf("DeleteAccount(%s): %w", targetID, err)
-		}
-		// Account was already soft-deleted by a prior request. We still want
-		// to proceed with the force purge; record a follow-up audit entry so
-		// the force action is traceable.
-		if auditErr := svc.writeAdminAction(ctx, moderatorID, &t, AdminActionDeleteAccount, nil, encodeMetadata(map[string]string{"mode": mode})); auditErr != nil {
-			return fmt.Errorf("DeleteAccount(%s) audit after already-requested: %w", targetID, auditErr)
-		}
-	}
-	if force {
-		if err := purgeAccount(ctx, svc.store, targetID); err != nil {
-			return fmt.Errorf("DeleteAccount(%s) purge: %w", targetID, err)
-		}
+	if err := deleteLocalAccount(ctx, svc.store, targetID, auditFn); err != nil {
+		return fmt.Errorf("DeleteAccount(%s): %w", targetID, err)
 	}
 	return nil
 }

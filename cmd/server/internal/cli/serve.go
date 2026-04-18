@@ -46,7 +46,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	defer cleanup()
 
 	svcs := createServices(cfg, infra)
-	sched := registerSchedulerJobs(cfg, svcs, infra)
+	sched := registerSchedulerJobs(svcs, infra)
 
 	workers := buildWorkers(cfg, svcs, infra, metrics, sched)
 	workerCtx, workerCancel := context.WithCancel(context.Background())

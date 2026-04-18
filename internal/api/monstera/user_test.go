@@ -349,7 +349,7 @@ func TestUserHandler_DELETEUser(t *testing.T) {
 		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	})
 
-	t.Run("wrong password returns 403", func(t *testing.T) {
+	t.Run("wrong password returns 403 and account intact", func(t *testing.T) {
 		t.Parallel()
 		f := seed(t)
 		payload, _ := json.Marshal(map[string]any{"current_password": "nope"})
@@ -362,10 +362,9 @@ func TestUserHandler_DELETEUser(t *testing.T) {
 		acc, err := f.store.GetAccountByID(req.Context(), f.account.ID)
 		require.NoError(t, err)
 		assert.False(t, acc.Suspended)
-		assert.Nil(t, acc.DeletionRequestedAt)
 	})
 
-	t.Run("correct password returns 204 and soft-deletes", func(t *testing.T) {
+	t.Run("correct password returns 204 and hard-deletes account", func(t *testing.T) {
 		t.Parallel()
 		f := seed(t)
 		payload, _ := json.Marshal(map[string]any{"current_password": "correct-password"})
@@ -375,27 +374,9 @@ func TestUserHandler_DELETEUser(t *testing.T) {
 		f.handler.DELETEUser(rec, req)
 		assert.Equal(t, http.StatusNoContent, rec.Code)
 
-		acc, err := f.store.GetAccountByID(req.Context(), f.account.ID)
-		require.NoError(t, err)
-		assert.True(t, acc.Suspended)
-		assert.NotNil(t, acc.DeletionRequestedAt)
-	})
-
-	t.Run("already requested returns 409", func(t *testing.T) {
-		t.Parallel()
-		f := seed(t)
-		payload, _ := json.Marshal(map[string]any{"current_password": "correct-password"})
-
-		first := httptest.NewRequest(http.MethodDelete, "/monstera/api/v1/user", bytes.NewReader(payload))
-		first = first.WithContext(middleware.WithUser(first.Context(), f.user))
-		firstRec := httptest.NewRecorder()
-		f.handler.DELETEUser(firstRec, first)
-		require.Equal(t, http.StatusNoContent, firstRec.Code)
-
-		second := httptest.NewRequest(http.MethodDelete, "/monstera/api/v1/user", bytes.NewReader(payload))
-		second = second.WithContext(middleware.WithUser(second.Context(), f.user))
-		secondRec := httptest.NewRecorder()
-		f.handler.DELETEUser(secondRec, second)
-		assert.Equal(t, http.StatusConflict, secondRec.Code)
+		_, err := f.store.GetAccountByID(req.Context(), f.account.ID)
+		require.ErrorIs(t, err, domain.ErrNotFound)
+		_, err = f.store.GetUserByAccountID(req.Context(), f.account.ID)
+		require.ErrorIs(t, err, domain.ErrNotFound)
 	})
 }
