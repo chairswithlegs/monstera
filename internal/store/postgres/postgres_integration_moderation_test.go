@@ -35,8 +35,10 @@ func TestIntegration_ModerationStore_Reports(t *testing.T) {
 
 		got, err := s.GetReportByID(ctx, reportID)
 		require.NoError(t, err)
-		assert.Equal(t, reporter.ID, got.AccountID)
-		assert.Equal(t, target.ID, got.TargetID)
+		require.NotNil(t, got.AccountID)
+		require.NotNil(t, got.TargetID)
+		assert.Equal(t, reporter.ID, *got.AccountID)
+		assert.Equal(t, target.ID, *got.TargetID)
 		assert.Equal(t, domain.ReportCategorySpam, got.Category)
 	})
 

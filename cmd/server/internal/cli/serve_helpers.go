@@ -88,6 +88,7 @@ type svcs struct {
 	pushSubscription   service.PushSubscriptionService
 	backfill           service.BackfillService
 	adminMetrics       service.AdminMetricsService
+	accountDeletion    service.AccountDeletionService
 	remoteResolver     *ap.RemoteAccountResolver
 	signatureService   ap.HTTPSignatureService
 	inboxProcessor     ap.Inbox
@@ -236,7 +237,8 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 
 	mailer := service.NewRegistrationEmailSender(i.emailSender, i.emailTemplates, cfg.EmailFrom, cfg.EmailFromName)
 	remoteResolver := ap.NewRemoteAccountResolver(accountSvc, i.blocklist, cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.MonsteraInstanceDomain)
-	signatureService := ap.NewHTTPSignatureService(cfg.FederationInsecureSkipTLS, instanceBaseURL, i.sharedCache, i.cache, accountSvc)
+	accountDeletionSvc := service.NewAccountDeletionService(i.store)
+	signatureService := ap.NewHTTPSignatureService(cfg.FederationInsecureSkipTLS, instanceBaseURL, i.sharedCache, i.cache, accountSvc, accountDeletionSvc)
 
 	statusWriteSvc := service.NewStatusWriteService(i.store, statusSvc, conversationSvc, instanceBaseURL, cfg.MonsteraInstanceDomain, cfg.MaxStatusChars)
 	interactionSvc := service.NewStatusInteractionService(i.store, statusSvc, instanceBaseURL)
@@ -276,6 +278,7 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 		announcement:       service.NewAnnouncementService(i.store),
 		pushSubscription:   service.NewPushSubscriptionService(i.store),
 
+		accountDeletion:  accountDeletionSvc,
 		remoteResolver:   remoteResolver,
 		signatureService: signatureService,
 		inboxProcessor:   ap.NewInbox(accountSvc, followSvc, remoteFollowSvc, statusSvc, remoteStatusWriteSvc, mediaSvc, remoteResolver, i.blocklist, cfg.MonsteraInstanceDomain),
@@ -304,6 +307,11 @@ func registerSchedulerJobs(s *svcs, i *infra) scheduler.Scheduler {
 		Interval: 5 * time.Minute,
 		Handler:  schedulerjobs.CloseExpiredPolls(i.store),
 	})
+	sched.Register(scheduler.Job{
+		Name:     "purge-account-deletion-snapshots",
+		Interval: time.Hour,
+		Handler:  schedulerjobs.PurgeAccountDeletionSnapshots(s.accountDeletion),
+	})
 	return sched
 }
 
@@ -323,7 +331,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 
 	hub := sse.NewHub(natsutil.NewConnSubscriber(i.nats.Conn), metrics)
 	sseSub := sse.NewSubscriber(i.nats.JS, i.nats.Conn, i.store, s.statusRead, cfg.MonsteraInstanceDomain)
-	fedSub := ap.NewFederationSubscriber(i.nats.JS, s.remoteFollow, i.blocklist, s.signatureService,
+	fedSub := ap.NewFederationSubscriber(i.nats.JS, s.remoteFollow, s.accountDeletion, i.blocklist, s.signatureService,
 		instanceBaseURL, cfg.MonsteraUIURL.String(), cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.FederationWorkerConcurrency)
 	notifSub := events.NewNotificationSubscriber(i.nats.JS, events.NotificationDeps{
 		Notifications:      s.notification,

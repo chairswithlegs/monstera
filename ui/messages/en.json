@@ -208,6 +208,7 @@
     "reportsColState": "State",
     "reportsColCreated": "Created",
     "reportsColActions": "Actions",
+    "deletedAccount": "(deleted account)",
     "resolveReport": "Resolve report",
     "resolveReportTitle": "Resolve report",
     "resolveReportDescription": "Add a resolution note (optional).",

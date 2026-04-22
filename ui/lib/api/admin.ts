@@ -165,8 +165,12 @@ export async function deleteInvite(id: string): Promise<void> {
 
 export interface Report {
   id: string;
-  account_id: string;
-  target_id: string;
+  // Nullable: reporter and target both use ON DELETE SET NULL FKs on the
+  // reports table so moderation history outlives the accounts themselves.
+  // A null value means the account has been deleted since the report was
+  // filed; UI should render a placeholder rather than an empty cell.
+  account_id: string | null;
+  target_id: string | null;
   status_ids: string[];
   comment?: string;
   category: string;

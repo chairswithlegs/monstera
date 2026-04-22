@@ -330,6 +330,75 @@ func TestOutboxFanoutWorker_getActivityType(t *testing.T) {
 	assert.Equal(t, "unknown", w.getActivityType("unknown"))
 }
 
+// Deletion fanout reads follower inboxes from account_deletion_targets
+// (populated in the delete tx) rather than the live follows/accounts tables,
+// which have been CASCADE-wiped by the time this runs. Verifies that the
+// worker:
+//   - paginates targets by DeletionID instead of SenderID;
+//   - forwards DeletionID through to the delivery message so the signer
+//     can load the snapshot's private key;
+//   - marks each target delivered after the per-inbox delivery enqueue.
+func TestOutboxFanoutWorker_ProcessMessage_Deletion_ReadsTargetsAndMarksDelivered(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	followSvc := service.NewRemoteFollowService(fake)
+	deletionSvc := service.NewAccountDeletionService(fake)
+
+	// Seed a snapshot + two pending targets as if deleteLocalAccount had
+	// just run. The accounts + follows are deliberately left empty to prove
+	// the worker doesn't need them.
+	const deletionID = "01DELETION"
+	require.NoError(t, fake.CreateAccountDeletionSnapshot(ctx, store.CreateAccountDeletionSnapshotInput{
+		ID:            deletionID,
+		APID:          "https://example.com/users/alice",
+		PrivateKeyPEM: "stub-pem",
+		ExpiresAt:     time.Now().Add(time.Hour),
+	}))
+	// Use the fake's direct manipulation to seed targets, since
+	// InsertAccountDeletionTargetsForAccount expects live follows.
+	fake.SeedAccountDeletionTargets(deletionID, []string{
+		"https://a.example/inbox",
+		"https://b.example/inbox",
+	})
+
+	var delivered []OutboxDeliveryMessage
+	deliveryMock := &mockDeliveryPublisher{
+		publishFn: func(_ context.Context, _ string, msg OutboxDeliveryMessage) error {
+			delivered = append(delivered, msg)
+			return nil
+		},
+	}
+
+	fanoutMsg := OutboxFanoutMessage{
+		ActivityID: "https://example.com/users/alice#delete",
+		Activity:   json.RawMessage(`{"type":"Delete"}`),
+		DeletionID: deletionID,
+	}
+	data := mustMarshal(t, fanoutMsg)
+	acked := false
+	mockMsg := &testutil.MockJetstreamMsg{
+		DataBytes:     data,
+		SubjectString: subjectPrefixFanout + "delete",
+		AckFn:         func() { acked = true },
+	}
+
+	w := &outboxFanoutWorker{followers: followSvc, deletions: deletionSvc, delivery: deliveryMock, workerConcurrency: 0}
+	w.processMessage(ctx, mockMsg)
+
+	assert.True(t, acked)
+	require.Len(t, delivered, 2, "each target must produce one delivery enqueue")
+	for _, d := range delivered {
+		assert.Equal(t, deletionID, d.DeletionID, "delivery worker needs DeletionID to sign from the snapshot")
+		assert.Empty(t, d.SenderID, "deletion path does not set SenderID")
+	}
+
+	// Both targets should now be marked delivered.
+	remaining, err := fake.ListPendingAccountDeletionTargets(ctx, deletionID, "", 100)
+	require.NoError(t, err)
+	assert.Empty(t, remaining, "all targets should be marked delivered after successful fanout")
+}
+
 func mustMarshal(t *testing.T, v any) []byte {
 	t.Helper()
 	data, err := json.Marshal(v)

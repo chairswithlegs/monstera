@@ -1,6 +1,9 @@
 -- name: GetAccountByID :one
 SELECT * FROM accounts WHERE id = $1;
 
+-- name: GetAccountByIDForUpdate :one
+SELECT * FROM accounts WHERE id = $1 FOR UPDATE;
+
 -- name: GetAccountsByIDs :many
 SELECT * FROM accounts WHERE id = ANY($1::text[]);
 
@@ -145,5 +148,5 @@ WHERE id = $1;
 UPDATE accounts SET last_backfilled_at = @last_backfilled_at WHERE id = @id;
 
 
--- name: DeleteAccount :exec
-DELETE FROM accounts WHERE id = $1;
+-- name: DeleteAccount :one
+DELETE FROM accounts WHERE id = $1 RETURNING *;

@@ -22,11 +22,15 @@ func createAccountWithRole(t *testing.T, st store.Store, username, role string) 
 	ctx := context.Background()
 	accID := uid.New()
 	baseURL := "https://example.com"
+	// Stub private key so deleteLocalAccount can snapshot signing material
+	// for the federation Delete{Actor} flow.
+	pk := "-----BEGIN RSA PRIVATE KEY-----\nstub\n-----END RSA PRIVATE KEY-----"
 	acc, err := st.CreateAccount(ctx, store.CreateAccountInput{
 		ID:           accID,
 		Username:     username,
 		Domain:       nil,
 		PublicKey:    "test-public-key",
+		PrivateKey:   &pk,
 		InboxURL:     baseURL + "/users/" + username + "/inbox",
 		OutboxURL:    baseURL + "/users/" + username + "/outbox",
 		FollowersURL: baseURL + "/users/" + username + "/followers",

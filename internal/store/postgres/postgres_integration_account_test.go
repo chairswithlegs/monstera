@@ -252,8 +252,10 @@ func TestIntegration_AccountStore(t *testing.T) {
 
 	t.Run("DeleteAccount", func(t *testing.T) {
 		acc := createTestRemoteAccount(t, s, ctx)
-		err := s.DeleteAccount(ctx, acc.ID)
+		deleted, err := s.DeleteAccount(ctx, acc.ID)
 		require.NoError(t, err)
+		require.NotNil(t, deleted)
+		assert.Equal(t, acc.ID, deleted.ID)
 
 		_, err = s.GetAccountByID(ctx, acc.ID)
 		require.ErrorIs(t, err, domain.ErrNotFound)

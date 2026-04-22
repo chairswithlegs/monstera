@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -669,4 +671,172 @@ func TestAccountService_DeleteSelf_drops_authorization_codes(t *testing.T) {
 
 	_, err = fake.GetAuthorizationCode(ctx, "code-raw")
 	require.ErrorIs(t, err, domain.ErrNotFound)
+}
+
+// DeleteSelf captures a snapshot of the signing material and the remote
+// follower inbox URLs BEFORE the account row (and its follows) are dropped.
+// Without this, federation would have no way to deliver Delete{Actor} —
+// the accounts row is gone and the follows CASCADE-wipe leaves no inbox
+// list. Verifies that:
+//   - a snapshot row exists keyed by the payload's DeletionID,
+//     carrying the account's APID and private key;
+//   - an account_deletion_targets row exists for each distinct remote
+//     follower inbox;
+//   - the payload itself carries only DeletionID+APID (private key never
+//     hits outbox_events / NATS).
+func TestAccountService_DeleteSelf_populates_snapshot_and_targets(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+	accID, userID, password := seedLocalUserWithPassword(t, fake, svc)
+
+	// Two remote followers on distinct instances, both accepted.
+	remote1Domain := "remote.example"
+	remote2Domain := "other.example"
+	f1, err := fake.CreateAccount(ctx, store.CreateAccountInput{
+		ID: "follower-1", Username: "bob", Domain: &remote1Domain,
+		InboxURL: "https://remote.example/users/bob/inbox",
+	})
+	require.NoError(t, err)
+	f2, err := fake.CreateAccount(ctx, store.CreateAccountInput{
+		ID: "follower-2", Username: "carol", Domain: &remote2Domain,
+		InboxURL: "https://other.example/users/carol/inbox",
+	})
+	require.NoError(t, err)
+	_, err = fake.CreateFollow(ctx, store.CreateFollowInput{
+		ID: "f1", AccountID: f1.ID, TargetID: accID, State: domain.FollowStateAccepted,
+	})
+	require.NoError(t, err)
+	_, err = fake.CreateFollow(ctx, store.CreateFollowInput{
+		ID: "f2", AccountID: f2.ID, TargetID: accID, State: domain.FollowStateAccepted,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, svc.DeleteSelf(ctx, userID, password))
+
+	// Locate the emitted event to read the DeletionID.
+	var ev domain.DomainEvent
+	for _, e := range fake.OutboxEvents {
+		if e.EventType == domain.EventAccountDeleted && e.AggregateID == accID {
+			ev = e
+			break
+		}
+	}
+	require.NotEmpty(t, ev.ID, "expected an account.deleted event")
+	var payload domain.AccountDeletedPayload
+	require.NoError(t, json.Unmarshal(ev.Payload, &payload))
+	require.NotEmpty(t, payload.DeletionID, "payload must carry deletion id")
+	require.NotEmpty(t, payload.APID, "payload must carry actor IRI")
+	assert.True(t, payload.Local)
+	assert.NotContains(t, string(ev.Payload), "private_key", "payload must not leak private key onto NATS/outbox")
+
+	// Signing material is in the side table, not the payload.
+	snap, err := fake.GetAccountDeletionSnapshot(ctx, payload.DeletionID)
+	require.NoError(t, err)
+	assert.Equal(t, payload.APID, snap.APID)
+	assert.NotEmpty(t, snap.PrivateKeyPEM, "snapshot must retain PEM so delivery worker can sign post-CASCADE")
+
+	// Targets captured one row per distinct remote follower inbox.
+	urls, err := fake.ListPendingAccountDeletionTargets(ctx, payload.DeletionID, "", 100)
+	require.NoError(t, err)
+	assert.ElementsMatch(t,
+		[]string{"https://other.example/users/carol/inbox", "https://remote.example/users/bob/inbox"},
+		urls,
+		"fanout worker must find both remote follower inboxes via the snapshot",
+	)
+}
+
+// Concurrent self-delete + admin-delete calls on the same account commit
+// exactly one EventAccountDeleted. Postgres row-locks serialize the deletes;
+// the second tx reads the locked row, finds it gone after the first commits,
+// and bails with ErrNotFound before emitting a second event or writing a
+// second audit row. Without this guarantee the federation subscriber would
+// fan out Delete{Actor} twice.
+func TestAccountService_DeleteSelf_concurrent_delete_race(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewAccountService(fake, "https://example.com")
+	accID, userID, password := seedLocalUserWithPassword(t, fake, svc)
+
+	// Sequential on the fake (WithTx is not concurrent) — exercises the
+	// "second caller sees no row" branch that the Postgres row lock
+	// enforces concurrently.
+	err1 := svc.DeleteSelf(ctx, userID, password)
+	require.NoError(t, err1)
+	err2 := svc.DeleteLocalAccount(ctx, accID)
+	require.ErrorIs(t, err2, domain.ErrNotFound)
+
+	var events int
+	for _, e := range fake.OutboxEvents {
+		if e.EventType == domain.EventAccountDeleted && e.AggregateID == accID {
+			events++
+		}
+	}
+	assert.Equal(t, 1, events, "exactly one account.deleted event must be emitted across both callers")
+}
+
+// ModerationService.DeleteAccount writes its admin_action row inside the same
+// tx as the delete + event emit. If any inner step fails, the whole tx must
+// roll back — otherwise an audit row lands for a delete that didn't happen,
+// or the account is gone without an audit trail.
+//
+// Exercises the rollback by injecting an error at InsertOutboxEvent (which
+// fires after DeleteAccount but before CreateAdminAction — the mid-tx
+// position where rollback matters most).
+func TestModerationService_DeleteAccount_rolls_back_on_tx_error(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	// Wrap the store with a shim that fails the outbox write. The fake's
+	// WithTx restores its snapshot on fn error, so post-error state should
+	// look as if the delete never happened.
+	shim := &outboxInsertFailingStore{Store: fake, fail: true}
+	mod := NewModerationService(shim, noopBlocklistRefresher{})
+
+	// Seed a local target with a private key so deleteLocalAccount proceeds
+	// far enough to hit the failing InsertOutboxEvent.
+	const username = "alice"
+	acc, err := NewAccountService(fake, "https://example.com").Create(ctx, CreateAccountInput{Username: username})
+	require.NoError(t, err)
+	_, err = fake.CreateUser(ctx, store.CreateUserInput{
+		ID: "user-" + username, AccountID: acc.ID, Email: username + "@example.com",
+		PasswordHash: "hash", Role: domain.RoleUser,
+	})
+	require.NoError(t, err)
+
+	err = mod.DeleteAccount(ctx, "mod-1", acc.ID)
+	require.Error(t, err, "expected DeleteAccount to surface the injected outbox failure")
+
+	// Account must still exist — the tx rolled back.
+	got, err := fake.GetAccountByID(ctx, acc.ID)
+	require.NoError(t, err)
+	assert.Equal(t, acc.ID, got.ID)
+
+	// No partial event, no partial audit.
+	for _, e := range fake.OutboxEvents {
+		assert.NotEqual(t, domain.EventAccountDeleted, e.EventType, "no account.deleted event may survive rollback")
+	}
+	assert.Empty(t, fake.AdminActions, "no admin_actions row may survive rollback")
+}
+
+// outboxInsertFailingStore wraps a store.Store and forces InsertOutboxEvent
+// to return an error when fail is true. Used to exercise tx-rollback paths.
+type outboxInsertFailingStore struct {
+	store.Store
+	fail bool
+}
+
+func (f *outboxInsertFailingStore) InsertOutboxEvent(ctx context.Context, in store.InsertOutboxEventInput) error {
+	if f.fail {
+		return errors.New("injected outbox failure")
+	}
+	return f.Store.InsertOutboxEvent(ctx, in)
+}
+
+func (f *outboxInsertFailingStore) WithTx(ctx context.Context, fn func(store.Store) error) error {
+	return f.Store.WithTx(ctx, func(tx store.Store) error {
+		return fn(&outboxInsertFailingStore{Store: tx, fail: f.fail})
+	})
 }

@@ -122,7 +122,7 @@ func TestDeliveryWorker_PullDeliverAndNoDuplicate(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = sharedCache.Close() }()
 	accountSvc := service.NewAccountService(fake, instanceBaseURL)
-	signer := NewHTTPSignatureService(true, instanceBaseURL, sharedCache, cacheStore, accountSvc)
+	signer := NewHTTPSignatureService(true, instanceBaseURL, sharedCache, cacheStore, accountSvc, service.NewAccountDeletionService(fake))
 	worker := internal.NewOutboxDeliveryWorker(client.JS, nil, signer, "development", true, 1)
 	require.NoError(t, worker.Publish(ctx, "create", delivery))
 	workerCtx, workerCancel := context.WithCancel(context.Background())
@@ -237,9 +237,9 @@ func TestOutboxFanoutWorker_Integration(t *testing.T) {
 	defer func() { _ = sharedCache.Close() }()
 	accountSvc := service.NewAccountService(fake, instanceBaseURL)
 	remoteFollowSvc := service.NewRemoteFollowService(fake)
-	signer := NewHTTPSignatureService(true, instanceBaseURL, sharedCache, cacheStore, accountSvc)
+	signer := NewHTTPSignatureService(true, instanceBaseURL, sharedCache, cacheStore, accountSvc, service.NewAccountDeletionService(fake))
 	outboxDeliveryWorker := internal.NewOutboxDeliveryWorker(client.JS, nil, signer, "development", true, 1)
-	fanoutWorker := internal.NewOutboxFanoutWorker(client.JS, remoteFollowSvc, outboxDeliveryWorker, 1)
+	fanoutWorker := internal.NewOutboxFanoutWorker(client.JS, remoteFollowSvc, service.NewAccountDeletionService(fake), outboxDeliveryWorker, 1)
 
 	fanoutMsg := internal.OutboxFanoutMessage{
 		ActivityID: "https://test.example/activities/01act",

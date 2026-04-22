@@ -17,9 +17,14 @@ func (noopBlocklistRefresher) Refresh(_ context.Context) error { return nil }
 
 func seedLocalAccount(t *testing.T, fake *testutil.FakeStore, id, username string) *domain.Account {
 	t.Helper()
+	// deleteLocalAccount requires a private key so the Delete{Actor} signer
+	// has something to snapshot. Use a stub PEM — the fake store doesn't
+	// parse it.
+	pk := "-----BEGIN RSA PRIVATE KEY-----\nstub\n-----END RSA PRIVATE KEY-----"
 	acc, err := fake.CreateAccount(context.Background(), store.CreateAccountInput{
-		ID:       id,
-		Username: username,
+		ID:         id,
+		Username:   username,
+		PrivateKey: &pk,
 	})
 	require.NoError(t, err)
 	return acc

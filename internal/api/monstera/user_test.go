@@ -324,7 +324,8 @@ func TestUserHandler_DELETEUser(t *testing.T) {
 			ID: "01USER", AccountID: "01ACC", Email: "alice@example.com",
 			PasswordHash: string(hash), CreatedAt: time.Now(),
 		}
-		a := &domain.Account{ID: "01ACC", Username: "alice"}
+		pk := "-----BEGIN RSA PRIVATE KEY-----\nstub\n-----END RSA PRIVATE KEY-----"
+		a := &domain.Account{ID: "01ACC", Username: "alice", APID: "https://example.com/users/alice", PrivateKey: &pk}
 		require.NoError(t, st.SeedUserAndAccount(u, a))
 		return fixture{handler: handler, store: st, user: u, account: a}
 	}

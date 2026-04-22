@@ -25,11 +25,19 @@ const outboxUserAgent = "Monstera/1.0"
 var outboxDeliveryTimeout = 30 * time.Second
 
 // OutboxDeliveryMessage is the payload for outbound ActivityPub delivery (e.g. to NATS ACTIVITYPUB stream).
+//
+// Exactly one of SenderID and DeletionID identifies the signer:
+//   - SenderID — the normal path. The signer loads the local account by ID
+//     and uses its private key.
+//   - DeletionID — a Delete{Actor} for a locally hard-deleted account. The
+//     accounts row is gone; the signer loads the PEM from the
+//     account_deletion_snapshots side table instead.
 type OutboxDeliveryMessage struct {
 	ActivityID  string          `json:"activity_id"`
 	Activity    json.RawMessage `json:"activity"`
 	TargetInbox string          `json:"target_inbox"`
-	SenderID    string          `json:"sender_id"`
+	SenderID    string          `json:"sender_id,omitempty"`
+	DeletionID  string          `json:"deletion_id,omitempty"`
 }
 
 // OutboxDeliveryWorker consumes from the ACTIVITYPUB_DELIVERY stream and delivers activities to remote inboxes.
@@ -40,6 +48,10 @@ type OutboxDeliveryWorker interface {
 
 type OutboxHTTPSigner interface {
 	SignWithSenderID(ctx context.Context, r *http.Request, senderID string) error
+	// SignWithDeletionID signs r using the PEM private key snapshotted in
+	// account_deletion_snapshots at account-delete time. Used for
+	// Delete{Actor} deliveries after the accounts row (and its key) are gone.
+	SignWithDeletionID(ctx context.Context, r *http.Request, deletionID string) error
 }
 
 type outboxDeliveryWorker struct {
@@ -176,8 +188,14 @@ func (w *outboxDeliveryWorker) deliverHTTP(ctx context.Context, delivery OutboxD
 	req.Header.Set("Content-Type", "application/activity+json")
 	req.Header.Set("User-Agent", outboxUserAgent)
 
-	if err := w.signer.SignWithSenderID(ctx, req, delivery.SenderID); err != nil {
-		return 0, fmt.Errorf("sign: %w", err)
+	if delivery.DeletionID != "" {
+		if err := w.signer.SignWithDeletionID(ctx, req, delivery.DeletionID); err != nil {
+			return 0, fmt.Errorf("sign with deletion %s: %w", delivery.DeletionID, err)
+		}
+	} else {
+		if err := w.signer.SignWithSenderID(ctx, req, delivery.SenderID); err != nil {
+			return 0, fmt.Errorf("sign: %w", err)
+		}
 	}
 
 	resp, err := w.http.Do(req)

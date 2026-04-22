@@ -83,7 +83,7 @@ func TestSignWithSenderID_success(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = c.Close() }()
 	accountSvc := service.NewAccountService(fake, "https://example.com")
-	svc := NewHTTPSignatureService(false, "https://example.com", c, c, accountSvc)
+	svc := NewHTTPSignatureService(false, "https://example.com", c, c, accountSvc, nil)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://remote.example/inbox", nil)
 	require.NoError(t, err)
@@ -109,7 +109,7 @@ func TestSignWithSenderID_senderNotFound(t *testing.T) {
 	}
 	c, _ := cache.New(cache.Config{Driver: "memory"})
 	defer func() { _ = c.Close() }()
-	svc := NewHTTPSignatureService(false, "https://example.com", c, c, accountService)
+	svc := NewHTTPSignatureService(false, "https://example.com", c, c, accountService, nil)
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://x/inbox", nil)
 	err := svc.SignWithSenderID(context.Background(), req, "01nonexistent")
 	require.Error(t, err)
@@ -129,11 +129,61 @@ func TestSignWithSenderID_noPrivateKey(t *testing.T) {
 	}
 	c, _ := cache.New(cache.Config{Driver: "memory"})
 	defer func() { _ = c.Close() }()
-	svc := NewHTTPSignatureService(false, "https://example.com", c, c, accountService)
+	svc := NewHTTPSignatureService(false, "https://example.com", c, c, accountService, nil)
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://x/inbox", nil)
 	err := svc.SignWithSenderID(context.Background(), req, "01nokey")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no private key")
+}
+
+// After a local account is hard-deleted, the Delete{Actor} delivery worker
+// signs via DeletionID instead of SenderID — the accounts row is gone but
+// the PEM lives in account_deletion_snapshots. Verifies that the signer
+// loads from the snapshot side table and stamps the right keyId.
+func TestSignWithDeletionID_success(t *testing.T) {
+	t.Parallel()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	privPEM := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
+
+	fake := testutil.NewFakeStore()
+	const deletionID = "01DELETION"
+	require.NoError(t, fake.CreateAccountDeletionSnapshot(context.Background(), store.CreateAccountDeletionSnapshotInput{
+		ID:            deletionID,
+		APID:          "https://example.com/users/alice",
+		PrivateKeyPEM: privPEM,
+		ExpiresAt:     time.Now().Add(time.Hour),
+	}))
+
+	c, err := cache.New(cache.Config{Driver: "memory"})
+	require.NoError(t, err)
+	defer func() { _ = c.Close() }()
+	deletionSvc := service.NewAccountDeletionService(fake)
+	svc := NewHTTPSignatureService(false, "https://example.com", c, c, nil, deletionSvc)
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://remote.example/inbox", nil)
+	require.NoError(t, err)
+
+	err = svc.SignWithDeletionID(context.Background(), req, deletionID)
+	require.NoError(t, err)
+
+	sig := req.Header.Get("Signature")
+	require.NotEmpty(t, sig)
+	assert.Contains(t, sig, `keyId="https://example.com/users/alice#main-key"`)
+}
+
+func TestSignWithDeletionID_snapshotNotFound(t *testing.T) {
+	t.Parallel()
+	fake := testutil.NewFakeStore()
+	c, _ := cache.New(cache.Config{Driver: "memory"})
+	defer func() { _ = c.Close() }()
+	deletionSvc := service.NewAccountDeletionService(fake)
+	svc := NewHTTPSignatureService(false, "https://example.com", c, c, nil, deletionSvc)
+
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://x/inbox", nil)
+	err := svc.SignWithDeletionID(context.Background(), req, "nonexistent")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
 
 func TestNewHTTPSignatureService(t *testing.T) {
@@ -141,7 +191,7 @@ func TestNewHTTPSignatureService(t *testing.T) {
 	c, err := cache.New(cache.Config{Driver: "memory"})
 	require.NoError(t, err)
 	defer func() { _ = c.Close() }()
-	svc := NewHTTPSignatureService(false, "https://example.com", c, c, nil)
+	svc := NewHTTPSignatureService(false, "https://example.com", c, c, nil, nil)
 	require.NotNil(t, svc)
 	impl, ok := svc.(*httpSignatureService)
 	require.True(t, ok)
@@ -154,7 +204,7 @@ func TestSign_GET_setsHeaders(t *testing.T) {
 	require.NoError(t, err)
 	c, _ := cache.New(cache.Config{Driver: "memory"})
 	defer func() { _ = c.Close() }()
-	svc := NewHTTPSignatureService(false, "", c, c, nil).(*httpSignatureService)
+	svc := NewHTTPSignatureService(false, "", c, c, nil, nil).(*httpSignatureService)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://"+testHost+"/users/alice", nil)
 	require.NoError(t, err)
@@ -178,7 +228,7 @@ func TestSign_POST_withBody_setsDigest(t *testing.T) {
 	require.NoError(t, err)
 	c, _ := cache.New(cache.Config{Driver: "memory"})
 	defer func() { _ = c.Close() }()
-	svc := NewHTTPSignatureService(false, "", c, c, nil).(*httpSignatureService)
+	svc := NewHTTPSignatureService(false, "", c, c, nil, nil).(*httpSignatureService)
 
 	body := []byte(`{"type":"Create"}`)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://"+testHost+"/inbox", bytes.NewReader(body))
@@ -208,7 +258,7 @@ func TestVerify_success(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(10 * time.Millisecond) // ristretto admits asynchronously
 
-	svc := NewHTTPSignatureService(false, "", c, c, nil)
+	svc := NewHTTPSignatureService(false, "", c, c, nil, nil)
 	impl := svc.(*httpSignatureService)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://"+testHost+"/users/alice", nil)
 	require.NoError(t, err)
@@ -226,7 +276,7 @@ func TestVerify_missingSignature(t *testing.T) {
 	t.Parallel()
 	c, _ := cache.New(cache.Config{Driver: "memory"})
 	defer func() { _ = c.Close() }()
-	svc := NewHTTPSignatureService(false, "", c, c, nil)
+	svc := NewHTTPSignatureService(false, "", c, c, nil, nil)
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://example.com/", nil)
 	req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 
@@ -239,7 +289,7 @@ func TestVerify_unsupportedAlgorithm(t *testing.T) {
 	t.Parallel()
 	c, _ := cache.New(cache.Config{Driver: "memory"})
 	defer func() { _ = c.Close() }()
-	svc := NewHTTPSignatureService(false, "", c, c, nil)
+	svc := NewHTTPSignatureService(false, "", c, c, nil, nil)
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://example.com/", nil)
 	req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	req.Header.Set("Signature", `keyId="https://x#k",algorithm="hmac-sha256",headers="date",signature="YQ=="`)
@@ -253,7 +303,7 @@ func TestVerify_missingDate(t *testing.T) {
 	t.Parallel()
 	c, _ := cache.New(cache.Config{Driver: "memory"})
 	defer func() { _ = c.Close() }()
-	svc := NewHTTPSignatureService(false, "", c, c, nil)
+	svc := NewHTTPSignatureService(false, "", c, c, nil, nil)
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://example.com/", nil)
 	req.Header.Set("Signature", `keyId="https://x#k",algorithm="rsa-sha256",headers="date",signature="YQ=="`)
 
@@ -266,7 +316,7 @@ func TestVerify_dateDrift(t *testing.T) {
 	t.Parallel()
 	c, _ := cache.New(cache.Config{Driver: "memory"})
 	defer func() { _ = c.Close() }()
-	svc := NewHTTPSignatureService(false, "", c, c, nil)
+	svc := NewHTTPSignatureService(false, "", c, c, nil, nil)
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://example.com/", nil)
 	req.Header.Set("Date", time.Now().Add(-2*time.Hour).UTC().Format(http.TimeFormat))
 	req.Header.Set("Signature", `keyId="https://x#k",algorithm="rsa-sha256",headers="date",signature="YQ=="`)
@@ -288,7 +338,7 @@ func TestVerify_digestMismatch(t *testing.T) {
 	_ = c.Set(context.Background(), pubKeyCacheKey(testKeyID), pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}), time.Hour)
 	time.Sleep(10 * time.Millisecond) // ristretto admits asynchronously
 
-	svc := NewHTTPSignatureService(false, "", c, c, nil)
+	svc := NewHTTPSignatureService(false, "", c, c, nil, nil)
 	impl := svc.(*httpSignatureService)
 	body := []byte(`{"type":"Create"}`)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://"+testHost+"/inbox", bytes.NewReader(body))
@@ -316,7 +366,7 @@ func TestVerify_replayDetected(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(10 * time.Millisecond) // ristretto admits asynchronously
 
-	svc := NewHTTPSignatureService(false, "", c, c, nil)
+	svc := NewHTTPSignatureService(false, "", c, c, nil, nil)
 	impl := svc.(*httpSignatureService)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://"+testHost+"/users/alice", nil)
 	require.NoError(t, err)
@@ -355,7 +405,7 @@ func TestFetchRemotePublicKey_success(t *testing.T) {
 	keyID := server.URL + "#main-key"
 	c, _ := cache.New(cache.Config{Driver: "memory"})
 	defer func() { _ = c.Close() }()
-	svc := NewHTTPSignatureService(false, "", c, c, nil)
+	svc := NewHTTPSignatureService(false, "", c, c, nil, nil)
 	impl := svc.(*httpSignatureService)
 	impl.client = server.Client()
 
@@ -384,7 +434,7 @@ func TestFetchRemotePublicKey_cacheHit(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(10 * time.Millisecond) // ristretto admits asynchronously
 
-	svc := NewHTTPSignatureService(false, "", c, c, nil)
+	svc := NewHTTPSignatureService(false, "", c, c, nil, nil)
 	impl := svc.(*httpSignatureService)
 	callCount := 0
 	impl.client = &http.Client{

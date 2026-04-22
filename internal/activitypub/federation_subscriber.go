@@ -35,6 +35,7 @@ type FederationSubscriber struct {
 func NewFederationSubscriber(
 	js jetstream.JetStream,
 	followers service.RemoteFollowService,
+	deletions service.AccountDeletionService,
 	bl *blocklist.BlocklistCache,
 	signer HTTPSignatureService,
 	instanceBaseURL string,
@@ -44,7 +45,7 @@ func NewFederationSubscriber(
 	workerConcurrency int,
 ) *FederationSubscriber {
 	delivery := internal.NewOutboxDeliveryWorker(js, bl, signer, appEnv, insecureSkipTLS, workerConcurrency)
-	fanout := internal.NewOutboxFanoutWorker(js, followers, delivery, workerConcurrency)
+	fanout := internal.NewOutboxFanoutWorker(js, followers, deletions, delivery, workerConcurrency)
 
 	return &FederationSubscriber{
 		js:              js,
@@ -603,23 +604,43 @@ func (s *FederationSubscriber) handleAccountUpdated(ctx context.Context, event d
 	return nil
 }
 
-// handleAccountDeleted fans out a Delete{Actor} activity to every follower's
-// inbox so remote instances tombstone the actor immediately. The local row
-// lives until the purge scheduler runs, so fanout (which reads follows rows)
-// and the delivery worker (which signs with the actor's private key) still
-// work during the grace window.
+// handleAccountDeleted fans out a Delete{Actor} activity to every remote
+// follower's inbox. The accounts row and its follows have been hard-deleted
+// by the time we run, so the fanout worker reads follower inboxes from the
+// account_deletion_targets table (populated in the delete tx) and the
+// delivery worker signs with the private key stored in
+// account_deletion_snapshots (also populated in the delete tx). Those two
+// side tables are keyed by DeletionID, which we forward through the
+// fanout/delivery messages. A scheduler job expires snapshots past their TTL.
+//
+// Early-return branches are split so invariant violations are visible in
+// logs — a silently-acked malformed event would drop a Delete{Actor} for one
+// user and we'd have no way to know.
 func (s *FederationSubscriber) handleAccountDeleted(ctx context.Context, event domain.DomainEvent) error {
 	var payload domain.AccountDeletedPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal account.deleted payload: %w", err)
 	}
-	if !payload.Local || payload.Account == nil {
+	if !payload.Local {
+		// Remote account deletion recorded by the inbox handler. The remote
+		// side already federated the Delete; we must not re-federate.
+		slog.DebugContext(ctx, "account.deleted: skipping remote", slog.String("aggregate_id", event.AggregateID))
 		return nil
 	}
-	actorID := vocab.AccountActorID(payload.Account, s.instanceBaseURL)
-	activityID := actorID + "#delete"
+	if payload.DeletionID == "" || payload.APID == "" {
+		// Local deletes are emitted by deleteLocalAccount which always sets
+		// both. A missing field here is a bug in the emitter or a corrupted
+		// payload — retry can't fix either, so warn + ack.
+		slog.WarnContext(ctx, "account.deleted: malformed payload",
+			slog.String("aggregate_id", event.AggregateID),
+			slog.String("deletion_id", payload.DeletionID),
+			slog.String("ap_id", payload.APID),
+		)
+		return nil
+	}
+	activityID := payload.APID + "#delete"
 	// For actor deletion the wrapped Tombstone IRI equals the actor IRI.
-	del, err := vocab.NewDeleteActivity(activityID, actorID, actorID)
+	del, err := vocab.NewDeleteActivity(activityID, payload.APID, payload.APID)
 	if err != nil {
 		return fmt.Errorf("new delete activity: %w", err)
 	}
@@ -630,7 +651,7 @@ func (s *FederationSubscriber) handleAccountDeleted(ctx context.Context, event d
 	if err := s.fanout.Publish(ctx, "delete", internal.OutboxFanoutMessage{
 		ActivityID: activityID,
 		Activity:   raw,
-		SenderID:   payload.Account.ID,
+		DeletionID: payload.DeletionID,
 	}); err != nil {
 		return fmt.Errorf("publish account deleted: %w", err)
 	}

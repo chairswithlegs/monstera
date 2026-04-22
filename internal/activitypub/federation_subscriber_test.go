@@ -613,15 +613,19 @@ func TestFederationSubscriber_handleAccountDeleted_Local_PublishesFanout(t *test
 	}}
 	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
 
-	account := localAccount("01account")
-	payload := domain.AccountDeletedPayload{Account: account, Local: true}
+	const apID = "https://example.com/users/alice"
+	const deletionID = "01DELETION"
+	payload := domain.AccountDeletedPayload{DeletionID: deletionID, APID: apID, Local: true}
 
 	err := s.handleAccountDeleted(context.Background(), domainEvent(t, domain.EventAccountDeleted, payload))
 	require.NoError(t, err)
 
 	assert.Equal(t, "delete", gotType)
-	assert.Equal(t, account.APID+"#delete", got.ActivityID)
-	assert.Equal(t, account.ID, got.SenderID)
+	assert.Equal(t, apID+"#delete", got.ActivityID)
+	// Deletion fanout routes via DeletionID, not SenderID — the sender's
+	// accounts row is gone by the time the worker runs.
+	assert.Equal(t, deletionID, got.DeletionID)
+	assert.Empty(t, got.SenderID)
 
 	// Wrapped Tombstone object IRI must equal the actor IRI.
 	var activity struct {
@@ -634,8 +638,8 @@ func TestFederationSubscriber_handleAccountDeleted_Local_PublishesFanout(t *test
 	}
 	require.NoError(t, json.Unmarshal(got.Activity, &activity))
 	assert.Equal(t, "Delete", activity.Type)
-	assert.Equal(t, account.APID, activity.Actor)
-	assert.Equal(t, account.APID, activity.Object.ID)
+	assert.Equal(t, apID, activity.Actor)
+	assert.Equal(t, apID, activity.Object.ID)
 	assert.Equal(t, "Tombstone", activity.Object.Type)
 }
 
@@ -648,15 +652,14 @@ func TestFederationSubscriber_handleAccountDeleted_Remote_Skips(t *testing.T) {
 	}}
 	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
 
-	account := remoteAccount("01account")
-	payload := domain.AccountDeletedPayload{Account: account, Local: false}
+	payload := domain.AccountDeletedPayload{Local: false}
 
 	err := s.handleAccountDeleted(context.Background(), domainEvent(t, domain.EventAccountDeleted, payload))
 	require.NoError(t, err)
 	assert.False(t, published)
 }
 
-func TestFederationSubscriber_handleAccountDeleted_NilAccount_Skips(t *testing.T) {
+func TestFederationSubscriber_handleAccountDeleted_MissingDeletionID_Skips(t *testing.T) {
 	t.Parallel()
 	published := false
 	fanout := mockFanoutWorker{publishFn: func(context.Context, string, internal.OutboxFanoutMessage) error {
@@ -665,7 +668,9 @@ func TestFederationSubscriber_handleAccountDeleted_NilAccount_Skips(t *testing.T
 	}}
 	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
 
-	payload := domain.AccountDeletedPayload{Account: nil, Local: true}
+	// Local event with no DeletionID / APID is malformed — the emitter
+	// (deleteLocalAccount) always sets both. The handler warns and acks.
+	payload := domain.AccountDeletedPayload{Local: true}
 
 	err := s.handleAccountDeleted(context.Background(), domainEvent(t, domain.EventAccountDeleted, payload))
 	require.NoError(t, err)

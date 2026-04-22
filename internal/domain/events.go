@@ -181,13 +181,22 @@ type AccountUpdatedPayload struct {
 	Local   bool     `json:"local"`
 }
 
-// AccountDeletedPayload carries data when an account has been deleted. The
-// federation subscriber fans out a Delete{Actor} to followers. Account is a
-// full snapshot (including PrivateKey and APID) so signing works after the
-// row has been removed from the database.
+// AccountDeletedPayload carries data when an account has been deleted.
+//
+// For local deletes (Local=true), the payload references an
+// account_deletion_snapshots row by DeletionID. The federation subscriber,
+// fanout worker, and delivery worker all read the signing material and the
+// pending follower inbox URLs from that side table — this keeps the private
+// key out of the outbox_events table and off the NATS stream. APID is
+// denormalized onto the payload only so the subscriber can construct the
+// Delete activity without an extra DB round trip.
+//
+// For remote deletes (Local=false), subscribers must not federate;
+// DeletionID is empty.
 type AccountDeletedPayload struct {
-	Account *Account `json:"account"`
-	Local   bool     `json:"local"`
+	DeletionID string `json:"deletion_id,omitempty"`
+	APID       string `json:"ap_id,omitempty"`
+	Local      bool   `json:"local"`
 }
 
 // PollUpdatedPayload carries data when poll vote counts change (local vote cast).

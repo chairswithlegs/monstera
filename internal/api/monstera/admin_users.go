@@ -1,7 +1,6 @@
 package monstera
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 
@@ -248,16 +247,9 @@ func (h *AdminUsersHandler) DELETEUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, targetUser, getErr := h.accounts.GetAccountWithUser(r.Context(), id)
-	if getErr != nil && !errors.Is(getErr, domain.ErrNotFound) {
-		api.HandleError(w, r, getErr)
+	if err := h.moderation.DeleteAccount(r.Context(), user.ID, id); err != nil {
+		api.HandleError(w, r, err)
 		return
-	}
-	if targetUser != nil {
-		if err := h.moderation.DeleteAccount(r.Context(), user.ID, id); err != nil {
-			api.HandleError(w, r, err)
-			return
-		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -43,27 +43,34 @@ type HTTPSignatureService interface {
 	Verify(ctx context.Context, r *http.Request) (keyID string, err error)
 	FetchRemotePublicKey(ctx context.Context, keyID string) (*rsa.PublicKey, error)
 	SignWithSenderID(ctx context.Context, r *http.Request, senderID string) error
+	// SignWithDeletionID signs r using the PEM private key captured in the
+	// account_deletion_snapshots side table at hard-delete time. Callers use
+	// this path for Delete{Actor} deliveries after the sending account's row
+	// has been CASCADE-removed.
+	SignWithDeletionID(ctx context.Context, r *http.Request, deletionID string) error
 }
 
 // httpSignatureService is the default in-package implementation of HTTPSignatureService.
 type httpSignatureService struct {
-	client         *http.Client
-	sharedCache    cache.SharedStore // replay detection (cross-pod)
-	localCache     cache.Store       // public key cache (per-pod)
-	accountService service.AccountService
-	instanceBase   string
+	client          *http.Client
+	sharedCache     cache.SharedStore // replay detection (cross-pod)
+	localCache      cache.Store       // public key cache (per-pod)
+	accountService  service.AccountService
+	deletionService service.AccountDeletionService
+	instanceBase    string
 }
 
 // NewHTTPSignatureService returns an HTTPSignatureService.
 // sharedCache is used for replay detection (must be shared across pods).
 // localCache is used for public key caching (per-pod in-memory is fine).
-func NewHTTPSignatureService(insecureSkipTLS bool, instanceBaseURL string, sharedCache cache.SharedStore, localCache cache.Store, a service.AccountService) HTTPSignatureService {
+func NewHTTPSignatureService(insecureSkipTLS bool, instanceBaseURL string, sharedCache cache.SharedStore, localCache cache.Store, a service.AccountService, d service.AccountDeletionService) HTTPSignatureService {
 	return &httpSignatureService{
-		client:         federationHTTPClient(insecureSkipTLS),
-		sharedCache:    sharedCache,
-		localCache:     localCache,
-		accountService: a,
-		instanceBase:   instanceBaseURL,
+		client:          federationHTTPClient(insecureSkipTLS),
+		sharedCache:     sharedCache,
+		localCache:      localCache,
+		accountService:  a,
+		deletionService: d,
+		instanceBase:    instanceBaseURL,
 	}
 }
 
@@ -202,6 +209,32 @@ func (s *httpSignatureService) SignWithSenderID(ctx context.Context, r *http.Req
 		return fmt.Errorf("httpsignature: invalid private key for %s: %w", senderID, err)
 	}
 	keyID := actorKeyID(account, s.instanceBase)
+	return s.sign(r, keyID, privateKey)
+}
+
+// SignWithDeletionID signs r using the PEM private key from the
+// account_deletion_snapshots side table. Used for Delete{Actor} deliveries
+// after the sending account's row has been hard-deleted. The snapshot row is
+// keyed by deletionID and lives for AccountDeletionSnapshotTTL past the
+// delete.
+func (s *httpSignatureService) SignWithDeletionID(ctx context.Context, r *http.Request, deletionID string) error {
+	if s.deletionService == nil {
+		return errors.New("httpsignature: deletion service not configured")
+	}
+	pem, apID, err := s.deletionService.GetSigningMaterial(ctx, deletionID)
+	if err != nil {
+		return fmt.Errorf("httpsignature: get deletion snapshot %s: %w", deletionID, err)
+	}
+	if pem == "" {
+		return fmt.Errorf("httpsignature: deletion snapshot %s has no private key", deletionID)
+	}
+	privateKey, err := parseRSAPrivateKeyPEM(pem)
+	if err != nil {
+		return fmt.Errorf("httpsignature: invalid deletion private key for %s: %w", deletionID, err)
+	}
+	// The actor's key IRI is derived from its AP IRI; reconstruct it from the
+	// snapshot so signing doesn't need to hit the accounts table.
+	keyID := apID + "#main-key"
 	return s.sign(r, keyID, privateKey)
 }
 

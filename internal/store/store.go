@@ -33,6 +33,7 @@ type Store interface {
 	PollStore
 	CardStore
 	OutboxStore
+	AccountDeletionStore
 
 	WithTx(ctx context.Context, fn func(Store) error) error
 }
@@ -41,6 +42,11 @@ type Store interface {
 type AccountStore interface {
 	CreateAccount(ctx context.Context, in CreateAccountInput) (*domain.Account, error)
 	GetAccountByID(ctx context.Context, id string) (*domain.Account, error)
+	// GetAccountByIDForUpdate is GetAccountByID with a row-level lock so the
+	// caller's tx can safely read-then-mutate without racing concurrent writers
+	// (primarily account deletion). Returns domain.ErrNotFound if the row has
+	// already been deleted when the lock is acquired.
+	GetAccountByIDForUpdate(ctx context.Context, id string) (*domain.Account, error)
 	GetAccountsByIDs(ctx context.Context, ids []string) ([]*domain.Account, error)
 	GetAccountByAPID(ctx context.Context, apID string) (*domain.Account, error)
 	SearchAccounts(ctx context.Context, query string, limit, offset int) ([]*domain.Account, error)
@@ -57,7 +63,12 @@ type AccountStore interface {
 	UnsuspendAccount(ctx context.Context, id string) error
 	SilenceAccount(ctx context.Context, id string) error
 	UnsilenceAccount(ctx context.Context, id string) error
-	DeleteAccount(ctx context.Context, id string) error
+	// DeleteAccount hard-deletes the account row and returns the deleted row.
+	// Returns domain.ErrNotFound if no row matched — callers rely on this to
+	// avoid emitting duplicate federation events when two concurrent deletes
+	// race (Postgres serializes the DELETE via row lock, so the second caller
+	// sees zero rows affected).
+	DeleteAccount(ctx context.Context, id string) (*domain.Account, error)
 	ListLocalAccounts(ctx context.Context, limit, offset int) ([]domain.Account, error)
 	ListDirectoryAccounts(ctx context.Context, order string, localOnly bool, offset, limit int) ([]domain.Account, error)
 	UpdateAccountLastStatusAt(ctx context.Context, accountID string) error
@@ -417,4 +428,53 @@ type OutboxStore interface {
 	GetAndLockUnpublishedOutboxEvents(ctx context.Context, limit int) ([]domain.DomainEvent, error)
 	MarkOutboxEventsPublished(ctx context.Context, ids []string) error
 	DeletePublishedOutboxEventsBefore(ctx context.Context, before time.Time) error
+}
+
+// AccountDeletionSnapshot is a frozen copy of the signing material and actor
+// IRI of a deleted local account. It lives in the DB long enough for the
+// federation subscriber and delivery worker to fan out Delete{Actor} to remote
+// followers after the accounts row (and its follows) has been hard-deleted.
+type AccountDeletionSnapshot struct {
+	ID            string // deletion_id (ULID)
+	APID          string // actor IRI
+	PrivateKeyPEM string // PEM-encoded RSA private key, used only to sign the Delete{Actor}
+	CreatedAt     time.Time
+	ExpiresAt     time.Time
+}
+
+// CreateAccountDeletionSnapshotInput is the input for CreateAccountDeletionSnapshot.
+type CreateAccountDeletionSnapshotInput struct {
+	ID            string
+	APID          string
+	PrivateKeyPEM string
+	ExpiresAt     time.Time
+}
+
+// AccountDeletionStore handles side tables that outlive a hard-deleted account
+// row so the Delete{Actor} federation flow can run after CASCADE.
+//
+// Lifecycle:
+//  1. Inside the account-delete tx (before the DELETE fires), the service
+//     creates a snapshot and materializes the per-inbox targets from the
+//     still-live follows rows.
+//  2. The fanout worker paginates targets for a deletion_id and enqueues a
+//     delivery for each inbox, marking each target delivered.
+//  3. The delivery worker signs with the snapshot's private key (the accounts
+//     row is gone by now).
+//  4. A scheduler job purges snapshots past expires_at; CASCADE drops targets.
+type AccountDeletionStore interface {
+	CreateAccountDeletionSnapshot(ctx context.Context, in CreateAccountDeletionSnapshotInput) error
+	GetAccountDeletionSnapshot(ctx context.Context, id string) (*AccountDeletionSnapshot, error)
+	// InsertAccountDeletionTargetsForAccount joins follows + accounts to
+	// snapshot the distinct remote follower inbox URLs for accountID, keyed by
+	// deletionID. Must run BEFORE the accounts row is deleted (otherwise the
+	// CASCADE on follows.target_id wipes the source rows).
+	InsertAccountDeletionTargetsForAccount(ctx context.Context, deletionID, accountID string) error
+	// ListPendingAccountDeletionTargets returns the next page of undelivered
+	// inbox URLs for deletionID, keyset-paginated by inbox_url > cursor.
+	ListPendingAccountDeletionTargets(ctx context.Context, deletionID, cursor string, limit int) ([]string, error)
+	MarkAccountDeletionTargetDelivered(ctx context.Context, deletionID, inboxURL string) error
+	// DeleteExpiredAccountDeletionSnapshots drops snapshots past their TTL and
+	// returns the count deleted. CASCADE drops any remaining target rows.
+	DeleteExpiredAccountDeletionSnapshots(ctx context.Context, before time.Time) (int64, error)
 }
