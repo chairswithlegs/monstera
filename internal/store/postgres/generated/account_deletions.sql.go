@@ -63,6 +63,24 @@ func (q *Queries) GetAccountDeletionSnapshot(ctx context.Context, id string) (Ac
 	return i, err
 }
 
+const insertAccountDeletionMediaTargetsForAccount = `-- name: InsertAccountDeletionMediaTargetsForAccount :exec
+INSERT INTO account_deletion_media_targets (deletion_id, storage_key)
+SELECT $1, storage_key
+FROM media_attachments
+WHERE account_id = $2
+ON CONFLICT (deletion_id, storage_key) DO NOTHING
+`
+
+type InsertAccountDeletionMediaTargetsForAccountParams struct {
+	DeletionID string `json:"deletion_id"`
+	AccountID  string `json:"account_id"`
+}
+
+func (q *Queries) InsertAccountDeletionMediaTargetsForAccount(ctx context.Context, arg InsertAccountDeletionMediaTargetsForAccountParams) error {
+	_, err := q.db.Exec(ctx, insertAccountDeletionMediaTargetsForAccount, arg.DeletionID, arg.AccountID)
+	return err
+}
+
 const insertAccountDeletionTargetsForAccount = `-- name: InsertAccountDeletionTargetsForAccount :exec
 INSERT INTO account_deletion_targets (deletion_id, inbox_url)
 SELECT DISTINCT $1, a.inbox_url
@@ -84,6 +102,42 @@ type InsertAccountDeletionTargetsForAccountParams struct {
 func (q *Queries) InsertAccountDeletionTargetsForAccount(ctx context.Context, arg InsertAccountDeletionTargetsForAccountParams) error {
 	_, err := q.db.Exec(ctx, insertAccountDeletionTargetsForAccount, arg.DeletionID, arg.TargetID)
 	return err
+}
+
+const listPendingAccountDeletionMediaTargets = `-- name: ListPendingAccountDeletionMediaTargets :many
+SELECT storage_key
+FROM account_deletion_media_targets
+WHERE deletion_id = $1
+  AND delivered_at IS NULL
+  AND ($2::text IS NULL OR $2::text = '' OR storage_key > $2)
+ORDER BY storage_key
+LIMIT $3
+`
+
+type ListPendingAccountDeletionMediaTargetsParams struct {
+	DeletionID string `json:"deletion_id"`
+	Column2    string `json:"column_2"`
+	Limit      int32  `json:"limit"`
+}
+
+func (q *Queries) ListPendingAccountDeletionMediaTargets(ctx context.Context, arg ListPendingAccountDeletionMediaTargetsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, listPendingAccountDeletionMediaTargets, arg.DeletionID, arg.Column2, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var storage_key string
+		if err := rows.Scan(&storage_key); err != nil {
+			return nil, err
+		}
+		items = append(items, storage_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listPendingAccountDeletionTargets = `-- name: ListPendingAccountDeletionTargets :many
@@ -120,6 +174,22 @@ func (q *Queries) ListPendingAccountDeletionTargets(ctx context.Context, arg Lis
 		return nil, err
 	}
 	return items, nil
+}
+
+const markAccountDeletionMediaTargetDelivered = `-- name: MarkAccountDeletionMediaTargetDelivered :exec
+UPDATE account_deletion_media_targets
+SET delivered_at = NOW()
+WHERE deletion_id = $1 AND storage_key = $2
+`
+
+type MarkAccountDeletionMediaTargetDeliveredParams struct {
+	DeletionID string `json:"deletion_id"`
+	StorageKey string `json:"storage_key"`
+}
+
+func (q *Queries) MarkAccountDeletionMediaTargetDelivered(ctx context.Context, arg MarkAccountDeletionMediaTargetDeliveredParams) error {
+	_, err := q.db.Exec(ctx, markAccountDeletionMediaTargetDelivered, arg.DeletionID, arg.StorageKey)
+	return err
 }
 
 const markAccountDeletionTargetDelivered = `-- name: MarkAccountDeletionTargetDelivered :exec

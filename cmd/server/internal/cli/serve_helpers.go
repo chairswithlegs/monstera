@@ -347,6 +347,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 		DomainSilence:      i.blocklist,
 	})
 	cardSub := events.NewCardSubscriber(i.nats.JS, s.card)
+	mediaPurgeSub := events.NewMediaPurgeSubscriber(i.nats.JS, s.accountDeletion, i.mediaStore)
 	backfillWorker := ap.NewBackfillWorker(i.nats.JS, s.account, s.backfill, s.remoteResolver,
 		s.remoteStatusWrite, s.remoteFollow, s.statusRead, i.blocklist, cfg.MonsteraInstanceDomain, cfg.BackfillMaxPages, cfg.BackfillCooldown)
 
@@ -357,6 +358,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 		{"sse-hub", hub},
 		{"notification-subscriber", notifSub},
 		{"card-subscriber", cardSub},
+		{"media-purge-subscriber", mediaPurgeSub},
 		{"scheduler", sched},
 		{"backfill-worker", backfillWorker},
 	}

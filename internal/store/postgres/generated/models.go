@@ -53,6 +53,12 @@ type AccountConversation struct {
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 }
 
+type AccountDeletionMediaTarget struct {
+	DeletionID  string             `json:"deletion_id"`
+	StorageKey  string             `json:"storage_key"`
+	DeliveredAt pgtype.Timestamptz `json:"delivered_at"`
+}
+
 type AccountDeletionSnapshot struct {
 	ID            string             `json:"id"`
 	ApID          string             `json:"ap_id"`

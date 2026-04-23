@@ -26,6 +26,14 @@ type AccountDeletionService interface {
 	// redelivered. Called by the fanout worker after the delivery message is
 	// successfully enqueued.
 	MarkTargetDelivered(ctx context.Context, deletionID, inboxURL string) error
+	// ListPendingMediaTargets paginates undelivered storage keys for a
+	// deletion, keyset-paginated by storage_key. Drives the media-purge
+	// subscriber's blob-deletion loop.
+	ListPendingMediaTargets(ctx context.Context, deletionID, cursor string, limit int) ([]string, error)
+	// MarkMediaTargetDelivered flips delivered_at on a single (deletionID,
+	// storageKey) row, preventing a repeat Delete call if the media-purge
+	// subscriber is redelivered.
+	MarkMediaTargetDelivered(ctx context.Context, deletionID, storageKey string) error
 	// PurgeExpiredSnapshots drops snapshots past their TTL and returns the
 	// count removed. Called from the scheduler on a periodic sweep.
 	PurgeExpiredSnapshots(ctx context.Context, now time.Time) (int64, error)
@@ -60,6 +68,21 @@ func (svc *accountDeletionService) ListPendingTargets(ctx context.Context, delet
 func (svc *accountDeletionService) MarkTargetDelivered(ctx context.Context, deletionID, inboxURL string) error {
 	if err := svc.store.MarkAccountDeletionTargetDelivered(ctx, deletionID, inboxURL); err != nil {
 		return fmt.Errorf("MarkAccountDeletionTargetDelivered: %w", err)
+	}
+	return nil
+}
+
+func (svc *accountDeletionService) ListPendingMediaTargets(ctx context.Context, deletionID, cursor string, limit int) ([]string, error) {
+	keys, err := svc.store.ListPendingAccountDeletionMediaTargets(ctx, deletionID, cursor, limit)
+	if err != nil {
+		return nil, fmt.Errorf("ListPendingAccountDeletionMediaTargets(%s): %w", deletionID, err)
+	}
+	return keys, nil
+}
+
+func (svc *accountDeletionService) MarkMediaTargetDelivered(ctx context.Context, deletionID, storageKey string) error {
+	if err := svc.store.MarkAccountDeletionMediaTargetDelivered(ctx, deletionID, storageKey); err != nil {
+		return fmt.Errorf("MarkAccountDeletionMediaTargetDelivered: %w", err)
 	}
 	return nil
 }

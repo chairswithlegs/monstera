@@ -310,6 +310,54 @@ func TestIntegration_ModerationService_DeleteAccount_FullCascade_Admin(t *testin
 		"expected exactly one account.deleted event for Alice")
 }
 
+// TestIntegration_AccountDeletion_MediaPurgeSideTable exercises the post-CASCADE
+// media cleanup machinery. It does not run the subscriber (that requires NATS
+// and a real blob store); instead it asserts the in-tx materialization is
+// correct so that when the subscriber runs in prod it has everything it needs.
+//
+//  1. account_deletion_media_targets must hold a row for every storage_key
+//     Alice owned before the delete.
+//  2. An outbox EventMediaPurge row must be emitted with the same deletion_id
+//     so NATS can route the work to the subscriber.
+func TestIntegration_AccountDeletion_MediaPurgeSideTable(t *testing.T) {
+	pool, s, accountSvc, _, ctx := setupDeletionTest(t)
+	const password = "correct-horse-battery-staple"
+	seed := seedAccountWithAllDependents(t, ctx, s, password)
+
+	require.NoError(t, accountSvc.DeleteSelf(ctx, seed.aliceUserID, password))
+
+	// Pull the media.purge event from outbox_events and parse its deletion_id.
+	var payloadRaw []byte
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT payload FROM outbox_events WHERE event_type = $1 AND aggregate_id = $2`,
+		domain.EventMediaPurge, seed.alice.ID).Scan(&payloadRaw))
+	var payload domain.MediaPurgePayload
+	require.NoError(t, json.Unmarshal(payloadRaw, &payload))
+	assert.Equal(t, seed.alice.ID, payload.AccountID)
+	require.NotEmpty(t, payload.DeletionID, "media.purge event must carry a deletion_id")
+
+	// account_deletion_media_targets must hold Alice's storage key,
+	// unmarked (delivered_at IS NULL).
+	rows, err := pool.Query(ctx,
+		`SELECT storage_key, delivered_at FROM account_deletion_media_targets WHERE deletion_id = $1`,
+		payload.DeletionID)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	targets := map[string]*time.Time{}
+	for rows.Next() {
+		var key string
+		var deliveredAt *time.Time
+		require.NoError(t, rows.Scan(&key, &deliveredAt))
+		targets[key] = deliveredAt
+	}
+	require.NoError(t, rows.Err())
+	assert.Contains(t, targets, seed.aliceStorageKey,
+		"Alice's storage key must be captured before the CASCADE wipes media_attachments")
+	assert.Nil(t, targets[seed.aliceStorageKey],
+		"target row must be unmarked so the subscriber can pick it up")
+}
+
 // setupDeletionTest opens a pool, builds the services the deletion tests
 // need, and registers pool cleanup with t.Cleanup.
 func setupDeletionTest(t *testing.T) (
@@ -357,6 +405,11 @@ type deletionSeed struct {
 	// targetReportID has reports.target_id = Alice (reported).
 	// After delete, the row survives with target_id = NULL.
 	targetReportID string
+	// aliceStorageKey is the storage_key Alice's seeded media attachment
+	// points at. media_attachments.account_id CASCADEs on Alice's delete,
+	// but the key must already be captured in account_deletion_media_targets
+	// for the media-purge subscriber to clean up the blob later.
+	aliceStorageKey string
 }
 
 // seedAccountWithAllDependents registers Alice (local) with a confirmed user
@@ -504,11 +557,12 @@ func seedAccountWithAllDependents(t *testing.T, ctx context.Context, s store.Sto
 	require.NoError(t, s.CreateStatusMention(ctx, bobReplyStatusID, aliceAcc.ID))
 
 	// --- media_attachments -----------------------------------------------
+	aliceStorageKey := "test/" + suffix
 	_, err = s.CreateMediaAttachment(ctx, store.CreateMediaAttachmentInput{
 		ID:         uid.New(),
 		AccountID:  aliceAcc.ID,
 		Type:       "image",
-		StorageKey: "test/" + suffix,
+		StorageKey: aliceStorageKey,
 		URL:        "https://test.example.com/media/" + suffix,
 	})
 	require.NoError(t, err)
@@ -682,6 +736,7 @@ func seedAccountWithAllDependents(t *testing.T, ctx context.Context, s store.Sto
 		bobReplyStatusID: bobReplyStatusID,
 		reporterReportID: reporterReport.ID,
 		targetReportID:   targetReport.ID,
+		aliceStorageKey:  aliceStorageKey,
 	}
 }
 

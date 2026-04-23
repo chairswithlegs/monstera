@@ -19,6 +19,7 @@ const (
 	ConsumerNotifications = "domain-events-notifications"
 	ConsumerPushDelivery  = "domain-events-push-delivery"
 	ConsumerCards         = "domain-events-cards"
+	ConsumerMediaPurge    = "domain-events-media-purge"
 )
 
 // StreamConfigs returns the DOMAIN_EVENTS stream and consumer configurations.
@@ -71,6 +72,19 @@ var StreamConfigs = []natsutil.StreamConfig{
 					SubjectPrefix + "status.created",
 					SubjectPrefix + "status.created.remote",
 				},
+			},
+			{
+				// Media-purge subscriber deletes S3/local blobs for deleted
+				// accounts. Each message drives a paginated sweep of
+				// account_deletion_media_targets, so MaxAckPending is low —
+				// the work-per-message is bounded only by the subscriber's
+				// chunk size (100) × per-blob latency, which comfortably
+				// fits under AckWait.
+				Durable:       ConsumerMediaPurge,
+				AckPolicy:     jetstream.AckExplicitPolicy,
+				MaxAckPending: 10,
+				AckWait:       60 * time.Second,
+				FilterSubject: SubjectPrefix + "media.purge",
 			},
 		},
 	},
