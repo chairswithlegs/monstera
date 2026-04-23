@@ -187,6 +187,26 @@ func (q *Queries) GetApplicationByClientID(ctx context.Context, clientID string)
 	return i, err
 }
 
+const getApplicationByID = `-- name: GetApplicationByID :one
+SELECT id, name, client_id, client_secret, redirect_uris, scopes, website, created_at FROM oauth_applications WHERE id = $1
+`
+
+func (q *Queries) GetApplicationByID(ctx context.Context, id string) (OauthApplication, error) {
+	row := q.db.QueryRow(ctx, getApplicationByID, id)
+	var i OauthApplication
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.ClientID,
+		&i.ClientSecret,
+		&i.RedirectUris,
+		&i.Scopes,
+		&i.Website,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getAuthorizationCode = `-- name: GetAuthorizationCode :one
 SELECT id, code, application_id, account_id, redirect_uri, scopes, code_challenge, code_challenge_method, expires_at, created_at FROM oauth_authorization_codes
 WHERE code = $1 AND expires_at > NOW()
@@ -210,6 +230,61 @@ func (q *Queries) GetAuthorizationCode(ctx context.Context, code string) (OauthA
 	return i, err
 }
 
+const listAuthorizedApplicationsForAccount = `-- name: ListAuthorizedApplicationsForAccount :many
+SELECT DISTINCT ON (app.id)
+    app.id AS application_id,
+    app.name,
+    app.website,
+    app.redirect_uris,
+    app.scopes AS app_scopes,
+    token.scopes AS token_scopes,
+    token.created_at AS authorized_at
+FROM oauth_access_tokens token
+JOIN oauth_applications app ON app.id = token.application_id
+WHERE token.account_id = $1
+  AND token.revoked_at IS NULL
+  AND (token.expires_at IS NULL OR token.expires_at > NOW())
+ORDER BY app.id, token.created_at DESC
+`
+
+type ListAuthorizedApplicationsForAccountRow struct {
+	ApplicationID string             `json:"application_id"`
+	Name          string             `json:"name"`
+	Website       *string            `json:"website"`
+	RedirectUris  string             `json:"redirect_uris"`
+	AppScopes     string             `json:"app_scopes"`
+	TokenScopes   string             `json:"token_scopes"`
+	AuthorizedAt  pgtype.Timestamptz `json:"authorized_at"`
+}
+
+func (q *Queries) ListAuthorizedApplicationsForAccount(ctx context.Context, accountID *string) ([]ListAuthorizedApplicationsForAccountRow, error) {
+	rows, err := q.db.Query(ctx, listAuthorizedApplicationsForAccount, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAuthorizedApplicationsForAccountRow{}
+	for rows.Next() {
+		var i ListAuthorizedApplicationsForAccountRow
+		if err := rows.Scan(
+			&i.ApplicationID,
+			&i.Name,
+			&i.Website,
+			&i.RedirectUris,
+			&i.AppScopes,
+			&i.TokenScopes,
+			&i.AuthorizedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const revokeAccessToken = `-- name: RevokeAccessToken :exec
 UPDATE oauth_access_tokens SET revoked_at = NOW() WHERE token = $1
 `
@@ -217,4 +292,38 @@ UPDATE oauth_access_tokens SET revoked_at = NOW() WHERE token = $1
 func (q *Queries) RevokeAccessToken(ctx context.Context, token string) error {
 	_, err := q.db.Exec(ctx, revokeAccessToken, token)
 	return err
+}
+
+const revokeAccessTokensForAccountApp = `-- name: RevokeAccessTokensForAccountApp :many
+UPDATE oauth_access_tokens
+SET revoked_at = NOW()
+WHERE account_id = $1
+  AND application_id = $2
+  AND revoked_at IS NULL
+RETURNING token
+`
+
+type RevokeAccessTokensForAccountAppParams struct {
+	AccountID     *string `json:"account_id"`
+	ApplicationID string  `json:"application_id"`
+}
+
+func (q *Queries) RevokeAccessTokensForAccountApp(ctx context.Context, arg RevokeAccessTokensForAccountAppParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, revokeAccessTokensForAccountApp, arg.AccountID, arg.ApplicationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var token string
+		if err := rows.Scan(&token); err != nil {
+			return nil, err
+		}
+		items = append(items, token)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

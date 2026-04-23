@@ -7,7 +7,10 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/chairswithlegs/monstera/internal/api"
+	"github.com/chairswithlegs/monstera/internal/api/middleware"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/oauth"
 	"github.com/chairswithlegs/monstera/internal/service"
@@ -341,5 +344,68 @@ func (h *Handler) POSTRevoke(w http.ResponseWriter, r *http.Request) {
 
 	_ = h.oauth.RevokeToken(r.Context(), token)
 
+	api.WriteJSON(w, http.StatusOK, struct{}{})
+}
+
+// GETVerifyCredentials handles GET /api/v1/apps/verify_credentials.
+// Returns public metadata about the application the current access token was
+// issued for. Secrets (client_id, client_secret) are not included.
+func (h *Handler) GETVerifyCredentials(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.TokenClaimsFromContext(r.Context())
+	if claims == nil || claims.ApplicationID == "" {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	info, err := h.oauth.GetApplicationInfo(r.Context(), claims.ApplicationID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrUnauthorized)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, info)
+}
+
+// GETAuthorizedApplications handles GET /api/v1/oauth/authorized_applications.
+// Returns one entry per OAuth application that currently holds an active
+// token for the authenticated account.
+func (h *Handler) GETAuthorizedApplications(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	apps, err := h.oauth.ListAuthorizedApplications(r.Context(), account.ID)
+	if err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, apps)
+}
+
+// DELETEAuthorizedApplication handles DELETE /api/v1/oauth/authorized_applications/:id.
+// Revokes every active access token the authenticated account holds for the
+// given application id.
+func (h *Handler) DELETEAuthorizedApplication(w http.ResponseWriter, r *http.Request) {
+	account := middleware.AccountFromContext(r.Context())
+	if account == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if err := api.ValidateRequiredField(id, "id"); err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	if err := h.oauth.RevokeApplicationAuthorization(r.Context(), account.ID, id); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			api.HandleError(w, r, api.ErrNotFound)
+			return
+		}
+		api.HandleError(w, r, err)
+		return
+	}
 	api.WriteJSON(w, http.StatusOK, struct{}{})
 }

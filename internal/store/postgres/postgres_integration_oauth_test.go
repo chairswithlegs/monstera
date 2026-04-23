@@ -149,4 +149,115 @@ func TestIntegration_OAuthStore(t *testing.T) {
 		require.NoError(t, err)
 		assert.Nil(t, got.AccountID)
 	})
+
+	t.Run("GetApplicationByID", func(t *testing.T) {
+		app := createTestOAuthApp(t, s, ctx)
+
+		got, err := s.GetApplicationByID(ctx, app.ID)
+		require.NoError(t, err)
+		assert.Equal(t, app.ClientID, got.ClientID)
+
+		_, err = s.GetApplicationByID(ctx, uid.New())
+		require.ErrorIs(t, err, domain.ErrNotFound)
+	})
+
+	t.Run("ListAuthorizedApplicationsForAccount_dedup_and_filters", func(t *testing.T) {
+		app1 := createTestOAuthApp(t, s, ctx)
+		app2 := createTestOAuthApp(t, s, ctx)
+		app3 := createTestOAuthApp(t, s, ctx)
+		acc := createTestLocalAccount(t, s, ctx)
+
+		// Two active tokens for app1 — expect one row with the newest scopes.
+		_, err := s.CreateAccessToken(ctx, store.CreateAccessTokenInput{
+			ID: uid.New(), ApplicationID: app1.ID, AccountID: &acc.ID,
+			Token: "t1_older_" + uid.New(), Scopes: "read",
+		})
+		require.NoError(t, err)
+		time.Sleep(10 * time.Millisecond)
+		_, err = s.CreateAccessToken(ctx, store.CreateAccessTokenInput{
+			ID: uid.New(), ApplicationID: app1.ID, AccountID: &acc.ID,
+			Token: "t1_newer_" + uid.New(), Scopes: "read write",
+		})
+		require.NoError(t, err)
+
+		// Revoked token for app2 — should be excluded.
+		revokedToken := "t2_revoked_" + uid.New()
+		_, err = s.CreateAccessToken(ctx, store.CreateAccessTokenInput{
+			ID: uid.New(), ApplicationID: app2.ID, AccountID: &acc.ID,
+			Token: revokedToken, Scopes: "read",
+		})
+		require.NoError(t, err)
+		require.NoError(t, s.RevokeAccessToken(ctx, revokedToken))
+
+		// Expired token for app3 — should be excluded.
+		expired := time.Now().Add(-1 * time.Hour)
+		_, err = s.CreateAccessToken(ctx, store.CreateAccessTokenInput{
+			ID: uid.New(), ApplicationID: app3.ID, AccountID: &acc.ID,
+			Token: "t3_expired_" + uid.New(), Scopes: "read", ExpiresAt: &expired,
+		})
+		require.NoError(t, err)
+
+		apps, err := s.ListAuthorizedApplicationsForAccount(ctx, acc.ID)
+		require.NoError(t, err)
+		require.Len(t, apps, 1)
+		assert.Equal(t, app1.ID, apps[0].ApplicationID)
+		assert.Equal(t, "read write", apps[0].TokenScopes)
+	})
+
+	t.Run("ListAuthorizedApplicationsForAccount_empty", func(t *testing.T) {
+		acc := createTestLocalAccount(t, s, ctx)
+		apps, err := s.ListAuthorizedApplicationsForAccount(ctx, acc.ID)
+		require.NoError(t, err)
+		assert.Empty(t, apps)
+	})
+
+	t.Run("RevokeAccessTokensForAccountApp_revokes_all_active", func(t *testing.T) {
+		app := createTestOAuthApp(t, s, ctx)
+		acc := createTestLocalAccount(t, s, ctx)
+
+		t1 := "rev_a_" + uid.New()
+		t2 := "rev_b_" + uid.New()
+		_, err := s.CreateAccessToken(ctx, store.CreateAccessTokenInput{
+			ID: uid.New(), ApplicationID: app.ID, AccountID: &acc.ID, Token: t1, Scopes: "read",
+		})
+		require.NoError(t, err)
+		_, err = s.CreateAccessToken(ctx, store.CreateAccessTokenInput{
+			ID: uid.New(), ApplicationID: app.ID, AccountID: &acc.ID, Token: t2, Scopes: "write",
+		})
+		require.NoError(t, err)
+
+		revoked, err := s.RevokeAccessTokensForAccountApp(ctx, acc.ID, app.ID)
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []string{t1, t2}, revoked)
+
+		_, err = s.GetAccessToken(ctx, t1)
+		require.ErrorIs(t, err, domain.ErrNotFound)
+		_, err = s.GetAccessToken(ctx, t2)
+		require.ErrorIs(t, err, domain.ErrNotFound)
+
+		// Second call is a no-op and returns an empty slice.
+		revoked, err = s.RevokeAccessTokensForAccountApp(ctx, acc.ID, app.ID)
+		require.NoError(t, err)
+		assert.Empty(t, revoked)
+	})
+
+	t.Run("RevokeAccessTokensForAccountApp_scoped_to_account", func(t *testing.T) {
+		app := createTestOAuthApp(t, s, ctx)
+		acc1 := createTestLocalAccount(t, s, ctx)
+		acc2 := createTestLocalAccount(t, s, ctx)
+
+		keepToken := "keep_" + uid.New()
+		_, err := s.CreateAccessToken(ctx, store.CreateAccessTokenInput{
+			ID: uid.New(), ApplicationID: app.ID, AccountID: &acc2.ID, Token: keepToken, Scopes: "read",
+		})
+		require.NoError(t, err)
+
+		revoked, err := s.RevokeAccessTokensForAccountApp(ctx, acc1.ID, app.ID)
+		require.NoError(t, err)
+		assert.Empty(t, revoked)
+
+		got, err := s.GetAccessToken(ctx, keepToken)
+		require.NoError(t, err)
+		assert.Nil(t, got.RevokedAt)
+	})
 }

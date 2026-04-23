@@ -467,6 +467,20 @@ func ToDomainOAuthAccessToken(t db.OauthAccessToken) domain.OAuthAccessToken {
 	}
 }
 
+// ToDomainAuthorizedApplication converts a sqlc ListAuthorizedApplicationsForAccountRow
+// to a domain.AuthorizedApplication.
+func ToDomainAuthorizedApplication(r db.ListAuthorizedApplicationsForAccountRow) domain.AuthorizedApplication {
+	return domain.AuthorizedApplication{
+		ApplicationID: r.ApplicationID,
+		Name:          r.Name,
+		Website:       r.Website,
+		RedirectURIs:  r.RedirectUris,
+		AppScopes:     r.AppScopes,
+		TokenScopes:   r.TokenScopes,
+		AuthorizedAt:  pgTime(r.AuthorizedAt),
+	}
+}
+
 // ToDomainOAuthAuthorizationCode converts a sqlc db.OauthAuthorizationCode to a domain.OAuthAuthorizationCode.
 func ToDomainOAuthAuthorizationCode(c db.OauthAuthorizationCode) domain.OAuthAuthorizationCode {
 	return domain.OAuthAuthorizationCode{

@@ -9,15 +9,18 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/bcrypt"
+
+	"github.com/chairswithlegs/monstera/internal/api/middleware"
 	"github.com/chairswithlegs/monstera/internal/cache"
 	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/oauth"
 	"github.com/chairswithlegs/monstera/internal/service"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/testutil"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func mustParseURL(s string) *url.URL {
@@ -228,6 +231,151 @@ func TestHandler_POSTRevoke(t *testing.T) {
 		rec := httptest.NewRecorder()
 		h.POSTRevoke(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+}
+
+func TestHandler_GETVerifyCredentials(t *testing.T) {
+	t.Parallel()
+	st := testutil.NewFakeStore()
+	c, err := cache.New(cache.Config{Driver: "memory"})
+	require.NoError(t, err)
+	defer func() { _ = c.Close() }()
+
+	website := "https://client.example"
+	app, err := st.CreateApplication(context.Background(), store.CreateApplicationInput{
+		ID: "app_vc_1", Name: "Mona", ClientID: "mona_cid", ClientSecret: "mona_secret",
+		RedirectURIs: "monstera://cb", Scopes: "read", Website: &website,
+	})
+	require.NoError(t, err)
+
+	srv := oauth.NewServer(st, c, "vapid-123")
+	h := NewHandler(srv, service.NewAuthService(st, "", ""), nil)
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/apps/verify_credentials", nil)
+		rec := httptest.NewRecorder()
+		h.GETVerifyCredentials(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("happy path omits secrets", func(t *testing.T) {
+		ctx := middleware.WithTokenClaims(context.Background(), &oauth.TokenClaims{
+			AccessTokenID: "tok_vc_1", ApplicationID: app.ID, AccountID: "", Scopes: oauth.Parse("read"),
+		})
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/apps/verify_credentials", nil)
+		rec := httptest.NewRecorder()
+		h.GETVerifyCredentials(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code)
+
+		var out map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+		assert.Equal(t, app.ID, out["id"])
+		assert.Equal(t, "Mona", out["name"])
+		assert.Equal(t, "vapid-123", out["vapid_key"])
+		assert.NotContains(t, out, "client_id")
+		assert.NotContains(t, out, "client_secret")
+	})
+}
+
+func TestHandler_GETAuthorizedApplications(t *testing.T) {
+	t.Parallel()
+	st := testutil.NewFakeStore()
+	c, err := cache.New(cache.Config{Driver: "memory"})
+	require.NoError(t, err)
+	defer func() { _ = c.Close() }()
+	srv := oauth.NewServer(st, c, "")
+	h := NewHandler(srv, service.NewAuthService(st, "", ""), nil)
+
+	accountID := "acct_list_1"
+	app, err := st.CreateApplication(context.Background(), store.CreateApplicationInput{
+		ID: "app_list_1", Name: "Ice Cubes", ClientID: "ic_cid", ClientSecret: "ic_secret",
+		RedirectURIs: "monstera://cb", Scopes: "read write",
+	})
+	require.NoError(t, err)
+	_, err = st.CreateAccessToken(context.Background(), store.CreateAccessTokenInput{
+		ID: "tok_list_1", ApplicationID: app.ID, AccountID: &accountID,
+		Token: "ic_raw_token", Scopes: "read write",
+	})
+	require.NoError(t, err)
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/oauth/authorized_applications", nil)
+		rec := httptest.NewRecorder()
+		h.GETAuthorizedApplications(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("happy path returns list", func(t *testing.T) {
+		acc := &domain.Account{ID: accountID}
+		ctx := middleware.WithAccount(context.Background(), acc)
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/oauth/authorized_applications", nil)
+		rec := httptest.NewRecorder()
+		h.GETAuthorizedApplications(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code)
+
+		var apps []map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &apps))
+		require.Len(t, apps, 1)
+		assert.Equal(t, app.ID, apps[0]["id"])
+		assert.Equal(t, "Ice Cubes", apps[0]["name"])
+	})
+}
+
+func TestHandler_DELETEAuthorizedApplication(t *testing.T) {
+	t.Parallel()
+	st := testutil.NewFakeStore()
+	c, err := cache.New(cache.Config{Driver: "memory"})
+	require.NoError(t, err)
+	defer func() { _ = c.Close() }()
+	srv := oauth.NewServer(st, c, "")
+	h := NewHandler(srv, service.NewAuthService(st, "", ""), nil)
+
+	accountID := "acct_del_1"
+	app, err := st.CreateApplication(context.Background(), store.CreateApplicationInput{
+		ID: "app_del_1", Name: "Tusky", ClientID: "tusky_cid", ClientSecret: "tusky_secret",
+		RedirectURIs: "monstera://cb", Scopes: "read write",
+	})
+	require.NoError(t, err)
+	_, err = st.CreateAccessToken(context.Background(), store.CreateAccessTokenInput{
+		ID: "tok_del_1", ApplicationID: app.ID, AccountID: &accountID,
+		Token: "tusky_raw_token", Scopes: "read write",
+	})
+	require.NoError(t, err)
+
+	withAuthAndParam := func(t *testing.T, id string) *http.Request {
+		t.Helper()
+		acc := &domain.Account{ID: accountID}
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("id", id)
+		ctx := middleware.WithAccount(context.Background(), acc)
+		ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+		return httptest.NewRequestWithContext(ctx, http.MethodDelete, "/api/v1/oauth/authorized_applications/"+id, nil)
+	}
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/api/v1/oauth/authorized_applications/"+app.ID, nil)
+		rec := httptest.NewRecorder()
+		h.DELETEAuthorizedApplication(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("unknown app returns 404", func(t *testing.T) {
+		req := withAuthAndParam(t, "app_does_not_exist")
+		rec := httptest.NewRecorder()
+		h.DELETEAuthorizedApplication(rec, req)
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("happy path returns 200 and subsequent delete is 404", func(t *testing.T) {
+		req := withAuthAndParam(t, app.ID)
+		rec := httptest.NewRecorder()
+		h.DELETEAuthorizedApplication(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		req = withAuthAndParam(t, app.ID)
+		rec = httptest.NewRecorder()
+		h.DELETEAuthorizedApplication(rec, req)
+		assert.Equal(t, http.StatusNotFound, rec.Code)
 	})
 }
 
