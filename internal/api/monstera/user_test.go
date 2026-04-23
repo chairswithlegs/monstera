@@ -302,3 +302,82 @@ func TestUserHandler_PATCHPassword(t *testing.T) {
 		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	})
 }
+
+func TestUserHandler_DELETEUser(t *testing.T) {
+	t.Parallel()
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("correct-password"), bcrypt.MinCost)
+	require.NoError(t, err)
+
+	type fixture struct {
+		handler *UserHandler
+		store   *testutil.FakeStore
+		user    *domain.User
+		account *domain.Account
+	}
+	seed := func(t *testing.T) fixture {
+		t.Helper()
+		st := testutil.NewFakeStore()
+		accountSvc := service.NewAccountService(st, "https://example.com")
+		handler := NewUserHandler(accountSvc)
+		u := &domain.User{
+			ID: "01USER", AccountID: "01ACC", Email: "alice@example.com",
+			PasswordHash: string(hash), CreatedAt: time.Now(),
+		}
+		pk := "-----BEGIN RSA PRIVATE KEY-----\nstub\n-----END RSA PRIVATE KEY-----"
+		a := &domain.Account{ID: "01ACC", Username: "alice", APID: "https://example.com/users/alice", PrivateKey: &pk}
+		require.NoError(t, st.SeedUserAndAccount(u, a))
+		return fixture{handler: handler, store: st, user: u, account: a}
+	}
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		t.Parallel()
+		handler, _, _ := newTestHandler(t)
+		req := httptest.NewRequest(http.MethodDelete, "/monstera/api/v1/user", nil)
+		rec := httptest.NewRecorder()
+		handler.DELETEUser(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("missing current_password returns 422", func(t *testing.T) {
+		t.Parallel()
+		f := seed(t)
+		payload, _ := json.Marshal(map[string]any{"current_password": ""})
+		req := httptest.NewRequest(http.MethodDelete, "/monstera/api/v1/user", bytes.NewReader(payload))
+		req = req.WithContext(middleware.WithUser(req.Context(), f.user))
+		rec := httptest.NewRecorder()
+		f.handler.DELETEUser(rec, req)
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	})
+
+	t.Run("wrong password returns 403 and account intact", func(t *testing.T) {
+		t.Parallel()
+		f := seed(t)
+		payload, _ := json.Marshal(map[string]any{"current_password": "nope"})
+		req := httptest.NewRequest(http.MethodDelete, "/monstera/api/v1/user", bytes.NewReader(payload))
+		req = req.WithContext(middleware.WithUser(req.Context(), f.user))
+		rec := httptest.NewRecorder()
+		f.handler.DELETEUser(rec, req)
+		assert.Equal(t, http.StatusForbidden, rec.Code)
+
+		acc, err := f.store.GetAccountByID(req.Context(), f.account.ID)
+		require.NoError(t, err)
+		assert.False(t, acc.Suspended)
+	})
+
+	t.Run("correct password returns 204 and hard-deletes account", func(t *testing.T) {
+		t.Parallel()
+		f := seed(t)
+		payload, _ := json.Marshal(map[string]any{"current_password": "correct-password"})
+		req := httptest.NewRequest(http.MethodDelete, "/monstera/api/v1/user", bytes.NewReader(payload))
+		req = req.WithContext(middleware.WithUser(req.Context(), f.user))
+		rec := httptest.NewRecorder()
+		f.handler.DELETEUser(rec, req)
+		assert.Equal(t, http.StatusNoContent, rec.Code)
+
+		_, err := f.store.GetAccountByID(req.Context(), f.account.ID)
+		require.ErrorIs(t, err, domain.ErrNotFound)
+		_, err = f.store.GetUserByAccountID(req.Context(), f.account.ID)
+		require.ErrorIs(t, err, domain.ErrNotFound)
+	})
+}

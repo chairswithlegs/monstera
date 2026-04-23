@@ -153,28 +153,48 @@ func TestAdminUsersHandler_PUTRole(t *testing.T) {
 
 func TestAdminUsersHandler_DELETEUser(t *testing.T) {
 	t.Parallel()
-	st := testutil.NewFakeStore()
-	accountSvc := service.NewAccountService(st, "https://example.com")
-	modSvc := service.NewModerationService(st, testutil.NoopBlocklistRefresher{})
-	handler := NewAdminUsersHandler(accountSvc, modSvc)
-	adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
-	adminUser := getUserByAccountID(t, st, adminAcc.ID)
-	targetAcc := createAccountWithRole(t, st, "target", domain.RoleUser)
+
+	type fixture struct {
+		handler   *AdminUsersHandler
+		store     *testutil.FakeStore
+		adminUser *domain.User
+		target    *domain.Account
+	}
+	seed := func(t *testing.T) fixture {
+		t.Helper()
+		st := testutil.NewFakeStore()
+		accountSvc := service.NewAccountService(st, "https://example.com")
+		modSvc := service.NewModerationService(st, testutil.NoopBlocklistRefresher{})
+		handler := NewAdminUsersHandler(accountSvc, modSvc)
+		adminAcc := createAccountWithRole(t, st, "admin", domain.RoleAdmin)
+		adminUser := getUserByAccountID(t, st, adminAcc.ID)
+		target := createAccountWithRole(t, st, "target", domain.RoleUser)
+		return fixture{handler: handler, store: st, adminUser: adminUser, target: target}
+	}
 
 	t.Run("no user returns 403", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodDelete, "/admin/users/"+targetAcc.ID, nil)
-		req = testutil.AddChiURLParam(req, "id", targetAcc.ID)
+		t.Parallel()
+		f := seed(t)
+		req := httptest.NewRequest(http.MethodDelete, "/admin/users/"+f.target.ID, nil)
+		req = testutil.AddChiURLParam(req, "id", f.target.ID)
 		rec := httptest.NewRecorder()
-		handler.DELETEUser(rec, req)
+		f.handler.DELETEUser(rec, req)
 		assert.Equal(t, http.StatusForbidden, rec.Code)
 	})
 
-	t.Run("with user returns 204", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodDelete, "/admin/users/"+targetAcc.ID, nil)
-		req = req.WithContext(middleware.WithUser(req.Context(), adminUser))
-		req = testutil.AddChiURLParam(req, "id", targetAcc.ID)
+	t.Run("returns 204 and hard-deletes account", func(t *testing.T) {
+		t.Parallel()
+		f := seed(t)
+		req := httptest.NewRequest(http.MethodDelete, "/admin/users/"+f.target.ID, nil)
+		req = req.WithContext(middleware.WithUser(req.Context(), f.adminUser))
+		req = testutil.AddChiURLParam(req, "id", f.target.ID)
 		rec := httptest.NewRecorder()
-		handler.DELETEUser(rec, req)
-		assert.Equal(t, http.StatusNoContent, rec.Code)
+		f.handler.DELETEUser(rec, req)
+		require.Equal(t, http.StatusNoContent, rec.Code)
+
+		_, err := f.store.GetAccountByID(req.Context(), f.target.ID)
+		require.ErrorIs(t, err, domain.ErrNotFound)
+		_, err = f.store.GetUserByAccountID(req.Context(), f.target.ID)
+		require.ErrorIs(t, err, domain.ErrNotFound)
 	})
 }

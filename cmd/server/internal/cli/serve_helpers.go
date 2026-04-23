@@ -53,6 +53,7 @@ type infra struct {
 	eventPoller     *events.Poller
 	emailSender     email.Sender
 	emailTemplates  *email.Templates
+	oauthServer     *oauth.Server
 }
 
 // svcs bundles all domain and subsystem services.
@@ -87,7 +88,7 @@ type svcs struct {
 	pushSubscription   service.PushSubscriptionService
 	backfill           service.BackfillService
 	adminMetrics       service.AdminMetricsService
-	oauthServer        *oauth.Server
+	accountDeletion    service.AccountDeletionService
 	remoteResolver     *ap.RemoteAccountResolver
 	signatureService   ap.HTTPSignatureService
 	inboxProcessor     ap.Inbox
@@ -191,6 +192,8 @@ func setupInfra(ctx context.Context, cfg *config.Config) (*infra, func(), error)
 		return nil, nil, fmt.Errorf("email templates: %w", err)
 	}
 
+	oauthServer := oauth.NewServer(s, sharedCache, cfg.VAPIDPublicKey)
+
 	i := &infra{
 		pool:            pool,
 		store:           s,
@@ -203,6 +206,7 @@ func setupInfra(ctx context.Context, cfg *config.Config) (*infra, func(), error)
 		eventPoller:     poller,
 		emailSender:     emailSender,
 		emailTemplates:  emailTemplates,
+		oauthServer:     oauthServer,
 	}
 
 	cleanup := func() {
@@ -233,7 +237,8 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 
 	mailer := service.NewRegistrationEmailSender(i.emailSender, i.emailTemplates, cfg.EmailFrom, cfg.EmailFromName)
 	remoteResolver := ap.NewRemoteAccountResolver(accountSvc, i.blocklist, cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.MonsteraInstanceDomain)
-	signatureService := ap.NewHTTPSignatureService(cfg.FederationInsecureSkipTLS, instanceBaseURL, i.sharedCache, i.cache, accountSvc)
+	accountDeletionSvc := service.NewAccountDeletionService(i.store)
+	signatureService := ap.NewHTTPSignatureService(cfg.FederationInsecureSkipTLS, instanceBaseURL, i.sharedCache, i.cache, accountSvc, accountDeletionSvc)
 
 	statusWriteSvc := service.NewStatusWriteService(i.store, statusSvc, conversationSvc, instanceBaseURL, cfg.MonsteraInstanceDomain, cfg.MaxStatusChars)
 	interactionSvc := service.NewStatusInteractionService(i.store, statusSvc, instanceBaseURL)
@@ -273,7 +278,7 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 		announcement:       service.NewAnnouncementService(i.store),
 		pushSubscription:   service.NewPushSubscriptionService(i.store),
 
-		oauthServer:      oauth.NewServer(i.store, i.sharedCache, cfg.VAPIDPublicKey),
+		accountDeletion:  accountDeletionSvc,
 		remoteResolver:   remoteResolver,
 		signatureService: signatureService,
 		inboxProcessor:   ap.NewInbox(accountSvc, followSvc, remoteFollowSvc, statusSvc, remoteStatusWriteSvc, mediaSvc, remoteResolver, i.blocklist, cfg.MonsteraInstanceDomain),
@@ -302,6 +307,11 @@ func registerSchedulerJobs(s *svcs, i *infra) scheduler.Scheduler {
 		Interval: 5 * time.Minute,
 		Handler:  schedulerjobs.CloseExpiredPolls(i.store),
 	})
+	sched.Register(scheduler.Job{
+		Name:     "purge-account-deletion-snapshots",
+		Interval: time.Hour,
+		Handler:  schedulerjobs.PurgeAccountDeletionSnapshots(s.accountDeletion),
+	})
 	return sched
 }
 
@@ -321,7 +331,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 
 	hub := sse.NewHub(natsutil.NewConnSubscriber(i.nats.Conn), metrics)
 	sseSub := sse.NewSubscriber(i.nats.JS, i.nats.Conn, i.store, s.statusRead, cfg.MonsteraInstanceDomain)
-	fedSub := ap.NewFederationSubscriber(i.nats.JS, s.remoteFollow, i.blocklist, s.signatureService,
+	fedSub := ap.NewFederationSubscriber(i.nats.JS, s.remoteFollow, s.accountDeletion, i.blocklist, s.signatureService,
 		instanceBaseURL, cfg.MonsteraUIURL.String(), cfg.AppEnv, cfg.FederationInsecureSkipTLS, cfg.FederationWorkerConcurrency)
 	notifSub := events.NewNotificationSubscriber(i.nats.JS, events.NotificationDeps{
 		Notifications:      s.notification,
@@ -337,6 +347,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 		DomainSilence:      i.blocklist,
 	})
 	cardSub := events.NewCardSubscriber(i.nats.JS, s.card)
+	mediaPurgeSub := events.NewMediaPurgeSubscriber(i.nats.JS, s.accountDeletion, i.mediaStore)
 	backfillWorker := ap.NewBackfillWorker(i.nats.JS, s.account, s.backfill, s.remoteResolver,
 		s.remoteStatusWrite, s.remoteFollow, s.statusRead, i.blocklist, cfg.MonsteraInstanceDomain, cfg.BackfillMaxPages, cfg.BackfillCooldown)
 
@@ -347,6 +358,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 		{"sse-hub", hub},
 		{"notification-subscriber", notifSub},
 		{"card-subscriber", cardSub},
+		{"media-purge-subscriber", mediaPurgeSub},
 		{"scheduler", sched},
 		{"backfill-worker", backfillWorker},
 	}
@@ -400,8 +412,8 @@ func createRouter(cfg *config.Config, s *svcs, i *infra, sseHub *sse.Hub) http.H
 		AccountsService:        s.account,
 		Health:                 api.NewHealthChecker(i.pool, i.nats.Conn),
 		MediaFileServer:        i.mediaFileServer,
-		OAuthHandler:           oauthhandlers.NewHandler(s.oauthServer, s.auth, cfg.MonsteraUIURL),
-		OAuthServer:            s.oauthServer,
+		OAuthHandler:           oauthhandlers.NewHandler(i.oauthServer, s.auth, cfg.MonsteraUIURL),
+		OAuthServer:            i.oauthServer,
 		Accounts:               mastodon.NewAccountsHandler(s.account, s.follow, s.tagFollow, s.timeline, s.statusRead, s.monsteraSettings, s.media, s.backfill, s.featuredTag, cfg.MediaMaxBytes, cfg.MonsteraInstanceDomain),
 		Statuses:               mastodon.NewStatusesHandler(s.account, s.statusRead, s.statusWrite, s.statusInteraction, s.scheduled, s.conversation, cfg.MonsteraInstanceDomain, i.sharedCache, nil),
 		ScheduledStatuses:      mastodon.NewScheduledStatusesHandler(s.statusRead, s.scheduled, cfg.MonsteraInstanceDomain),

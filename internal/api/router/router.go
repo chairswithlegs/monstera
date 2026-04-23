@@ -392,6 +392,7 @@ func New(deps Deps) http.Handler {
 		r.Method("PATCH", "/account/preferences", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.User.PATCHPreferences)))
 		r.Method("PATCH", "/account/security/email", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.User.PATCHEmail)))
 		r.Method("PATCH", "/account/security/password", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.User.PATCHPassword)))
+		r.Method("DELETE", "/user", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.User.DELETEUser)))
 
 		// Moderator API (requires moderator or admin role)
 		r.Route("/moderator", func(r chi.Router) {

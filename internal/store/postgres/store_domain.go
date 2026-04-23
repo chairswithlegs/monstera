@@ -2066,10 +2066,12 @@ func (s *PostgresStore) GetLocalFollowerAccountIDs(ctx context.Context, targetID
 }
 
 func (s *PostgresStore) CreateReport(ctx context.Context, in store.CreateReportInput) (*domain.Report, error) {
+	accountID := in.AccountID
+	targetID := in.TargetID
 	r, err := s.q.CreateReport(ctx, db.CreateReportParams{
 		ID:        in.ID,
-		AccountID: in.AccountID,
-		TargetID:  in.TargetID,
+		AccountID: &accountID,
+		TargetID:  &targetID,
 		StatusIds: in.StatusIDs,
 		Comment:   in.Comment,
 		Category:  in.Category,
@@ -2418,8 +2420,22 @@ func (s *PostgresStore) UnsilenceAccount(ctx context.Context, id string) error {
 	return mapErr(s.q.UnsilenceAccount(ctx, id))
 }
 
-func (s *PostgresStore) DeleteAccount(ctx context.Context, id string) error {
-	return mapErr(s.q.DeleteAccount(ctx, id))
+func (s *PostgresStore) DeleteAccount(ctx context.Context, id string) (*domain.Account, error) {
+	row, err := s.q.DeleteAccount(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	acc := ToDomainAccount(row)
+	return &acc, nil
+}
+
+func (s *PostgresStore) GetAccountByIDForUpdate(ctx context.Context, id string) (*domain.Account, error) {
+	row, err := s.q.GetAccountByIDForUpdate(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	acc := ToDomainAccount(row)
+	return &acc, nil
 }
 
 func (s *PostgresStore) ListLocalAccounts(ctx context.Context, limit, offset int) ([]domain.Account, error) {

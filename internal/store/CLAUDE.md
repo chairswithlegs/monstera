@@ -19,3 +19,7 @@ Design doc: `docs/architecture/05-database.md`
 All SQL queries must be defined in `.sql` files under `internal/store/postgres/queries/` and use sqlc-generated code. Do not hand-write inline SQL in Go store methods. This ensures consistent patterns, type safety, and a single source of truth for query definitions.
 
 When queries are added or updated, regenerate the code via: `sqlc generate`.
+
+## Foreign keys to `accounts(id)`
+
+New tables that reference `accounts(id)` MUST declare `ON DELETE CASCADE` (or `ON DELETE SET NULL` for audit tables like `admin_actions`). Account deletion hard-deletes the row and relies on Postgres-level cascade to drop every account-owned row in the same statement. A new table without a cascade rule will block delete with an FK violation.

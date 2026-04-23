@@ -92,7 +92,14 @@ func (h *ReportsHandler) POSTReports(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	target, err := h.accounts.GetByID(ctx, rep.TargetID)
+	// rep was just created: TargetID is guaranteed non-nil here because the
+	// service path only sets it from the caller's body.AccountID (non-empty,
+	// validated). Dereference directly; nil would be an internal bug.
+	if rep.TargetID == nil {
+		api.HandleError(w, r, api.ErrInternalServerError)
+		return
+	}
+	target, err := h.accounts.GetByID(ctx, *rep.TargetID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			api.HandleError(w, r, api.ErrNotFound)

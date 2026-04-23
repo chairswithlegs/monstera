@@ -17,9 +17,14 @@ func (noopBlocklistRefresher) Refresh(_ context.Context) error { return nil }
 
 func seedLocalAccount(t *testing.T, fake *testutil.FakeStore, id, username string) *domain.Account {
 	t.Helper()
+	// deleteLocalAccount requires a private key so the Delete{Actor} signer
+	// has something to snapshot. Use a stub PEM — the fake store doesn't
+	// parse it.
+	pk := "-----BEGIN RSA PRIVATE KEY-----\nstub\n-----END RSA PRIVATE KEY-----"
 	acc, err := fake.CreateAccount(context.Background(), store.CreateAccountInput{
-		ID:       id,
-		Username: username,
+		ID:         id,
+		Username:   username,
+		PrivateKey: &pk,
 	})
 	require.NoError(t, err)
 	return acc
@@ -263,8 +268,10 @@ func TestModerationService_CreateReport(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.NotNil(t, report)
-		assert.Equal(t, reporter.ID, report.AccountID)
-		assert.Equal(t, target.ID, report.TargetID)
+		require.NotNil(t, report.AccountID)
+		require.NotNil(t, report.TargetID)
+		assert.Equal(t, reporter.ID, *report.AccountID)
+		assert.Equal(t, target.ID, *report.TargetID)
 		assert.Equal(t, domain.ReportCategorySpam, report.Category)
 	})
 }
@@ -412,14 +419,11 @@ func TestModerationService_DeleteDomainBlock_RefreshesBlocklist(t *testing.T) {
 func TestModerationService_DeleteAccount(t *testing.T) {
 	t.Parallel()
 
-	t.Run("success", func(t *testing.T) {
-		t.Parallel()
+	seed := func(t *testing.T, fake *testutil.FakeStore) (mod, target *domain.Account) {
+		t.Helper()
 		ctx := context.Background()
-		fake := testutil.NewFakeStore()
-		svc := NewModerationService(fake, noopBlocklistRefresher{})
-
-		mod := seedLocalAccount(t, fake, "mod-1", "moderator")
-		target := seedLocalAccount(t, fake, "target-1", "target")
+		mod = seedLocalAccount(t, fake, "mod-1", "moderator")
+		target = seedLocalAccount(t, fake, "target-1", "target")
 		_, err := fake.CreateUser(ctx, store.CreateUserInput{
 			ID:           "user-target",
 			AccountID:    target.ID,
@@ -428,16 +432,64 @@ func TestModerationService_DeleteAccount(t *testing.T) {
 			Role:         domain.RoleUser,
 		})
 		require.NoError(t, err)
+		return mod, target
+	}
 
-		err = svc.DeleteAccount(ctx, mod.ID, target.ID)
+	t.Run("hard_delete", func(t *testing.T) {
+		t.Parallel()
+		ctx := context.Background()
+		fake := testutil.NewFakeStore()
+		svc := NewModerationService(fake, noopBlocklistRefresher{})
+		mod, target := seed(t, fake)
+
+		err := svc.DeleteAccount(ctx, mod.ID, target.ID)
 		require.NoError(t, err)
 
 		_, err = fake.GetAccountByID(ctx, target.ID)
-		require.Error(t, err)
+		require.ErrorIs(t, err, domain.ErrNotFound)
+		_, err = fake.GetUserByAccountID(ctx, target.ID)
 		require.ErrorIs(t, err, domain.ErrNotFound)
 
-		_, err = fake.GetUserByAccountID(ctx, target.ID)
-		require.Error(t, err)
-		require.ErrorIs(t, err, domain.ErrNotFound)
+		// Federation event published so followers tombstone the actor.
+		assertOutboxContainsEvent(t, fake, domain.EventAccountDeleted, target.ID)
+
+		// Audit row is written in the same transaction as the delete.
+		assertAdminActionRecorded(t, fake, AdminActionDeleteAccount, target.ID)
 	})
+
+	t.Run("remote_refused", func(t *testing.T) {
+		t.Parallel()
+		ctx := context.Background()
+		fake := testutil.NewFakeStore()
+		svc := NewModerationService(fake, noopBlocklistRefresher{})
+		mod := seedLocalAccount(t, fake, "mod-1", "moderator")
+		remote := seedRemoteAccount(t, fake, "remote-1", "remote", "other.example")
+
+		err := svc.DeleteAccount(ctx, mod.ID, remote.ID)
+		assert.ErrorIs(t, err, domain.ErrForbidden)
+	})
+}
+
+func assertOutboxContainsEvent(t *testing.T, fake *testutil.FakeStore, eventType, aggregateID string) {
+	t.Helper()
+	for _, ev := range fake.OutboxEvents {
+		if ev.EventType == eventType && ev.AggregateID == aggregateID {
+			return
+		}
+	}
+	t.Fatalf("expected outbox event %q for %q, found %d events", eventType, aggregateID, len(fake.OutboxEvents))
+}
+
+func assertAdminActionRecorded(t *testing.T, fake *testutil.FakeStore, action, targetAccountID string) {
+	t.Helper()
+	for _, a := range fake.AdminActions {
+		if a.Action != action {
+			continue
+		}
+		if a.TargetAccountID == nil || *a.TargetAccountID != targetAccountID {
+			continue
+		}
+		return
+	}
+	t.Fatalf("expected admin action %q for target %q, found %d actions", action, targetAccountID, len(fake.AdminActions))
 }

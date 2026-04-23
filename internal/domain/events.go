@@ -21,10 +21,12 @@ const (
 	EventBlockCreated        = "block.created"
 	EventBlockRemoved        = "block.removed"
 	EventAccountUpdated      = "account.updated"
+	EventAccountDeleted      = "account.deleted"
 	EventStatusUpdatedRemote = "status.updated.remote"
 	EventPollUpdated         = "poll.updated"
 	EventPollExpired         = "poll.expired"
 	EventNotificationCreated = "notification.created"
+	EventMediaPurge          = "media.purge"
 )
 
 // DomainEvent is the envelope stored in the outbox_events table and published
@@ -180,6 +182,24 @@ type AccountUpdatedPayload struct {
 	Local   bool     `json:"local"`
 }
 
+// AccountDeletedPayload carries data when an account has been deleted.
+//
+// For local deletes (Local=true), the payload references an
+// account_deletion_snapshots row by DeletionID. The federation subscriber,
+// fanout worker, and delivery worker all read the signing material and the
+// pending follower inbox URLs from that side table — this keeps the private
+// key out of the outbox_events table and off the NATS stream. APID is
+// denormalized onto the payload only so the subscriber can construct the
+// Delete activity without an extra DB round trip.
+//
+// For remote deletes (Local=false), subscribers must not federate;
+// DeletionID is empty.
+type AccountDeletedPayload struct {
+	DeletionID string `json:"deletion_id,omitempty"`
+	APID       string `json:"ap_id,omitempty"`
+	Local      bool   `json:"local"`
+}
+
 // PollUpdatedPayload carries data when poll vote counts change (local vote cast).
 type PollUpdatedPayload struct {
 	Status          *Status           `json:"status"`
@@ -205,4 +225,20 @@ type NotificationCreatedPayload struct {
 	Notification       *Notification `json:"notification"`
 	FromAccount        *Account      `json:"from_account"`
 	StatusID           *string       `json:"status_id"`
+}
+
+// MediaPurgePayload drives object-store blob cleanup after an account
+// hard-delete. It carries only the deletion_id; the subscriber paginates
+// account_deletion_media_targets to discover the storage keys. This keeps
+// the NATS message small; NATS delivers each media.purge message to exactly
+// one consumer instance at a time, so only one pod works a given deletion_id
+// concurrently.
+//
+// The snapshot + targets are populated inside deleteLocalAccount's tx before
+// the accounts row is deleted; they survive the CASCADE because they live in
+// account_deletion_snapshots (which CASCADEs only when itself is purged by
+// the scheduler job past its TTL).
+type MediaPurgePayload struct {
+	DeletionID string `json:"deletion_id"`
+	AccountID  string `json:"account_id"`
 }

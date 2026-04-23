@@ -600,6 +600,83 @@ func TestFederationSubscriber_handleAccountUpdated_RemoteAccount_Skips(t *testin
 	assert.False(t, published)
 }
 
+// --- handleAccountDeleted ---
+
+func TestFederationSubscriber_handleAccountDeleted_Local_PublishesFanout(t *testing.T) {
+	t.Parallel()
+	var got internal.OutboxFanoutMessage
+	var gotType string
+	fanout := mockFanoutWorker{publishFn: func(_ context.Context, actType string, msg internal.OutboxFanoutMessage) error {
+		gotType = actType
+		got = msg
+		return nil
+	}}
+	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
+
+	const apID = "https://example.com/users/alice"
+	const deletionID = "01DELETION"
+	payload := domain.AccountDeletedPayload{DeletionID: deletionID, APID: apID, Local: true}
+
+	err := s.handleAccountDeleted(context.Background(), domainEvent(t, domain.EventAccountDeleted, payload))
+	require.NoError(t, err)
+
+	assert.Equal(t, "delete", gotType)
+	assert.Equal(t, apID+"#delete", got.ActivityID)
+	// Deletion fanout routes via DeletionID, not SenderID — the sender's
+	// accounts row is gone by the time the worker runs.
+	assert.Equal(t, deletionID, got.DeletionID)
+	assert.Empty(t, got.SenderID)
+
+	// Wrapped Tombstone object IRI must equal the actor IRI.
+	var activity struct {
+		Type   string `json:"type"`
+		Actor  string `json:"actor"`
+		Object struct {
+			ID   string `json:"id"`
+			Type string `json:"type"`
+		} `json:"object"`
+	}
+	require.NoError(t, json.Unmarshal(got.Activity, &activity))
+	assert.Equal(t, "Delete", activity.Type)
+	assert.Equal(t, apID, activity.Actor)
+	assert.Equal(t, apID, activity.Object.ID)
+	assert.Equal(t, "Tombstone", activity.Object.Type)
+}
+
+func TestFederationSubscriber_handleAccountDeleted_Remote_Skips(t *testing.T) {
+	t.Parallel()
+	published := false
+	fanout := mockFanoutWorker{publishFn: func(context.Context, string, internal.OutboxFanoutMessage) error {
+		published = true
+		return nil
+	}}
+	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
+
+	payload := domain.AccountDeletedPayload{Local: false}
+
+	err := s.handleAccountDeleted(context.Background(), domainEvent(t, domain.EventAccountDeleted, payload))
+	require.NoError(t, err)
+	assert.False(t, published)
+}
+
+func TestFederationSubscriber_handleAccountDeleted_MissingDeletionID_Skips(t *testing.T) {
+	t.Parallel()
+	published := false
+	fanout := mockFanoutWorker{publishFn: func(context.Context, string, internal.OutboxFanoutMessage) error {
+		published = true
+		return nil
+	}}
+	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
+
+	// Local event with no DeletionID / APID is malformed — the emitter
+	// (deleteLocalAccount) always sets both. The handler warns and acks.
+	payload := domain.AccountDeletedPayload{Local: true}
+
+	err := s.handleAccountDeleted(context.Background(), domainEvent(t, domain.EventAccountDeleted, payload))
+	require.NoError(t, err)
+	assert.False(t, published)
+}
+
 func TestFederationSubscriber_handleReblogCreated_RemoteFromAccount_Skips(t *testing.T) {
 	t.Parallel()
 	published := false

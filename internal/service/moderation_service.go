@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -33,6 +32,10 @@ type ModerationService interface {
 	SilenceAccount(ctx context.Context, moderatorID, targetID string) error
 	UnsilenceAccount(ctx context.Context, moderatorID, targetID string) error
 	SetUserRole(ctx context.Context, moderatorID, targetUserID, role string) error
+	// DeleteAccount permanently removes a local account and all its data
+	// (CASCADE). Emits EventAccountDeleted so federation fans out a
+	// Delete{Actor} to remote followers, and records an admin action entry in
+	// the same transaction.
 	DeleteAccount(ctx context.Context, moderatorID, targetID string) error
 	CreateReport(ctx context.Context, in CreateReportInput) (*domain.Report, error)
 	ListReports(ctx context.Context, state string, limit, offset int) ([]domain.Report, error)
@@ -167,21 +170,20 @@ func (svc *moderationService) SetUserRole(ctx context.Context, moderatorID, targ
 }
 
 func (svc *moderationService) DeleteAccount(ctx context.Context, moderatorID, targetID string) error {
-	user, err := svc.store.GetUserByAccountID(ctx, targetID)
-	if err != nil && !errors.Is(err, domain.ErrNotFound) {
-		return fmt.Errorf("GetUserByAccountID(%s): %w", targetID, err)
-	}
-	if err == nil {
-		if err := svc.store.DeleteUser(ctx, user.ID); err != nil {
-			return fmt.Errorf("DeleteUser(%s): %w", user.ID, err)
-		}
-	}
-	if err := svc.store.DeleteAccount(ctx, targetID); err != nil {
-		return fmt.Errorf("DeleteAccount(%s): %w", targetID, err)
-	}
 	t := targetID
-	if err := svc.writeAdminAction(ctx, moderatorID, &t, AdminActionDeleteAccount, nil, nil); err != nil {
-		return fmt.Errorf("CreateAdminAction(delete_account): %w", err)
+	auditFn := func(ctx context.Context, tx store.Store) error {
+		if err := tx.CreateAdminAction(ctx, store.CreateAdminActionInput{
+			ID:              uid.New(),
+			ModeratorID:     moderatorID,
+			TargetAccountID: &t,
+			Action:          AdminActionDeleteAccount,
+		}); err != nil {
+			return fmt.Errorf("CreateAdminAction(delete_account): %w", err)
+		}
+		return nil
+	}
+	if err := deleteLocalAccount(ctx, svc.store, targetID, auditFn); err != nil {
+		return fmt.Errorf("DeleteAccount(%s): %w", targetID, err)
 	}
 	return nil
 }

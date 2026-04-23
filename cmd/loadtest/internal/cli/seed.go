@@ -79,7 +79,7 @@ func (f *FanoutSeeder) CleanupFollowers(ctx context.Context, targetID string, ac
 		if err := f.s.DeleteFollow(ctx, id, targetID); err != nil {
 			return fmt.Errorf("seed: delete follow %s→%s: %w", id, targetID, err)
 		}
-		if err := f.s.DeleteAccount(ctx, id); err != nil {
+		if _, err := f.s.DeleteAccount(ctx, id); err != nil {
 			return fmt.Errorf("seed: delete account %s: %w", id, err)
 		}
 	}

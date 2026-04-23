@@ -79,9 +79,13 @@ export default function ReportDetailView({ id }: Props) {
         <dt className="text-sm font-medium text-muted-foreground">State</dt>
         <dd className="text-sm text-foreground">{report.state}</dd>
         <dt className="text-sm font-medium text-muted-foreground">Reporter account</dt>
-        <dd className="font-mono text-sm text-foreground">{report.account_id}</dd>
+        <dd className="font-mono text-sm text-foreground">
+          {report.account_id ?? <span className="italic text-muted-foreground">{t('deletedAccount')}</span>}
+        </dd>
         <dt className="text-sm font-medium text-muted-foreground">Target account</dt>
-        <dd className="font-mono text-sm text-foreground">{report.target_id}</dd>
+        <dd className="font-mono text-sm text-foreground">
+          {report.target_id ?? <span className="italic text-muted-foreground">{t('deletedAccount')}</span>}
+        </dd>
         {report.comment && (
           <>
             <dt className="text-sm font-medium text-muted-foreground">Comment</dt>

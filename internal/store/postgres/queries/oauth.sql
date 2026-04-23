@@ -31,7 +31,3 @@ WHERE token = $1 AND revoked_at IS NULL;
 
 -- name: RevokeAccessToken :exec
 UPDATE oauth_access_tokens SET revoked_at = NOW() WHERE token = $1;
-
--- name: RevokeAllAccessTokensForAccount :exec
-UPDATE oauth_access_tokens SET revoked_at = NOW()
-WHERE account_id = $1 AND revoked_at IS NULL;

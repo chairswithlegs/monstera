@@ -671,7 +671,9 @@ func ToDomainMediaAttachment(m db.MediaAttachment) domain.MediaAttachment {
 	return d
 }
 
-// ToDomainReport converts a sqlc db.Report to a domain.Report.
+// ToDomainReport converts a sqlc db.Report to a domain.Report. AccountID and
+// TargetID are nullable because reports.{account_id,target_id} are ON DELETE
+// SET NULL — preserves moderation history after account deletion.
 func ToDomainReport(r db.Report) domain.Report {
 	d := domain.Report{
 		ID:           r.ID,

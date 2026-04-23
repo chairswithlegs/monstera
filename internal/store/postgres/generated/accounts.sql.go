@@ -164,13 +164,46 @@ func (q *Queries) DecrementStatusesCount(ctx context.Context, id string) error {
 	return err
 }
 
-const deleteAccount = `-- name: DeleteAccount :exec
-DELETE FROM accounts WHERE id = $1
+const deleteAccount = `-- name: DeleteAccount :one
+DELETE FROM accounts WHERE id = $1 RETURNING id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url, last_backfilled_at, featured_url
 `
 
-func (q *Queries) DeleteAccount(ctx context.Context, id string) error {
-	_, err := q.db.Exec(ctx, deleteAccount, id)
-	return err
+func (q *Queries) DeleteAccount(ctx context.Context, id string) (Account, error) {
+	row := q.db.QueryRow(ctx, deleteAccount, id)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Domain,
+		&i.DisplayName,
+		&i.Note,
+		&i.PublicKey,
+		&i.PrivateKey,
+		&i.InboxUrl,
+		&i.OutboxUrl,
+		&i.FollowersUrl,
+		&i.FollowingUrl,
+		&i.ApID,
+		&i.Bot,
+		&i.Locked,
+		&i.Suspended,
+		&i.Silenced,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AvatarMediaID,
+		&i.HeaderMediaID,
+		&i.FollowersCount,
+		&i.FollowingCount,
+		&i.StatusesCount,
+		&i.Fields,
+		&i.LastStatusAt,
+		&i.Url,
+		&i.AvatarUrl,
+		&i.HeaderUrl,
+		&i.LastBackfilledAt,
+		&i.FeaturedUrl,
+	)
+	return i, err
 }
 
 const getAccountByAPID = `-- name: GetAccountByAPID :one
@@ -221,6 +254,48 @@ SELECT id, username, domain, display_name, note, public_key, private_key, inbox_
 
 func (q *Queries) GetAccountByID(ctx context.Context, id string) (Account, error) {
 	row := q.db.QueryRow(ctx, getAccountByID, id)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Domain,
+		&i.DisplayName,
+		&i.Note,
+		&i.PublicKey,
+		&i.PrivateKey,
+		&i.InboxUrl,
+		&i.OutboxUrl,
+		&i.FollowersUrl,
+		&i.FollowingUrl,
+		&i.ApID,
+		&i.Bot,
+		&i.Locked,
+		&i.Suspended,
+		&i.Silenced,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AvatarMediaID,
+		&i.HeaderMediaID,
+		&i.FollowersCount,
+		&i.FollowingCount,
+		&i.StatusesCount,
+		&i.Fields,
+		&i.LastStatusAt,
+		&i.Url,
+		&i.AvatarUrl,
+		&i.HeaderUrl,
+		&i.LastBackfilledAt,
+		&i.FeaturedUrl,
+	)
+	return i, err
+}
+
+const getAccountByIDForUpdate = `-- name: GetAccountByIDForUpdate :one
+SELECT id, username, domain, display_name, note, public_key, private_key, inbox_url, outbox_url, followers_url, following_url, ap_id, bot, locked, suspended, silenced, created_at, updated_at, avatar_media_id, header_media_id, followers_count, following_count, statuses_count, fields, last_status_at, url, avatar_url, header_url, last_backfilled_at, featured_url FROM accounts WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) GetAccountByIDForUpdate(ctx context.Context, id string) (Account, error) {
+	row := q.db.QueryRow(ctx, getAccountByIDForUpdate, id)
 	var i Account
 	err := row.Scan(
 		&i.ID,

@@ -42,8 +42,8 @@ RETURNING id, account_id, target_id, status_ids, comment, category, state, assig
 
 type CreateReportParams struct {
 	ID        string   `json:"id"`
-	AccountID string   `json:"account_id"`
-	TargetID  string   `json:"target_id"`
+	AccountID *string  `json:"account_id"`
+	TargetID  *string  `json:"target_id"`
 	StatusIds []string `json:"status_ids"`
 	Comment   *string  `json:"comment"`
 	Category  string   `json:"category"`
