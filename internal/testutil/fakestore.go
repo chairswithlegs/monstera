@@ -106,8 +106,9 @@ type FakeStore struct {
 
 	AdminActions []store.CreateAdminActionInput // recorded moderator actions
 
-	accountDeletionSnapshots map[string]*store.AccountDeletionSnapshot
-	accountDeletionTargets   map[string][]*FakeAccountDeletionTarget
+	accountDeletionSnapshots    map[string]*store.AccountDeletionSnapshot
+	accountDeletionTargets      map[string][]*FakeAccountDeletionTarget
+	accountDeletionMediaTargets map[string][]*FakeAccountDeletionMediaTarget
 
 	pushSubscriptions []*domain.PushSubscription
 
@@ -298,34 +299,36 @@ func (f *FakeStore) WithTx(ctx context.Context, fn func(store.Store) error) erro
 // WithTx rollback. Anything not listed here effectively commits mid-tx; add
 // entries as tests need stronger guarantees.
 type txSnapshot struct {
-	accountsByID             map[string]*domain.Account
-	accountsByUsername       map[string]*domain.Account
-	suspendedAccountIDs      map[string]struct{}
-	usersByAccountID         map[string]*domain.User
-	followsByKey             map[string]*domain.Follow
-	authCodes                map[string]*domain.OAuthAuthorizationCode
-	tokens                   map[string]*domain.OAuthAccessToken
-	outboxEvents             []domain.DomainEvent
-	adminActions             []store.CreateAdminActionInput
-	accountDeletionSnapshots map[string]*store.AccountDeletionSnapshot
-	accountDeletionTargets   map[string][]*FakeAccountDeletionTarget
+	accountsByID                map[string]*domain.Account
+	accountsByUsername          map[string]*domain.Account
+	suspendedAccountIDs         map[string]struct{}
+	usersByAccountID            map[string]*domain.User
+	followsByKey                map[string]*domain.Follow
+	authCodes                   map[string]*domain.OAuthAuthorizationCode
+	tokens                      map[string]*domain.OAuthAccessToken
+	outboxEvents                []domain.DomainEvent
+	adminActions                []store.CreateAdminActionInput
+	accountDeletionSnapshots    map[string]*store.AccountDeletionSnapshot
+	accountDeletionTargets      map[string][]*FakeAccountDeletionTarget
+	accountDeletionMediaTargets map[string][]*FakeAccountDeletionMediaTarget
 }
 
 func (f *FakeStore) snapshotTxState() txSnapshot {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return txSnapshot{
-		accountsByID:             cloneMap(f.accountsByID),
-		accountsByUsername:       cloneMap(f.accountsByUsername),
-		suspendedAccountIDs:      cloneMap(f.suspendedAccountIDs),
-		usersByAccountID:         cloneMap(f.usersByAccountID),
-		followsByKey:             cloneMap(f.followsByKey),
-		authCodes:                cloneMap(f.authCodes),
-		tokens:                   cloneMap(f.tokens),
-		outboxEvents:             append([]domain.DomainEvent(nil), f.OutboxEvents...),
-		adminActions:             append([]store.CreateAdminActionInput(nil), f.AdminActions...),
-		accountDeletionSnapshots: cloneMap(f.accountDeletionSnapshots),
-		accountDeletionTargets:   cloneDeletionTargets(f.accountDeletionTargets),
+		accountsByID:                cloneMap(f.accountsByID),
+		accountsByUsername:          cloneMap(f.accountsByUsername),
+		suspendedAccountIDs:         cloneMap(f.suspendedAccountIDs),
+		usersByAccountID:            cloneMap(f.usersByAccountID),
+		followsByKey:                cloneMap(f.followsByKey),
+		authCodes:                   cloneMap(f.authCodes),
+		tokens:                      cloneMap(f.tokens),
+		outboxEvents:                append([]domain.DomainEvent(nil), f.OutboxEvents...),
+		adminActions:                append([]store.CreateAdminActionInput(nil), f.AdminActions...),
+		accountDeletionSnapshots:    cloneMap(f.accountDeletionSnapshots),
+		accountDeletionTargets:      cloneDeletionTargets(f.accountDeletionTargets),
+		accountDeletionMediaTargets: cloneMediaTargets(f.accountDeletionMediaTargets),
 	}
 }
 
@@ -343,6 +346,7 @@ func (f *FakeStore) restoreTxState(snap txSnapshot) {
 	f.AdminActions = snap.adminActions
 	f.accountDeletionSnapshots = snap.accountDeletionSnapshots
 	f.accountDeletionTargets = snap.accountDeletionTargets
+	f.accountDeletionMediaTargets = snap.accountDeletionMediaTargets
 }
 
 func cloneMap[K comparable, V any](m map[K]V) map[K]V {
@@ -363,6 +367,17 @@ func cloneDeletionTargets(m map[string][]*FakeAccountDeletionTarget) map[string]
 	out := make(map[string][]*FakeAccountDeletionTarget, len(m))
 	for k, v := range m {
 		out[k] = append([]*FakeAccountDeletionTarget(nil), v...)
+	}
+	return out
+}
+
+func cloneMediaTargets(m map[string][]*FakeAccountDeletionMediaTarget) map[string][]*FakeAccountDeletionMediaTarget {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string][]*FakeAccountDeletionMediaTarget, len(m))
+	for k, v := range m {
+		out[k] = append([]*FakeAccountDeletionMediaTarget(nil), v...)
 	}
 	return out
 }
@@ -4553,6 +4568,7 @@ func (f *FakeStore) DeleteExpiredAccountDeletionSnapshots(_ context.Context, bef
 		if snap.ExpiresAt.Before(before) {
 			delete(f.accountDeletionSnapshots, id)
 			delete(f.accountDeletionTargets, id)
+			delete(f.accountDeletionMediaTargets, id)
 			deleted++
 		}
 	}
@@ -4565,6 +4581,92 @@ type FakeAccountDeletionTarget struct {
 	DeletionID  string
 	InboxURL    string
 	DeliveredAt *time.Time
+}
+
+// FakeAccountDeletionMediaTarget is the fake-store representation of an
+// account_deletion_media_targets row.
+type FakeAccountDeletionMediaTarget struct {
+	DeletionID  string
+	StorageKey  string
+	DeliveredAt *time.Time
+}
+
+func (f *FakeStore) InsertAccountDeletionMediaTargetsForAccount(_ context.Context, deletionID, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.accountDeletionMediaTargets == nil {
+		f.accountDeletionMediaTargets = map[string][]*FakeAccountDeletionMediaTarget{}
+	}
+	seen := map[string]struct{}{}
+	for _, t := range f.accountDeletionMediaTargets[deletionID] {
+		seen[t.StorageKey] = struct{}{}
+	}
+	for _, m := range f.mediaByID {
+		if m.AccountID != accountID {
+			continue
+		}
+		if _, dup := seen[m.StorageKey]; dup {
+			continue
+		}
+		seen[m.StorageKey] = struct{}{}
+		f.accountDeletionMediaTargets[deletionID] = append(f.accountDeletionMediaTargets[deletionID], &FakeAccountDeletionMediaTarget{
+			DeletionID: deletionID,
+			StorageKey: m.StorageKey,
+		})
+	}
+	return nil
+}
+
+func (f *FakeStore) ListPendingAccountDeletionMediaTargets(_ context.Context, deletionID, cursor string, limit int) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	all := f.accountDeletionMediaTargets[deletionID]
+	keys := make([]string, 0, len(all))
+	for _, t := range all {
+		if t.DeliveredAt != nil {
+			continue
+		}
+		if cursor != "" && t.StorageKey <= cursor {
+			continue
+		}
+		keys = append(keys, t.StorageKey)
+	}
+	sort.Strings(keys)
+	if limit > 0 && len(keys) > limit {
+		keys = keys[:limit]
+	}
+	return keys, nil
+}
+
+func (f *FakeStore) MarkAccountDeletionMediaTargetDelivered(_ context.Context, deletionID, storageKey string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	now := time.Now()
+	for _, t := range f.accountDeletionMediaTargets[deletionID] {
+		if t.StorageKey == storageKey {
+			t.DeliveredAt = &now
+			return nil
+		}
+	}
+	return nil
+}
+
+// SeedAccountDeletionMediaTargets bypasses the normal media_attachments join
+// and inserts media targets for a deletionID directly. Used by subscriber
+// tests that want to exercise the post-CASCADE codepath without seeding a
+// full media_attachments graph.
+func (f *FakeStore) SeedAccountDeletionMediaTargets(deletionID string, storageKeys []string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.accountDeletionMediaTargets == nil {
+		f.accountDeletionMediaTargets = map[string][]*FakeAccountDeletionMediaTarget{}
+	}
+	for _, key := range storageKeys {
+		f.accountDeletionMediaTargets[deletionID] = append(f.accountDeletionMediaTargets[deletionID], &FakeAccountDeletionMediaTarget{
+			DeletionID: deletionID,
+			StorageKey: key,
+		})
+	}
 }
 
 // SeedAccountDeletionTargets bypasses the normal follows-table join and

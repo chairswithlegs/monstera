@@ -23,8 +23,9 @@ func TestStreamAndConsumerConstants(t *testing.T) {
 	assert.Equal(t, "domain-events-notifications", ConsumerNotifications)
 	assert.Equal(t, "domain-events-push-delivery", ConsumerPushDelivery)
 	assert.Equal(t, "domain-events-cards", ConsumerCards)
+	assert.Equal(t, "domain-events-media-purge", ConsumerMediaPurge)
 
-	consumers := []string{ConsumerFederation, ConsumerSSE, ConsumerNotifications, ConsumerPushDelivery, ConsumerCards}
+	consumers := []string{ConsumerFederation, ConsumerSSE, ConsumerNotifications, ConsumerPushDelivery, ConsumerCards, ConsumerMediaPurge}
 	seen := make(map[string]bool, len(consumers))
 	for _, c := range consumers {
 		assert.False(t, seen[c], "duplicate consumer name: %s", c)
@@ -54,7 +55,7 @@ func TestStreamConfigs_StreamProperties(t *testing.T) {
 func TestStreamConfigs_ConsumerCount(t *testing.T) {
 	t.Parallel()
 	consumers := StreamConfigs[0].Consumers
-	require.Len(t, consumers, 5, "expected federation, SSE, notifications, push-delivery, and cards consumers")
+	require.Len(t, consumers, 6, "expected federation, SSE, notifications, push-delivery, cards, and media-purge consumers")
 }
 
 func TestStreamConfigs_ConsumerProperties(t *testing.T) {
@@ -67,6 +68,7 @@ func TestStreamConfigs_ConsumerProperties(t *testing.T) {
 		ConsumerNotifications: false,
 		ConsumerPushDelivery:  false,
 		ConsumerCards:         false,
+		ConsumerMediaPurge:    false,
 	}
 
 	for _, c := range consumers {

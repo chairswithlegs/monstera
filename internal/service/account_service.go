@@ -733,16 +733,21 @@ const AccountDeletionSnapshotTTL = 24 * time.Hour
 //  4. Materialize account_deletion_targets from the still-live follows rows.
 //     Must happen before the DELETE, since follows.target_id ON DELETE
 //     CASCADE wipes the source.
-//  5. Optionally run the caller-supplied auditFn (moderation writes an
+//  5. Materialize account_deletion_media_targets from the still-live
+//     media_attachments rows. Also must happen before the DELETE, since
+//     media_attachments.account_id ON DELETE CASCADE wipes the source.
+//  6. Optionally run the caller-supplied auditFn (moderation writes an
 //     admin_actions row in the same tx). Must happen BEFORE the DELETE so
 //     the FK on admin_actions.target_account_id resolves; the subsequent
 //     DELETE fires ON DELETE SET NULL on that row, preserving the audit
 //     trail with target_account_id nulled.
-//  6. DELETE the account (CASCADE drops users, follows, media, tokens,
+//  7. DELETE the account (CASCADE drops users, follows, media, tokens,
 //     etc.; SET NULL nulls admin_actions.target_account_id,
 //     statuses.in_reply_to_account_id, reports.account_id, reports.target_id).
-//  7. Emit EventAccountDeleted carrying only DeletionID + APID so the
+//  8. Emit EventAccountDeleted carrying only DeletionID + APID so the
 //     private key never hits outbox_events or NATS.
+//  9. Emit EventMediaPurge so a subscriber can iterate
+//     account_deletion_media_targets and delete S3/local blobs out-of-band.
 //
 // The deletion_id (ULID) is generated outside the tx so the caller can log it
 // if needed; it's also the key used by the federation subscriber, fanout
@@ -775,6 +780,9 @@ func deleteLocalAccount(ctx context.Context, s store.Store, accountID string, au
 		if err := tx.InsertAccountDeletionTargetsForAccount(ctx, deletionID, accountID); err != nil {
 			return fmt.Errorf("InsertAccountDeletionTargetsForAccount: %w", err)
 		}
+		if err := tx.InsertAccountDeletionMediaTargetsForAccount(ctx, deletionID, accountID); err != nil {
+			return fmt.Errorf("InsertAccountDeletionMediaTargetsForAccount: %w", err)
+		}
 		if auditFn != nil {
 			if err := auditFn(ctx, tx); err != nil {
 				return err
@@ -787,6 +795,12 @@ func deleteLocalAccount(ctx context.Context, s store.Store, accountID string, au
 			DeletionID: deletionID,
 			APID:       acc.APID,
 			Local:      true,
+		}); err != nil {
+			return err
+		}
+		if err := events.EmitEvent(ctx, tx, domain.EventMediaPurge, "account", accountID, domain.MediaPurgePayload{
+			DeletionID: deletionID,
+			AccountID:  accountID,
 		}); err != nil {
 			return err
 		}

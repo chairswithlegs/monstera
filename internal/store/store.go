@@ -474,6 +474,16 @@ type AccountDeletionStore interface {
 	// inbox URLs for deletionID, keyset-paginated by inbox_url > cursor.
 	ListPendingAccountDeletionTargets(ctx context.Context, deletionID, cursor string, limit int) ([]string, error)
 	MarkAccountDeletionTargetDelivered(ctx context.Context, deletionID, inboxURL string) error
+	// InsertAccountDeletionMediaTargetsForAccount snapshots every storage_key
+	// owned by accountID into account_deletion_media_targets, keyed by
+	// deletionID. Must run BEFORE the accounts row is deleted; the CASCADE on
+	// media_attachments.account_id wipes the source otherwise.
+	InsertAccountDeletionMediaTargetsForAccount(ctx context.Context, deletionID, accountID string) error
+	// ListPendingAccountDeletionMediaTargets returns the next page of
+	// undelivered storage keys for deletionID, keyset-paginated by
+	// storage_key > cursor.
+	ListPendingAccountDeletionMediaTargets(ctx context.Context, deletionID, cursor string, limit int) ([]string, error)
+	MarkAccountDeletionMediaTargetDelivered(ctx context.Context, deletionID, storageKey string) error
 	// DeleteExpiredAccountDeletionSnapshots drops snapshots past their TTL and
 	// returns the count deleted. CASCADE drops any remaining target rows.
 	DeleteExpiredAccountDeletionSnapshots(ctx context.Context, before time.Time) (int64, error)
