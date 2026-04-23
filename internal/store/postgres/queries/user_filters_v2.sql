@@ -1,8 +1,8 @@
 -- ─── Filter v2 CRUD ──────────────────────────────────────────────────────────
 
 -- name: CreateUserFilterV2 :one
-INSERT INTO user_filters (id, account_id, title, context, expires_at, filter_action, phrase, whole_word, irreversible)
-VALUES ($1, $2, $3, $4, $5, $6, '', FALSE, FALSE)
+INSERT INTO user_filters (id, account_id, title, context, expires_at, filter_action)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: GetUserFilterV2 :one

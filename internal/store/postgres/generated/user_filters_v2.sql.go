@@ -72,8 +72,8 @@ func (q *Queries) CreateFilterStatus(ctx context.Context, arg CreateFilterStatus
 
 const createUserFilterV2 = `-- name: CreateUserFilterV2 :one
 
-INSERT INTO user_filters (id, account_id, title, context, expires_at, filter_action, phrase, whole_word, irreversible)
-VALUES ($1, $2, $3, $4, $5, $6, '', FALSE, FALSE)
+INSERT INTO user_filters (id, account_id, title, context, expires_at, filter_action)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, account_id, context, expires_at, created_at, title, filter_action
 `
 
