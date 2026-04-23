@@ -34,6 +34,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { translateApiError } from '@/lib/i18n/errors';
 
@@ -52,6 +53,8 @@ export default function AdminUserDetailView({ id }: Props) {
   const [acting, setActing] = useState(false);
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [newRole, setNewRole] = useState('user');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
 
   const load = useCallback(() => {
     if (!id) return;
@@ -94,6 +97,7 @@ export default function AdminUserDetailView({ id }: Props) {
     } catch (e) {
       setError(translateApiError(tErr, e));
       setActing(false);
+      setDeleteDialogOpen(false);
     }
   };
 
@@ -170,7 +174,13 @@ export default function AdminUserDetailView({ id }: Props) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-        <AlertDialog>
+        <AlertDialog
+          open={deleteDialogOpen}
+          onOpenChange={(open) => {
+            setDeleteDialogOpen(open);
+            if (!open) setDeleteConfirmInput('');
+          }}
+        >
           <AlertDialogTrigger asChild>
             <Button type="button" variant="destructive" disabled={acting || isSelf} className="bg-red-800 hover:bg-red-900">
               {t('deleteAccount')}
@@ -183,9 +193,29 @@ export default function AdminUserDetailView({ id }: Props) {
                 {t('deleteAccountDescription')}
               </AlertDialogDescription>
             </AlertDialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="admin-delete-confirm" className="text-sm">
+                {t('deleteAccountConfirmPrompt', { username: user.username })}
+              </Label>
+              <Input
+                id="admin-delete-confirm"
+                type="text"
+                value={deleteConfirmInput}
+                onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                placeholder={t('deleteAccountConfirmPlaceholder')}
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+            </div>
             <AlertDialogFooter>
               <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              <AlertDialogAction
+                onClick={handleDelete}
+                disabled={deleteConfirmInput !== user.username || acting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
                 {tCommon('delete')}
               </AlertDialogAction>
             </AlertDialogFooter>

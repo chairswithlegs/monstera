@@ -154,7 +154,7 @@ func (svc *registrationService) Reject(ctx context.Context, moderatorID, userID,
 	if err := svc.store.DeleteUser(ctx, userID); err != nil {
 		return fmt.Errorf("DeleteUser(%s): %w", userID, err)
 	}
-	if err := svc.store.DeleteAccount(ctx, u.AccountID); err != nil {
+	if _, err := svc.store.DeleteAccount(ctx, u.AccountID); err != nil {
 		return fmt.Errorf("DeleteAccount(%s): %w", u.AccountID, err)
 	}
 	return nil

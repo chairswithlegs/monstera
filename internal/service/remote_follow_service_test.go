@@ -329,7 +329,7 @@ func TestRemoteFollowService_HasLocalFollower_returns_false_when_only_remote_fol
 	require.NoError(t, err)
 
 	remoteID := uid.New()
-	remoteDomain := "remote.example"
+	remoteDomain := testRemoteDomain
 	_, err = fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID:       remoteID,
 		Username: "alice",
@@ -356,7 +356,7 @@ func TestRemoteFollowService_GetFollowerInboxURLsPaginated_returns_remote_follow
 	require.NoError(t, err)
 
 	remoteID := uid.New()
-	remoteDomain := "remote.example"
+	remoteDomain := testRemoteDomain
 	inboxURL := "https://" + remoteDomain + "/users/alice/inbox"
 	_, err = fake.CreateAccount(ctx, store.CreateAccountInput{
 		ID:       remoteID,

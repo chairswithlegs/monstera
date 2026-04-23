@@ -84,6 +84,9 @@ export async function setUserRole(id: string, role: string): Promise<void> {
   if (!res.ok) await throwApiError(res);
 }
 
+// deleteUser permanently deletes a local account (admin-only). The backend
+// hard-deletes the row; Postgres CASCADE drops statuses, follows, OAuth
+// tokens, etc., and federation fans out a Delete{Actor} to remote followers.
 export async function deleteUser(id: string): Promise<void> {
   const base = await adminPrefix();
   const res = await authFetch(`${base}/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
@@ -162,8 +165,12 @@ export async function deleteInvite(id: string): Promise<void> {
 
 export interface Report {
   id: string;
-  account_id: string;
-  target_id: string;
+  // Nullable: reporter and target both use ON DELETE SET NULL FKs on the
+  // reports table so moderation history outlives the accounts themselves.
+  // A null value means the account has been deleted since the report was
+  // filed; UI should render a placeholder rather than an empty cell.
+  account_id: string | null;
+  target_id: string | null;
   status_ids: string[];
   comment?: string;
   category: string;

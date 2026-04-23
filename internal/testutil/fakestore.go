@@ -104,6 +104,11 @@ type FakeStore struct {
 
 	OutboxEvents []domain.DomainEvent // transactional outbox events
 
+	AdminActions []store.CreateAdminActionInput // recorded moderator actions
+
+	accountDeletionSnapshots map[string]*store.AccountDeletionSnapshot
+	accountDeletionTargets   map[string][]*FakeAccountDeletionTarget
+
 	pushSubscriptions []*domain.PushSubscription
 
 	notificationPoliciesByAccountID map[string]*domain.NotificationPolicy
@@ -274,7 +279,92 @@ type muteEntry struct {
 }
 
 func (f *FakeStore) WithTx(ctx context.Context, fn func(store.Store) error) error {
-	return fn(f)
+	// The fake store doesn't do true MVCC. We approximate rollback-on-error
+	// by snapshotting the collections that account-delete / moderation /
+	// outbox flows touch and restoring them if fn returns an error. This is
+	// enough to exercise tx-atomicity invariants in unit tests (e.g. a failed
+	// audit write must not leave a deleted-account row or a published event);
+	// a full rollback is out of scope here and is covered by integration tests
+	// against real Postgres.
+	snap := f.snapshotTxState()
+	err := fn(f)
+	if err != nil {
+		f.restoreTxState(snap)
+	}
+	return err
+}
+
+// txSnapshot holds copies of the FakeStore collections that are restored on
+// WithTx rollback. Anything not listed here effectively commits mid-tx; add
+// entries as tests need stronger guarantees.
+type txSnapshot struct {
+	accountsByID             map[string]*domain.Account
+	accountsByUsername       map[string]*domain.Account
+	suspendedAccountIDs      map[string]struct{}
+	usersByAccountID         map[string]*domain.User
+	followsByKey             map[string]*domain.Follow
+	authCodes                map[string]*domain.OAuthAuthorizationCode
+	tokens                   map[string]*domain.OAuthAccessToken
+	outboxEvents             []domain.DomainEvent
+	adminActions             []store.CreateAdminActionInput
+	accountDeletionSnapshots map[string]*store.AccountDeletionSnapshot
+	accountDeletionTargets   map[string][]*FakeAccountDeletionTarget
+}
+
+func (f *FakeStore) snapshotTxState() txSnapshot {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return txSnapshot{
+		accountsByID:             cloneMap(f.accountsByID),
+		accountsByUsername:       cloneMap(f.accountsByUsername),
+		suspendedAccountIDs:      cloneMap(f.suspendedAccountIDs),
+		usersByAccountID:         cloneMap(f.usersByAccountID),
+		followsByKey:             cloneMap(f.followsByKey),
+		authCodes:                cloneMap(f.authCodes),
+		tokens:                   cloneMap(f.tokens),
+		outboxEvents:             append([]domain.DomainEvent(nil), f.OutboxEvents...),
+		adminActions:             append([]store.CreateAdminActionInput(nil), f.AdminActions...),
+		accountDeletionSnapshots: cloneMap(f.accountDeletionSnapshots),
+		accountDeletionTargets:   cloneDeletionTargets(f.accountDeletionTargets),
+	}
+}
+
+func (f *FakeStore) restoreTxState(snap txSnapshot) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.accountsByID = snap.accountsByID
+	f.accountsByUsername = snap.accountsByUsername
+	f.suspendedAccountIDs = snap.suspendedAccountIDs
+	f.usersByAccountID = snap.usersByAccountID
+	f.followsByKey = snap.followsByKey
+	f.authCodes = snap.authCodes
+	f.tokens = snap.tokens
+	f.OutboxEvents = snap.outboxEvents
+	f.AdminActions = snap.adminActions
+	f.accountDeletionSnapshots = snap.accountDeletionSnapshots
+	f.accountDeletionTargets = snap.accountDeletionTargets
+}
+
+func cloneMap[K comparable, V any](m map[K]V) map[K]V {
+	if m == nil {
+		return nil
+	}
+	out := make(map[K]V, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneDeletionTargets(m map[string][]*FakeAccountDeletionTarget) map[string][]*FakeAccountDeletionTarget {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string][]*FakeAccountDeletionTarget, len(m))
+	for k, v := range m {
+		out[k] = append([]*FakeAccountDeletionTarget(nil), v...)
+	}
+	return out
 }
 
 func (f *FakeStore) CreateAccount(ctx context.Context, in store.CreateAccountInput) (*domain.Account, error) {
@@ -3558,10 +3648,12 @@ func (f *FakeStore) getDistinctFollowerInboxURLsPaginated(_ context.Context, acc
 }
 
 func (f *FakeStore) CreateReport(ctx context.Context, in store.CreateReportInput) (*domain.Report, error) {
+	accountID := in.AccountID
+	targetID := in.TargetID
 	return &domain.Report{
 		ID:        in.ID,
-		AccountID: in.AccountID,
-		TargetID:  in.TargetID,
+		AccountID: &accountID,
+		TargetID:  &targetID,
 		StatusIDs: in.StatusIDs,
 		Comment:   in.Comment,
 		Category:  in.Category,
@@ -3601,6 +3693,9 @@ func (f *FakeStore) DeleteDomainBlock(ctx context.Context, domain string) error 
 	return nil
 }
 func (f *FakeStore) CreateAdminAction(ctx context.Context, in store.CreateAdminActionInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.AdminActions = append(f.AdminActions, in)
 	return nil
 }
 func (f *FakeStore) CreateInvite(ctx context.Context, in store.CreateInviteInput) (*domain.Invite, error) {
@@ -3768,12 +3863,43 @@ func (f *FakeStore) UnsilenceAccount(ctx context.Context, id string) error {
 	}
 	return nil
 }
-func (f *FakeStore) DeleteAccount(ctx context.Context, id string) error {
+func (f *FakeStore) DeleteAccount(ctx context.Context, id string) (*domain.Account, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	acc, ok := f.accountsByID[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
 	delete(f.accountsByID, id)
 	delete(f.suspendedAccountIDs, id)
-	return nil
+	// Emulates ON DELETE CASCADE on users.account_id, which is the only
+	// cascade relationship the current service tests rely on. Postgres handles
+	// the full set; the fake store adds them as tests require them.
+	delete(f.usersByAccountID, id)
+	for code, c := range f.authCodes {
+		if c.AccountID == id {
+			delete(f.authCodes, code)
+		}
+	}
+	for tokStr, tok := range f.tokens {
+		if tok.AccountID != nil && *tok.AccountID == id {
+			delete(f.tokens, tokStr)
+		}
+	}
+	// CASCADE: drop follow rows in both directions so the deletion-target
+	// snapshot must have been captured BEFORE this call (matches Postgres).
+	for key, fw := range f.followsByKey {
+		if fw.AccountID == id || fw.TargetID == id {
+			delete(f.followsByKey, key)
+		}
+	}
+	return acc, nil
+}
+
+func (f *FakeStore) GetAccountByIDForUpdate(ctx context.Context, id string) (*domain.Account, error) {
+	// The fake store doesn't model row locks. Callers rely on the existence
+	// check and the single-goroutine test semantics of their fixture.
+	return f.GetAccountByID(ctx, id)
 }
 func (f *FakeStore) ListLocalAccounts(ctx context.Context, limit, offset int) ([]domain.Account, error) {
 	f.mu.Lock()
@@ -4321,4 +4447,140 @@ func (f *FakeStore) DeleteNotificationRequestsByIDs(_ context.Context, accountID
 		}
 	}
 	return nil
+}
+
+// --- AccountDeletionStore ---
+
+func (f *FakeStore) CreateAccountDeletionSnapshot(_ context.Context, in store.CreateAccountDeletionSnapshotInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.accountDeletionSnapshots == nil {
+		f.accountDeletionSnapshots = map[string]*store.AccountDeletionSnapshot{}
+	}
+	if _, exists := f.accountDeletionSnapshots[in.ID]; exists {
+		return domain.ErrConflict
+	}
+	f.accountDeletionSnapshots[in.ID] = &store.AccountDeletionSnapshot{
+		ID:            in.ID,
+		APID:          in.APID,
+		PrivateKeyPEM: in.PrivateKeyPEM,
+		CreatedAt:     time.Now(),
+		ExpiresAt:     in.ExpiresAt,
+	}
+	return nil
+}
+
+func (f *FakeStore) GetAccountDeletionSnapshot(_ context.Context, id string) (*store.AccountDeletionSnapshot, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	snap, ok := f.accountDeletionSnapshots[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	snapCopy := *snap
+	return &snapCopy, nil
+}
+
+func (f *FakeStore) InsertAccountDeletionTargetsForAccount(_ context.Context, deletionID, accountID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.accountDeletionTargets == nil {
+		f.accountDeletionTargets = map[string][]*FakeAccountDeletionTarget{}
+	}
+	seen := map[string]struct{}{}
+	for _, t := range f.accountDeletionTargets[deletionID] {
+		seen[t.InboxURL] = struct{}{}
+	}
+	for _, fw := range f.followsByKey {
+		if fw.TargetID != accountID || fw.State != domain.FollowStateAccepted {
+			continue
+		}
+		followerAcc, ok := f.accountsByID[fw.AccountID]
+		if !ok || followerAcc.Domain == nil || followerAcc.Suspended || followerAcc.InboxURL == "" {
+			continue
+		}
+		if _, dup := seen[followerAcc.InboxURL]; dup {
+			continue
+		}
+		seen[followerAcc.InboxURL] = struct{}{}
+		f.accountDeletionTargets[deletionID] = append(f.accountDeletionTargets[deletionID], &FakeAccountDeletionTarget{
+			DeletionID: deletionID,
+			InboxURL:   followerAcc.InboxURL,
+		})
+	}
+	return nil
+}
+
+func (f *FakeStore) ListPendingAccountDeletionTargets(_ context.Context, deletionID, cursor string, limit int) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	all := f.accountDeletionTargets[deletionID]
+	urls := make([]string, 0, len(all))
+	for _, t := range all {
+		if t.DeliveredAt != nil {
+			continue
+		}
+		if cursor != "" && t.InboxURL <= cursor {
+			continue
+		}
+		urls = append(urls, t.InboxURL)
+	}
+	sort.Strings(urls)
+	if limit > 0 && len(urls) > limit {
+		urls = urls[:limit]
+	}
+	return urls, nil
+}
+
+func (f *FakeStore) MarkAccountDeletionTargetDelivered(_ context.Context, deletionID, inboxURL string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	now := time.Now()
+	for _, t := range f.accountDeletionTargets[deletionID] {
+		if t.InboxURL == inboxURL {
+			t.DeliveredAt = &now
+			return nil
+		}
+	}
+	return nil
+}
+
+func (f *FakeStore) DeleteExpiredAccountDeletionSnapshots(_ context.Context, before time.Time) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var deleted int64
+	for id, snap := range f.accountDeletionSnapshots {
+		if snap.ExpiresAt.Before(before) {
+			delete(f.accountDeletionSnapshots, id)
+			delete(f.accountDeletionTargets, id)
+			deleted++
+		}
+	}
+	return deleted, nil
+}
+
+// FakeAccountDeletionTarget is the fake-store representation of an
+// account_deletion_targets row.
+type FakeAccountDeletionTarget struct {
+	DeletionID  string
+	InboxURL    string
+	DeliveredAt *time.Time
+}
+
+// SeedAccountDeletionTargets bypasses the normal follows-table join and
+// inserts targets for a deletionID directly. Used by fanout-worker tests
+// that want to exercise the post-CASCADE codepath without needing to seed
+// a full account+follows graph.
+func (f *FakeStore) SeedAccountDeletionTargets(deletionID string, inboxURLs []string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.accountDeletionTargets == nil {
+		f.accountDeletionTargets = map[string][]*FakeAccountDeletionTarget{}
+	}
+	for _, inbox := range inboxURLs {
+		f.accountDeletionTargets[deletionID] = append(f.accountDeletionTargets[deletionID], &FakeAccountDeletionTarget{
+			DeletionID: deletionID,
+			InboxURL:   inbox,
+		})
+	}
 }

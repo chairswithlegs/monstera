@@ -320,3 +320,9 @@ func (f *fakeAccountService) ChangePassword(context.Context, string, string, str
 func (f *fakeAccountService) SetRemotePins(context.Context, string, []string) error {
 	panic("unused")
 }
+func (f *fakeAccountService) DeleteSelf(context.Context, string, string) error {
+	panic("unused")
+}
+func (f *fakeAccountService) DeleteLocalAccount(context.Context, string) error {
+	panic("unused")
+}

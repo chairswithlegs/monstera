@@ -19,11 +19,21 @@ const (
 )
 
 // OutboxFanoutMessage is the payload for async fan-out: one message per activity to be delivered to all followers.
+//
+// Exactly one of SenderID and DeletionID is set:
+//   - SenderID — the normal path. The worker reads follower inbox URLs from
+//     the live follows/accounts tables via RemoteFollowService.
+//   - DeletionID — a Delete{Actor} emitted by deleteLocalAccount. The accounts
+//     row and its follows are gone by the time this message is processed;
+//     the worker reads pre-captured inbox URLs from
+//     account_deletion_targets via AccountDeletionService, and the delivery
+//     worker signs with the snapshot's private key via AccountDeletionService.
 type OutboxFanoutMessage struct {
 	ActivityID string          `json:"activity_id"`
 	Activity   json.RawMessage `json:"activity"`
 
-	SenderID string `json:"sender_id"`
+	SenderID   string `json:"sender_id,omitempty"`
+	DeletionID string `json:"deletion_id,omitempty"`
 }
 
 // OutboxFanoutWorker consumes from the ACTIVITYPUB_FANOUT stream and fans out for delivery.
@@ -35,6 +45,7 @@ type OutboxFanoutWorker interface {
 type outboxFanoutWorker struct {
 	js                jetstream.JetStream
 	followers         service.RemoteFollowService
+	deletions         service.AccountDeletionService
 	delivery          OutboxDeliveryWorker
 	workerConcurrency int
 }
@@ -43,12 +54,14 @@ type outboxFanoutWorker struct {
 func NewOutboxFanoutWorker(
 	js jetstream.JetStream,
 	followers service.RemoteFollowService,
+	deletions service.AccountDeletionService,
 	delivery OutboxDeliveryWorker,
 	workerConcurrency int,
 ) OutboxFanoutWorker {
 	return &outboxFanoutWorker{
 		js:                js,
 		followers:         followers,
+		deletions:         deletions,
 		delivery:          delivery,
 		workerConcurrency: workerConcurrency,
 	}
@@ -109,10 +122,11 @@ func (w *outboxFanoutWorker) processMessage(ctx context.Context, msg jetstream.M
 	cursor := ""
 	delivered := 0
 	for {
-		page, err := w.followers.GetFollowerInboxURLsPaginated(ctx, fanout.SenderID, cursor, fanoutPageSize)
+		page, err := w.listTargets(ctx, &fanout, cursor)
 		if err != nil {
-			slog.WarnContext(ctx, "fanout worker: get follower inboxes failed",
+			slog.WarnContext(ctx, "fanout worker: list targets failed",
 				slog.String("sender_id", fanout.SenderID),
+				slog.String("deletion_id", fanout.DeletionID),
 				slog.String("activity_id", fanout.ActivityID),
 				slog.Any("error", err),
 			)
@@ -131,15 +145,32 @@ func (w *outboxFanoutWorker) processMessage(ctx context.Context, msg jetstream.M
 				Activity:    fanout.Activity,
 				TargetInbox: inbox,
 				SenderID:    fanout.SenderID,
+				DeletionID:  fanout.DeletionID,
 			}
 			if err := w.delivery.Publish(ctx, activityType, dm); err != nil {
 				slog.WarnContext(ctx, "fanout worker: enqueue delivery failed",
 					slog.String("activity_id", fanout.ActivityID),
 					slog.String("target_inbox", inbox),
+					slog.String("deletion_id", fanout.DeletionID),
 					slog.Any("error", err),
 				)
 				w.handleFanoutFailure(ctx, msg, &fanout, activityType, nil)
 				return
+			}
+			if fanout.DeletionID != "" {
+				// Mark target as enqueued so a redelivery of this fanout
+				// message (e.g. after a worker crash + NATS resend) doesn't
+				// re-enqueue the same inbox. Failure to mark is non-fatal:
+				// the per-inbox HTTP delivery has its own idempotency at the
+				// receiving server, and the TTL-based snapshot GC bounds the
+				// window.
+				if mErr := w.deletions.MarkTargetDelivered(ctx, fanout.DeletionID, inbox); mErr != nil {
+					slog.WarnContext(ctx, "fanout worker: mark deletion target delivered failed",
+						slog.String("deletion_id", fanout.DeletionID),
+						slog.String("target_inbox", inbox),
+						slog.Any("error", mErr),
+					)
+				}
 			}
 			delivered++
 		}
@@ -150,6 +181,17 @@ func (w *outboxFanoutWorker) processMessage(ctx context.Context, msg jetstream.M
 	}
 
 	_ = msg.Ack()
+}
+
+// listTargets returns the next page of follower inbox URLs to deliver to.
+// For a normal fanout (SenderID set) it reads from the live follows+accounts
+// tables. For an account-deletion fanout (DeletionID set) it reads from the
+// account_deletion_targets snapshot that was populated in the delete tx.
+func (w *outboxFanoutWorker) listTargets(ctx context.Context, fanout *OutboxFanoutMessage, cursor string) ([]string, error) {
+	if fanout.DeletionID != "" {
+		return w.deletions.ListPendingTargets(ctx, fanout.DeletionID, cursor, fanoutPageSize)
+	}
+	return w.followers.GetFollowerInboxURLsPaginated(ctx, fanout.SenderID, cursor, fanoutPageSize)
 }
 
 // handleFanoutFailure NAKs with backoff for retry, or sends to fanout DLQ and Acks if max retries exhausted.

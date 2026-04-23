@@ -125,3 +125,25 @@ func (h *UserHandler) PATCHPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// DELETEUser permanently deletes the authenticated user's account after
+// password confirmation. The row is removed immediately (Postgres CASCADE
+// drops all owned rows) and a Delete{Actor} is fanned out to remote
+// followers.
+func (h *UserHandler) DELETEUser(w http.ResponseWriter, r *http.Request) {
+	user := middleware.UserFromContext(r.Context())
+	if user == nil {
+		api.HandleError(w, r, api.ErrUnauthorized)
+		return
+	}
+	var body apimodel.DeleteAccountRequest
+	if err := api.DecodeAndValidateJSON(r, &body); err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	if err := h.accounts.DeleteSelf(r.Context(), user.ID, body.CurrentPassword); err != nil {
+		api.HandleError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

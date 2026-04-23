@@ -40,6 +40,19 @@ type AccountService interface {
 	UpdatePreferences(ctx context.Context, userID string, in UpdatePreferencesInput) (*domain.User, error)
 	ChangeEmail(ctx context.Context, userID, newEmail string) (*domain.User, error)
 	ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error
+	// DeleteSelf verifies the user's current password then permanently deletes
+	// their local account. Hard-deletes the account row (Postgres CASCADE
+	// removes statuses, follows, oauth tokens, etc.) and emits
+	// EventAccountDeleted in the same transaction so federation can fan out a
+	// Delete{Actor} to remote followers using the snapshot in the payload.
+	//
+	// Returns domain.ErrForbidden if the password does not match or the
+	// account is remote.
+	DeleteSelf(ctx context.Context, userID, currentPassword string) error
+	// DeleteLocalAccount is the admin/moderation entry point. It performs the
+	// same hard-delete flow as DeleteSelf without a password check. Used by
+	// ModerationService.DeleteAccount.
+	DeleteLocalAccount(ctx context.Context, accountID string) error
 }
 
 // UpdatePreferencesInput is the input for updating a user's post preferences.
@@ -675,4 +688,103 @@ func (svc *accountService) ChangePassword(ctx context.Context, userID, currentPa
 		return fmt.Errorf("ChangePassword: %w", err)
 	}
 	return nil
+}
+
+// DeleteSelf — see interface doc comment.
+func (svc *accountService) DeleteSelf(ctx context.Context, userID, currentPassword string) error {
+	u, err := svc.store.GetUserByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("DeleteSelf GetUserByID(%s): %w", userID, err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(currentPassword)); err != nil {
+		return fmt.Errorf("DeleteSelf: %w", domain.ErrForbidden)
+	}
+	if err := deleteLocalAccount(ctx, svc.store, u.AccountID, nil); err != nil {
+		return fmt.Errorf("DeleteSelf: %w", err)
+	}
+	return nil
+}
+
+// DeleteLocalAccount — see interface doc comment.
+func (svc *accountService) DeleteLocalAccount(ctx context.Context, accountID string) error {
+	if err := deleteLocalAccount(ctx, svc.store, accountID, nil); err != nil {
+		return fmt.Errorf("DeleteLocalAccount(%s): %w", accountID, err)
+	}
+	return nil
+}
+
+// AccountDeletionSnapshotTTL bounds how long the signing material and
+// pending-inbox rows persist past the account row's hard-delete. Long enough
+// for the fanout/delivery workers to finish and for retries on transient
+// remote-inbox failures; short enough that the private key doesn't linger.
+// The scheduler's purge job runs periodically and drops snapshots past this.
+const AccountDeletionSnapshotTTL = 24 * time.Hour
+
+// deleteLocalAccount is the package-level hard-delete flow shared by
+// AccountService.DeleteSelf and ModerationService.DeleteAccount.
+//
+// The whole flow runs in one tx:
+//  1. SELECT ... FOR UPDATE locks the account row (and blocks any concurrent
+//     delete until we commit; after our commit, the other tx sees zero rows
+//     and returns domain.ErrNotFound, eliminating the duplicate-event race).
+//  2. requireLocal — delete only applies to local accounts.
+//  3. Write an account_deletion_snapshots row with the APID + PEM private
+//     key, expiring after AccountDeletionSnapshotTTL.
+//  4. Materialize account_deletion_targets from the still-live follows rows.
+//     Must happen before the DELETE, since follows.target_id ON DELETE
+//     CASCADE wipes the source.
+//  5. DELETE the account (CASCADE drops users, follows, media, tokens, etc.).
+//  6. Emit EventAccountDeleted carrying only DeletionID + APID so the
+//     private key never hits outbox_events or NATS.
+//  7. Optionally run the caller-supplied auditFn (moderation writes an
+//     admin_actions row in the same tx).
+//
+// The deletion_id (ULID) is generated outside the tx so the caller can log it
+// if needed; it's also the key used by the federation subscriber, fanout
+// worker, and delivery worker to reconnect post-CASCADE state.
+func deleteLocalAccount(ctx context.Context, s store.Store, accountID string, auditFn func(ctx context.Context, tx store.Store) error) error {
+	deletionID := uid.New()
+	return s.WithTx(ctx, func(tx store.Store) error {
+		acc, err := tx.GetAccountByIDForUpdate(ctx, accountID)
+		if err != nil {
+			return fmt.Errorf("GetAccountByIDForUpdate(%s): %w", accountID, err)
+		}
+		if err := requireLocal(acc.IsLocal(), "deleteLocalAccount"); err != nil {
+			return err
+		}
+		if acc.PrivateKey == nil || *acc.PrivateKey == "" {
+			// Every local account has a private key (generated at creation).
+			// Refusing here rather than silently federating an unsigned Delete
+			// surfaces the invariant break as an error instead of a dropped
+			// delivery.
+			return fmt.Errorf("deleteLocalAccount(%s): local account missing private key: %w", accountID, domain.ErrValidation)
+		}
+		if err := tx.CreateAccountDeletionSnapshot(ctx, store.CreateAccountDeletionSnapshotInput{
+			ID:            deletionID,
+			APID:          acc.APID,
+			PrivateKeyPEM: *acc.PrivateKey,
+			ExpiresAt:     time.Now().Add(AccountDeletionSnapshotTTL),
+		}); err != nil {
+			return fmt.Errorf("CreateAccountDeletionSnapshot: %w", err)
+		}
+		if err := tx.InsertAccountDeletionTargetsForAccount(ctx, deletionID, accountID); err != nil {
+			return fmt.Errorf("InsertAccountDeletionTargetsForAccount: %w", err)
+		}
+		if _, err := tx.DeleteAccount(ctx, accountID); err != nil {
+			return fmt.Errorf("DeleteAccount: %w", err)
+		}
+		if err := events.EmitEvent(ctx, tx, domain.EventAccountDeleted, "account", accountID, domain.AccountDeletedPayload{
+			DeletionID: deletionID,
+			APID:       acc.APID,
+			Local:      true,
+		}); err != nil {
+			return err
+		}
+		if auditFn != nil {
+			if err := auditFn(ctx, tx); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

@@ -6,11 +6,14 @@ import (
 
 const timeFormatRFC3339Milli = "2006-01-02T15:04:05.000Z"
 
-// AdminReport is one report in the admin API.
+// AdminReport is one report in the admin API. AccountID (reporter) and
+// TargetID (reported) are nullable: they serialize to null when the referenced
+// account has been deleted (FK ON DELETE SET NULL preserves the report row
+// itself as moderation history).
 type AdminReport struct {
 	ID           string   `json:"id"`
-	AccountID    string   `json:"account_id"`
-	TargetID     string   `json:"target_id"`
+	AccountID    *string  `json:"account_id"`
+	TargetID     *string  `json:"target_id"`
 	StatusIDs    []string `json:"status_ids"`
 	Comment      *string  `json:"comment"`
 	Category     string   `json:"category"`

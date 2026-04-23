@@ -41,6 +41,7 @@ type Querier interface {
 	CountReportsByState(ctx context.Context, state string) (int64, error)
 	CreateAccessToken(ctx context.Context, arg CreateAccessTokenParams) (OauthAccessToken, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
+	CreateAccountDeletionSnapshot(ctx context.Context, arg CreateAccountDeletionSnapshotParams) error
 	CreateAccountPin(ctx context.Context, arg CreateAccountPinParams) error
 	CreateAdminAction(ctx context.Context, arg CreateAdminActionParams) (AdminAction, error)
 	CreateAnnouncement(ctx context.Context, arg CreateAnnouncementParams) (Announcement, error)
@@ -85,7 +86,7 @@ type Querier interface {
 	DecrementReblogsCount(ctx context.Context, id string) error
 	DecrementRepliesCount(ctx context.Context, id string) error
 	DecrementStatusesCount(ctx context.Context, id string) error
-	DeleteAccount(ctx context.Context, id string) error
+	DeleteAccount(ctx context.Context, id string) (Account, error)
 	DeleteAccountConversation(ctx context.Context, arg DeleteAccountConversationParams) error
 	DeleteAccountPin(ctx context.Context, arg DeleteAccountPinParams) error
 	DeleteAccountPinsByAccountID(ctx context.Context, accountID string) error
@@ -95,6 +96,7 @@ type Querier interface {
 	DeleteConversationMute(ctx context.Context, arg DeleteConversationMuteParams) error
 	DeleteDomainBlock(ctx context.Context, domain string) error
 	DeleteEmailTokensForUser(ctx context.Context, userID string) error
+	DeleteExpiredAccountDeletionSnapshots(ctx context.Context, expiresAt pgtype.Timestamptz) (int64, error)
 	DeleteExpiredEmailTokens(ctx context.Context) error
 	DeleteFavourite(ctx context.Context, arg DeleteFavouriteParams) error
 	DeleteFeaturedTag(ctx context.Context, arg DeleteFeaturedTagParams) error
@@ -124,7 +126,9 @@ type Querier interface {
 	GetAccessToken(ctx context.Context, token string) (OauthAccessToken, error)
 	GetAccountByAPID(ctx context.Context, apID string) (Account, error)
 	GetAccountByID(ctx context.Context, id string) (Account, error)
+	GetAccountByIDForUpdate(ctx context.Context, id string) (Account, error)
 	GetAccountConversation(ctx context.Context, arg GetAccountConversationParams) (AccountConversation, error)
+	GetAccountDeletionSnapshot(ctx context.Context, id string) (AccountDeletionSnapshot, error)
 	GetAccountPublicStatuses(ctx context.Context, arg GetAccountPublicStatusesParams) ([]Status, error)
 	GetAccountStatuses(ctx context.Context, arg GetAccountStatusesParams) ([]Status, error)
 	GetAccountStatusesWithBoosts(ctx context.Context, arg GetAccountStatusesWithBoostsParams) ([]Status, error)
@@ -218,6 +222,7 @@ type Querier interface {
 	IncrementReblogsCount(ctx context.Context, id string) error
 	IncrementRepliesCount(ctx context.Context, id string) error
 	IncrementStatusesCount(ctx context.Context, id string) error
+	InsertAccountDeletionTargetsForAccount(ctx context.Context, arg InsertAccountDeletionTargetsForAccountParams) error
 	InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventParams) error
 	IsBlocked(ctx context.Context, arg IsBlockedParams) (bool, error)
 	IsBlockedEitherDirection(ctx context.Context, arg IsBlockedEitherDirectionParams) (bool, error)
@@ -258,6 +263,7 @@ type Querier interface {
 	ListMutes(ctx context.Context, arg ListMutesParams) ([]Mute, error)
 	ListNotificationRequests(ctx context.Context, arg ListNotificationRequestsParams) ([]NotificationRequest, error)
 	ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]Notification, error)
+	ListPendingAccountDeletionTargets(ctx context.Context, arg ListPendingAccountDeletionTargetsParams) ([]string, error)
 	ListPinnedStatusIDs(ctx context.Context, accountID string) ([]string, error)
 	ListPollOptions(ctx context.Context, pollID string) ([]PollOption, error)
 	ListPushSubscriptionsByAccountID(ctx context.Context, accountID string) ([]PushSubscription, error)
@@ -273,6 +279,7 @@ type Querier interface {
 	ListUserDomainBlocksPaginated(ctx context.Context, arg ListUserDomainBlocksPaginatedParams) ([]ListUserDomainBlocksPaginatedRow, error)
 	ListUserFiltersV2(ctx context.Context, accountID string) ([]UserFilter, error)
 	MarkAccountConversationRead(ctx context.Context, arg MarkAccountConversationReadParams) error
+	MarkAccountDeletionTargetDelivered(ctx context.Context, arg MarkAccountDeletionTargetDeliveredParams) error
 	MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) error
 	MarkOutboxEventsPublished(ctx context.Context, ids []string) error
 	RemoveAccountFromList(ctx context.Context, arg RemoveAccountFromListParams) error
@@ -281,7 +288,6 @@ type Querier interface {
 	ReplaceTrendingLinks(ctx context.Context) error
 	ResolveReport(ctx context.Context, arg ResolveReportParams) error
 	RevokeAccessToken(ctx context.Context, token string) error
-	RevokeAllAccessTokensForAccount(ctx context.Context, accountID *string) error
 	RevokeQuote(ctx context.Context, arg RevokeQuoteParams) (string, error)
 	SearchAccounts(ctx context.Context, arg SearchAccountsParams) ([]Account, error)
 	SearchAccountsFollowing(ctx context.Context, arg SearchAccountsFollowingParams) ([]Account, error)

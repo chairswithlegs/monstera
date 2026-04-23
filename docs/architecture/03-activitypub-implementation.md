@@ -58,6 +58,24 @@ Inbox URLs are resolved from the store (e.g. follower list); deduplication is by
 
 The `activitypub` package has no direct dependency on `store.Store` — it uses narrow interfaces for the specific data it needs (follower inbox URLs, domain blocks).
 
+### Account deletion: snapshot side tables
+
+Account deletion is a tx that hard-deletes `accounts` and relies on Postgres `ON DELETE CASCADE` to remove every dependent row — statuses, follows, oauth tokens, media, etc. (see migration `000080_cascade_account_fks`). That wipes the two things the federation flow normally depends on: the follower inboxes (joined from `follows` + `accounts`) and the sender's private key (stored on `accounts.private_key`). Without a workaround, the `Delete{Actor}` fanout for a deleted account would run against an empty follower list and a non-existent signer.
+
+To let federation run after the row is gone, the service-layer `deleteLocalAccount` (`internal/service/account_service.go`) populates two side tables inside the same tx, **before** the `DELETE` fires (see migration `000081_account_deletion_snapshots`):
+
+- `account_deletion_snapshots(id PK, ap_id, private_key_pem, created_at, expires_at)` — one row per deletion, keyed by a ULID `deletion_id`. Holds the actor IRI and PEM-encoded private key so the delivery worker can sign the `Delete{Actor}` after the `accounts` row is gone.
+- `account_deletion_targets(deletion_id FK, inbox_url, delivered_at, PK(deletion_id, inbox_url))` — one row per distinct remote follower inbox. Populated via `SELECT DISTINCT a.inbox_url FROM follows f JOIN accounts a ON f.account_id = a.id WHERE f.target_id = <dying> AND a.domain IS NOT NULL` while `follows` is still live. Targets CASCADE with their snapshot.
+
+The `EventAccountDeleted` payload (`internal/domain/events.go`) carries only `{DeletionID, APID, Local}` — the private key never hits `outbox_events` or the NATS stream. The federation subscriber branches on `DeletionID`:
+
+- **Fanout**: `OutboxFanoutMessage.DeletionID` routes `outbox_fanout_worker` to `AccountDeletionService.ListPendingTargets` instead of `RemoteFollowService.GetFollowerInboxURLsPaginated`, paginating from `account_deletion_targets` and marking each target `delivered_at` as deliveries are enqueued.
+- **Delivery**: `OutboxDeliveryMessage.DeletionID` routes `outbox_delivery_worker` to `HTTPSignatureService.SignWithDeletionID`, which loads the PEM from `account_deletion_snapshots` instead of the (missing) `accounts` row.
+
+A scheduler job, `PurgeAccountDeletionSnapshots` (`internal/scheduler/jobs/purge_account_deletion_snapshots.go`), sweeps snapshots past `expires_at` (default `service.AccountDeletionSnapshotTTL` = 24h) on an hourly interval. CASCADE drops the targets along with the snapshot, reclaiming the private-key material.
+
+Concurrent-delete races are closed at the tx level: `deleteLocalAccount` opens the tx with `SELECT ... FOR UPDATE` on the `accounts` row, so a second caller blocks on the row lock and sees `ErrNotFound` after the first commits — no duplicate `EventAccountDeleted`, no duplicate audit row.
+
 ## Supported activity types (inbox)
 
 - **Create(Note)**: Ingest status; resolve author if remote; store; notify mentions; publish to SSE.

@@ -53,6 +53,20 @@ type AccountConversation struct {
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 }
 
+type AccountDeletionSnapshot struct {
+	ID            string             `json:"id"`
+	ApID          string             `json:"ap_id"`
+	PrivateKeyPem string             `json:"private_key_pem"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt     pgtype.Timestamptz `json:"expires_at"`
+}
+
+type AccountDeletionTarget struct {
+	DeletionID  string             `json:"deletion_id"`
+	InboxUrl    string             `json:"inbox_url"`
+	DeliveredAt pgtype.Timestamptz `json:"delivered_at"`
+}
+
 type AccountFeaturedTag struct {
 	ID        string             `json:"id"`
 	AccountID string             `json:"account_id"`
@@ -390,8 +404,8 @@ type QuoteApproval struct {
 
 type Report struct {
 	ID           string             `json:"id"`
-	AccountID    string             `json:"account_id"`
-	TargetID     string             `json:"target_id"`
+	AccountID    *string            `json:"account_id"`
+	TargetID     *string            `json:"target_id"`
 	StatusIds    []string           `json:"status_ids"`
 	Comment      *string            `json:"comment"`
 	Category     string             `json:"category"`

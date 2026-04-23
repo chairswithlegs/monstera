@@ -247,12 +247,9 @@ func (h *AdminUsersHandler) DELETEUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, targetUser, _ := h.accounts.GetAccountWithUser(r.Context(), id)
-	if targetUser != nil {
-		if err := h.moderation.DeleteAccount(r.Context(), user.ID, id); err != nil {
-			api.HandleError(w, r, err)
-			return
-		}
+	if err := h.moderation.DeleteAccount(r.Context(), user.ID, id); err != nil {
+		api.HandleError(w, r, err)
+		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

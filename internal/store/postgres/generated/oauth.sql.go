@@ -218,13 +218,3 @@ func (q *Queries) RevokeAccessToken(ctx context.Context, token string) error {
 	_, err := q.db.Exec(ctx, revokeAccessToken, token)
 	return err
 }
-
-const revokeAllAccessTokensForAccount = `-- name: RevokeAllAccessTokensForAccount :exec
-UPDATE oauth_access_tokens SET revoked_at = NOW()
-WHERE account_id = $1 AND revoked_at IS NULL
-`
-
-func (q *Queries) RevokeAllAccessTokensForAccount(ctx context.Context, accountID *string) error {
-	_, err := q.db.Exec(ctx, revokeAllAccessTokensForAccount, accountID)
-	return err
-}
