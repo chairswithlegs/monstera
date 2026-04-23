@@ -26,6 +26,19 @@ type OAuthAccessToken struct {
 	CreatedAt     time.Time
 }
 
+// AuthorizedApplication is a deduplicated view of the OAuth applications that
+// currently hold an active access token for a given account. It joins fields
+// from oauth_applications with metadata from the latest matching token.
+type AuthorizedApplication struct {
+	ApplicationID string
+	Name          string
+	Website       *string
+	RedirectURIs  string
+	AppScopes     string
+	TokenScopes   string
+	AuthorizedAt  time.Time
+}
+
 // OAuthAuthorizationCode is a short-lived code exchanged for an access token.
 type OAuthAuthorizationCode struct {
 	ID                  string

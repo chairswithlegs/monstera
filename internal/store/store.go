@@ -273,12 +273,18 @@ type NotificationPolicyStore interface {
 type OAuthStore interface {
 	CreateApplication(ctx context.Context, in CreateApplicationInput) (*domain.OAuthApplication, error)
 	GetApplicationByClientID(ctx context.Context, clientID string) (*domain.OAuthApplication, error)
+	GetApplicationByID(ctx context.Context, id string) (*domain.OAuthApplication, error)
 	CreateAuthorizationCode(ctx context.Context, in CreateAuthorizationCodeInput) (*domain.OAuthAuthorizationCode, error)
 	GetAuthorizationCode(ctx context.Context, code string) (*domain.OAuthAuthorizationCode, error)
 	DeleteAuthorizationCode(ctx context.Context, code string) error
 	CreateAccessToken(ctx context.Context, in CreateAccessTokenInput) (*domain.OAuthAccessToken, error)
 	GetAccessToken(ctx context.Context, token string) (*domain.OAuthAccessToken, error)
 	RevokeAccessToken(ctx context.Context, token string) error
+	ListAuthorizedApplicationsForAccount(ctx context.Context, accountID string) ([]domain.AuthorizedApplication, error)
+	// RevokeAccessTokensForAccountApp revokes every active access token for the
+	// (accountID, applicationID) pair atomically and returns the raw token
+	// strings of the rows it just revoked so callers can invalidate caches.
+	RevokeAccessTokensForAccountApp(ctx context.Context, accountID, applicationID string) ([]string, error)
 }
 
 // MediaStore handles media attachment persistence.

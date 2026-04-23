@@ -5,10 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/chairswithlegs/monstera/internal/cache"
+	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/testutil"
-	"github.com/stretchr/testify/require"
 )
 
 func TestServer_RegisterApplication(t *testing.T) {
@@ -155,4 +158,99 @@ func TestServer_RevokeToken(t *testing.T) {
 		return err != nil
 	}, 500*time.Millisecond, 10*time.Millisecond,
 		"LookupToken should return an error after RevokeToken (cache eviction may be eventual)")
+}
+
+func TestServer_GetApplicationInfo(t *testing.T) {
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	c, err := cache.New(cache.Config{Driver: "memory"})
+	require.NoError(t, err)
+	defer func() { _ = c.Close() }()
+
+	website := "https://example.com"
+	app, err := st.CreateApplication(ctx, store.CreateApplicationInput{
+		ID: "app_info_1", Name: "Tusky", ClientID: "cid", ClientSecret: "secret",
+		RedirectURIs: "urn:ietf:wg:oauth:2.0:oob", Scopes: "read write", Website: &website,
+	})
+	require.NoError(t, err)
+
+	srv := NewServer(st, c, "vapid-pub")
+	info, err := srv.GetApplicationInfo(ctx, app.ID)
+	require.NoError(t, err)
+	assert.Equal(t, app.ID, info.ID)
+	assert.Equal(t, "Tusky", info.Name)
+	require.NotNil(t, info.Website)
+	assert.Equal(t, "https://example.com", *info.Website)
+	assert.Equal(t, "vapid-pub", info.VapidKey)
+}
+
+func TestServer_ListAuthorizedApplications(t *testing.T) {
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	c, err := cache.New(cache.Config{Driver: "memory"})
+	require.NoError(t, err)
+	defer func() { _ = c.Close() }()
+
+	accountID := "acct_abc"
+	app, err := st.CreateApplication(ctx, store.CreateApplicationInput{
+		ID: "app_list_1", Name: "Ivory", ClientID: "ivory_cid", ClientSecret: "ivory_secret",
+		RedirectURIs: "monstera://callback", Scopes: "read write",
+	})
+	require.NoError(t, err)
+
+	_, err = st.CreateAccessToken(ctx, store.CreateAccessTokenInput{
+		ID: "tok_list_1", ApplicationID: app.ID, AccountID: &accountID,
+		Token: "tok_list_raw", Scopes: "read write",
+	})
+	require.NoError(t, err)
+
+	srv := NewServer(st, c, "")
+	apps, err := srv.ListAuthorizedApplications(ctx, accountID)
+	require.NoError(t, err)
+	require.Len(t, apps, 1)
+	assert.Equal(t, app.ID, apps[0].ID)
+	assert.Equal(t, []string{"read", "write"}, apps[0].Scopes)
+
+	empty, err := srv.ListAuthorizedApplications(ctx, "other_account")
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+}
+
+func TestServer_RevokeApplicationAuthorization(t *testing.T) {
+	ctx := context.Background()
+	st := testutil.NewFakeStore()
+	c, err := cache.New(cache.Config{Driver: "memory"})
+	require.NoError(t, err)
+	defer func() { _ = c.Close() }()
+
+	accountID := "acct_xyz"
+	app, err := st.CreateApplication(ctx, store.CreateApplicationInput{
+		ID: "app_rev_1", Name: "Elk", ClientID: "elk_cid", ClientSecret: "elk_secret",
+		RedirectURIs: "monstera://callback", Scopes: "read write",
+	})
+	require.NoError(t, err)
+
+	rawToken := "rev_tok_" + app.ID
+	_, err = st.CreateAccessToken(ctx, store.CreateAccessTokenInput{
+		ID: "tok_rev_1", ApplicationID: app.ID, AccountID: &accountID,
+		Token: rawToken, Scopes: "read",
+	})
+	require.NoError(t, err)
+
+	srv := NewServer(st, c, "")
+
+	// Prime the cache.
+	_, err = srv.LookupToken(ctx, rawToken)
+	require.NoError(t, err)
+
+	require.NoError(t, srv.RevokeApplicationAuthorization(ctx, accountID, app.ID))
+
+	require.Eventually(t, func() bool {
+		_, err := srv.LookupToken(ctx, rawToken)
+		return err != nil
+	}, 500*time.Millisecond, 10*time.Millisecond, "token should no longer resolve after revoke")
+
+	// Second call returns ErrNotFound now that there are no active tokens.
+	err = srv.RevokeApplicationAuthorization(ctx, accountID, app.ID)
+	require.ErrorIs(t, err, domain.ErrNotFound)
 }

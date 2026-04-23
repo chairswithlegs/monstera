@@ -1086,6 +1086,15 @@ func (f *FakeStore) GetApplicationByClientID(ctx context.Context, clientID strin
 	return nil, domain.ErrNotFound
 }
 
+func (f *FakeStore) GetApplicationByID(ctx context.Context, id string) (*domain.OAuthApplication, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if app, ok := f.applicationsByID[id]; ok {
+		return app, nil
+	}
+	return nil, domain.ErrNotFound
+}
+
 func (f *FakeStore) CreateAuthorizationCode(ctx context.Context, in store.CreateAuthorizationCodeInput) (*domain.OAuthAuthorizationCode, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -1154,6 +1163,68 @@ func (f *FakeStore) RevokeAccessToken(ctx context.Context, token string) error {
 		tok.RevokedAt = &now
 	}
 	return nil
+}
+
+func (f *FakeStore) ListAuthorizedApplicationsForAccount(ctx context.Context, accountID string) ([]domain.AuthorizedApplication, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	now := time.Now()
+	latest := make(map[string]*domain.OAuthAccessToken)
+	for _, tok := range f.tokens {
+		if tok.AccountID == nil || *tok.AccountID != accountID {
+			continue
+		}
+		if tok.RevokedAt != nil {
+			continue
+		}
+		if tok.ExpiresAt != nil && !tok.ExpiresAt.After(now) {
+			continue
+		}
+		if existing, ok := latest[tok.ApplicationID]; !ok || tok.CreatedAt.After(existing.CreatedAt) {
+			latest[tok.ApplicationID] = tok
+		}
+	}
+
+	apps := make([]domain.AuthorizedApplication, 0, len(latest))
+	for appID, tok := range latest {
+		app, ok := f.applicationsByID[appID]
+		if !ok {
+			continue
+		}
+		apps = append(apps, domain.AuthorizedApplication{
+			ApplicationID: app.ID,
+			Name:          app.Name,
+			Website:       app.Website,
+			RedirectURIs:  app.RedirectURIs,
+			AppScopes:     app.Scopes,
+			TokenScopes:   tok.Scopes,
+			AuthorizedAt:  tok.CreatedAt,
+		})
+	}
+	sort.Slice(apps, func(i, j int) bool { return apps[i].ApplicationID < apps[j].ApplicationID })
+	return apps, nil
+}
+
+func (f *FakeStore) RevokeAccessTokensForAccountApp(ctx context.Context, accountID, applicationID string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	now := time.Now()
+	var revoked []string
+	for _, tok := range f.tokens {
+		if tok.AccountID == nil || *tok.AccountID != accountID {
+			continue
+		}
+		if tok.ApplicationID != applicationID {
+			continue
+		}
+		if tok.RevokedAt != nil {
+			continue
+		}
+		tok.RevokedAt = &now
+		revoked = append(revoked, tok.Token)
+	}
+	return revoked, nil
 }
 func (f *FakeStore) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
 	f.mu.Lock()

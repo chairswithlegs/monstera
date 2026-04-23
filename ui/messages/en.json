@@ -114,6 +114,20 @@
     "deleteAccountDialogBody": "Enter your password to confirm. Your account and all associated data will be permanently deleted immediately. This cannot be undone.",
     "deleteAccountConfirmButton": "Delete my account"
   },
+  "authorizedApps": {
+    "title": "Authorized applications",
+    "description": "Apps that can sign in as you and use the API on your behalf. Revoke any you no longer use.",
+    "emptyState": "No applications currently have access to your account.",
+    "columnName": "Application",
+    "columnAuthorizedAt": "Authorized on",
+    "columnActions": "Actions",
+    "currentSessionBadge": "This session",
+    "revokeButton": "Revoke",
+    "revokeConfirmTitle": "Revoke {name}?",
+    "revokeConfirmBody": "This will sign {name} out immediately and invalidate all of its access to your account. You can reauthorize it later.",
+    "revokeCurrentWarning": "This application issued your current session. Revoking it will log you out.",
+    "revokeConfirmButton": "Revoke access"
+  },
   "home": {
     "welcome": "Welcome, @{username}",
     "whatIsMonstera": "What is Monstera?",

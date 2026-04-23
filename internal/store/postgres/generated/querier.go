@@ -137,6 +137,7 @@ type Querier interface {
 	GetAndLockUnpublishedOutboxEvents(ctx context.Context, limit int32) ([]GetAndLockUnpublishedOutboxEventsRow, error)
 	GetAnnouncementByID(ctx context.Context, id string) (Announcement, error)
 	GetApplicationByClientID(ctx context.Context, clientID string) (OauthApplication, error)
+	GetApplicationByID(ctx context.Context, id string) (OauthApplication, error)
 	GetAuthorizationCode(ctx context.Context, code string) (OauthAuthorizationCode, error)
 	GetBlock(ctx context.Context, arg GetBlockParams) (Block, error)
 	GetBookmarksTimeline(ctx context.Context, arg GetBookmarksTimelineParams) ([]GetBookmarksTimelineRow, error)
@@ -243,6 +244,7 @@ type Querier interface {
 	ListAdminActionsByTarget(ctx context.Context, targetAccountID *string) ([]AdminAction, error)
 	ListAllAnnouncements(ctx context.Context) ([]Announcement, error)
 	ListAnnouncementReactionCounts(ctx context.Context, announcementID string) ([]ListAnnouncementReactionCountsRow, error)
+	ListAuthorizedApplicationsForAccount(ctx context.Context, accountID *string) ([]ListAuthorizedApplicationsForAccountRow, error)
 	ListBlockedAccounts(ctx context.Context, arg ListBlockedAccountsParams) ([]Account, error)
 	ListBlockedAccountsPaginated(ctx context.Context, arg ListBlockedAccountsPaginatedParams) ([]ListBlockedAccountsPaginatedRow, error)
 	ListDirectoryAccounts(ctx context.Context, arg ListDirectoryAccountsParams) ([]Account, error)
@@ -291,6 +293,7 @@ type Querier interface {
 	ReplaceTrendingLinks(ctx context.Context) error
 	ResolveReport(ctx context.Context, arg ResolveReportParams) error
 	RevokeAccessToken(ctx context.Context, token string) error
+	RevokeAccessTokensForAccountApp(ctx context.Context, arg RevokeAccessTokensForAccountAppParams) ([]string, error)
 	RevokeQuote(ctx context.Context, arg RevokeQuoteParams) (string, error)
 	SearchAccounts(ctx context.Context, arg SearchAccountsParams) ([]Account, error)
 	SearchAccountsFollowing(ctx context.Context, arg SearchAccountsFollowingParams) ([]Account, error)
