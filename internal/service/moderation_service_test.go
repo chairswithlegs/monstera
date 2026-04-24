@@ -202,23 +202,195 @@ func TestModerationService_UnsilenceAccount(t *testing.T) {
 func TestModerationService_CreateDomainBlock(t *testing.T) {
 	t.Parallel()
 
-	t.Run("suspend severity deletes follows", func(t *testing.T) {
+	t.Run("suspend severity creates purge row, emits event, and flips domain_suspended", func(t *testing.T) {
 		t.Parallel()
 		ctx := context.Background()
 		fake := testutil.NewFakeStore()
 		svc := NewModerationService(fake, noopBlocklistRefresher{})
 
 		mod := seedLocalAccount(t, fake, "mod-1", "moderator")
+		// Two pre-existing remote accounts on the target domain.
+		remoteDomain := "bad.example.com"
+		for _, id := range []string{"remote-a", "remote-b"} {
+			fake.SeedAccount(&domain.Account{ID: id, Username: id, Domain: &remoteDomain, APID: "https://" + remoteDomain + "/users/" + id})
+		}
 
 		block, err := svc.CreateDomainBlock(ctx, mod.ID, CreateDomainBlockInput{
-			Domain:   "bad.example.com",
+			Domain:   remoteDomain,
 			Severity: domain.DomainBlockSeveritySuspend,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, block)
-		assert.Equal(t, "bad.example.com", block.Domain)
+		assert.Equal(t, remoteDomain, block.Domain)
 		assert.Equal(t, domain.DomainBlockSeveritySuspend, block.Severity)
+
+		// Purge tracker row created so the subscriber can pick it up.
+		purge, err := fake.GetDomainBlockPurge(ctx, block.ID)
+		require.NoError(t, err)
+		assert.Equal(t, remoteDomain, purge.Domain)
+		assert.Nil(t, purge.CompletedAt)
+
+		// EventDomainBlockSuspended emitted through the outbox.
+		var found bool
+		for _, e := range fake.OutboxEvents {
+			if e.EventType == domain.EventDomainBlockSuspended {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "EventDomainBlockSuspended should have been emitted")
+
+		// Pre-existing remote accounts had domain_suspended flipped on in
+		// the same tx — lookups 404 immediately, no race with the subscriber.
+		for _, id := range []string{"remote-a", "remote-b"} {
+			a, err := fake.GetAccountByID(ctx, id)
+			require.NoError(t, err)
+			assert.True(t, a.DomainSuspended, "account %s domain_suspended should be true", id)
+			assert.False(t, a.Suspended, "account %s.suspended should be untouched", id)
+			assert.True(t, a.IsHidden())
+		}
 	})
+
+	t.Run("silence severity does not create purge row or emit event", func(t *testing.T) {
+		t.Parallel()
+		ctx := context.Background()
+		fake := testutil.NewFakeStore()
+		svc := NewModerationService(fake, noopBlocklistRefresher{})
+
+		mod := seedLocalAccount(t, fake, "mod-1", "moderator")
+		// Seed a remote account on the target domain to verify that
+		// domain_suspended is NOT flipped for silence severity.
+		remoteDomain := "noisy.example.com"
+		fake.SeedAccount(&domain.Account{ID: "remote-silence", Username: "remote-silence", Domain: &remoteDomain, APID: "https://noisy.example.com/users/x"})
+
+		block, err := svc.CreateDomainBlock(ctx, mod.ID, CreateDomainBlockInput{
+			Domain:   remoteDomain,
+			Severity: domain.DomainBlockSeveritySilence,
+		})
+		require.NoError(t, err)
+
+		_, err = fake.GetDomainBlockPurge(ctx, block.ID)
+		require.ErrorIs(t, err, domain.ErrNotFound, "silence blocks do not create a purge tracker")
+
+		for _, e := range fake.OutboxEvents {
+			assert.NotEqual(t, domain.EventDomainBlockSuspended, e.EventType,
+				"silence blocks must not emit domain_block.suspended")
+		}
+
+		a, err := fake.GetAccountByID(ctx, "remote-silence")
+		require.NoError(t, err)
+		assert.False(t, a.DomainSuspended, "silence severity must not flip domain_suspended")
+	})
+}
+
+// TestModerationService_DeleteDomainBlock_ReversesDomainSuspension is the
+// regression test for the bug where a remote account stayed 404 after its
+// domain block was removed. Covers two cases: (a) an account that was only
+// suspended because of the domain block becomes visible again on unblock;
+// (b) an account that was also individually suspended (e.g. via federation
+// Delete{Person}) stays hidden — the unblock only reverses the domain-level
+// cause, not the individual one.
+func TestModerationService_DeleteDomainBlock_ReversesDomainSuspension(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewModerationService(fake, noopBlocklistRefresher{})
+
+	mod := seedLocalAccount(t, fake, "mod-1", "moderator")
+	remoteDomain := "example.test"
+
+	// Case (a): untouched remote account.
+	fake.SeedAccount(&domain.Account{ID: "alice", Username: "alice", Domain: &remoteDomain, APID: "https://example.test/users/alice"})
+	// Case (b): already individually suspended.
+	fake.SeedAccount(&domain.Account{ID: "bob", Username: "bob", Domain: &remoteDomain, APID: "https://example.test/users/bob", Suspended: true})
+
+	// Suspend the domain.
+	_, err := svc.CreateDomainBlock(ctx, mod.ID, CreateDomainBlockInput{
+		Domain: remoteDomain, Severity: domain.DomainBlockSeveritySuspend,
+	})
+	require.NoError(t, err)
+
+	alice, err := fake.GetAccountByID(ctx, "alice")
+	require.NoError(t, err)
+	assert.True(t, alice.IsHidden(), "alice should be hidden while blocked")
+	assert.True(t, alice.DomainSuspended)
+	assert.False(t, alice.Suspended)
+
+	bob, err := fake.GetAccountByID(ctx, "bob")
+	require.NoError(t, err)
+	assert.True(t, bob.IsHidden())
+	assert.True(t, bob.DomainSuspended)
+	assert.True(t, bob.Suspended, "bob's individual suspension must survive the domain block")
+
+	// Unblock.
+	require.NoError(t, svc.DeleteDomainBlock(ctx, mod.ID, remoteDomain))
+
+	alice, err = fake.GetAccountByID(ctx, "alice")
+	require.NoError(t, err)
+	assert.False(t, alice.IsHidden(), "alice should be visible after unblock (was the bug)")
+	assert.False(t, alice.DomainSuspended)
+	assert.False(t, alice.Suspended)
+
+	bob, err = fake.GetAccountByID(ctx, "bob")
+	require.NoError(t, err)
+	assert.True(t, bob.IsHidden(), "bob must stay hidden (individually suspended)")
+	assert.False(t, bob.DomainSuspended, "domain-level cause cleared")
+	assert.True(t, bob.Suspended, "individual-level cause preserved")
+}
+
+func TestModerationService_ListDomainBlocksWithPurge(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewModerationService(fake, noopBlocklistRefresher{})
+
+	// Silence block (no purge row).
+	mod := seedLocalAccount(t, fake, "mod-1", "moderator")
+	silence, err := svc.CreateDomainBlock(ctx, mod.ID, CreateDomainBlockInput{
+		Domain:   "silence.example",
+		Severity: domain.DomainBlockSeveritySilence,
+	})
+	require.NoError(t, err)
+
+	// Suspend block (in-progress purge, cursor not yet set; 2 remote accounts remaining).
+	suspend, err := svc.CreateDomainBlock(ctx, mod.ID, CreateDomainBlockInput{
+		Domain:   "suspend.example",
+		Severity: domain.DomainBlockSeveritySuspend,
+	})
+	require.NoError(t, err)
+	remoteDomain := "suspend.example"
+	for _, id := range []string{"remote-a", "remote-b"} {
+		fake.SeedAccount(&domain.Account{ID: id, Username: id, Domain: &remoteDomain, APID: "https://suspend.example/users/" + id})
+	}
+
+	// Suspend block with completed purge.
+	done, err := svc.CreateDomainBlock(ctx, mod.ID, CreateDomainBlockInput{
+		Domain:   "done.example",
+		Severity: domain.DomainBlockSeveritySuspend,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.MarkDomainBlockPurgeComplete(ctx, done.ID))
+
+	rows, err := svc.ListDomainBlocksWithPurge(ctx)
+	require.NoError(t, err)
+	require.Len(t, rows, 3)
+
+	byID := map[string]DomainBlockWithPurgeResult{}
+	for _, r := range rows {
+		byID[r.Block.ID] = r
+	}
+
+	assert.Nil(t, byID[silence.ID].Purge, "silence block has no purge row")
+	assert.Nil(t, byID[silence.ID].AccountsRemaining)
+
+	require.NotNil(t, byID[suspend.ID].Purge)
+	assert.Nil(t, byID[suspend.ID].Purge.CompletedAt)
+	require.NotNil(t, byID[suspend.ID].AccountsRemaining)
+	assert.EqualValues(t, 2, *byID[suspend.ID].AccountsRemaining)
+
+	require.NotNil(t, byID[done.ID].Purge)
+	require.NotNil(t, byID[done.ID].Purge.CompletedAt)
+	assert.Nil(t, byID[done.ID].AccountsRemaining, "completed purge does not report accounts_remaining")
 }
 
 func TestModerationService_DeleteDomainBlock(t *testing.T) {

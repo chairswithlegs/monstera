@@ -1,12 +1,30 @@
 'use client';
 
 import { deleteAccount, getUser, patchEmail, patchPassword } from '@/lib/api/user';
+import {
+  AuthorizedApp,
+  listAuthorizedApps,
+  revokeAuthorizedApp,
+  verifyAppCredentials,
+  VerifiedAppCredentials,
+} from '@/lib/api/oauth-apps';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { EmptyState } from '@/components/empty-state';
 import {
   Dialog,
   DialogContent,
@@ -21,6 +39,7 @@ import { logout } from '@/lib/auth/logout';
 
 export default function SecurityPage() {
   const t = useTranslations('account');
+  const tApps = useTranslations('authorizedApps');
   const tCommon = useTranslations('common');
   const tErr = useTranslations('errors');
   const [currentEmail, setCurrentEmail] = useState('');
@@ -49,6 +68,68 @@ export default function SecurityPage() {
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [apps, setApps] = useState<AuthorizedApp[] | null>(null);
+  const [currentApp, setCurrentApp] = useState<VerifiedAppCredentials | null>(null);
+  const [appsError, setAppsError] = useState<string | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<AuthorizedApp | null>(null);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([listAuthorizedApps(), verifyAppCredentials().catch(() => null)])
+      .then(([list, current]) => {
+        if (cancelled) return;
+        setApps(list);
+        setCurrentApp(current);
+        setAppsError(null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setAppsError(translateApiError(tErr, err));
+        setApps([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tErr]);
+
+  const isCurrentSession = (app: AuthorizedApp): boolean =>
+    currentApp !== null && currentApp.id === app.id;
+
+  const openRevoke = (app: AuthorizedApp | null) => {
+    setRevokeTarget(app);
+    setRevokeError(null);
+    setRevoking(false);
+  };
+
+  const submitRevoke = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!revokeTarget) return;
+    setRevoking(true);
+    setRevokeError(null);
+    try {
+      await revokeAuthorizedApp(revokeTarget.id);
+      if (isCurrentSession(revokeTarget)) {
+        logout();
+        return;
+      }
+      setApps((prev) => (prev ? prev.filter((a) => a.id !== revokeTarget.id) : prev));
+      openRevoke(null);
+    } catch (err) {
+      setRevokeError(translateApiError(tErr, err));
+      setRevoking(false);
+    }
+  };
+
+  const formatDate = (iso: string): string => {
+    try {
+      return new Date(iso).toLocaleDateString();
+    } catch {
+      return iso;
+    }
+  };
 
   const saveEmail = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,6 +267,99 @@ export default function SecurityPage() {
             {savingPassword ? tCommon('saving') : t('changePassword')}
           </Button>
         </form>
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-lg font-medium text-gray-900">{tApps('title')}</h2>
+        <p className="text-sm text-gray-500">{tApps('description')}</p>
+        {appsError && (
+          <Alert variant="destructive">
+            <AlertDescription>{appsError}</AlertDescription>
+          </Alert>
+        )}
+        {apps !== null && (
+          <Card>
+            <CardContent>
+              {apps.length === 0 ? (
+                <EmptyState message={tApps('emptyState')} />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{tApps('columnName')}</TableHead>
+                      <TableHead>{tApps('columnAuthorizedAt')}</TableHead>
+                      <TableHead className="text-right">{tApps('columnActions')}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {apps.map((app) => (
+                      <TableRow key={app.id}>
+                        <TableCell className="font-medium">
+                          {app.website ? (
+                            <Button variant="link" size="sm" className="h-auto p-0 font-medium" asChild>
+                              <a href={app.website} target="_blank" rel="noreferrer noopener">
+                                {app.name}
+                              </a>
+                            </Button>
+                          ) : (
+                            app.name
+                          )}
+                          {isCurrentSession(app) && (
+                            <Badge variant="secondary" className="ml-2">
+                              {tApps('currentSessionBadge')}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{formatDate(app.created_at)}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="link"
+                            size="sm"
+                            onClick={() => openRevoke(app)}
+                            className="text-destructive"
+                          >
+                            {tApps('revokeButton')}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        )}
+        <Dialog open={revokeTarget !== null} onOpenChange={(open) => !open && openRevoke(null)}>
+          <DialogContent>
+            <form onSubmit={submitRevoke} className="space-y-4">
+              <DialogHeader>
+                <DialogTitle>{tApps('revokeConfirmTitle', { name: revokeTarget?.name ?? '' })}</DialogTitle>
+                <DialogDescription>
+                  {tApps('revokeConfirmBody', { name: revokeTarget?.name ?? '' })}
+                </DialogDescription>
+              </DialogHeader>
+              {revokeTarget && isCurrentSession(revokeTarget) && (
+                <Alert variant="default">
+                  <AlertDescription>{tApps('revokeCurrentWarning')}</AlertDescription>
+                </Alert>
+              )}
+              {revokeError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{revokeError}</AlertDescription>
+                </Alert>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => openRevoke(null)} disabled={revoking}>
+                  {tCommon('cancel')}
+                </Button>
+                <Button type="submit" variant="destructive" disabled={revoking}>
+                  {revoking ? tCommon('saving') : tApps('revokeConfirmButton')}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </section>
 
       <section className="space-y-4 border-t pt-10">

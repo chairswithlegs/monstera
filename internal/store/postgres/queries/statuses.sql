@@ -164,3 +164,22 @@ RETURNING *;
 
 -- name: ListStatusEdits :many
 SELECT * FROM status_edits WHERE status_id = $1 ORDER BY created_at ASC;
+
+-- name: DeleteStatusesByAccountIDBatched :many
+-- Hard-deletes up to $2 statuses owned by $1, returning the deleted ids.
+-- Used by the domain-block purge subscriber in a loop: each call runs in its
+-- own tx with bounded WAL and short-lived locks; caller loops until the
+-- returned slice is empty. SKIP LOCKED is defensive against a concurrent
+-- delivery tx briefly holding a status row. DB-level CASCADE cleans up
+-- dependent rows (mentions, favourites, reblogs, notifications,
+-- media_attachments, polls, bookmarks, pins, etc. — see migrations 000080,
+-- 000082, 000084).
+WITH victims AS (
+    SELECT id FROM statuses
+    WHERE statuses.account_id = $1
+    ORDER BY id
+    LIMIT $2
+    FOR UPDATE SKIP LOCKED
+)
+DELETE FROM statuses WHERE statuses.id IN (SELECT id FROM victims)
+RETURNING statuses.id;

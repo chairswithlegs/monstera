@@ -150,3 +150,29 @@ UPDATE accounts SET last_backfilled_at = @last_backfilled_at WHERE id = @id;
 
 -- name: DeleteAccount :one
 DELETE FROM accounts WHERE id = $1 RETURNING *;
+
+-- name: ListRemoteAccountsByDomainPaginated :many
+-- Keyset pagination over remote accounts on a given domain. Used by the
+-- domain-block purge subscriber; $2 is the exclusive cursor (last processed
+-- id). Pass '' to start at the beginning.
+SELECT id
+FROM accounts
+WHERE domain = $1
+  AND ($2::text IS NULL OR $2::text = '' OR id > $2)
+ORDER BY id
+LIMIT $3;
+
+-- name: CountRemoteAccountsByDomainAfterCursor :one
+-- Used by the admin API to compute "accounts remaining" for an in-progress
+-- domain purge. Pass '' to count all accounts on the domain.
+SELECT COUNT(*)
+FROM accounts
+WHERE domain = $1
+  AND ($2::text IS NULL OR $2::text = '' OR id > $2);
+
+-- name: SetAccountsDomainSuspendedByDomain :execrows
+-- Bulk flip accounts.domain_suspended for every account on a domain. Called
+-- in lockstep with CreateDomainBlock (on=true) and DeleteDomainBlock
+-- (on=false) so visibility flips atomically with the block row. Returns the
+-- count of rows updated for logging/audit.
+UPDATE accounts SET domain_suspended = $2 WHERE domain = $1;

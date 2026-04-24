@@ -315,9 +315,9 @@ func TestIntegration_ModerationService_DeleteAccount_FullCascade_Admin(t *testin
 // and a real blob store); instead it asserts the in-tx materialization is
 // correct so that when the subscriber runs in prod it has everything it needs.
 //
-//  1. account_deletion_media_targets must hold a row for every storage_key
-//     Alice owned before the delete.
-//  2. An outbox EventMediaPurge row must be emitted with the same deletion_id
+//  1. media_purge_targets must hold a row for every storage_key Alice owned
+//     before the delete.
+//  2. An outbox EventMediaPurge row must be emitted with the same purge_id
 //     so NATS can route the work to the subscriber.
 func TestIntegration_AccountDeletion_MediaPurgeSideTable(t *testing.T) {
 	pool, s, accountSvc, _, ctx := setupDeletionTest(t)
@@ -334,13 +334,15 @@ func TestIntegration_AccountDeletion_MediaPurgeSideTable(t *testing.T) {
 	var payload domain.MediaPurgePayload
 	require.NoError(t, json.Unmarshal(payloadRaw, &payload))
 	assert.Equal(t, seed.alice.ID, payload.AccountID)
-	require.NotEmpty(t, payload.DeletionID, "media.purge event must carry a deletion_id")
+	require.NotEmpty(t, payload.PurgeID, "media.purge event must carry a purge_id")
 
-	// account_deletion_media_targets must hold Alice's storage key,
-	// unmarked (delivered_at IS NULL).
+	// media_purge_targets must hold Alice's storage key, unmarked
+	// (delivered_at IS NULL). Table name was generalised from
+	// account_deletion_media_targets in migration 000085 so domain-block
+	// suspend purges can share the same queue.
 	rows, err := pool.Query(ctx,
-		`SELECT storage_key, delivered_at FROM account_deletion_media_targets WHERE deletion_id = $1`,
-		payload.DeletionID)
+		`SELECT storage_key, delivered_at FROM media_purge_targets WHERE purge_id = $1`,
+		payload.PurgeID)
 	require.NoError(t, err)
 	defer rows.Close()
 

@@ -41,6 +41,7 @@ type Account struct {
 	HeaderUrl        string             `json:"header_url"`
 	LastBackfilledAt pgtype.Timestamptz `json:"last_backfilled_at"`
 	FeaturedUrl      string             `json:"featured_url"`
+	DomainSuspended  bool               `json:"domain_suspended"`
 }
 
 type AccountConversation struct {
@@ -51,12 +52,6 @@ type AccountConversation struct {
 	Unread         bool               `json:"unread"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
-}
-
-type AccountDeletionMediaTarget struct {
-	DeletionID  string             `json:"deletion_id"`
-	StorageKey  string             `json:"storage_key"`
-	DeliveredAt pgtype.Timestamptz `json:"delivered_at"`
 }
 
 type AccountDeletionSnapshot struct {
@@ -172,6 +167,14 @@ type DomainBlock struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type DomainBlockPurge struct {
+	BlockID     string             `json:"block_id"`
+	Domain      string             `json:"domain"`
+	Cursor      *string            `json:"cursor"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	CompletedAt pgtype.Timestamptz `json:"completed_at"`
+}
+
 type EmailToken struct {
 	ID         string             `json:"id"`
 	TokenHash  string             `json:"token_hash"`
@@ -262,6 +265,12 @@ type MediaAttachment struct {
 	SizeBytes   int64              `json:"size_bytes"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	ContentType *string            `json:"content_type"`
+}
+
+type MediaPurgeTarget struct {
+	PurgeID     string             `json:"purge_id"`
+	StorageKey  string             `json:"storage_key"`
+	DeliveredAt pgtype.Timestamptz `json:"delivered_at"`
 }
 
 type MonsteraSetting struct {

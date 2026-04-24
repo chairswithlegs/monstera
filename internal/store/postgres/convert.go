@@ -169,6 +169,7 @@ func ToDomainAccount(a db.Account) domain.Account {
 		Bot:              a.Bot,
 		Locked:           a.Locked,
 		Suspended:        a.Suspended,
+		DomainSuspended:  a.DomainSuspended,
 		Silenced:         a.Silenced,
 		LastBackfilledAt: pgTimePtr(a.LastBackfilledAt),
 		CreatedAt:        pgTime(a.CreatedAt),
@@ -464,6 +465,20 @@ func ToDomainOAuthAccessToken(t db.OauthAccessToken) domain.OAuthAccessToken {
 		ExpiresAt:     pgTimePtr(t.ExpiresAt),
 		RevokedAt:     pgTimePtr(t.RevokedAt),
 		CreatedAt:     pgTime(t.CreatedAt),
+	}
+}
+
+// ToDomainAuthorizedApplication converts a sqlc ListAuthorizedApplicationsForAccountRow
+// to a domain.AuthorizedApplication.
+func ToDomainAuthorizedApplication(r db.ListAuthorizedApplicationsForAccountRow) domain.AuthorizedApplication {
+	return domain.AuthorizedApplication{
+		ApplicationID: r.ApplicationID,
+		Name:          r.Name,
+		Website:       r.Website,
+		RedirectURIs:  r.RedirectUris,
+		AppScopes:     r.AppScopes,
+		TokenScopes:   r.TokenScopes,
+		AuthorizedAt:  pgTime(r.AuthorizedAt),
 	}
 }
 

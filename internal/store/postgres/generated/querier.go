@@ -37,6 +37,9 @@ type Querier interface {
 	CountPendingNotificationRequests(ctx context.Context, accountID string) (int64, error)
 	CountPendingNotifications(ctx context.Context, accountID string) (int64, error)
 	CountRemoteAccounts(ctx context.Context) (int64, error)
+	// Used by the admin API to compute "accounts remaining" for an in-progress
+	// domain purge. Pass '' to count all accounts on the domain.
+	CountRemoteAccountsByDomainAfterCursor(ctx context.Context, arg CountRemoteAccountsByDomainAfterCursorParams) (int64, error)
 	CountRemoteStatuses(ctx context.Context) (int64, error)
 	CountReportsByState(ctx context.Context, state string) (int64, error)
 	CreateAccessToken(ctx context.Context, arg CreateAccessTokenParams) (OauthAccessToken, error)
@@ -52,6 +55,10 @@ type Querier interface {
 	CreateConversation(ctx context.Context, id string) error
 	CreateConversationMute(ctx context.Context, arg CreateConversationMuteParams) error
 	CreateDomainBlock(ctx context.Context, arg CreateDomainBlockParams) (DomainBlock, error)
+	// Queries against domain_block_purges — the tracker for the async purge
+	// triggered by an admin creating a domain block with severity=suspend
+	// (issue #104). One row per in-flight or completed purge, keyed by block_id.
+	CreateDomainBlockPurge(ctx context.Context, arg CreateDomainBlockPurgeParams) error
 	CreateEmailToken(ctx context.Context, arg CreateEmailTokenParams) (EmailToken, error)
 	CreateFavourite(ctx context.Context, arg CreateFavouriteParams) (Favourite, error)
 	CreateFeaturedTag(ctx context.Context, arg CreateFeaturedTagParams) error
@@ -94,6 +101,11 @@ type Querier interface {
 	DeleteBlock(ctx context.Context, arg DeleteBlockParams) error
 	DeleteBookmark(ctx context.Context, arg DeleteBookmarkParams) error
 	DeleteConversationMute(ctx context.Context, arg DeleteConversationMuteParams) error
+	// Sweeps rows whose blobs have been deleted, past the given cutoff. Runs in
+	// the same scheduler job that expires account_deletion_snapshots; compensates
+	// for the FK removal between account_deletion_snapshots and the (now generic)
+	// media_purge_targets table.
+	DeleteDeliveredMediaPurgeTargets(ctx context.Context, deliveredAt pgtype.Timestamptz) (int64, error)
 	DeleteDomainBlock(ctx context.Context, domain string) error
 	DeleteEmailTokensForUser(ctx context.Context, userID string) error
 	DeleteExpiredAccountDeletionSnapshots(ctx context.Context, expiresAt pgtype.Timestamptz) (int64, error)
@@ -116,6 +128,15 @@ type Querier interface {
 	DeleteScheduledStatus(ctx context.Context, id string) error
 	DeleteStatusHashtags(ctx context.Context, statusID string) error
 	DeleteStatusMentions(ctx context.Context, statusID string) error
+	// Hard-deletes up to $2 statuses owned by $1, returning the deleted ids.
+	// Used by the domain-block purge subscriber in a loop: each call runs in its
+	// own tx with bounded WAL and short-lived locks; caller loops until the
+	// returned slice is empty. SKIP LOCKED is defensive against a concurrent
+	// delivery tx briefly holding a status row. DB-level CASCADE cleans up
+	// dependent rows (mentions, favourites, reblogs, notifications,
+	// media_attachments, polls, bookmarks, pins, etc. — see migrations 000080,
+	// 000082, 000084).
+	DeleteStatusesByAccountIDBatched(ctx context.Context, arg DeleteStatusesByAccountIDBatchedParams) ([]string, error)
 	DeleteUser(ctx context.Context, id string) error
 	DeleteUserDomainBlock(ctx context.Context, arg DeleteUserDomainBlockParams) error
 	DeleteUserFilterV2(ctx context.Context, id string) error
@@ -137,12 +158,14 @@ type Querier interface {
 	GetAndLockUnpublishedOutboxEvents(ctx context.Context, limit int32) ([]GetAndLockUnpublishedOutboxEventsRow, error)
 	GetAnnouncementByID(ctx context.Context, id string) (Announcement, error)
 	GetApplicationByClientID(ctx context.Context, clientID string) (OauthApplication, error)
+	GetApplicationByID(ctx context.Context, id string) (OauthApplication, error)
 	GetAuthorizationCode(ctx context.Context, code string) (OauthAuthorizationCode, error)
 	GetBlock(ctx context.Context, arg GetBlockParams) (Block, error)
 	GetBookmarksTimeline(ctx context.Context, arg GetBookmarksTimelineParams) ([]GetBookmarksTimelineRow, error)
 	GetConversationRoot(ctx context.Context, id string) (string, error)
 	GetDistinctFollowerInboxURLsPaginated(ctx context.Context, arg GetDistinctFollowerInboxURLsPaginatedParams) ([]string, error)
 	GetDomainBlock(ctx context.Context, domain string) (DomainBlock, error)
+	GetDomainBlockPurge(ctx context.Context, blockID string) (DomainBlockPurge, error)
 	GetEmailToken(ctx context.Context, tokenHash string) (EmailToken, error)
 	// Returns accounts that the viewer follows who also follow the given target account.
 	GetFamiliarFollowers(ctx context.Context, arg GetFamiliarFollowersParams) ([]GetFamiliarFollowersRow, error)
@@ -222,8 +245,12 @@ type Querier interface {
 	IncrementReblogsCount(ctx context.Context, id string) error
 	IncrementRepliesCount(ctx context.Context, id string) error
 	IncrementStatusesCount(ctx context.Context, id string) error
-	InsertAccountDeletionMediaTargetsForAccount(ctx context.Context, arg InsertAccountDeletionMediaTargetsForAccountParams) error
 	InsertAccountDeletionTargetsForAccount(ctx context.Context, arg InsertAccountDeletionTargetsForAccountParams) error
+	// Queries against media_purge_targets — the shared pending-blob-delete queue
+	// used by both account deletion and domain-block suspend. The purge_id column
+	// is an opaque identifier owned by the purge flow that emitted the row; there
+	// is no FK, so callers are responsible for cleanup via delivered_at sweep.
+	InsertMediaPurgeTargetsForAccount(ctx context.Context, arg InsertMediaPurgeTargetsForAccountParams) error
 	InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventParams) error
 	IsBlocked(ctx context.Context, arg IsBlockedParams) (bool, error)
 	IsBlockedEitherDirection(ctx context.Context, arg IsBlockedEitherDirectionParams) (bool, error)
@@ -243,10 +270,15 @@ type Querier interface {
 	ListAdminActionsByTarget(ctx context.Context, targetAccountID *string) ([]AdminAction, error)
 	ListAllAnnouncements(ctx context.Context) ([]Announcement, error)
 	ListAnnouncementReactionCounts(ctx context.Context, announcementID string) ([]ListAnnouncementReactionCountsRow, error)
+	ListAuthorizedApplicationsForAccount(ctx context.Context, accountID *string) ([]ListAuthorizedApplicationsForAccountRow, error)
 	ListBlockedAccounts(ctx context.Context, arg ListBlockedAccountsParams) ([]Account, error)
 	ListBlockedAccountsPaginated(ctx context.Context, arg ListBlockedAccountsPaginatedParams) ([]ListBlockedAccountsPaginatedRow, error)
 	ListDirectoryAccounts(ctx context.Context, arg ListDirectoryAccountsParams) ([]Account, error)
 	ListDomainBlocks(ctx context.Context) ([]DomainBlock, error)
+	// LEFT JOIN so silence-severity blocks (no purge row) still appear. The
+	// optional accounts_remaining column is computed by the caller for
+	// in-progress rows only; this query just surfaces the purge state.
+	ListDomainBlocksWithPurge(ctx context.Context) ([]ListDomainBlocksWithPurgeRow, error)
 	ListExpiredOpenPollStatusIDs(ctx context.Context, limit int32) ([]string, error)
 	ListFeaturedTagsByAccount(ctx context.Context, accountID string) ([]ListFeaturedTagsByAccountRow, error)
 	ListFilterKeywords(ctx context.Context, filterID string) ([]UserFilterKeyword, error)
@@ -264,13 +296,17 @@ type Querier interface {
 	ListMutes(ctx context.Context, arg ListMutesParams) ([]Mute, error)
 	ListNotificationRequests(ctx context.Context, arg ListNotificationRequestsParams) ([]NotificationRequest, error)
 	ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]Notification, error)
-	ListPendingAccountDeletionMediaTargets(ctx context.Context, arg ListPendingAccountDeletionMediaTargetsParams) ([]string, error)
 	ListPendingAccountDeletionTargets(ctx context.Context, arg ListPendingAccountDeletionTargetsParams) ([]string, error)
+	ListPendingMediaPurgeTargets(ctx context.Context, arg ListPendingMediaPurgeTargetsParams) ([]string, error)
 	ListPinnedStatusIDs(ctx context.Context, accountID string) ([]string, error)
 	ListPollOptions(ctx context.Context, pollID string) ([]PollOption, error)
 	ListPushSubscriptionsByAccountID(ctx context.Context, accountID string) ([]PushSubscription, error)
 	ListQuotesOfStatus(ctx context.Context, arg ListQuotesOfStatusParams) ([]Status, error)
 	ListReadAnnouncementIDs(ctx context.Context, accountID string) ([]string, error)
+	// Keyset pagination over remote accounts on a given domain. Used by the
+	// domain-block purge subscriber; $2 is the exclusive cursor (last processed
+	// id). Pass '' to start at the beginning.
+	ListRemoteAccountsByDomainPaginated(ctx context.Context, arg ListRemoteAccountsByDomainPaginatedParams) ([]string, error)
 	ListReports(ctx context.Context, arg ListReportsParams) ([]Report, error)
 	ListScheduledStatuses(ctx context.Context, arg ListScheduledStatusesParams) ([]ScheduledStatus, error)
 	ListScheduledStatusesDue(ctx context.Context, limit int32) ([]ScheduledStatus, error)
@@ -281,8 +317,9 @@ type Querier interface {
 	ListUserDomainBlocksPaginated(ctx context.Context, arg ListUserDomainBlocksPaginatedParams) ([]ListUserDomainBlocksPaginatedRow, error)
 	ListUserFiltersV2(ctx context.Context, accountID string) ([]UserFilter, error)
 	MarkAccountConversationRead(ctx context.Context, arg MarkAccountConversationReadParams) error
-	MarkAccountDeletionMediaTargetDelivered(ctx context.Context, arg MarkAccountDeletionMediaTargetDeliveredParams) error
 	MarkAccountDeletionTargetDelivered(ctx context.Context, arg MarkAccountDeletionTargetDeliveredParams) error
+	MarkDomainBlockPurgeComplete(ctx context.Context, blockID string) error
+	MarkMediaPurgeTargetDelivered(ctx context.Context, arg MarkMediaPurgeTargetDeliveredParams) error
 	MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) error
 	MarkOutboxEventsPublished(ctx context.Context, ids []string) error
 	RemoveAccountFromList(ctx context.Context, arg RemoveAccountFromListParams) error
@@ -291,10 +328,16 @@ type Querier interface {
 	ReplaceTrendingLinks(ctx context.Context) error
 	ResolveReport(ctx context.Context, arg ResolveReportParams) error
 	RevokeAccessToken(ctx context.Context, token string) error
+	RevokeAccessTokensForAccountApp(ctx context.Context, arg RevokeAccessTokensForAccountAppParams) ([]string, error)
 	RevokeQuote(ctx context.Context, arg RevokeQuoteParams) (string, error)
 	SearchAccounts(ctx context.Context, arg SearchAccountsParams) ([]Account, error)
 	SearchAccountsFollowing(ctx context.Context, arg SearchAccountsFollowingParams) ([]Account, error)
 	SearchHashtagsByPrefix(ctx context.Context, arg SearchHashtagsByPrefixParams) ([]Hashtag, error)
+	// Bulk flip accounts.domain_suspended for every account on a domain. Called
+	// in lockstep with CreateDomainBlock (on=true) and DeleteDomainBlock
+	// (on=false) so visibility flips atomically with the block row. Returns the
+	// count of rows updated for logging/audit.
+	SetAccountsDomainSuspendedByDomain(ctx context.Context, arg SetAccountsDomainSuspendedByDomainParams) (int64, error)
 	SetMarker(ctx context.Context, arg SetMarkerParams) error
 	SetPollOptionVoteCount(ctx context.Context, arg SetPollOptionVoteCountParams) error
 	SetStatusConversationID(ctx context.Context, arg SetStatusConversationIDParams) error
@@ -313,6 +356,7 @@ type Querier interface {
 	UpdateAccountURLs(ctx context.Context, arg UpdateAccountURLsParams) error
 	UpdateAnnouncement(ctx context.Context, arg UpdateAnnouncementParams) error
 	UpdateDomainBlock(ctx context.Context, arg UpdateDomainBlockParams) (DomainBlock, error)
+	UpdateDomainBlockPurgeCursor(ctx context.Context, arg UpdateDomainBlockPurgeCursorParams) error
 	UpdateFilterKeyword(ctx context.Context, arg UpdateFilterKeywordParams) (UserFilterKeyword, error)
 	UpdateKnownInstanceSoftware(ctx context.Context, arg UpdateKnownInstanceSoftwareParams) error
 	UpdateList(ctx context.Context, arg UpdateListParams) (List, error)

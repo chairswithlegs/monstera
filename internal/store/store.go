@@ -34,6 +34,7 @@ type Store interface {
 	CardStore
 	OutboxStore
 	AccountDeletionStore
+	MediaPurgeStore
 
 	WithTx(ctx context.Context, fn func(Store) error) error
 }
@@ -63,6 +64,12 @@ type AccountStore interface {
 	UnsuspendAccount(ctx context.Context, id string) error
 	SilenceAccount(ctx context.Context, id string) error
 	UnsilenceAccount(ctx context.Context, id string) error
+	// SetAccountsDomainSuspendedByDomain flips accounts.domain_suspended for
+	// every account on the given domain. Called in the same tx as
+	// CreateDomainBlock (suspended=true) and DeleteDomainBlock
+	// (suspended=false) so visibility is consistent with the block row.
+	// Returns the count of rows updated.
+	SetAccountsDomainSuspendedByDomain(ctx context.Context, domain string, suspended bool) (int64, error)
 	// DeleteAccount hard-deletes the account row and returns the deleted row.
 	// Returns domain.ErrNotFound if no row matched — callers rely on this to
 	// avoid emitting duplicate federation events when two concurrent deletes
@@ -71,6 +78,11 @@ type AccountStore interface {
 	DeleteAccount(ctx context.Context, id string) (*domain.Account, error)
 	ListLocalAccounts(ctx context.Context, limit, offset int) ([]domain.Account, error)
 	ListDirectoryAccounts(ctx context.Context, order string, localOnly bool, offset, limit int) ([]domain.Account, error)
+	// ListRemoteAccountsByDomainPaginated returns the next page of remote
+	// account ids on a domain, keyset-paginated by id > cursor. Pass
+	// cursor="" to start at the beginning. Used by the domain-block purge
+	// subscriber.
+	ListRemoteAccountsByDomainPaginated(ctx context.Context, domain, cursor string, limit int) ([]string, error)
 	UpdateAccountLastStatusAt(ctx context.Context, accountID string) error
 	CreateAccountPin(ctx context.Context, accountID, statusID string) error
 	DeleteAccountPin(ctx context.Context, accountID, statusID string) error
@@ -111,6 +123,11 @@ type StatusStore interface {
 	CountRemoteStatuses(ctx context.Context) (int64, error)
 	CountAccountPublicStatuses(ctx context.Context, accountID string) (int64, error)
 	SoftDeleteStatus(ctx context.Context, id string) error
+	// DeleteStatusesByAccountIDBatched hard-deletes up to `limit` statuses
+	// owned by accountID and returns the deleted ids. Intended to be called
+	// in a loop until the returned slice is empty. DB-level CASCADE cleans
+	// up dependent rows. Used by the domain-block purge subscriber.
+	DeleteStatusesByAccountIDBatched(ctx context.Context, accountID string, limit int) ([]string, error)
 	UpdateStatus(ctx context.Context, in UpdateStatusInput) error
 	AttachMediaToStatus(ctx context.Context, mediaID, statusID, accountID string) error
 	GetStatusAttachments(ctx context.Context, statusID string) ([]domain.MediaAttachment, error)
@@ -273,12 +290,18 @@ type NotificationPolicyStore interface {
 type OAuthStore interface {
 	CreateApplication(ctx context.Context, in CreateApplicationInput) (*domain.OAuthApplication, error)
 	GetApplicationByClientID(ctx context.Context, clientID string) (*domain.OAuthApplication, error)
+	GetApplicationByID(ctx context.Context, id string) (*domain.OAuthApplication, error)
 	CreateAuthorizationCode(ctx context.Context, in CreateAuthorizationCodeInput) (*domain.OAuthAuthorizationCode, error)
 	GetAuthorizationCode(ctx context.Context, code string) (*domain.OAuthAuthorizationCode, error)
 	DeleteAuthorizationCode(ctx context.Context, code string) error
 	CreateAccessToken(ctx context.Context, in CreateAccessTokenInput) (*domain.OAuthAccessToken, error)
 	GetAccessToken(ctx context.Context, token string) (*domain.OAuthAccessToken, error)
 	RevokeAccessToken(ctx context.Context, token string) error
+	ListAuthorizedApplicationsForAccount(ctx context.Context, accountID string) ([]domain.AuthorizedApplication, error)
+	// RevokeAccessTokensForAccountApp revokes every active access token for the
+	// (accountID, applicationID) pair atomically and returns the raw token
+	// strings of the rows it just revoked so callers can invalidate caches.
+	RevokeAccessTokensForAccountApp(ctx context.Context, accountID, applicationID string) ([]string, error)
 }
 
 // MediaStore handles media attachment persistence.
@@ -286,6 +309,14 @@ type MediaStore interface {
 	GetMediaAttachment(ctx context.Context, id string) (*domain.MediaAttachment, error)
 	CreateMediaAttachment(ctx context.Context, in CreateMediaAttachmentInput) (*domain.MediaAttachment, error)
 	UpdateMediaAttachment(ctx context.Context, in UpdateMediaAttachmentInput) (*domain.MediaAttachment, error)
+}
+
+// DomainBlockWithPurge bundles a domain block with its optional purge
+// progress row. Purge is nil for silence-severity blocks (no purge flow)
+// and for suspend-severity blocks that predate migration 000086.
+type DomainBlockWithPurge struct {
+	Block domain.DomainBlock
+	Purge *domain.DomainBlockPurge
 }
 
 // ModerationStore handles reports, domain blocks, admin actions, invites, and known instances.
@@ -298,6 +329,26 @@ type ModerationStore interface {
 	CreateDomainBlock(ctx context.Context, in CreateDomainBlockInput) (*domain.DomainBlock, error)
 	DeleteDomainBlock(ctx context.Context, domain string) error
 	ListDomainBlocks(ctx context.Context) ([]domain.DomainBlock, error)
+	// ListDomainBlocksWithPurge returns every domain block joined with its
+	// domain_block_purges row. Used by the admin list endpoint to surface
+	// purge progress without an extra round trip.
+	ListDomainBlocksWithPurge(ctx context.Context) ([]DomainBlockWithPurge, error)
+	// CreateDomainBlockPurge inserts a tracker row for a severity=suspend
+	// block. Called inside CreateDomainBlock's tx.
+	CreateDomainBlockPurge(ctx context.Context, blockID, domain string) error
+	// GetDomainBlockPurge returns the purge tracker for a block, or
+	// ErrNotFound if the block has no purge row (silence severity or
+	// pre-issue-#104).
+	GetDomainBlockPurge(ctx context.Context, blockID string) (*domain.DomainBlockPurge, error)
+	// UpdateDomainBlockPurgeCursor persists the last-processed account id
+	// after a batch so redelivery resumes from the right place.
+	UpdateDomainBlockPurgeCursor(ctx context.Context, blockID, cursor string) error
+	// MarkDomainBlockPurgeComplete sets completed_at = NOW(). Idempotent.
+	MarkDomainBlockPurgeComplete(ctx context.Context, blockID string) error
+	// CountRemoteAccountsByDomainAfterCursor returns the number of remote
+	// accounts on the domain with id > cursor. Used by the admin API to
+	// compute "accounts remaining" for an in-progress purge.
+	CountRemoteAccountsByDomainAfterCursor(ctx context.Context, domain, cursor string) (int64, error)
 	CreateAdminAction(ctx context.Context, in CreateAdminActionInput) error
 	CreateInvite(ctx context.Context, in CreateInviteInput) (*domain.Invite, error)
 	GetInviteByCode(ctx context.Context, code string) (*domain.Invite, error)
@@ -461,7 +512,8 @@ type CreateAccountDeletionSnapshotInput struct {
 //     delivery for each inbox, marking each target delivered.
 //  3. The delivery worker signs with the snapshot's private key (the accounts
 //     row is gone by now).
-//  4. A scheduler job purges snapshots past expires_at; CASCADE drops targets.
+//  4. A scheduler job purges snapshots past expires_at; CASCADE drops the
+//     federation-delivery targets.
 type AccountDeletionStore interface {
 	CreateAccountDeletionSnapshot(ctx context.Context, in CreateAccountDeletionSnapshotInput) error
 	GetAccountDeletionSnapshot(ctx context.Context, id string) (*AccountDeletionSnapshot, error)
@@ -474,17 +526,27 @@ type AccountDeletionStore interface {
 	// inbox URLs for deletionID, keyset-paginated by inbox_url > cursor.
 	ListPendingAccountDeletionTargets(ctx context.Context, deletionID, cursor string, limit int) ([]string, error)
 	MarkAccountDeletionTargetDelivered(ctx context.Context, deletionID, inboxURL string) error
-	// InsertAccountDeletionMediaTargetsForAccount snapshots every storage_key
-	// owned by accountID into account_deletion_media_targets, keyed by
-	// deletionID. Must run BEFORE the accounts row is deleted; the CASCADE on
-	// media_attachments.account_id wipes the source otherwise.
-	InsertAccountDeletionMediaTargetsForAccount(ctx context.Context, deletionID, accountID string) error
-	// ListPendingAccountDeletionMediaTargets returns the next page of
-	// undelivered storage keys for deletionID, keyset-paginated by
-	// storage_key > cursor.
-	ListPendingAccountDeletionMediaTargets(ctx context.Context, deletionID, cursor string, limit int) ([]string, error)
-	MarkAccountDeletionMediaTargetDelivered(ctx context.Context, deletionID, storageKey string) error
 	// DeleteExpiredAccountDeletionSnapshots drops snapshots past their TTL and
 	// returns the count deleted. CASCADE drops any remaining target rows.
 	DeleteExpiredAccountDeletionSnapshots(ctx context.Context, before time.Time) (int64, error)
+}
+
+// MediaPurgeStore handles the shared media_purge_targets table used by both
+// account deletion and domain-block suspend. purge_id is an opaque identifier
+// owned by whichever flow emitted the row; there is no FK, so rows are GC'd
+// by DeleteDeliveredMediaPurgeTargets after the MediaPurgeSubscriber marks
+// them delivered.
+type MediaPurgeStore interface {
+	// InsertMediaPurgeTargetsForAccount snapshots every storage_key owned by
+	// accountID into media_purge_targets, keyed by purgeID. Must run BEFORE
+	// any CASCADE that would drop media_attachments for the account (e.g.
+	// account deletion, or the status-hard-delete loop in domain purge).
+	InsertMediaPurgeTargetsForAccount(ctx context.Context, purgeID, accountID string) error
+	// ListPendingMediaPurgeTargets returns the next page of undelivered
+	// storage keys for purgeID, keyset-paginated by storage_key > cursor.
+	ListPendingMediaPurgeTargets(ctx context.Context, purgeID, cursor string, limit int) ([]string, error)
+	MarkMediaPurgeTargetDelivered(ctx context.Context, purgeID, storageKey string) error
+	// DeleteDeliveredMediaPurgeTargets sweeps rows whose blobs have been
+	// deleted and are older than the cutoff. Returns count deleted.
+	DeleteDeliveredMediaPurgeTargets(ctx context.Context, before time.Time) (int64, error)
 }

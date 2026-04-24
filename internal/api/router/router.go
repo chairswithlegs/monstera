@@ -271,6 +271,9 @@ func New(deps Deps) http.Handler {
 				}
 				r.Method("GET", "/accounts/search", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Search.GETAccountsSearch)))
 				r.Method("GET", "/accounts/verify_credentials", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Accounts.GETVerifyCredentials)))
+				r.Get("/apps/verify_credentials", deps.OAuthHandler.GETVerifyCredentials)
+				r.Method("GET", "/oauth/authorized_applications", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.OAuthHandler.GETAuthorizedApplications)))
+				r.Method("DELETE", "/oauth/authorized_applications/{id}", middleware.RequiredScopes("write:accounts")(http.HandlerFunc(deps.OAuthHandler.DELETEAuthorizedApplication)))
 				r.Method("GET", "/preferences", middleware.RequiredScopes("read:accounts")(http.HandlerFunc(deps.Preferences.GETPreferences)))
 				r.Method("GET", "/statuses/{id}/quotes", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.Statuses.GETQuotes)))
 				r.Method("GET", "/markers", middleware.RequiredScopes("read:statuses")(http.HandlerFunc(deps.Markers.GETMarkers)))

@@ -507,6 +507,15 @@ func (s *PostgresStore) GetApplicationByClientID(ctx context.Context, clientID s
 	return &d, nil
 }
 
+func (s *PostgresStore) GetApplicationByID(ctx context.Context, id string) (*domain.OAuthApplication, error) {
+	app, err := s.q.GetApplicationByID(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	d := ToDomainOAuthApplication(app)
+	return &d, nil
+}
+
 func (s *PostgresStore) CreateAuthorizationCode(ctx context.Context, in store.CreateAuthorizationCodeInput) (*domain.OAuthAuthorizationCode, error) {
 	ac, err := s.q.CreateAuthorizationCode(ctx, toDbCreateAuthorizationCodeParams(in))
 	if err != nil {
@@ -549,6 +558,29 @@ func (s *PostgresStore) GetAccessToken(ctx context.Context, token string) (*doma
 
 func (s *PostgresStore) RevokeAccessToken(ctx context.Context, token string) error {
 	return mapErr(s.q.RevokeAccessToken(ctx, token))
+}
+
+func (s *PostgresStore) ListAuthorizedApplicationsForAccount(ctx context.Context, accountID string) ([]domain.AuthorizedApplication, error) {
+	rows, err := s.q.ListAuthorizedApplicationsForAccount(ctx, &accountID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	apps := make([]domain.AuthorizedApplication, 0, len(rows))
+	for _, r := range rows {
+		apps = append(apps, ToDomainAuthorizedApplication(r))
+	}
+	return apps, nil
+}
+
+func (s *PostgresStore) RevokeAccessTokensForAccountApp(ctx context.Context, accountID, applicationID string) ([]string, error) {
+	tokens, err := s.q.RevokeAccessTokensForAccountApp(ctx, db.RevokeAccessTokensForAccountAppParams{
+		AccountID:     &accountID,
+		ApplicationID: applicationID,
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return tokens, nil
 }
 
 func (s *PostgresStore) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {

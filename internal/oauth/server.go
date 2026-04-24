@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/chairswithlegs/monstera/internal/cache"
+	"github.com/chairswithlegs/monstera/internal/domain"
 	"github.com/chairswithlegs/monstera/internal/store"
 	"github.com/chairswithlegs/monstera/internal/uid"
 )
@@ -275,6 +277,89 @@ func (s *Server) RevokeToken(ctx context.Context, token string) error {
 	_ = s.cache.Delete(ctx, cacheKey)
 
 	return nil
+}
+
+// AuthorizedAppResponse is one entry in the response for
+// GET /api/v1/oauth/authorized_applications.
+type AuthorizedAppResponse struct {
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Website      *string   `json:"website"`
+	RedirectURIs string    `json:"redirect_uris"`
+	Scopes       []string  `json:"scopes"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// ApplicationInfo is the response for GET /api/v1/apps/verify_credentials.
+// It intentionally omits client_id and client_secret.
+type ApplicationInfo struct {
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	Website  *string `json:"website"`
+	VapidKey string  `json:"vapid_key"`
+}
+
+// GetApplicationInfo returns public metadata about the given application.
+// Secrets (client_id, client_secret) are not included in the response.
+func (s *Server) GetApplicationInfo(ctx context.Context, applicationID string) (*ApplicationInfo, error) {
+	app, err := s.store.GetApplicationByID(ctx, applicationID)
+	if err != nil {
+		return nil, fmt.Errorf("oauth: get application %s: %w", applicationID, err)
+	}
+	return &ApplicationInfo{
+		ID:       app.ID,
+		Name:     app.Name,
+		Website:  app.Website,
+		VapidKey: s.vapidPublicKey,
+	}, nil
+}
+
+// ListAuthorizedApplications returns one entry per OAuth application that
+// currently holds an active (non-revoked, non-expired) access token for the
+// given account.
+func (s *Server) ListAuthorizedApplications(ctx context.Context, accountID string) ([]AuthorizedAppResponse, error) {
+	apps, err := s.store.ListAuthorizedApplicationsForAccount(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("oauth: list authorized applications for %s: %w", accountID, err)
+	}
+	out := make([]AuthorizedAppResponse, 0, len(apps))
+	for _, a := range apps {
+		out = append(out, AuthorizedAppResponse{
+			ID:           a.ApplicationID,
+			Name:         a.Name,
+			Website:      a.Website,
+			RedirectURIs: a.RedirectURIs,
+			Scopes:       splitScopes(a.TokenScopes),
+			CreatedAt:    a.AuthorizedAt,
+		})
+	}
+	return out, nil
+}
+
+// RevokeApplicationAuthorization revokes every active access token that
+// (accountID, applicationID) holds and evicts each one from the token cache.
+// Returns domain.ErrNotFound if no active tokens exist for that pair.
+func (s *Server) RevokeApplicationAuthorization(ctx context.Context, accountID, applicationID string) error {
+	revoked, err := s.store.RevokeAccessTokensForAccountApp(ctx, accountID, applicationID)
+	if err != nil {
+		return fmt.Errorf("oauth: revoke tokens for account %s app %s: %w", accountID, applicationID, err)
+	}
+	if len(revoked) == 0 {
+		return domain.ErrNotFound
+	}
+
+	for _, rawToken := range revoked {
+		_ = s.cache.Delete(ctx, tokenCacheKey(rawToken))
+	}
+	return nil
+}
+
+func splitScopes(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return []string{}
+	}
+	return strings.Fields(s)
 }
 
 // LookupToken verifies a Bearer token and returns the associated claims.
