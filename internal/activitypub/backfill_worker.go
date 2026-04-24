@@ -32,11 +32,7 @@ type BackfillWorker struct {
 	blocklist      *blocklist.BlocklistCache
 	instanceDomain string
 	maxPages       int
-	// maxItems caps the total number of actor IRIs resolved from the following
-	// collection per backfill run. 0 disables the cap. Resolving each actor
-	// incurs a WebFinger + actor-document round-trip, so large follow lists
-	// would otherwise keep a consumer busy for minutes.
-	maxItems int
+	maxItems       int
 	// cooldown is the minimum time between backfill runs for the same account.
 	cooldown time.Duration
 }

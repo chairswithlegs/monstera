@@ -94,7 +94,7 @@ All configuration is via environment variables (12-factor). See `internal/config
 |----------|-------------|---------|
 | `MAX_STATUS_CHARS` | Max characters per status | `500` |
 | `MAX_REQUEST_BODY_BYTES` | Max request body size in bytes | `1048576` (1 MiB) |
-| `MAX_FOLLOWED_TAGS_PER_USER` | Max hashtags a user may follow (`0` disables the cap; enforced as abuse protection — Mastodon has no equivalent cap) | `500` |
+| `MAX_FOLLOWED_TAGS_PER_USER` | Max hashtags a user may follow (`0` disables the cap) | `500` |
 
 ## Rate limiting
 
