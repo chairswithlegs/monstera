@@ -28,6 +28,7 @@ type Querier interface {
 	CountAccountPins(ctx context.Context, accountID string) (int64, error)
 	CountAccountPublicStatuses(ctx context.Context, accountID string) (int64, error)
 	CountDistinctVoters(ctx context.Context, pollID string) (int32, error)
+	CountFollowedTags(ctx context.Context, accountID string) (int64, error)
 	CountFollowers(ctx context.Context, targetID string) (int64, error)
 	CountFollowing(ctx context.Context, accountID string) (int64, error)
 	CountGroupedNotifications(ctx context.Context, accountID string) (int64, error)

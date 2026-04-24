@@ -38,9 +38,8 @@ Fetches the remote account's featured collection in a single request. Matches it
 
 Fetches the remote account's following collection and paginates through it. For each actor IRI, resolves the actor via `RemoteAccountResolver` and creates a local follow relationship. Unknown actors are resolved (WebFinger + actor fetch) and stored. Duplicate follows are silently discarded.
 
-- **Cap**: `maxPages` (default 2) limits the number of collection pages fetched.
+- **Cap**: `maxPages` (default 2) limits the number of collection pages fetched; `maxItems` (default 200, `BACKFILL_MAX_ITEMS`) caps the total number of actor IRIs resolved across those pages. Once `maxItems` is reached the worker stops resolving further follows even if more pages remain. Set `BACKFILL_MAX_ITEMS=0` to disable the cap.
 - **Rate limiting**: 500ms delay between page fetches.
-- **Limitation**: There is no cap on the total number of items resolved per backfill run. A single page with hundreds of actor IRIs will resolve all of them serially. See [issue #93](https://github.com/chairswithlegs/monstera/issues/93).
 
 ### Collection counts
 

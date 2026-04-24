@@ -3,6 +3,7 @@ package activitypub
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -18,6 +19,8 @@ import (
 	"github.com/chairswithlegs/monstera/internal/testutil"
 	"github.com/chairswithlegs/monstera/internal/uid"
 )
+
+const testFollowingPath = "/following"
 
 type fakeStatusService struct {
 	service.StatusService
@@ -50,6 +53,7 @@ func newTestBackfillWorker(fs *testutil.FakeStore, remoteStatuses service.Remote
 		statuses:       statusSvc,
 		instanceDomain: "local.example",
 		maxPages:       2,
+		maxItems:       0,
 		cooldown:       time.Hour,
 	}
 }
@@ -399,7 +403,7 @@ func TestBackfillWorker_fetchAndProcessFollowing_HappyPath(t *testing.T) {
 	ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/activity+json")
 		switch r.URL.Path {
-		case "/following":
+		case testFollowingPath:
 			items := makeFeaturedItems(t, ts.URL+"/users/target1", ts.URL+"/users/target2")
 			coll := vocab.NewOrderedCollectionWithItems(ts.URL+"/following", items)
 			_ = json.NewEncoder(w).Encode(coll)
@@ -452,7 +456,7 @@ func TestBackfillWorker_fetchAndProcessFollowing_SkipsDuplicate(t *testing.T) {
 	ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/activity+json")
 		switch r.URL.Path {
-		case "/following":
+		case testFollowingPath:
 			items := makeFeaturedItems(t, ts.URL+"/users/existing")
 			coll := vocab.NewOrderedCollectionWithItems(ts.URL+"/following", items)
 			_ = json.NewEncoder(w).Encode(coll)
@@ -557,6 +561,64 @@ func TestBackfillWorker_fetchAndProcessFollowing_FetchError(t *testing.T) {
 	follows, err := fs.GetFollowing(ctx, account.ID, nil, 10)
 	require.NoError(t, err)
 	assert.Empty(t, follows, "no follows should be stored after a fetch error")
+}
+
+func TestBackfillWorker_fetchAndProcessFollowing_RespectsMaxItems(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	fs := testutil.NewFakeStore()
+	account := createTestRemoteAccount(t, ctx, fs)
+
+	const collectionSize = 5
+	const cap = 2
+
+	var ts *httptest.Server
+	ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/activity+json")
+		switch r.URL.Path {
+		case testFollowingPath:
+			iris := make([]string, 0, collectionSize)
+			for i := range collectionSize {
+				iris = append(iris, fmt.Sprintf("%s/users/target%d", ts.URL, i))
+			}
+			items := makeFeaturedItems(t, iris...)
+			coll := vocab.NewOrderedCollectionWithItems(ts.URL+"/following", items)
+			_ = json.NewEncoder(w).Encode(coll)
+		default:
+			actor := map[string]any{
+				"@context":          "https://www.w3.org/ns/activitystreams",
+				"type":              "Person",
+				"id":                ts.URL + r.URL.Path,
+				"preferredUsername": r.URL.Path[7:],
+				"inbox":             ts.URL + r.URL.Path + "/inbox",
+				"outbox":            ts.URL + r.URL.Path + "/outbox",
+				"followers":         ts.URL + r.URL.Path + "/followers",
+				"following":         ts.URL + r.URL.Path + "/following",
+				"publicKey": map[string]any{
+					"id":           ts.URL + r.URL.Path + "#main-key",
+					"owner":        ts.URL + r.URL.Path,
+					"publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAMY\n-----END PUBLIC KEY-----",
+				},
+			}
+			_ = json.NewEncoder(w).Encode(actor)
+		}
+	}))
+	defer ts.Close()
+
+	worker := newTestBackfillWorker(fs, &fakeRemoteStatusWriteService{}, &fakeStatusService{statuses: map[string]*domain.Status{}})
+	worker.maxItems = cap
+	worker.remoteResolver = &RemoteAccountResolver{httpClient: ts.Client(), accounts: service.NewAccountService(fs, "https://local.example"), instanceDomain: "local.example"}
+
+	worker.fetchAndProcessFollowing(ctx, &domain.Account{
+		ID:           account.ID,
+		APID:         account.APID,
+		FollowingURL: ts.URL + "/following",
+	})
+
+	follows, err := fs.GetFollowing(ctx, account.ID, nil, 100)
+	require.NoError(t, err)
+	assert.Len(t, follows, cap, "only maxItems follows should be stored; remaining items must be skipped")
 }
 
 func TestBackfillWorker_fetchAndProcessFollowing_SkipsSelf(t *testing.T) {

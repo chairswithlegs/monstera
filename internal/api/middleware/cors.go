@@ -3,7 +3,17 @@ package middleware
 import "net/http"
 
 // CORS returns a middleware that sets CORS headers for a wildcard origin.
-// Used for Mastodon-compatible public API access from any client.
+//
+// The wildcard (`Access-Control-Allow-Origin: *`) is intentional and required
+// for Mastodon API compatibility. Mastodon itself serves its REST API with
+// wildcard CORS, and Mastodon-compatible web clients (Elk, Pinafore, semaphore,
+// and others running on arbitrary origins) rely on it to make cross-origin
+// requests to any instance. Native clients (Ivory, Tusky, Mona) are unaffected
+// either way, but restricting the origin would break web clients.
+//
+// Because the API uses bearer-token auth (not cookies) and we do not set
+// `Access-Control-Allow-Credentials`, the wildcard does not expose
+// cookie-authenticated endpoints to cross-origin callers.
 func CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")

@@ -78,6 +78,7 @@ All configuration is via environment variables (12-factor). See `internal/config
 | `FEDERATION_WORKER_CONCURRENCY` | Number of parallel federation delivery workers | `5` |
 | `FEDERATION_INSECURE_SKIP_TLS_VERIFY` | Skip TLS verification for outbound federation requests | dev: `true`, prod: `false` |
 | `BACKFILL_MAX_PAGES` | Max outbox pages to fetch per remote account backfill | `2` |
+| `BACKFILL_MAX_ITEMS` | Max actor IRIs resolved from the remote following collection per backfill run (`0` disables the cap) | `200` |
 | `BACKFILL_COOLDOWN_HOURS` | Minimum hours between backfills for the same account | `24` |
 
 ## Push notifications
@@ -93,6 +94,7 @@ All configuration is via environment variables (12-factor). See `internal/config
 |----------|-------------|---------|
 | `MAX_STATUS_CHARS` | Max characters per status | `500` |
 | `MAX_REQUEST_BODY_BYTES` | Max request body size in bytes | `1048576` (1 MiB) |
+| `MAX_FOLLOWED_TAGS_PER_USER` | Max hashtags a user may follow (`0` disables the cap; enforced as abuse protection — Mastodon has no equivalent cap) | `500` |
 
 ## Rate limiting
 

@@ -815,6 +815,11 @@ func (s *PostgresStore) ListFollowedTags(ctx context.Context, accountID string, 
 	return out, nextCursor, nil
 }
 
+func (s *PostgresStore) CountFollowedTags(ctx context.Context, accountID string) (int64, error) {
+	n, err := s.q.CountFollowedTags(ctx, accountID)
+	return n, mapErr(err)
+}
+
 func (s *PostgresStore) AreFollowingTagsByName(ctx context.Context, accountID string, tagNames []string) (map[string]bool, error) {
 	if len(tagNames) == 0 {
 		return map[string]bool{}, nil

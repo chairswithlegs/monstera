@@ -72,7 +72,10 @@ type Config struct {
 	RateLimitPublicWindow    time.Duration
 
 	BackfillMaxPages int
+	BackfillMaxItems int
 	BackfillCooldown time.Duration
+
+	MaxFollowedTagsPerUser int
 }
 
 func Load() (*Config, error) {
@@ -135,7 +138,10 @@ func Load() (*Config, error) {
 		Version:                  envString("VERSION", "0.0.0-dev"),
 
 		BackfillMaxPages: envInt("BACKFILL_MAX_PAGES", 2),
+		BackfillMaxItems: envInt("BACKFILL_MAX_ITEMS", 200),
 		BackfillCooldown: time.Duration(envInt("BACKFILL_COOLDOWN_HOURS", 24)) * time.Hour,
+
+		MaxFollowedTagsPerUser: envInt("MAX_FOLLOWED_TAGS_PER_USER", 500),
 	}
 
 	if cfg.MonsteraServerURL == nil && cfg.MonsteraInstanceDomain != "" {

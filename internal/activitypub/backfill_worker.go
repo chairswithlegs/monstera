@@ -32,6 +32,11 @@ type BackfillWorker struct {
 	blocklist      *blocklist.BlocklistCache
 	instanceDomain string
 	maxPages       int
+	// maxItems caps the total number of actor IRIs resolved from the following
+	// collection per backfill run. 0 disables the cap. Resolving each actor
+	// incurs a WebFinger + actor-document round-trip, so large follow lists
+	// would otherwise keep a consumer busy for minutes.
+	maxItems int
 	// cooldown is the minimum time between backfill runs for the same account.
 	cooldown time.Duration
 }
@@ -48,6 +53,7 @@ func NewBackfillWorker(
 	bl *blocklist.BlocklistCache,
 	instanceDomain string,
 	maxPages int,
+	maxItems int,
 	cooldown time.Duration,
 ) *BackfillWorker {
 	return &BackfillWorker{
@@ -61,6 +67,7 @@ func NewBackfillWorker(
 		blocklist:      bl,
 		instanceDomain: instanceDomain,
 		maxPages:       maxPages,
+		maxItems:       maxItems,
 		cooldown:       cooldown,
 	}
 }
@@ -193,9 +200,11 @@ func (w *BackfillWorker) fetchAndProcessFollowing(ctx context.Context, account *
 		return
 	}
 
+	resolved := 0
+
 	pageURL := coll.First
 	if pageURL == "" {
-		w.processFollowingItems(ctx, account, coll.OrderedItems)
+		w.processFollowingItems(ctx, account, coll.OrderedItems, &resolved)
 		return
 	}
 
@@ -209,13 +218,28 @@ func (w *BackfillWorker) fetchAndProcessFollowing(ctx context.Context, account *
 				slog.String("account_id", account.ID), slog.String("page_url", pageURL), slog.Any("error", err))
 			return
 		}
-		w.processFollowingItems(ctx, account, collPage.OrderedItems)
+		w.processFollowingItems(ctx, account, collPage.OrderedItems, &resolved)
+		if w.maxItems > 0 && resolved >= w.maxItems {
+			slog.DebugContext(ctx, "backfill: following max items cap reached",
+				slog.String("account_id", account.ID),
+				slog.Int("resolved", resolved),
+				slog.Int("max_items", w.maxItems))
+			return
+		}
 		pageURL = collPage.Next
 	}
 }
 
-func (w *BackfillWorker) processFollowingItems(ctx context.Context, account *domain.Account, items []json.RawMessage) {
+// processFollowingItems resolves each actor IRI in items and creates a local
+// follow relationship. resolved accumulates the number of resolution attempts
+// across pages; if maxItems is set and the counter reaches it, further items
+// are skipped. Items with no IRI and self-follows are skipped without
+// incrementing the counter.
+func (w *BackfillWorker) processFollowingItems(ctx context.Context, account *domain.Account, items []json.RawMessage, resolved *int) {
 	for _, raw := range items {
+		if w.maxItems > 0 && *resolved >= w.maxItems {
+			return
+		}
 		iri := extractIRI(raw)
 		if iri == "" {
 			continue
@@ -224,6 +248,7 @@ func (w *BackfillWorker) processFollowingItems(ctx context.Context, account *dom
 		if iri == account.APID {
 			continue
 		}
+		*resolved++
 		target, err := w.remoteResolver.ResolveRemoteAccountByIRI(ctx, iri)
 		if err != nil {
 			slog.DebugContext(ctx, "backfill: resolve following actor failed",
