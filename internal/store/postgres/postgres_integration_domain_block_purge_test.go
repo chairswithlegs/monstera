@@ -188,7 +188,7 @@ func TestIntegration_DeleteStatusesByAccountIDBatched_NoOrphans(t *testing.T) {
 	require.NoError(t, s.CreateAccountPin(ctx, remote.ID, s1.ID))
 
 	// Mention (remote mentions local viewer in s1).
-	require.NoError(t, s.SetStatusMentions(ctx, s1.ID, []string{localViewer.ID}))
+	require.NoError(t, s.CreateStatusMention(ctx, s1.ID, localViewer.ID))
 
 	// Notification referencing s1.
 	_, err = s.CreateNotification(ctx, store.CreateNotificationInput{
@@ -205,7 +205,7 @@ func TestIntegration_DeleteStatusesByAccountIDBatched_NoOrphans(t *testing.T) {
 	media, err := s.CreateMediaAttachment(ctx, store.CreateMediaAttachmentInput{
 		ID:          uid.New(),
 		AccountID:   remote.ID,
-		MediaType:   domain.MediaTypeImage,
+		Type:        domain.MediaTypeImage,
 		URL:         "https://remote.example/media/" + uid.New(),
 		StorageKey:  "remote/" + uid.New(),
 		ContentType: testutil.StrPtr("image/png"),
