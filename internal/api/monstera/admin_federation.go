@@ -48,16 +48,17 @@ func (h *AdminFederationHandler) GETInstances(w http.ResponseWriter, r *http.Req
 	api.WriteJSON(w, http.StatusOK, apimodel.AdminKnownInstanceList{Instances: out})
 }
 
-// GETDomainBlocks returns domain blocks.
+// GETDomainBlocks returns domain blocks, joined with async purge progress
+// for severity=suspend entries (issue #104).
 func (h *AdminFederationHandler) GETDomainBlocks(w http.ResponseWriter, r *http.Request) {
-	blocks, err := h.moderation.ListDomainBlocks(r.Context())
+	rows, err := h.moderation.ListDomainBlocksWithPurge(r.Context())
 	if err != nil {
 		api.HandleError(w, r, err)
 		return
 	}
-	out := make([]apimodel.AdminDomainBlock, 0, len(blocks))
-	for i := range blocks {
-		out = append(out, apimodel.ToAdminDomainBlock(&blocks[i]))
+	out := make([]apimodel.AdminDomainBlock, 0, len(rows))
+	for i := range rows {
+		out = append(out, apimodel.ToAdminDomainBlockWithPurge(&rows[i].Block, rows[i].Purge, rows[i].AccountsRemaining))
 	}
 	api.WriteJSON(w, http.StatusOK, apimodel.AdminDomainBlockList{DomainBlocks: out})
 }

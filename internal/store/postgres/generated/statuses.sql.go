@@ -206,6 +206,51 @@ func (q *Queries) DecrementRepliesCount(ctx context.Context, id string) error {
 	return err
 }
 
+const deleteStatusesByAccountIDBatched = `-- name: DeleteStatusesByAccountIDBatched :many
+WITH victims AS (
+    SELECT id FROM statuses
+    WHERE statuses.account_id = $1
+    ORDER BY id
+    LIMIT $2
+    FOR UPDATE SKIP LOCKED
+)
+DELETE FROM statuses WHERE statuses.id IN (SELECT id FROM victims)
+RETURNING statuses.id
+`
+
+type DeleteStatusesByAccountIDBatchedParams struct {
+	AccountID string `json:"account_id"`
+	Limit     int32  `json:"limit"`
+}
+
+// Hard-deletes up to $2 statuses owned by $1, returning the deleted ids.
+// Used by the domain-block purge subscriber in a loop: each call runs in its
+// own tx with bounded WAL and short-lived locks; caller loops until the
+// returned slice is empty. SKIP LOCKED is defensive against a concurrent
+// delivery tx briefly holding a status row. DB-level CASCADE cleans up
+// dependent rows (mentions, favourites, reblogs, notifications,
+// media_attachments, polls, bookmarks, pins, etc. — see migrations 000080,
+// 000082, 000084).
+func (q *Queries) DeleteStatusesByAccountIDBatched(ctx context.Context, arg DeleteStatusesByAccountIDBatchedParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, deleteStatusesByAccountIDBatched, arg.AccountID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAccountPublicStatuses = `-- name: GetAccountPublicStatuses :many
 SELECT id, uri, account_id, text, content, content_warning, visibility, language, in_reply_to_id, reblog_of_id, ap_id, sensitive, local, edited_at, replies_count, reblogs_count, favourites_count, created_at, updated_at, deleted_at, in_reply_to_account_id, conversation_id, quoted_status_id, quote_approval_policy, quotes_count FROM statuses
 WHERE account_id = $1
@@ -569,7 +614,7 @@ func (q *Queries) GetReblogByAccountAndTarget(ctx context.Context, arg GetReblog
 }
 
 const getRebloggedBy = `-- name: GetRebloggedBy :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at, a.featured_url
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at, a.featured_url, a.domain_suspended
 FROM accounts a
 INNER JOIN statuses s ON s.account_id = a.id
 WHERE s.reblog_of_id = $1 AND s.deleted_at IS NULL
@@ -628,6 +673,7 @@ func (q *Queries) GetRebloggedBy(ctx context.Context, arg GetRebloggedByParams) 
 			&i.Account.HeaderUrl,
 			&i.Account.LastBackfilledAt,
 			&i.Account.FeaturedUrl,
+			&i.Account.DomainSuspended,
 		); err != nil {
 			return nil, err
 		}

@@ -5,28 +5,29 @@ import "encoding/json"
 // Domain event type constants. These are used as the event_type column in the
 // outbox_events table and as NATS subject suffixes (domain.events.<type>).
 const (
-	EventStatusCreated       = "status.created"
-	EventStatusDeleted       = "status.deleted"
-	EventStatusUpdated       = "status.updated"
-	EventStatusCreatedRemote = "status.created.remote"
-	EventStatusDeletedRemote = "status.deleted.remote"
-	EventFollowCreated       = "follow.created"
-	EventFollowRemoved       = "follow.removed"
-	EventFollowAccepted      = "follow.accepted"
-	EventFollowRequested     = "follow.requested"
-	EventFavouriteCreated    = "favourite.created"
-	EventFavouriteRemoved    = "favourite.removed"
-	EventReblogCreated       = "reblog.created"
-	EventReblogRemoved       = "reblog.removed"
-	EventBlockCreated        = "block.created"
-	EventBlockRemoved        = "block.removed"
-	EventAccountUpdated      = "account.updated"
-	EventAccountDeleted      = "account.deleted"
-	EventStatusUpdatedRemote = "status.updated.remote"
-	EventPollUpdated         = "poll.updated"
-	EventPollExpired         = "poll.expired"
-	EventNotificationCreated = "notification.created"
-	EventMediaPurge          = "media.purge"
+	EventStatusCreated        = "status.created"
+	EventStatusDeleted        = "status.deleted"
+	EventStatusUpdated        = "status.updated"
+	EventStatusCreatedRemote  = "status.created.remote"
+	EventStatusDeletedRemote  = "status.deleted.remote"
+	EventFollowCreated        = "follow.created"
+	EventFollowRemoved        = "follow.removed"
+	EventFollowAccepted       = "follow.accepted"
+	EventFollowRequested      = "follow.requested"
+	EventFavouriteCreated     = "favourite.created"
+	EventFavouriteRemoved     = "favourite.removed"
+	EventReblogCreated        = "reblog.created"
+	EventReblogRemoved        = "reblog.removed"
+	EventBlockCreated         = "block.created"
+	EventBlockRemoved         = "block.removed"
+	EventAccountUpdated       = "account.updated"
+	EventAccountDeleted       = "account.deleted"
+	EventStatusUpdatedRemote  = "status.updated.remote"
+	EventPollUpdated          = "poll.updated"
+	EventPollExpired          = "poll.expired"
+	EventNotificationCreated  = "notification.created"
+	EventMediaPurge           = "media.purge"
+	EventDomainBlockSuspended = "domain_block.suspended"
 )
 
 // DomainEvent is the envelope stored in the outbox_events table and published
@@ -227,18 +228,30 @@ type NotificationCreatedPayload struct {
 	StatusID           *string       `json:"status_id"`
 }
 
-// MediaPurgePayload drives object-store blob cleanup after an account
-// hard-delete. It carries only the deletion_id; the subscriber paginates
-// account_deletion_media_targets to discover the storage keys. This keeps
-// the NATS message small; NATS delivers each media.purge message to exactly
-// one consumer instance at a time, so only one pod works a given deletion_id
-// concurrently.
+// MediaPurgePayload drives object-store blob cleanup after a purge operation
+// (account hard-delete, domain-block suspend, etc.). It carries only the
+// purge_id; the subscriber paginates media_purge_targets to discover the
+// storage keys. This keeps the NATS message small; NATS delivers each
+// media.purge message to exactly one consumer instance at a time, so only
+// one pod works a given purge_id concurrently.
 //
-// The snapshot + targets are populated inside deleteLocalAccount's tx before
-// the accounts row is deleted; they survive the CASCADE because they live in
-// account_deletion_snapshots (which CASCADEs only when itself is purged by
-// the scheduler job past its TTL).
+// For account deletion the targets are populated inside deleteLocalAccount's
+// tx before the accounts row is deleted; they survive the CASCADE because
+// they live in a separate table. For domain-block suspend the subscriber
+// materialises targets per-account in its own setup tx.
+//
+// AccountID is included for log diagnostics; subscribers must not rely on it
+// being set for non-account-deletion flows.
 type MediaPurgePayload struct {
-	DeletionID string `json:"deletion_id"`
-	AccountID  string `json:"account_id"`
+	PurgeID   string `json:"purge_id"`
+	AccountID string `json:"account_id,omitempty"`
+}
+
+// DomainBlockSuspendedPayload drives the async purge triggered by an admin
+// creating a domain block with severity=suspend. The subscriber reads the
+// domain_block_purges cursor and processes one bounded batch of accounts per
+// message, re-publishing the event to continue until the cursor is exhausted.
+type DomainBlockSuspendedPayload struct {
+	BlockID string `json:"block_id"`
+	Domain  string `json:"domain"`
 }

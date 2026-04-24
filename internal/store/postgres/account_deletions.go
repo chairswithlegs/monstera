@@ -66,29 +66,3 @@ func (s *PostgresStore) DeleteExpiredAccountDeletionSnapshots(ctx context.Contex
 	}
 	return n, nil
 }
-
-func (s *PostgresStore) InsertAccountDeletionMediaTargetsForAccount(ctx context.Context, deletionID, accountID string) error {
-	return mapErr(s.q.InsertAccountDeletionMediaTargetsForAccount(ctx, db.InsertAccountDeletionMediaTargetsForAccountParams{
-		DeletionID: deletionID,
-		AccountID:  accountID,
-	}))
-}
-
-func (s *PostgresStore) ListPendingAccountDeletionMediaTargets(ctx context.Context, deletionID, cursor string, limit int) ([]string, error) {
-	rows, err := s.q.ListPendingAccountDeletionMediaTargets(ctx, db.ListPendingAccountDeletionMediaTargetsParams{
-		DeletionID: deletionID,
-		Column2:    cursor,
-		Limit:      int32(limit), //nolint:gosec // G115: limit bounded by caller
-	})
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return rows, nil
-}
-
-func (s *PostgresStore) MarkAccountDeletionMediaTargetDelivered(ctx context.Context, deletionID, storageKey string) error {
-	return mapErr(s.q.MarkAccountDeletionMediaTargetDelivered(ctx, db.MarkAccountDeletionMediaTargetDeliveredParams{
-		DeletionID: deletionID,
-		StorageKey: storageKey,
-	}))
-}

@@ -14,6 +14,7 @@ WHERE f.target_id = $2
   AND f.state = 'accepted'
   AND a.domain IS NOT NULL
   AND a.suspended = FALSE
+  AND a.domain_suspended = FALSE
   AND a.inbox_url <> ''
 ON CONFLICT (deletion_id, inbox_url) DO NOTHING;
 
@@ -34,24 +35,3 @@ WHERE deletion_id = $1 AND inbox_url = $2;
 -- name: DeleteExpiredAccountDeletionSnapshots :execrows
 DELETE FROM account_deletion_snapshots
 WHERE expires_at < $1;
-
--- name: InsertAccountDeletionMediaTargetsForAccount :exec
-INSERT INTO account_deletion_media_targets (deletion_id, storage_key)
-SELECT $1, storage_key
-FROM media_attachments
-WHERE account_id = $2
-ON CONFLICT (deletion_id, storage_key) DO NOTHING;
-
--- name: ListPendingAccountDeletionMediaTargets :many
-SELECT storage_key
-FROM account_deletion_media_targets
-WHERE deletion_id = $1
-  AND delivered_at IS NULL
-  AND ($2::text IS NULL OR $2::text = '' OR storage_key > $2)
-ORDER BY storage_key
-LIMIT $3;
-
--- name: MarkAccountDeletionMediaTargetDelivered :exec
-UPDATE account_deletion_media_targets
-SET delivered_at = NOW()
-WHERE deletion_id = $1 AND storage_key = $2;

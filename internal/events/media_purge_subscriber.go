@@ -97,8 +97,8 @@ func (s *MediaPurgeSubscriber) processMessage(ctx context.Context, msg jetstream
 		_ = msg.Ack()
 		return
 	}
-	if payload.DeletionID == "" {
-		slog.WarnContext(ctx, "media purge subscriber: empty deletion_id")
+	if payload.PurgeID == "" {
+		slog.WarnContext(ctx, "media purge subscriber: empty purge_id")
 		_ = msg.Ack()
 		return
 	}
@@ -118,10 +118,10 @@ func (s *MediaPurgeSubscriber) purge(ctx context.Context, payload domain.MediaPu
 	cursor := ""
 	var deleted, failed int
 	for {
-		keys, err := s.deps.ListPendingMediaTargets(ctx, payload.DeletionID, cursor, mediaPurgeBatchSize)
+		keys, err := s.deps.ListPendingMediaTargets(ctx, payload.PurgeID, cursor, mediaPurgeBatchSize)
 		if err != nil {
 			slog.ErrorContext(ctx, "media purge subscriber: list pending targets failed",
-				slog.String("deletion_id", payload.DeletionID),
+				slog.String("purge_id", payload.PurgeID),
 				slog.Any("error", err))
 			return
 		}
@@ -137,17 +137,17 @@ func (s *MediaPurgeSubscriber) purge(ctx context.Context, payload domain.MediaPu
 				}
 				failed++
 				slog.WarnContext(ctx, "media purge subscriber: blob delete failed",
-					slog.String("deletion_id", payload.DeletionID),
+					slog.String("purge_id", payload.PurgeID),
 					slog.String("storage_key", key),
 					slog.Any("error", err))
 				continue
 			}
-			if err := s.deps.MarkMediaTargetDelivered(ctx, payload.DeletionID, key); err != nil {
+			if err := s.deps.MarkMediaTargetDelivered(ctx, payload.PurgeID, key); err != nil {
 				// Rare (DB blip). Log and move on; redelivery will
 				// re-delete the blob (no-op on missing key) and retry
 				// the mark.
 				slog.WarnContext(ctx, "media purge subscriber: mark delivered failed",
-					slog.String("deletion_id", payload.DeletionID),
+					slog.String("purge_id", payload.PurgeID),
 					slog.String("storage_key", key),
 					slog.Any("error", err))
 				continue
@@ -166,7 +166,7 @@ func (s *MediaPurgeSubscriber) purge(ctx context.Context, payload domain.MediaPu
 	}
 	if deleted > 0 || failed > 0 {
 		slog.InfoContext(ctx, "media purge subscriber: sweep complete",
-			slog.String("deletion_id", payload.DeletionID),
+			slog.String("purge_id", payload.PurgeID),
 			slog.String("account_id", payload.AccountID),
 			slog.Int("deleted", deleted),
 			slog.Int("failed", failed))

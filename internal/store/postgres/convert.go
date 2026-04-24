@@ -169,6 +169,7 @@ func ToDomainAccount(a db.Account) domain.Account {
 		Bot:              a.Bot,
 		Locked:           a.Locked,
 		Suspended:        a.Suspended,
+		DomainSuspended:  a.DomainSuspended,
 		Silenced:         a.Silenced,
 		LastBackfilledAt: pgTimePtr(a.LastBackfilledAt),
 		CreatedAt:        pgTime(a.CreatedAt),

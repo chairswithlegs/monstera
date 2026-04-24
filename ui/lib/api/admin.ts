@@ -239,6 +239,13 @@ export interface DomainBlock {
   severity: string;
   reason?: string;
   created_at: string;
+  // Present for severity=suspend blocks while the async purge (issue #104)
+  // is in progress or after it completes; absent for silence-severity
+  // blocks and for pre-issue-#104 suspend rows.
+  purge_status?: 'in_progress' | 'complete';
+  purge_started_at?: string;
+  purge_completed_at?: string;
+  purge_accounts_remaining?: number;
 }
 
 export async function getInstances(params?: { limit?: number; offset?: number }): Promise<{ instances: KnownInstance[] }> {

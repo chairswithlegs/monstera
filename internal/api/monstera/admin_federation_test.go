@@ -50,6 +50,68 @@ func TestAdminFederationHandler_GETDomainBlocks(t *testing.T) {
 		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
 		assert.NotNil(t, body.DomainBlocks)
 	})
+
+	t.Run("surfaces purge status for silence / in_progress / complete blocks", func(t *testing.T) {
+		st := testutil.NewFakeStore()
+		modSvc := service.NewModerationService(st, testutil.NoopBlocklistRefresher{})
+		handler := NewAdminFederationHandler(instanceSvc, modSvc)
+		adminAcc := createAccountWithRole(t, st, "admin2", domain.RoleAdmin)
+
+		// Silence — no purge fields.
+		_, err := modSvc.CreateDomainBlock(t.Context(), adminAcc.ID, service.CreateDomainBlockInput{
+			Domain: "silence.example", Severity: domain.DomainBlockSeveritySilence,
+		})
+		require.NoError(t, err)
+
+		// Suspend in-progress — 2 remote accounts remaining.
+		inProg, err := modSvc.CreateDomainBlock(t.Context(), adminAcc.ID, service.CreateDomainBlockInput{
+			Domain: "suspend.example", Severity: domain.DomainBlockSeveritySuspend,
+		})
+		require.NoError(t, err)
+		remoteDomain := "suspend.example"
+		for _, id := range []string{"remote-a", "remote-b"} {
+			st.SeedAccount(&domain.Account{ID: id, Username: id, Domain: &remoteDomain, APID: "https://suspend.example/users/" + id})
+		}
+
+		// Suspend completed.
+		done, err := modSvc.CreateDomainBlock(t.Context(), adminAcc.ID, service.CreateDomainBlockInput{
+			Domain: "done.example", Severity: domain.DomainBlockSeveritySuspend,
+		})
+		require.NoError(t, err)
+		require.NoError(t, st.MarkDomainBlockPurgeComplete(t.Context(), done.ID))
+
+		req := httptest.NewRequest(http.MethodGet, "/admin/federation/domain-blocks", nil)
+		rec := httptest.NewRecorder()
+		handler.GETDomainBlocks(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code)
+
+		var body apimodel.AdminDomainBlockList
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+		byDomain := map[string]apimodel.AdminDomainBlock{}
+		for _, b := range body.DomainBlocks {
+			byDomain[b.Domain] = b
+		}
+
+		silence := byDomain["silence.example"]
+		assert.Empty(t, silence.PurgeStatus)
+		assert.Nil(t, silence.PurgeStartedAt)
+		assert.Nil(t, silence.PurgeCompletedAt)
+		assert.Nil(t, silence.PurgeAccountsRemaining)
+
+		inProgress := byDomain["suspend.example"]
+		assert.Equal(t, apimodel.PurgeStatusInProgress, inProgress.PurgeStatus)
+		assert.NotNil(t, inProgress.PurgeStartedAt)
+		assert.Nil(t, inProgress.PurgeCompletedAt)
+		require.NotNil(t, inProgress.PurgeAccountsRemaining)
+		assert.EqualValues(t, 2, *inProgress.PurgeAccountsRemaining)
+		_ = inProg
+
+		complete := byDomain["done.example"]
+		assert.Equal(t, apimodel.PurgeStatusComplete, complete.PurgeStatus)
+		assert.NotNil(t, complete.PurgeStartedAt)
+		assert.NotNil(t, complete.PurgeCompletedAt)
+		assert.Nil(t, complete.PurgeAccountsRemaining)
+	})
 }
 
 func TestAdminFederationHandler_POSTDomainBlocks(t *testing.T) {

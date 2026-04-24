@@ -102,7 +102,7 @@ func TestMediaPurgeSubscriber_purge_happy_path(t *testing.T) {
 	media := &fakeMediaStore{}
 	sub := &MediaPurgeSubscriber{deps: deps, media: media}
 
-	sub.purge(context.Background(), domain.MediaPurgePayload{DeletionID: "del1", AccountID: "acc1"})
+	sub.purge(context.Background(), domain.MediaPurgePayload{PurgeID: "del1", AccountID: "acc1"})
 
 	assert.Equal(t, keys, media.deletedKeys(), "all seeded blobs should be deleted in order")
 	assert.Empty(t, deps.pending["del1"], "every target should be marked delivered (removed from pending)")
@@ -114,7 +114,7 @@ func TestMediaPurgeSubscriber_purge_empty_targets(t *testing.T) {
 	media := &fakeMediaStore{}
 	sub := &MediaPurgeSubscriber{deps: deps, media: media}
 
-	sub.purge(context.Background(), domain.MediaPurgePayload{DeletionID: "del1"})
+	sub.purge(context.Background(), domain.MediaPurgePayload{PurgeID: "del1"})
 
 	assert.Empty(t, media.deletedKeys())
 }
@@ -125,7 +125,7 @@ func TestMediaPurgeSubscriber_purge_continues_past_delete_failure(t *testing.T) 
 	media := &fakeMediaStore{failKeys: map[string]error{"b": errors.New("s3 transient")}}
 	sub := &MediaPurgeSubscriber{deps: deps, media: media}
 
-	sub.purge(context.Background(), domain.MediaPurgePayload{DeletionID: "del1"})
+	sub.purge(context.Background(), domain.MediaPurgePayload{PurgeID: "del1"})
 
 	// "a" and "c" succeed; "b" is left pending for a future retry.
 	assert.ElementsMatch(t, []string{"a", "c"}, media.deletedKeys())
@@ -150,7 +150,7 @@ func TestMediaPurgeSubscriber_purge_advances_cursor_on_all_failed_page(t *testin
 	media := &fakeMediaStore{failKeys: failing}
 	sub := &MediaPurgeSubscriber{deps: deps, media: media}
 
-	sub.purge(context.Background(), domain.MediaPurgePayload{DeletionID: "del1"})
+	sub.purge(context.Background(), domain.MediaPurgePayload{PurgeID: "del1"})
 
 	assert.Equal(t, keys[mediaPurgeBatchSize:], media.deletedKeys(),
 		"first page failed; second page should still be processed (cursor advanced)")
@@ -166,7 +166,7 @@ func TestMediaPurgeSubscriber_purge_respects_context_cancellation(t *testing.T) 
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	sub.purge(ctx, domain.MediaPurgePayload{DeletionID: "del1"})
+	sub.purge(ctx, domain.MediaPurgePayload{PurgeID: "del1"})
 
 	// Ctx.Canceled from the first Delete aborts the whole sweep — we
 	// should NOT log all three as failures.
@@ -187,7 +187,7 @@ func TestMediaPurgeSubscriber_purge_paginates_across_multiple_pages(t *testing.T
 	media := &fakeMediaStore{}
 	sub := &MediaPurgeSubscriber{deps: deps, media: media}
 
-	sub.purge(context.Background(), domain.MediaPurgePayload{DeletionID: "del1"})
+	sub.purge(context.Background(), domain.MediaPurgePayload{PurgeID: "del1"})
 
 	assert.Equal(t, keys, media.deletedKeys())
 	assert.Empty(t, deps.pending["del1"])
@@ -200,7 +200,7 @@ func TestMediaPurgeSubscriber_purge_stops_on_list_error(t *testing.T) {
 	media := &fakeMediaStore{}
 	sub := &MediaPurgeSubscriber{deps: deps, media: media}
 
-	sub.purge(context.Background(), domain.MediaPurgePayload{DeletionID: "del1"})
+	sub.purge(context.Background(), domain.MediaPurgePayload{PurgeID: "del1"})
 
 	// List error → return early; no deletes attempted.
 	assert.Empty(t, media.deletedKeys())

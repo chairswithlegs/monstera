@@ -33,6 +33,20 @@ const (
 	DomainBlockSeveritySuspend = "suspend"
 )
 
+// DomainBlockPurge tracks the async account/status/media purge triggered by
+// a severity=suspend domain block. BlockID is the PK and FK to
+// domain_blocks(id); the row is CASCADE-deleted when the admin removes the
+// block. Cursor holds the last-processed account id for keyset pagination
+// across NATS redeliveries. CompletedAt is set when all accounts for the
+// domain have been drained.
+type DomainBlockPurge struct {
+	BlockID     string
+	Domain      string
+	Cursor      *string
+	CreatedAt   time.Time
+	CompletedAt *time.Time
+}
+
 // Report is a moderation report filed by a user against an account or content.
 type Report struct {
 	ID string

@@ -780,8 +780,8 @@ func deleteLocalAccount(ctx context.Context, s store.Store, accountID string, au
 		if err := tx.InsertAccountDeletionTargetsForAccount(ctx, deletionID, accountID); err != nil {
 			return fmt.Errorf("InsertAccountDeletionTargetsForAccount: %w", err)
 		}
-		if err := tx.InsertAccountDeletionMediaTargetsForAccount(ctx, deletionID, accountID); err != nil {
-			return fmt.Errorf("InsertAccountDeletionMediaTargetsForAccount: %w", err)
+		if err := tx.InsertMediaPurgeTargetsForAccount(ctx, deletionID, accountID); err != nil {
+			return fmt.Errorf("InsertMediaPurgeTargetsForAccount: %w", err)
 		}
 		if auditFn != nil {
 			if err := auditFn(ctx, tx); err != nil {
@@ -799,8 +799,8 @@ func deleteLocalAccount(ctx context.Context, s store.Store, accountID string, au
 			return err
 		}
 		if err := events.EmitEvent(ctx, tx, domain.EventMediaPurge, "account", accountID, domain.MediaPurgePayload{
-			DeletionID: deletionID,
-			AccountID:  accountID,
+			PurgeID:   deletionID,
+			AccountID: accountID,
 		}); err != nil {
 			return err
 		}

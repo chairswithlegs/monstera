@@ -1,5 +1,5 @@
 # Build stage: produce static export
-FROM node:24-alpine AS builder
+FROM node:24-slim AS builder
 WORKDIR /app
 
 COPY ui/package.json ui/package-lock.json ./
