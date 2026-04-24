@@ -178,7 +178,7 @@ func (q *Queries) GetFavouritesTimeline(ctx context.Context, arg GetFavouritesTi
 }
 
 const getStatusFavouritedBy = `-- name: GetStatusFavouritedBy :many
-SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at, a.featured_url
+SELECT a.id, a.username, a.domain, a.display_name, a.note, a.public_key, a.private_key, a.inbox_url, a.outbox_url, a.followers_url, a.following_url, a.ap_id, a.bot, a.locked, a.suspended, a.silenced, a.created_at, a.updated_at, a.avatar_media_id, a.header_media_id, a.followers_count, a.following_count, a.statuses_count, a.fields, a.last_status_at, a.url, a.avatar_url, a.header_url, a.last_backfilled_at, a.featured_url, a.domain_suspended
 FROM accounts a
 INNER JOIN favourites f ON f.account_id = a.id
 WHERE f.status_id = $1
@@ -237,6 +237,7 @@ func (q *Queries) GetStatusFavouritedBy(ctx context.Context, arg GetStatusFavour
 			&i.Account.HeaderUrl,
 			&i.Account.LastBackfilledAt,
 			&i.Account.FeaturedUrl,
+			&i.Account.DomainSuspended,
 		); err != nil {
 			return nil, err
 		}

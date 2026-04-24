@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/empty-state';
 import { translateApiError } from '@/lib/i18n/errors';
+import { Badge } from '@/components/ui/badge';
 
 export default function ModeratorFederationPage() {
   const currentUser = useModeratorUser();
@@ -50,6 +51,17 @@ export default function ModeratorFederationPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Poll every 5s while at least one block has an in-progress purge so the
+  // "Purging… N remaining" badge ticks down without a manual refresh.
+  // Disabled otherwise to avoid extra load — the admin list is otherwise
+  // static between mutations.
+  const hasInProgressPurge = blocks.some((b) => b.purge_status === 'in_progress');
+  useEffect(() => {
+    if (!hasInProgressPurge) return;
+    const id = window.setInterval(load, 5000);
+    return () => window.clearInterval(id);
+  }, [hasInProgressPurge, load]);
 
   const isDuplicate = blocks.some((b) => b.domain.toLowerCase() === newDomain.trim().toLowerCase());
 
@@ -176,6 +188,7 @@ export default function ModeratorFederationPage() {
                     <TableHead>{t('domainColDomain')}</TableHead>
                     <TableHead>{t('domainColSeverity')}</TableHead>
                     <TableHead>{t('domainColReason')}</TableHead>
+                    <TableHead>{t('domainColPurge')}</TableHead>
                     {showAdminActions && <TableHead className="text-right">{t('domainColActions')}</TableHead>}
                   </TableRow>
                 </TableHeader>
@@ -185,6 +198,23 @@ export default function ModeratorFederationPage() {
                       <TableCell>{b.domain}</TableCell>
                       <TableCell className="text-muted-foreground">{b.severity}</TableCell>
                       <TableCell className="text-muted-foreground">{b.reason}</TableCell>
+                      <TableCell>
+                        {b.purge_status === 'in_progress' && (
+                          typeof b.purge_accounts_remaining === 'number' ? (
+                            <Badge variant="secondary">
+                              {t('purgeInProgressWithCount', { remaining: b.purge_accounts_remaining })}
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary">{t('purgeInProgress')}</Badge>
+                          )
+                        )}
+                        {b.purge_status === 'complete' && (
+                          <Badge variant="outline" title={b.purge_completed_at ? t('purgeCompleteTooltip', { completedAt: b.purge_completed_at }) : undefined}>
+                            {t('purgeComplete')}
+                          </Badge>
+                        )}
+                        {!b.purge_status && <span className="text-muted-foreground">—</span>}
+                      </TableCell>
                       {showAdminActions && (
                         <TableCell className="text-right">
                           <Button type="button" variant="link" size="sm" onClick={() => removeBlock(b.domain)} className="text-destructive">

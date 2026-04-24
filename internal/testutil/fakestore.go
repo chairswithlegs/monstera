@@ -106,9 +106,10 @@ type FakeStore struct {
 
 	AdminActions []store.CreateAdminActionInput // recorded moderator actions
 
-	accountDeletionSnapshots    map[string]*store.AccountDeletionSnapshot
-	accountDeletionTargets      map[string][]*FakeAccountDeletionTarget
-	accountDeletionMediaTargets map[string][]*FakeAccountDeletionMediaTarget
+	accountDeletionSnapshots map[string]*store.AccountDeletionSnapshot
+	accountDeletionTargets   map[string][]*FakeAccountDeletionTarget
+	mediaPurgeTargets        map[string][]*FakeMediaPurgeTarget
+	domainBlockPurges        map[string]*domain.DomainBlockPurge // block_id -> purge row
 
 	pushSubscriptions []*domain.PushSubscription
 
@@ -299,36 +300,38 @@ func (f *FakeStore) WithTx(ctx context.Context, fn func(store.Store) error) erro
 // WithTx rollback. Anything not listed here effectively commits mid-tx; add
 // entries as tests need stronger guarantees.
 type txSnapshot struct {
-	accountsByID                map[string]*domain.Account
-	accountsByUsername          map[string]*domain.Account
-	suspendedAccountIDs         map[string]struct{}
-	usersByAccountID            map[string]*domain.User
-	followsByKey                map[string]*domain.Follow
-	authCodes                   map[string]*domain.OAuthAuthorizationCode
-	tokens                      map[string]*domain.OAuthAccessToken
-	outboxEvents                []domain.DomainEvent
-	adminActions                []store.CreateAdminActionInput
-	accountDeletionSnapshots    map[string]*store.AccountDeletionSnapshot
-	accountDeletionTargets      map[string][]*FakeAccountDeletionTarget
-	accountDeletionMediaTargets map[string][]*FakeAccountDeletionMediaTarget
+	accountsByID             map[string]*domain.Account
+	accountsByUsername       map[string]*domain.Account
+	suspendedAccountIDs      map[string]struct{}
+	usersByAccountID         map[string]*domain.User
+	followsByKey             map[string]*domain.Follow
+	authCodes                map[string]*domain.OAuthAuthorizationCode
+	tokens                   map[string]*domain.OAuthAccessToken
+	outboxEvents             []domain.DomainEvent
+	adminActions             []store.CreateAdminActionInput
+	accountDeletionSnapshots map[string]*store.AccountDeletionSnapshot
+	accountDeletionTargets   map[string][]*FakeAccountDeletionTarget
+	mediaPurgeTargets        map[string][]*FakeMediaPurgeTarget
+	domainBlockPurges        map[string]*domain.DomainBlockPurge
 }
 
 func (f *FakeStore) snapshotTxState() txSnapshot {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return txSnapshot{
-		accountsByID:                cloneMap(f.accountsByID),
-		accountsByUsername:          cloneMap(f.accountsByUsername),
-		suspendedAccountIDs:         cloneMap(f.suspendedAccountIDs),
-		usersByAccountID:            cloneMap(f.usersByAccountID),
-		followsByKey:                cloneMap(f.followsByKey),
-		authCodes:                   cloneMap(f.authCodes),
-		tokens:                      cloneMap(f.tokens),
-		outboxEvents:                append([]domain.DomainEvent(nil), f.OutboxEvents...),
-		adminActions:                append([]store.CreateAdminActionInput(nil), f.AdminActions...),
-		accountDeletionSnapshots:    cloneMap(f.accountDeletionSnapshots),
-		accountDeletionTargets:      cloneDeletionTargets(f.accountDeletionTargets),
-		accountDeletionMediaTargets: cloneMediaTargets(f.accountDeletionMediaTargets),
+		accountsByID:             cloneMap(f.accountsByID),
+		accountsByUsername:       cloneMap(f.accountsByUsername),
+		suspendedAccountIDs:      cloneMap(f.suspendedAccountIDs),
+		usersByAccountID:         cloneMap(f.usersByAccountID),
+		followsByKey:             cloneMap(f.followsByKey),
+		authCodes:                cloneMap(f.authCodes),
+		tokens:                   cloneMap(f.tokens),
+		outboxEvents:             append([]domain.DomainEvent(nil), f.OutboxEvents...),
+		adminActions:             append([]store.CreateAdminActionInput(nil), f.AdminActions...),
+		accountDeletionSnapshots: cloneMap(f.accountDeletionSnapshots),
+		accountDeletionTargets:   cloneDeletionTargets(f.accountDeletionTargets),
+		mediaPurgeTargets:        cloneMediaTargets(f.mediaPurgeTargets),
+		domainBlockPurges:        cloneMap(f.domainBlockPurges),
 	}
 }
 
@@ -346,7 +349,8 @@ func (f *FakeStore) restoreTxState(snap txSnapshot) {
 	f.AdminActions = snap.adminActions
 	f.accountDeletionSnapshots = snap.accountDeletionSnapshots
 	f.accountDeletionTargets = snap.accountDeletionTargets
-	f.accountDeletionMediaTargets = snap.accountDeletionMediaTargets
+	f.mediaPurgeTargets = snap.mediaPurgeTargets
+	f.domainBlockPurges = snap.domainBlockPurges
 }
 
 func cloneMap[K comparable, V any](m map[K]V) map[K]V {
@@ -371,13 +375,13 @@ func cloneDeletionTargets(m map[string][]*FakeAccountDeletionTarget) map[string]
 	return out
 }
 
-func cloneMediaTargets(m map[string][]*FakeAccountDeletionMediaTarget) map[string][]*FakeAccountDeletionMediaTarget {
+func cloneMediaTargets(m map[string][]*FakeMediaPurgeTarget) map[string][]*FakeMediaPurgeTarget {
 	if m == nil {
 		return nil
 	}
-	out := make(map[string][]*FakeAccountDeletionMediaTarget, len(m))
+	out := make(map[string][]*FakeMediaPurgeTarget, len(m))
 	for k, v := range m {
-		out[k] = append([]*FakeAccountDeletionMediaTarget(nil), v...)
+		out[k] = append([]*FakeMediaPurgeTarget(nil), v...)
 	}
 	return out
 }
@@ -3771,12 +3775,164 @@ func (f *FakeStore) CreateDomainBlock(ctx context.Context, in store.CreateDomain
 	f.domainBlocksByDomain[key] = b
 	return b, nil
 }
-func (f *FakeStore) DeleteDomainBlock(ctx context.Context, domain string) error {
+func (f *FakeStore) DeleteDomainBlock(ctx context.Context, domainName string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	key := strings.ToLower(strings.TrimSpace(domain))
+	key := strings.ToLower(strings.TrimSpace(domainName))
+	if b, ok := f.domainBlocksByDomain[key]; ok {
+		// CASCADE the purge row (mirrors the FK ON DELETE CASCADE in
+		// migration 000086).
+		delete(f.domainBlockPurges, b.ID)
+	}
 	delete(f.domainBlocksByDomain, key)
 	return nil
+}
+
+// --- Domain block purge tracker (issue #104) ---
+
+func (f *FakeStore) CreateDomainBlockPurge(_ context.Context, blockID, domainName string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.domainBlockPurges == nil {
+		f.domainBlockPurges = map[string]*domain.DomainBlockPurge{}
+	}
+	f.domainBlockPurges[blockID] = &domain.DomainBlockPurge{
+		BlockID:   blockID,
+		Domain:    domainName,
+		CreatedAt: time.Now(),
+	}
+	return nil
+}
+
+func (f *FakeStore) GetDomainBlockPurge(_ context.Context, blockID string) (*domain.DomainBlockPurge, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, ok := f.domainBlockPurges[blockID]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	cp := *p
+	return &cp, nil
+}
+
+func (f *FakeStore) UpdateDomainBlockPurgeCursor(_ context.Context, blockID, cursor string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, ok := f.domainBlockPurges[blockID]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	c := cursor
+	p.Cursor = &c
+	return nil
+}
+
+func (f *FakeStore) MarkDomainBlockPurgeComplete(_ context.Context, blockID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, ok := f.domainBlockPurges[blockID]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	now := time.Now()
+	p.CompletedAt = &now
+	return nil
+}
+
+func (f *FakeStore) ListDomainBlocksWithPurge(_ context.Context) ([]store.DomainBlockWithPurge, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]store.DomainBlockWithPurge, 0, len(f.domainBlocksByDomain))
+	for _, b := range f.domainBlocksByDomain {
+		item := store.DomainBlockWithPurge{Block: *b}
+		if p, ok := f.domainBlockPurges[b.ID]; ok {
+			cp := *p
+			item.Purge = &cp
+		}
+		out = append(out, item)
+	}
+	// Stable ordering for deterministic tests: newest first by CreatedAt, then by ID.
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].Block.CreatedAt.Equal(out[j].Block.CreatedAt) {
+			return out[i].Block.CreatedAt.After(out[j].Block.CreatedAt)
+		}
+		return out[i].Block.ID < out[j].Block.ID
+	})
+	return out, nil
+}
+
+func (f *FakeStore) CountRemoteAccountsByDomainAfterCursor(_ context.Context, domainName, cursor string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for _, a := range f.accountsByID {
+		if a.Domain == nil || *a.Domain != domainName {
+			continue
+		}
+		if cursor != "" && a.ID <= cursor {
+			continue
+		}
+		n++
+	}
+	return n, nil
+}
+
+func (f *FakeStore) ListRemoteAccountsByDomainPaginated(_ context.Context, domainName, cursor string, limit int) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ids := make([]string, 0)
+	for _, a := range f.accountsByID {
+		if a.Domain == nil || *a.Domain != domainName {
+			continue
+		}
+		if cursor != "" && a.ID <= cursor {
+			continue
+		}
+		ids = append(ids, a.ID)
+	}
+	sort.Strings(ids)
+	if limit > 0 && len(ids) > limit {
+		ids = ids[:limit]
+	}
+	return ids, nil
+}
+
+func (f *FakeStore) DeleteStatusesByAccountIDBatched(_ context.Context, accountID string, limit int) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// Collect candidate ids in sorted order for deterministic "LIMIT N" behaviour.
+	ids := make([]string, 0)
+	for id, s := range f.statusesByID {
+		if s.AccountID == accountID {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	if limit > 0 && len(ids) > limit {
+		ids = ids[:limit]
+	}
+	for _, id := range ids {
+		// Hard delete, mirroring the SQL. The Postgres CASCADE chain is
+		// approximated by removing the same rows other fake queries look at;
+		// unit tests that care about cascades should use the real store.
+		delete(f.statusesByID, id)
+		delete(f.statusesByAPID, id)
+	}
+	return ids, nil
+}
+
+func (f *FakeStore) SetAccountsDomainSuspendedByDomain(_ context.Context, domainName string, suspended bool) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for _, a := range f.accountsByID {
+		if a.Domain == nil || *a.Domain != domainName {
+			continue
+		}
+		a.DomainSuspended = suspended
+		n++
+	}
+	return n, nil
 }
 func (f *FakeStore) CreateAdminAction(ctx context.Context, in store.CreateAdminActionInput) error {
 	f.mu.Lock()
@@ -4639,7 +4795,7 @@ func (f *FakeStore) DeleteExpiredAccountDeletionSnapshots(_ context.Context, bef
 		if snap.ExpiresAt.Before(before) {
 			delete(f.accountDeletionSnapshots, id)
 			delete(f.accountDeletionTargets, id)
-			delete(f.accountDeletionMediaTargets, id)
+			delete(f.mediaPurgeTargets, id)
 			deleted++
 		}
 	}
@@ -4654,22 +4810,22 @@ type FakeAccountDeletionTarget struct {
 	DeliveredAt *time.Time
 }
 
-// FakeAccountDeletionMediaTarget is the fake-store representation of an
-// account_deletion_media_targets row.
-type FakeAccountDeletionMediaTarget struct {
-	DeletionID  string
+// FakeMediaPurgeTarget is the fake-store representation of a
+// media_purge_targets row.
+type FakeMediaPurgeTarget struct {
+	PurgeID     string
 	StorageKey  string
 	DeliveredAt *time.Time
 }
 
-func (f *FakeStore) InsertAccountDeletionMediaTargetsForAccount(_ context.Context, deletionID, accountID string) error {
+func (f *FakeStore) InsertMediaPurgeTargetsForAccount(_ context.Context, purgeID, accountID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.accountDeletionMediaTargets == nil {
-		f.accountDeletionMediaTargets = map[string][]*FakeAccountDeletionMediaTarget{}
+	if f.mediaPurgeTargets == nil {
+		f.mediaPurgeTargets = map[string][]*FakeMediaPurgeTarget{}
 	}
 	seen := map[string]struct{}{}
-	for _, t := range f.accountDeletionMediaTargets[deletionID] {
+	for _, t := range f.mediaPurgeTargets[purgeID] {
 		seen[t.StorageKey] = struct{}{}
 	}
 	for _, m := range f.mediaByID {
@@ -4680,18 +4836,18 @@ func (f *FakeStore) InsertAccountDeletionMediaTargetsForAccount(_ context.Contex
 			continue
 		}
 		seen[m.StorageKey] = struct{}{}
-		f.accountDeletionMediaTargets[deletionID] = append(f.accountDeletionMediaTargets[deletionID], &FakeAccountDeletionMediaTarget{
-			DeletionID: deletionID,
+		f.mediaPurgeTargets[purgeID] = append(f.mediaPurgeTargets[purgeID], &FakeMediaPurgeTarget{
+			PurgeID:    purgeID,
 			StorageKey: m.StorageKey,
 		})
 	}
 	return nil
 }
 
-func (f *FakeStore) ListPendingAccountDeletionMediaTargets(_ context.Context, deletionID, cursor string, limit int) ([]string, error) {
+func (f *FakeStore) ListPendingMediaPurgeTargets(_ context.Context, purgeID, cursor string, limit int) ([]string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	all := f.accountDeletionMediaTargets[deletionID]
+	all := f.mediaPurgeTargets[purgeID]
 	keys := make([]string, 0, len(all))
 	for _, t := range all {
 		if t.DeliveredAt != nil {
@@ -4709,11 +4865,11 @@ func (f *FakeStore) ListPendingAccountDeletionMediaTargets(_ context.Context, de
 	return keys, nil
 }
 
-func (f *FakeStore) MarkAccountDeletionMediaTargetDelivered(_ context.Context, deletionID, storageKey string) error {
+func (f *FakeStore) MarkMediaPurgeTargetDelivered(_ context.Context, purgeID, storageKey string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	now := time.Now()
-	for _, t := range f.accountDeletionMediaTargets[deletionID] {
+	for _, t := range f.mediaPurgeTargets[purgeID] {
 		if t.StorageKey == storageKey {
 			t.DeliveredAt = &now
 			return nil
@@ -4722,19 +4878,43 @@ func (f *FakeStore) MarkAccountDeletionMediaTargetDelivered(_ context.Context, d
 	return nil
 }
 
-// SeedAccountDeletionMediaTargets bypasses the normal media_attachments join
-// and inserts media targets for a deletionID directly. Used by subscriber
-// tests that want to exercise the post-CASCADE codepath without seeding a
-// full media_attachments graph.
-func (f *FakeStore) SeedAccountDeletionMediaTargets(deletionID string, storageKeys []string) {
+// DeleteDeliveredMediaPurgeTargets sweeps rows whose blobs have been deleted
+// and are older than the cutoff. Returns count deleted.
+func (f *FakeStore) DeleteDeliveredMediaPurgeTargets(_ context.Context, before time.Time) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.accountDeletionMediaTargets == nil {
-		f.accountDeletionMediaTargets = map[string][]*FakeAccountDeletionMediaTarget{}
+	var removed int64
+	for purgeID, targets := range f.mediaPurgeTargets {
+		kept := targets[:0]
+		for _, t := range targets {
+			if t.DeliveredAt != nil && t.DeliveredAt.Before(before) {
+				removed++
+				continue
+			}
+			kept = append(kept, t)
+		}
+		if len(kept) == 0 {
+			delete(f.mediaPurgeTargets, purgeID)
+		} else {
+			f.mediaPurgeTargets[purgeID] = kept
+		}
+	}
+	return removed, nil
+}
+
+// SeedMediaPurgeTargets bypasses the normal media_attachments join and
+// inserts media targets for a purgeID directly. Used by subscriber tests
+// that want to exercise the post-CASCADE codepath without seeding a full
+// media_attachments graph.
+func (f *FakeStore) SeedMediaPurgeTargets(purgeID string, storageKeys []string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.mediaPurgeTargets == nil {
+		f.mediaPurgeTargets = map[string][]*FakeMediaPurgeTarget{}
 	}
 	for _, key := range storageKeys {
-		f.accountDeletionMediaTargets[deletionID] = append(f.accountDeletionMediaTargets[deletionID], &FakeAccountDeletionMediaTarget{
-			DeletionID: deletionID,
+		f.mediaPurgeTargets[purgeID] = append(f.mediaPurgeTargets[purgeID], &FakeMediaPurgeTarget{
+			PurgeID:    purgeID,
 			StorageKey: key,
 		})
 	}

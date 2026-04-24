@@ -11,6 +11,14 @@ func (a *Account) IsLocal() bool { return a.Domain == nil }
 // IsRemote reports whether the account belongs to a remote instance.
 func (a *Account) IsRemote() bool { return a.Domain != nil }
 
+// IsHidden reports whether the account should be hidden from user-facing
+// lookups — either individually suspended (moderator action or federation
+// Delete{Person}) or currently covered by a severity=suspend domain block.
+// The two causes are tracked separately so removing a domain block only
+// reverses the domain-level hide; an individually suspended account stays
+// hidden.
+func (a *Account) IsHidden() bool { return a.Suspended || a.DomainSuspended }
+
 // Account is the federated identity exposed via ActivityPub and the Mastodon API.
 type Account struct {
 	ID            string  // Internal ID for the account.
@@ -39,6 +47,7 @@ type Account struct {
 	Bot              bool
 	Locked           bool
 	Suspended        bool
+	DomainSuspended  bool // hidden because an active severity=suspend domain block covers this account's domain; reset when the block is deleted
 	Silenced         bool
 	SuspensionOrigin *string    // Origin of the suspension. Remote accounts only.
 	LastBackfilledAt *time.Time // Last time the account was backfilled. Remote accounts only.

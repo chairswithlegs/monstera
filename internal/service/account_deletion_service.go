@@ -72,25 +72,35 @@ func (svc *accountDeletionService) MarkTargetDelivered(ctx context.Context, dele
 	return nil
 }
 
-func (svc *accountDeletionService) ListPendingMediaTargets(ctx context.Context, deletionID, cursor string, limit int) ([]string, error) {
-	keys, err := svc.store.ListPendingAccountDeletionMediaTargets(ctx, deletionID, cursor, limit)
+func (svc *accountDeletionService) ListPendingMediaTargets(ctx context.Context, purgeID, cursor string, limit int) ([]string, error) {
+	keys, err := svc.store.ListPendingMediaPurgeTargets(ctx, purgeID, cursor, limit)
 	if err != nil {
-		return nil, fmt.Errorf("ListPendingAccountDeletionMediaTargets(%s): %w", deletionID, err)
+		return nil, fmt.Errorf("ListPendingMediaPurgeTargets(%s): %w", purgeID, err)
 	}
 	return keys, nil
 }
 
-func (svc *accountDeletionService) MarkMediaTargetDelivered(ctx context.Context, deletionID, storageKey string) error {
-	if err := svc.store.MarkAccountDeletionMediaTargetDelivered(ctx, deletionID, storageKey); err != nil {
-		return fmt.Errorf("MarkAccountDeletionMediaTargetDelivered: %w", err)
+func (svc *accountDeletionService) MarkMediaTargetDelivered(ctx context.Context, purgeID, storageKey string) error {
+	if err := svc.store.MarkMediaPurgeTargetDelivered(ctx, purgeID, storageKey); err != nil {
+		return fmt.Errorf("MarkMediaPurgeTargetDelivered: %w", err)
 	}
 	return nil
 }
 
+// PurgeExpiredSnapshots runs two sweeps: dropping account-deletion snapshots
+// past their TTL (and, via the surviving CASCADE on account_deletion_targets,
+// their federation-inbox rows), and dropping media_purge_targets whose blobs
+// have been deleted more than the snapshot TTL ago. The second sweep
+// compensates for the FK removal in migration 000085 which otherwise would
+// leave orphan rows accumulating once a purge completes.
 func (svc *accountDeletionService) PurgeExpiredSnapshots(ctx context.Context, now time.Time) (int64, error) {
-	n, err := svc.store.DeleteExpiredAccountDeletionSnapshots(ctx, now)
+	snaps, err := svc.store.DeleteExpiredAccountDeletionSnapshots(ctx, now)
 	if err != nil {
 		return 0, fmt.Errorf("DeleteExpiredAccountDeletionSnapshots: %w", err)
 	}
-	return n, nil
+	targets, err := svc.store.DeleteDeliveredMediaPurgeTargets(ctx, now.Add(-AccountDeletionSnapshotTTL))
+	if err != nil {
+		return snaps, fmt.Errorf("DeleteDeliveredMediaPurgeTargets: %w", err)
+	}
+	return snaps + targets, nil
 }

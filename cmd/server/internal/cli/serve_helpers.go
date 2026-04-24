@@ -348,6 +348,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 	})
 	cardSub := events.NewCardSubscriber(i.nats.JS, s.card)
 	mediaPurgeSub := events.NewMediaPurgeSubscriber(i.nats.JS, s.accountDeletion, i.mediaStore)
+	domainBlockPurgeSub := events.NewDomainBlockPurgeSubscriber(i.nats.JS, i.store)
 	backfillWorker := ap.NewBackfillWorker(i.nats.JS, s.account, s.backfill, s.remoteResolver,
 		s.remoteStatusWrite, s.remoteFollow, s.statusRead, i.blocklist, cfg.MonsteraInstanceDomain, cfg.BackfillMaxPages, cfg.BackfillCooldown)
 
@@ -359,6 +360,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 		{"notification-subscriber", notifSub},
 		{"card-subscriber", cardSub},
 		{"media-purge-subscriber", mediaPurgeSub},
+		{"domain-block-purge-subscriber", domainBlockPurgeSub},
 		{"scheduler", sched},
 		{"backfill-worker", backfillWorker},
 	}

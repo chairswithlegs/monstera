@@ -77,7 +77,7 @@ func (h *AccountsHandler) GETAccounts(w http.ResponseWriter, r *http.Request) {
 		api.HandleError(w, r, err)
 		return
 	}
-	if acc.Suspended {
+	if acc.IsHidden() {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
@@ -123,7 +123,7 @@ func (h *AccountsHandler) GETAccountsLookup(w http.ResponseWriter, r *http.Reque
 		api.HandleError(w, r, err)
 		return
 	}
-	if acc.Suspended {
+	if acc.IsHidden() {
 		api.HandleError(w, r, api.ErrNotFound)
 		return
 	}
