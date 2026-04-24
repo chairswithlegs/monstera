@@ -233,6 +233,9 @@ func classifyError(err error) (int, ErrorResponse) {
 	case errors.Is(err, domain.ErrValidation) || errors.Is(err, ErrBadRequest):
 		return http.StatusBadRequest, ErrorResponse{Error: err.Error(), Code: CodeBadRequest, Params: params}
 
+	case errors.Is(err, domain.ErrFollowedTagLimitReached):
+		return http.StatusUnprocessableEntity, ErrorResponse{Error: "Followed tag limit reached", Code: CodeValidationFailed, Params: params}
+
 	case errors.Is(err, domain.ErrUnprocessable) || errors.Is(err, ErrUnprocessable):
 		return http.StatusUnprocessableEntity, ErrorResponse{Error: err.Error(), Code: CodeValidationFailed, Params: params}
 

@@ -21,6 +21,9 @@ WHERE aft.account_id = $1
 ORDER BY aft.id DESC
 LIMIT $3;
 
+-- name: CountFollowedTags :one
+SELECT COUNT(*) FROM account_followed_tags WHERE account_id = $1;
+
 -- name: AreFollowingTagsByName :many
 SELECT h.name
 FROM account_followed_tags aft

@@ -44,6 +44,17 @@ func (q *Queries) AreFollowingTagsByName(ctx context.Context, arg AreFollowingTa
 	return items, nil
 }
 
+const countFollowedTags = `-- name: CountFollowedTags :one
+SELECT COUNT(*) FROM account_followed_tags WHERE account_id = $1
+`
+
+func (q *Queries) CountFollowedTags(ctx context.Context, accountID string) (int64, error) {
+	row := q.db.QueryRow(ctx, countFollowedTags, accountID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const followTag = `-- name: FollowTag :exec
 INSERT INTO account_followed_tags (id, account_id, tag_id)
 VALUES ($1, $2, $3)

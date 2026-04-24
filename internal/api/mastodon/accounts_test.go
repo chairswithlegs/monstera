@@ -61,7 +61,7 @@ func newTestFollowServices(st *testutil.FakeStore) (service.FollowService, servi
 	accountSvc := service.NewAccountService(st, "https://example.com")
 	remoteFollowSvc := service.NewRemoteFollowService(st)
 	followSvc := service.NewFollowService(st, accountSvc, remoteFollowSvc, nil)
-	tagFollowSvc := service.NewTagFollowService(st)
+	tagFollowSvc := service.NewTagFollowService(st, 0)
 	return followSvc, tagFollowSvc
 }
 

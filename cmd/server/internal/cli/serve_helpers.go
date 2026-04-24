@@ -232,7 +232,7 @@ func createServices(cfg *config.Config, i *infra) *svcs {
 	backfillSvc := service.NewBackfillService(i.store, i.nats.JS, cfg.BackfillCooldown)
 	remoteFollowSvc := service.NewRemoteFollowService(i.store)
 	followSvc := service.NewFollowService(i.store, accountSvc, remoteFollowSvc, backfillSvc)
-	tagFollowSvc := service.NewTagFollowService(i.store)
+	tagFollowSvc := service.NewTagFollowService(i.store, cfg.MaxFollowedTagsPerUser)
 	mediaSvc := service.NewMediaService(i.store, i.mediaStore, cfg.MediaMaxBytes)
 
 	mailer := service.NewRegistrationEmailSender(i.emailSender, i.emailTemplates, cfg.EmailFrom, cfg.EmailFromName)
@@ -350,7 +350,7 @@ func buildWorkers(cfg *config.Config, s *svcs, i *infra, metrics *observability.
 	mediaPurgeSub := events.NewMediaPurgeSubscriber(i.nats.JS, s.accountDeletion, i.mediaStore)
 	domainBlockPurgeSub := events.NewDomainBlockPurgeSubscriber(i.nats.JS, i.store)
 	backfillWorker := ap.NewBackfillWorker(i.nats.JS, s.account, s.backfill, s.remoteResolver,
-		s.remoteStatusWrite, s.remoteFollow, s.statusRead, i.blocklist, cfg.MonsteraInstanceDomain, cfg.BackfillMaxPages, cfg.BackfillCooldown)
+		s.remoteStatusWrite, s.remoteFollow, s.statusRead, i.blocklist, cfg.MonsteraInstanceDomain, cfg.BackfillMaxPages, cfg.BackfillMaxItems, cfg.BackfillCooldown)
 
 	workers := []namedWorker{
 		{"event-poller", i.eventPoller},

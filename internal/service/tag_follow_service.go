@@ -22,11 +22,14 @@ type TagFollowService interface {
 }
 
 type tagFollowService struct {
-	store store.Store
+	store   store.Store
+	maxTags int
 }
 
-func NewTagFollowService(s store.Store) TagFollowService {
-	return &tagFollowService{store: s}
+// NewTagFollowService creates a TagFollowService. maxTags caps the number of
+// tags a single account may follow (0 disables the cap).
+func NewTagFollowService(s store.Store, maxTags int) TagFollowService {
+	return &tagFollowService{store: s, maxTags: maxTags}
 }
 
 func (svc *tagFollowService) GetTagByName(ctx context.Context, name string) (*domain.Hashtag, error) {
@@ -70,6 +73,15 @@ func (svc *tagFollowService) FollowTag(ctx context.Context, accountID, tagName s
 	tagName = strings.TrimSpace(tagName)
 	if tagName == "" {
 		return nil, fmt.Errorf("FollowTag: %w", domain.ErrValidation)
+	}
+	if svc.maxTags > 0 {
+		count, err := svc.store.CountFollowedTags(ctx, accountID)
+		if err != nil {
+			return nil, fmt.Errorf("FollowTag: count followed tags: %w", err)
+		}
+		if count >= int64(svc.maxTags) {
+			return nil, fmt.Errorf("FollowTag: %w", domain.ErrFollowedTagLimitReached)
+		}
 	}
 	tag, err := svc.store.GetOrCreateHashtag(ctx, tagName)
 	if err != nil {

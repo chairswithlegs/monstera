@@ -15,7 +15,7 @@ func TestTagFollowService_FollowTag_succeeds(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	svc := NewTagFollowService(fake)
+	svc := NewTagFollowService(fake, 0)
 
 	tag, err := svc.FollowTag(ctx, "acct1", "golang")
 	require.NoError(t, err)
@@ -29,11 +29,48 @@ func TestTagFollowService_FollowTag_succeeds(t *testing.T) {
 	assert.Equal(t, "golang", tags[0].Name)
 }
 
+func TestTagFollowService_FollowTag_enforces_max_tags_cap(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewTagFollowService(fake, 2)
+
+	_, err := svc.FollowTag(ctx, "acct1", "go")
+	require.NoError(t, err)
+	_, err = svc.FollowTag(ctx, "acct1", "rust")
+	require.NoError(t, err)
+
+	// Third follow should trip the cap.
+	tag, err := svc.FollowTag(ctx, "acct1", "zig")
+	require.Error(t, err)
+	assert.Nil(t, tag)
+	require.ErrorIs(t, err, domain.ErrFollowedTagLimitReached)
+
+	// A different account is not affected by the first account's count.
+	_, err = svc.FollowTag(ctx, "acct2", "go")
+	require.NoError(t, err)
+}
+
+func TestTagFollowService_FollowTag_zero_cap_disables_enforcement(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	svc := NewTagFollowService(fake, 0)
+
+	for _, name := range []string{"a", "b", "c", "d", "e"} {
+		_, err := svc.FollowTag(ctx, "acct1", name)
+		require.NoError(t, err)
+	}
+	tags, _, err := svc.ListFollowedTags(ctx, "acct1", nil, 10)
+	require.NoError(t, err)
+	assert.Len(t, tags, 5)
+}
+
 func TestTagFollowService_FollowTag_empty_name_returns_validation(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	svc := NewTagFollowService(fake)
+	svc := NewTagFollowService(fake, 0)
 
 	tag, err := svc.FollowTag(ctx, "acct1", "")
 	require.Error(t, err)
@@ -45,7 +82,7 @@ func TestTagFollowService_FollowTag_whitespace_only_returns_validation(t *testin
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	svc := NewTagFollowService(fake)
+	svc := NewTagFollowService(fake, 0)
 
 	tag, err := svc.FollowTag(ctx, "acct1", "   ")
 	require.Error(t, err)
@@ -57,7 +94,7 @@ func TestTagFollowService_UnfollowTag_succeeds(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	svc := NewTagFollowService(fake)
+	svc := NewTagFollowService(fake, 0)
 
 	tag, err := svc.FollowTag(ctx, "acct1", "rust")
 	require.NoError(t, err)
@@ -80,7 +117,7 @@ func TestTagFollowService_UnfollowTag_store_fails(t *testing.T) {
 	require.NoError(t, fake.FollowTag(ctx, "row1", "acct1", tag.ID))
 
 	failingStore := &unfollowFailingStore{FakeStore: fake}
-	svc := NewTagFollowService(failingStore)
+	svc := NewTagFollowService(failingStore, 0)
 
 	err = svc.UnfollowTag(ctx, "acct1", tag.ID)
 	require.Error(t, err)
@@ -99,7 +136,7 @@ func TestTagFollowService_GetTagByName_succeeds(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	svc := NewTagFollowService(fake)
+	svc := NewTagFollowService(fake, 0)
 
 	_, err := svc.FollowTag(ctx, "acct1", "golang")
 	require.NoError(t, err)
@@ -113,7 +150,7 @@ func TestTagFollowService_GetTagByName_not_found(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	svc := NewTagFollowService(fake)
+	svc := NewTagFollowService(fake, 0)
 
 	_, err := svc.GetTagByName(ctx, "nonexistent")
 	require.Error(t, err)
@@ -124,7 +161,7 @@ func TestTagFollowService_GetTagByName_empty_returns_validation(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	svc := NewTagFollowService(fake)
+	svc := NewTagFollowService(fake, 0)
 
 	_, err := svc.GetTagByName(ctx, "")
 	require.Error(t, err)
@@ -135,7 +172,7 @@ func TestTagFollowService_IsFollowingTag(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	svc := NewTagFollowService(fake)
+	svc := NewTagFollowService(fake, 0)
 
 	tag, err := svc.FollowTag(ctx, "acct1", "golang")
 	require.NoError(t, err)
@@ -153,7 +190,7 @@ func TestTagFollowService_UnfollowTagByName_succeeds(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	svc := NewTagFollowService(fake)
+	svc := NewTagFollowService(fake, 0)
 
 	_, err := svc.FollowTag(ctx, "acct1", "rust")
 	require.NoError(t, err)
@@ -171,7 +208,7 @@ func TestTagFollowService_UnfollowTagByName_not_found(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	svc := NewTagFollowService(fake)
+	svc := NewTagFollowService(fake, 0)
 
 	_, err := svc.UnfollowTagByName(ctx, "acct1", "nonexistent")
 	require.Error(t, err)
@@ -182,7 +219,7 @@ func TestTagFollowService_ListFollowedTags_empty(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	svc := NewTagFollowService(fake)
+	svc := NewTagFollowService(fake, 0)
 
 	tags, next, err := svc.ListFollowedTags(ctx, "acct1", nil, 10)
 	require.NoError(t, err)
@@ -194,7 +231,7 @@ func TestTagFollowService_ListFollowedTags_with_results(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	svc := NewTagFollowService(fake)
+	svc := NewTagFollowService(fake, 0)
 
 	_, err := svc.FollowTag(ctx, "acct1", "golang")
 	require.NoError(t, err)
@@ -217,7 +254,7 @@ func TestTagFollowService_ListFollowedTags_with_results(t *testing.T) {
 func TestTagFollowService_AreFollowingTagsByName_empty_input(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	svc := NewTagFollowService(testutil.NewFakeStore())
+	svc := NewTagFollowService(testutil.NewFakeStore(), 0)
 
 	result, err := svc.AreFollowingTagsByName(ctx, "acct1", []string{})
 	require.NoError(t, err)
@@ -228,7 +265,7 @@ func TestTagFollowService_AreFollowingTagsByName_mixed(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fake := testutil.NewFakeStore()
-	svc := NewTagFollowService(fake)
+	svc := NewTagFollowService(fake, 0)
 
 	_, err := svc.FollowTag(ctx, "acct1", "golang")
 	require.NoError(t, err)
@@ -242,7 +279,7 @@ func TestTagFollowService_AreFollowingTagsByName_store_error(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	failingStore := &areFollowingTagsByNameFailingStore{FakeStore: testutil.NewFakeStore()}
-	svc := NewTagFollowService(failingStore)
+	svc := NewTagFollowService(failingStore, 0)
 
 	_, err := svc.AreFollowingTagsByName(ctx, "acct1", []string{"golang"})
 	require.Error(t, err)

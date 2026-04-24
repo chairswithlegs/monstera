@@ -1511,6 +1511,18 @@ func (f *FakeStore) ListFollowedTags(ctx context.Context, accountID string, maxI
 	return out, nextCursor, nil
 }
 
+func (f *FakeStore) CountFollowedTags(_ context.Context, accountID string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for _, e := range f.followedTagsList {
+		if e.AccountID == accountID {
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (f *FakeStore) AreFollowingTagsByName(_ context.Context, accountID string, tagNames []string) (map[string]bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
