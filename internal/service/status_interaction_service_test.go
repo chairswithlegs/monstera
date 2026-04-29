@@ -168,8 +168,14 @@ func TestStatusInteractionService_CreateFavourite(t *testing.T) {
 
 	t.Run("not found returns ErrNotFound", func(t *testing.T) {
 		_, err := interactionSvc.CreateFavourite(ctx, bob.ID, "01H0000000000000000000000")
-		require.Error(t, err)
-		assert.ErrorIs(t, err, domain.ErrNotFound)
+		require.ErrorIs(t, err, domain.ErrNotFound)
+	})
+
+	t.Run("suspended status author returns ErrNotFound", func(t *testing.T) {
+		require.NoError(t, fake.SuspendAccount(ctx, alice.ID))
+		t.Cleanup(func() { _ = fake.UnsuspendAccount(ctx, alice.ID) })
+		_, err := interactionSvc.CreateFavourite(ctx, bob.ID, statusID)
+		require.ErrorIs(t, err, domain.ErrNotFound)
 	})
 }
 

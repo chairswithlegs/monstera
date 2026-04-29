@@ -137,6 +137,8 @@ func (s *FederationSubscriber) processMessage(ctx context.Context, msg jetstream
 		err = s.handleAccountUpdated(ctx, event)
 	case domain.EventAccountDeleted:
 		err = s.handleAccountDeleted(ctx, event)
+	case domain.EventAccountSuspended:
+		err = s.handleAccountSuspended(ctx, event)
 	case domain.EventReblogCreated:
 		err = s.handleReblogCreated(ctx, event)
 	case domain.EventReblogRemoved:
@@ -654,6 +656,57 @@ func (s *FederationSubscriber) handleAccountDeleted(ctx context.Context, event d
 		DeletionID: payload.DeletionID,
 	}); err != nil {
 		return fmt.Errorf("publish account deleted: %w", err)
+	}
+	return nil
+}
+
+// handleAccountSuspended fans out a Delete{Actor} activity to every remote
+// follower's inbox when a local account is suspended by a moderator. Mirrors
+// Mastodon's de-facto behaviour: remote servers treat the Delete as a hard
+// takedown of the actor (and its content). Suspension is reversible locally
+// but irreversible federation-side — this is the trade-off documented in the
+// fix for issue #119.
+//
+// Differs from handleAccountDeleted: the accounts row is still live, so the
+// fanout worker resolves follower inboxes from the live follows table via
+// SenderID rather than from a deletion snapshot. No private-key snapshot is
+// needed; the delivery worker signs with the live account's private key.
+func (s *FederationSubscriber) handleAccountSuspended(ctx context.Context, event domain.DomainEvent) error {
+	var payload domain.AccountSuspendedPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return fmt.Errorf("unmarshal account.suspended payload: %w", err)
+	}
+	if !payload.Local {
+		// Remote suspensions are recorded by the inbox handler via
+		// SuspendRemote, which never emits this event. A remote payload here
+		// is a bug; ack and move on.
+		slog.DebugContext(ctx, "account.suspended: skipping remote", slog.String("aggregate_id", event.AggregateID))
+		return nil
+	}
+	if payload.AccountID == "" || payload.APID == "" {
+		slog.WarnContext(ctx, "account.suspended: malformed payload",
+			slog.String("aggregate_id", event.AggregateID),
+			slog.String("account_id", payload.AccountID),
+			slog.String("ap_id", payload.APID),
+		)
+		return nil
+	}
+	activityID := payload.APID + "#suspend"
+	// For actor deletion the wrapped Tombstone IRI equals the actor IRI.
+	del, err := vocab.NewDeleteActivity(activityID, payload.APID, payload.APID)
+	if err != nil {
+		return fmt.Errorf("new delete activity: %w", err)
+	}
+	raw, err := json.Marshal(del)
+	if err != nil {
+		return fmt.Errorf("marshal delete: %w", err)
+	}
+	if err := s.fanout.Publish(ctx, "delete", internal.OutboxFanoutMessage{
+		ActivityID: activityID,
+		Activity:   raw,
+		SenderID:   payload.AccountID,
+	}); err != nil {
+		return fmt.Errorf("publish account suspended: %w", err)
 	}
 	return nil
 }

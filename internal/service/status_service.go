@@ -12,10 +12,13 @@ import (
 	"github.com/chairswithlegs/monstera/internal/store"
 )
 
-// StatusVisibilityChecker allows callers to check if a viewer can see a status (visibility + blocks).
-// TimelineService depends on this narrow interface to filter list timelines.
+// StatusVisibilityChecker allows callers to check if a viewer can see a status
+// (visibility, blocks, and author suspension). The author argument is required
+// because suspended-author hiding is part of the visibility decision; callers
+// that already loaded the author for enrichment pass it through to avoid a
+// duplicate lookup.
 type StatusVisibilityChecker interface {
-	CanViewStatus(ctx context.Context, st *domain.Status, viewerAccountID *string) (bool, error)
+	CanViewStatus(ctx context.Context, st *domain.Status, author *domain.Account, viewerAccountID *string) (bool, error)
 }
 
 // EnrichOpts controls which optional fields are loaded when enriching statuses.
@@ -24,6 +27,11 @@ type EnrichOpts struct {
 	IncludePoll   bool
 	ViewerID      *string
 	FilterContext domain.FilterContext // When set (e.g. domain.FilterContextHome), statuses matching a "hide" filter for this context are excluded from results. This is an optimization — clients also handle hide filters via the filtered array.
+	// Authors is an optional pre-fetched lookup keyed by account ID. When a
+	// status's author is present here, EnrichStatuses uses it directly instead
+	// of issuing another GetAccountByID. Callers that already fetched authors
+	// for the visibility check (canViewStatus) should pass them through.
+	Authors map[string]*domain.Account
 }
 
 // StatusService handles status lookup, enrichment, and read-only queries.
@@ -120,8 +128,17 @@ func (svc *statusService) GetFavouriteByAccountAndStatus(ctx context.Context, ac
 	return fav, nil
 }
 
-// canViewStatus returns whether the viewer can see the status (visibility and block rules).
-func (svc *statusService) canViewStatus(ctx context.Context, st *domain.Status, viewerAccountID *string) (bool, error) {
+// canViewStatus returns whether the viewer can see the status (visibility, block,
+// and author suspension rules). author must be the status's author; suspended or
+// domain-suspended authors are hidden from everyone except the author themselves.
+func (svc *statusService) canViewStatus(ctx context.Context, st *domain.Status, author *domain.Account, viewerAccountID *string) (bool, error) {
+	if author != nil && author.IsHidden() {
+		// Author themselves can still see their own statuses (so an undo-style
+		// UI is possible during a suspension). Everyone else is blocked.
+		if viewerAccountID == nil || *viewerAccountID != st.AccountID {
+			return false, nil
+		}
+	}
 	switch st.Visibility {
 	case domain.VisibilityPublic, domain.VisibilityUnlisted:
 		// fall through to block check
@@ -177,12 +194,12 @@ func (svc *statusService) canViewStatus(ctx context.Context, st *domain.Status, 
 }
 
 // CanViewStatus implements StatusVisibilityChecker.
-func (svc *statusService) CanViewStatus(ctx context.Context, st *domain.Status, viewerAccountID *string) (bool, error) {
-	return svc.canViewStatus(ctx, st, viewerAccountID)
+func (svc *statusService) CanViewStatus(ctx context.Context, st *domain.Status, author *domain.Account, viewerAccountID *string) (bool, error) {
+	return svc.canViewStatus(ctx, st, author, viewerAccountID)
 }
 
 // GetByIDEnriched returns the status with author, mentions, tags, and media for API response.
-// If the viewer cannot see the status (visibility or block), returns domain.ErrNotFound.
+// If the viewer cannot see the status (visibility, block, or author suspension), returns domain.ErrNotFound.
 func (svc *statusService) GetByIDEnriched(ctx context.Context, id string, viewerAccountID *string) (EnrichedStatus, error) {
 	st, err := svc.store.GetStatusByID(ctx, id)
 	if err != nil {
@@ -191,7 +208,11 @@ func (svc *statusService) GetByIDEnriched(ctx context.Context, id string, viewer
 	if st.DeletedAt != nil {
 		return EnrichedStatus{}, fmt.Errorf("GetByIDEnriched(%s): %w", id, domain.ErrNotFound)
 	}
-	ok, err := svc.canViewStatus(ctx, st, viewerAccountID)
+	author, err := svc.store.GetAccountByID(ctx, st.AccountID)
+	if err != nil {
+		return EnrichedStatus{}, fmt.Errorf("GetByIDEnriched GetAccountByID(%s): %w", st.AccountID, err)
+	}
+	ok, err := svc.canViewStatus(ctx, st, author, viewerAccountID)
 	if err != nil {
 		return EnrichedStatus{}, err
 	}
@@ -202,6 +223,7 @@ func (svc *statusService) GetByIDEnriched(ctx context.Context, id string, viewer
 		IncludeCard: true,
 		IncludePoll: true,
 		ViewerID:    viewerAccountID,
+		Authors:     map[string]*domain.Account{author.ID: author},
 	})
 	if err != nil {
 		return EnrichedStatus{}, err
@@ -213,7 +235,8 @@ func (svc *statusService) GetByIDEnriched(ctx context.Context, id string, viewer
 // ones, and enriches the remainder in a single batch call. Statuses that cannot
 // be found or cannot be viewed are silently skipped (order is preserved).
 func (svc *statusService) GetByIDsEnriched(ctx context.Context, ids []string, viewerAccountID *string, filterContext domain.FilterContext) ([]EnrichedStatus, error) {
-	var visible []*domain.Status
+	var fetched []*domain.Status
+	authorIDs := make(map[string]struct{})
 	for _, id := range ids {
 		st, err := svc.store.GetStatusByID(ctx, id)
 		if err != nil {
@@ -225,9 +248,21 @@ func (svc *statusService) GetByIDsEnriched(ctx context.Context, ids []string, vi
 		if st.DeletedAt != nil {
 			continue
 		}
-		ok, err := svc.canViewStatus(ctx, st, viewerAccountID)
+		fetched = append(fetched, st)
+		authorIDs[st.AccountID] = struct{}{}
+	}
+	if len(fetched) == 0 {
+		return nil, nil
+	}
+	authors, err := svc.loadAuthors(ctx, authorIDs)
+	if err != nil {
+		return nil, fmt.Errorf("GetByIDsEnriched: %w", err)
+	}
+	visible := make([]*domain.Status, 0, len(fetched))
+	for _, st := range fetched {
+		ok, err := svc.canViewStatus(ctx, st, authors[st.AccountID], viewerAccountID)
 		if err != nil {
-			return nil, fmt.Errorf("GetByIDsEnriched canViewStatus(%s): %w", id, err)
+			return nil, fmt.Errorf("GetByIDsEnriched canViewStatus(%s): %w", st.ID, err)
 		}
 		if !ok {
 			continue
@@ -242,7 +277,31 @@ func (svc *statusService) GetByIDsEnriched(ctx context.Context, ids []string, vi
 		IncludePoll:   true,
 		ViewerID:      viewerAccountID,
 		FilterContext: filterContext,
+		Authors:       authors,
 	})
+}
+
+// loadAuthors batch-fetches accounts by the given set of IDs and returns a
+// lookup map. Used by paths that need authors for both visibility checks and
+// downstream enrichment so we issue a single GetAccountsByIDs query instead of
+// O(n) GetAccountByID calls.
+func (svc *statusService) loadAuthors(ctx context.Context, ids map[string]struct{}) (map[string]*domain.Account, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	idSlice := make([]string, 0, len(ids))
+	for id := range ids {
+		idSlice = append(idSlice, id)
+	}
+	accounts, err := svc.store.GetAccountsByIDs(ctx, idSlice)
+	if err != nil {
+		return nil, fmt.Errorf("GetAccountsByIDs: %w", err)
+	}
+	out := make(map[string]*domain.Account, len(accounts))
+	for _, a := range accounts {
+		out[a.ID] = a
+	}
+	return out, nil
 }
 
 // EnrichStatuses loads author, mentions, tags, media, and optionally card, poll, and viewer flags for each status.
@@ -259,9 +318,15 @@ func (svc *statusService) EnrichStatuses(ctx context.Context, statuses []*domain
 
 	out := make([]EnrichedStatus, 0, len(statuses))
 	for _, st := range statuses {
-		author, err := svc.store.GetAccountByID(ctx, st.AccountID)
-		if err != nil {
-			return nil, fmt.Errorf("GetAccountByID(%s): %w", st.AccountID, err)
+		var author *domain.Account
+		if a, ok := opts.Authors[st.AccountID]; ok && a != nil {
+			author = a
+		} else {
+			a, err := svc.store.GetAccountByID(ctx, st.AccountID)
+			if err != nil {
+				return nil, fmt.Errorf("GetAccountByID(%s): %w", st.AccountID, err)
+			}
+			author = a
 		}
 		mentions, err := svc.store.GetStatusMentions(ctx, st.ID)
 		if err != nil {
@@ -390,7 +455,11 @@ func (svc *statusService) getPollEnriched(ctx context.Context, pollID string, vi
 	if err != nil {
 		return nil, fmt.Errorf("GetPoll GetStatusByID: %w", err)
 	}
-	ok, err := svc.canViewStatus(ctx, st, viewerAccountID)
+	author, err := svc.store.GetAccountByID(ctx, st.AccountID)
+	if err != nil {
+		return nil, fmt.Errorf("GetPoll GetAccountByID(%s): %w", st.AccountID, err)
+	}
+	ok, err := svc.canViewStatus(ctx, st, author, viewerAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("GetPoll canViewStatus: %w", err)
 	}
@@ -478,7 +547,11 @@ func (svc *statusService) GetStatusHistory(ctx context.Context, statusID string,
 		}
 		return nil, fmt.Errorf("GetStatusHistory: %w", err)
 	}
-	ok, err := svc.canViewStatus(ctx, st, viewerAccountID)
+	author, err := svc.store.GetAccountByID(ctx, st.AccountID)
+	if err != nil {
+		return nil, fmt.Errorf("GetStatusHistory GetAccountByID(%s): %w", st.AccountID, err)
+	}
+	ok, err := svc.canViewStatus(ctx, st, author, viewerAccountID)
 	if err != nil {
 		return nil, err
 	}
@@ -501,7 +574,11 @@ func (svc *statusService) GetStatusSource(ctx context.Context, statusID string, 
 		}
 		return "", "", fmt.Errorf("GetStatusSource: %w", err)
 	}
-	ok, err := svc.canViewStatus(ctx, st, viewerAccountID)
+	author, err := svc.store.GetAccountByID(ctx, st.AccountID)
+	if err != nil {
+		return "", "", fmt.Errorf("GetStatusSource GetAccountByID(%s): %w", st.AccountID, err)
+	}
+	ok, err := svc.canViewStatus(ctx, st, author, viewerAccountID)
 	if err != nil {
 		return "", "", err
 	}
@@ -554,7 +631,11 @@ func (svc *statusService) GetContext(ctx context.Context, statusID string, viewe
 	if st.DeletedAt != nil {
 		return ContextResult{}, fmt.Errorf("GetContext(%s): %w", statusID, domain.ErrNotFound)
 	}
-	ok, err := svc.canViewStatus(ctx, st, viewerAccountID)
+	rootAuthor, err := svc.store.GetAccountByID(ctx, st.AccountID)
+	if err != nil {
+		return ContextResult{}, fmt.Errorf("GetContext GetAccountByID(%s): %w", st.AccountID, err)
+	}
+	ok, err := svc.canViewStatus(ctx, st, rootAuthor, viewerAccountID)
 	if err != nil {
 		return ContextResult{}, err
 	}
@@ -569,9 +650,20 @@ func (svc *statusService) GetContext(ctx context.Context, statusID string, viewe
 	if err != nil {
 		return ContextResult{}, fmt.Errorf("GetStatusDescendants: %w", err)
 	}
+	authorIDs := make(map[string]struct{}, len(ancestors)+len(descendants))
+	for i := range ancestors {
+		authorIDs[ancestors[i].AccountID] = struct{}{}
+	}
+	for i := range descendants {
+		authorIDs[descendants[i].AccountID] = struct{}{}
+	}
+	authors, err := svc.loadAuthors(ctx, authorIDs)
+	if err != nil {
+		return ContextResult{}, fmt.Errorf("GetContext: %w", err)
+	}
 	filteredAncestors := make([]domain.Status, 0, len(ancestors))
 	for i := range ancestors {
-		ok, err := svc.canViewStatus(ctx, &ancestors[i], viewerAccountID)
+		ok, err := svc.canViewStatus(ctx, &ancestors[i], authors[ancestors[i].AccountID], viewerAccountID)
 		if err != nil {
 			return ContextResult{}, err
 		}
@@ -581,7 +673,7 @@ func (svc *statusService) GetContext(ctx context.Context, statusID string, viewe
 	}
 	filteredDescendants := make([]domain.Status, 0, len(descendants))
 	for i := range descendants {
-		ok, err := svc.canViewStatus(ctx, &descendants[i], viewerAccountID)
+		ok, err := svc.canViewStatus(ctx, &descendants[i], authors[descendants[i].AccountID], viewerAccountID)
 		if err != nil {
 			return ContextResult{}, err
 		}
@@ -602,7 +694,11 @@ func (svc *statusService) GetFavouritedBy(ctx context.Context, statusID string, 
 	if st.DeletedAt != nil {
 		return nil, fmt.Errorf("GetFavouritedBy(%s): %w", statusID, domain.ErrNotFound)
 	}
-	ok, err := svc.canViewStatus(ctx, st, viewerAccountID)
+	author, err := svc.store.GetAccountByID(ctx, st.AccountID)
+	if err != nil {
+		return nil, fmt.Errorf("GetFavouritedBy GetAccountByID(%s): %w", st.AccountID, err)
+	}
+	ok, err := svc.canViewStatus(ctx, st, author, viewerAccountID)
 	if err != nil {
 		return nil, err
 	}
@@ -615,7 +711,7 @@ func (svc *statusService) GetFavouritedBy(ctx context.Context, statusID string, 
 	}
 	out := make([]*domain.Account, 0, len(accounts))
 	for i := range accounts {
-		if !accounts[i].Suspended {
+		if !accounts[i].IsHidden() {
 			out = append(out, &accounts[i])
 		}
 	}
@@ -645,7 +741,11 @@ func (svc *statusService) GetRebloggedBy(ctx context.Context, statusID string, v
 	if st.DeletedAt != nil {
 		return nil, fmt.Errorf("GetRebloggedBy(%s): %w", statusID, domain.ErrNotFound)
 	}
-	ok, err := svc.canViewStatus(ctx, st, viewerAccountID)
+	author, err := svc.store.GetAccountByID(ctx, st.AccountID)
+	if err != nil {
+		return nil, fmt.Errorf("GetRebloggedBy GetAccountByID(%s): %w", st.AccountID, err)
+	}
+	ok, err := svc.canViewStatus(ctx, st, author, viewerAccountID)
 	if err != nil {
 		return nil, err
 	}
@@ -658,7 +758,7 @@ func (svc *statusService) GetRebloggedBy(ctx context.Context, statusID string, v
 	}
 	out := make([]*domain.Account, 0, len(accounts))
 	for i := range accounts {
-		if !accounts[i].Suspended {
+		if !accounts[i].IsHidden() {
 			out = append(out, &accounts[i])
 		}
 	}
@@ -710,7 +810,11 @@ func (svc *statusService) ListQuotesOfStatus(ctx context.Context, quotedStatusID
 		}
 		return nil, fmt.Errorf("ListQuotesOfStatus: %w", err)
 	}
-	ok, err := svc.canViewStatus(ctx, quoted, viewerAccountID)
+	quotedAuthor, err := svc.store.GetAccountByID(ctx, quoted.AccountID)
+	if err != nil {
+		return nil, fmt.Errorf("ListQuotesOfStatus GetAccountByID(%s): %w", quoted.AccountID, err)
+	}
+	ok, err := svc.canViewStatus(ctx, quoted, quotedAuthor, viewerAccountID)
 	if err != nil {
 		return nil, err
 	}

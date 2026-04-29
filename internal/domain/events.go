@@ -22,6 +22,7 @@ const (
 	EventBlockRemoved         = "block.removed"
 	EventAccountUpdated       = "account.updated"
 	EventAccountDeleted       = "account.deleted"
+	EventAccountSuspended     = "account.suspended"
 	EventStatusUpdatedRemote  = "status.updated.remote"
 	EventPollUpdated          = "poll.updated"
 	EventPollExpired          = "poll.expired"
@@ -199,6 +200,21 @@ type AccountDeletedPayload struct {
 	DeletionID string `json:"deletion_id,omitempty"`
 	APID       string `json:"ap_id,omitempty"`
 	Local      bool   `json:"local"`
+}
+
+// AccountSuspendedPayload carries data when a local account is suspended by a
+// moderator. The federation subscriber translates this into a Delete{Actor}
+// fanout to remote followers, matching Mastodon's de-facto behaviour for
+// moderator suspensions. The accounts row remains in place (suspension is
+// reversible locally), so the fanout worker resolves follower inboxes from
+// the live follows table via SenderID rather than from a deletion snapshot.
+//
+// For remote accounts (Local=false), subscribers must not federate; remote
+// suspensions are recorded via SuspendRemote which does not emit this event.
+type AccountSuspendedPayload struct {
+	AccountID string `json:"account_id"`
+	APID      string `json:"ap_id"`
+	Local     bool   `json:"local"`
 }
 
 // PollUpdatedPayload carries data when poll vote counts change (local vote cast).

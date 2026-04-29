@@ -176,6 +176,26 @@ func (svc *timelineService) isUserDomainBlocked(ctx context.Context, viewerAccou
 	return blocked
 }
 
+// filterHiddenAuthorStatuses removes statuses whose author is hidden — either
+// individually suspended (moderator action / federation Delete{Person}) or
+// covered by a severity=suspend domain block. Mirrors the 404 behaviour of
+// GET /api/v1/accounts/{id} for the same accounts; without this filter,
+// timelines would still surface their content even though the actor itself is
+// hidden. Mutates nothing — returns a fresh slice.
+func (svc *timelineService) filterHiddenAuthorStatuses(statuses []EnrichedStatus) []EnrichedStatus {
+	filtered := make([]EnrichedStatus, 0, len(statuses))
+	for i := range statuses {
+		if statuses[i].Author != nil && statuses[i].Author.IsHidden() {
+			continue
+		}
+		if statuses[i].ReblogOf != nil && statuses[i].ReblogOf.Author != nil && statuses[i].ReblogOf.Author.IsHidden() {
+			continue
+		}
+		filtered = append(filtered, statuses[i])
+	}
+	return filtered
+}
+
 // filterSilencedStatuses removes statuses authored by accounts on silenced domains,
 // matching Mastodon's behavior of hiding silenced content from public timelines.
 func (svc *timelineService) filterSilencedStatuses(ctx context.Context, statuses []EnrichedStatus) []EnrichedStatus {
@@ -212,9 +232,10 @@ func (svc *timelineService) HomeEnriched(ctx context.Context, accountID string, 
 	if err != nil {
 		return nil, err
 	}
+	out = svc.filterHiddenAuthorStatuses(out)
 	filtered := make([]EnrichedStatus, 0, len(out))
 	for i := range out {
-		ok, err := svc.statusSvc.CanViewStatus(ctx, out[i].Status, viewerID)
+		ok, err := svc.statusSvc.CanViewStatus(ctx, out[i].Status, out[i].Author, viewerID)
 		if err != nil {
 			return nil, fmt.Errorf("CanViewStatus: %w", err)
 		}
@@ -247,6 +268,7 @@ func (svc *timelineService) FavouritesEnriched(ctx context.Context, accountID st
 	if err != nil {
 		return nil, nil, err
 	}
+	out = svc.filterHiddenAuthorStatuses(out)
 	out, err = svc.filterBlockedStatuses(ctx, out, accountID)
 	if err != nil {
 		return nil, nil, err
@@ -270,6 +292,7 @@ func (svc *timelineService) BookmarksEnriched(ctx context.Context, accountID str
 	if err != nil {
 		return nil, nil, err
 	}
+	out = svc.filterHiddenAuthorStatuses(out)
 	out, err = svc.filterBlockedStatuses(ctx, out, accountID)
 	if err != nil {
 		return nil, nil, err
@@ -301,10 +324,11 @@ func (svc *timelineService) ListTimelineEnriched(ctx context.Context, accountID,
 	if err != nil {
 		return nil, err
 	}
+	out = svc.filterHiddenAuthorStatuses(out)
 	viewerID := &accountID
 	filtered := make([]EnrichedStatus, 0, len(out))
 	for i := range out {
-		ok, err := svc.statusSvc.CanViewStatus(ctx, out[i].Status, viewerID)
+		ok, err := svc.statusSvc.CanViewStatus(ctx, out[i].Status, out[i].Author, viewerID)
 		if err != nil {
 			return nil, fmt.Errorf("CanViewStatus: %w", err)
 		}
@@ -415,6 +439,7 @@ func (svc *timelineService) PublicLocalEnriched(ctx context.Context, localOnly b
 	if err != nil {
 		return nil, err
 	}
+	out = svc.filterHiddenAuthorStatuses(out)
 	out = svc.filterSilencedStatuses(ctx, out)
 	if viewerAccountID != nil {
 		out, err = svc.filterBlockedStatuses(ctx, out, *viewerAccountID)
@@ -446,6 +471,11 @@ func (svc *timelineService) AccountStatusesEnriched(ctx context.Context, account
 	out, err := svc.enrichStatuses(ctx, statuses, viewerAccountID, domain.FilterContextAccount)
 	if err != nil {
 		return nil, err
+	}
+	// Skip the suspended-author filter when the viewer is the author themselves
+	// — the owner can still page through their own statuses during a suspension.
+	if viewerAccountID == nil || *viewerAccountID != accountID {
+		out = svc.filterHiddenAuthorStatuses(out)
 	}
 	if viewerAccountID != nil && *viewerAccountID != accountID {
 		out, err = svc.filterBlockedStatuses(ctx, out, *viewerAccountID)
@@ -501,6 +531,7 @@ func (svc *timelineService) HashtagTimelineEnriched(ctx context.Context, tagName
 	if err != nil {
 		return nil, err
 	}
+	out = svc.filterHiddenAuthorStatuses(out)
 	out = svc.filterSilencedStatuses(ctx, out)
 	if viewerAccountID != nil {
 		out, err = svc.filterBlockedStatuses(ctx, out, *viewerAccountID)

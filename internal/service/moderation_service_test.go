@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/chairswithlegs/monstera/internal/domain"
@@ -19,11 +20,13 @@ func seedLocalAccount(t *testing.T, fake *testutil.FakeStore, id, username strin
 	t.Helper()
 	// deleteLocalAccount requires a private key so the Delete{Actor} signer
 	// has something to snapshot. Use a stub PEM — the fake store doesn't
-	// parse it.
+	// parse it. The APID mirrors the convention used elsewhere in tests so
+	// federation event payloads (suspend, delete) carry a realistic actor IRI.
 	pk := "-----BEGIN RSA PRIVATE KEY-----\nstub\n-----END RSA PRIVATE KEY-----"
 	acc, err := fake.CreateAccount(context.Background(), store.CreateAccountInput{
 		ID:         id,
 		Username:   username,
+		APID:       "https://example.com/users/" + username,
 		PrivateKey: &pk,
 	})
 	require.NoError(t, err)
@@ -91,13 +94,41 @@ func TestModerationService_SuspendAccount(t *testing.T) {
 			err := svc.SuspendAccount(ctx, modID, targetID)
 
 			if tc.wantErr != nil {
-				require.Error(t, err)
-				assert.ErrorIs(t, err, tc.wantErr)
+				require.ErrorIs(t, err, tc.wantErr)
+				// Failed suspends must not record an audit row or emit an event.
+				for _, a := range fake.AdminActions {
+					assert.NotEqual(t, AdminActionSuspend, a.Action)
+				}
+				for _, e := range fake.OutboxEvents {
+					assert.NotEqual(t, domain.EventAccountSuspended, e.EventType)
+				}
 			} else {
 				require.NoError(t, err)
 				acc, err := fake.GetAccountByID(ctx, targetID)
 				require.NoError(t, err)
 				assert.True(t, acc.Suspended)
+
+				// Audit row recorded in the same tx as the flag flip.
+				assertAdminActionRecorded(t, fake, AdminActionSuspend, targetID)
+
+				// Federation event emitted so remote followers receive Delete{Actor}.
+				assertOutboxContainsEvent(t, fake, domain.EventAccountSuspended, targetID)
+
+				// Verify payload carries APID + Local=true so the federation
+				// subscriber can build the Delete activity without re-querying.
+				var found bool
+				for _, ev := range fake.OutboxEvents {
+					if ev.EventType != domain.EventAccountSuspended {
+						continue
+					}
+					var p domain.AccountSuspendedPayload
+					require.NoError(t, json.Unmarshal(ev.Payload, &p))
+					assert.Equal(t, targetID, p.AccountID)
+					assert.NotEmpty(t, p.APID)
+					assert.True(t, p.Local)
+					found = true
+				}
+				assert.True(t, found, "EventAccountSuspended payload should be present")
 			}
 		})
 	}

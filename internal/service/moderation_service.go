@@ -110,6 +110,12 @@ func (svc *moderationService) writeAdminAction(ctx context.Context, moderatorID 
 	return nil
 }
 
+// SuspendAccount marks a local account as suspended, records an admin audit
+// entry, and emits EventAccountSuspended so the federation subscriber fans out
+// a Delete{Actor} to remote followers (matching Mastodon's de-facto behaviour
+// for moderator suspensions). Remote accounts are rejected; their suspension
+// flows through domain blocks instead. The flag flip, audit row, and event
+// commit atomically.
 func (svc *moderationService) SuspendAccount(ctx context.Context, moderatorID, targetID string) error {
 	acc, err := svc.store.GetAccountByID(ctx, targetID)
 	if err != nil {
@@ -118,12 +124,26 @@ func (svc *moderationService) SuspendAccount(ctx context.Context, moderatorID, t
 	if acc.IsRemote() {
 		return fmt.Errorf("SuspendAccount: cannot suspend remote account, use domain blocks: %w", domain.ErrForbidden)
 	}
-	if err := svc.store.SuspendAccount(ctx, targetID); err != nil {
-		return fmt.Errorf("SuspendAccount(%s): %w", targetID, err)
-	}
 	t := targetID
-	if err := svc.writeAdminAction(ctx, moderatorID, &t, AdminActionSuspend, nil, nil); err != nil {
-		return fmt.Errorf("CreateAdminAction(suspend): %w", err)
+	if err := svc.store.WithTx(ctx, func(tx store.Store) error {
+		if err := tx.SuspendAccount(ctx, targetID); err != nil {
+			return fmt.Errorf("SuspendAccount(%s): %w", targetID, err)
+		}
+		if err := tx.CreateAdminAction(ctx, store.CreateAdminActionInput{
+			ID:              uid.New(),
+			ModeratorID:     moderatorID,
+			TargetAccountID: &t,
+			Action:          AdminActionSuspend,
+		}); err != nil {
+			return fmt.Errorf("CreateAdminAction(suspend): %w", err)
+		}
+		return events.EmitEvent(ctx, tx, domain.EventAccountSuspended, "account", targetID, domain.AccountSuspendedPayload{
+			AccountID: acc.ID,
+			APID:      acc.APID,
+			Local:     true,
+		})
+	}); err != nil {
+		return err
 	}
 	return nil
 }

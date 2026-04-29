@@ -677,6 +677,85 @@ func TestFederationSubscriber_handleAccountDeleted_MissingDeletionID_Skips(t *te
 	assert.False(t, published)
 }
 
+// --- handleAccountSuspended ---
+
+func TestFederationSubscriber_handleAccountSuspended_Local_PublishesFanout(t *testing.T) {
+	t.Parallel()
+	var got internal.OutboxFanoutMessage
+	var gotType string
+	fanout := mockFanoutWorker{publishFn: func(_ context.Context, actType string, msg internal.OutboxFanoutMessage) error {
+		gotType = actType
+		got = msg
+		return nil
+	}}
+	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
+
+	const apID = "https://example.com/users/alice"
+	const accountID = "01ACCOUNT"
+	payload := domain.AccountSuspendedPayload{AccountID: accountID, APID: apID, Local: true}
+
+	err := s.handleAccountSuspended(context.Background(), domainEvent(t, domain.EventAccountSuspended, payload))
+	require.NoError(t, err)
+
+	assert.Equal(t, "delete", gotType)
+	assert.Equal(t, apID+"#suspend", got.ActivityID)
+	// Suspension fanout uses SenderID — the accounts row is still live and the
+	// fanout worker pulls follower inboxes from the live follows table.
+	assert.Equal(t, accountID, got.SenderID)
+	assert.Empty(t, got.DeletionID)
+
+	// Wrapped Tombstone object IRI must equal the actor IRI.
+	var activity struct {
+		Type   string `json:"type"`
+		Actor  string `json:"actor"`
+		Object struct {
+			ID   string `json:"id"`
+			Type string `json:"type"`
+		} `json:"object"`
+	}
+	require.NoError(t, json.Unmarshal(got.Activity, &activity))
+	assert.Equal(t, "Delete", activity.Type)
+	assert.Equal(t, apID, activity.Actor)
+	assert.Equal(t, apID, activity.Object.ID)
+	assert.Equal(t, "Tombstone", activity.Object.Type)
+}
+
+func TestFederationSubscriber_handleAccountSuspended_Remote_Skips(t *testing.T) {
+	t.Parallel()
+	published := false
+	fanout := mockFanoutWorker{publishFn: func(context.Context, string, internal.OutboxFanoutMessage) error {
+		published = true
+		return nil
+	}}
+	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
+
+	// Remote suspension recorded by the inbox handler. SuspendRemote does not
+	// emit this event, so a remote payload here is a bug; ack and move on.
+	payload := domain.AccountSuspendedPayload{Local: false, AccountID: "01R", APID: "https://other.example/users/r"}
+
+	err := s.handleAccountSuspended(context.Background(), domainEvent(t, domain.EventAccountSuspended, payload))
+	require.NoError(t, err)
+	assert.False(t, published)
+}
+
+func TestFederationSubscriber_handleAccountSuspended_MissingFields_Skips(t *testing.T) {
+	t.Parallel()
+	published := false
+	fanout := mockFanoutWorker{publishFn: func(context.Context, string, internal.OutboxFanoutMessage) error {
+		published = true
+		return nil
+	}}
+	s := newTestSubscriber(mockDeliveryWorker{}, fanout)
+
+	// Local event with missing fields is malformed (the emitter always sets
+	// both). Defensive path: warn and ack without publishing.
+	payload := domain.AccountSuspendedPayload{Local: true}
+
+	err := s.handleAccountSuspended(context.Background(), domainEvent(t, domain.EventAccountSuspended, payload))
+	require.NoError(t, err)
+	assert.False(t, published)
+}
+
 func TestFederationSubscriber_handleReblogCreated_RemoteFromAccount_Skips(t *testing.T) {
 	t.Parallel()
 	published := false
