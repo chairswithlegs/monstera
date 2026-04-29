@@ -316,6 +316,198 @@ func TestStatusService_GetByIDEnriched_returns_ErrNotFound_when_viewer_blocked_b
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
 
+func TestStatusService_GetByIDEnriched_returns_ErrNotFound_when_author_suspended(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
+
+	author, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	viewer, err := accountSvc.Create(ctx, CreateAccountInput{Username: "bob"})
+	require.NoError(t, err)
+	st, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID:  author.ID,
+		Text:       "public post",
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.SuspendAccount(ctx, author.ID))
+
+	// Authenticated viewer who is not the author -> 404.
+	_, err = statusSvc.GetByIDEnriched(ctx, st.Status.ID, &viewer.ID)
+	require.ErrorIs(t, err, domain.ErrNotFound)
+
+	// Anonymous viewer -> 404.
+	_, err = statusSvc.GetByIDEnriched(ctx, st.Status.ID, nil)
+	require.ErrorIs(t, err, domain.ErrNotFound)
+}
+
+// The suspended user themselves can still see their own statuses so a future
+// undo-style UI works during the suspension window.
+func TestStatusService_GetByIDEnriched_returns_success_when_viewer_is_suspended_author(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
+
+	author, err := accountSvc.Create(ctx, CreateAccountInput{Username: "alice"})
+	require.NoError(t, err)
+	st, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID:  author.ID,
+		Text:       "public post",
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.SuspendAccount(ctx, author.ID))
+
+	result, err := statusSvc.GetByIDEnriched(ctx, st.Status.ID, &author.ID)
+	require.NoError(t, err)
+	require.NotNil(t, result.Status)
+	assert.Equal(t, st.Status.ID, result.Status.ID)
+}
+
+// DomainSuspended (e.g. covered by a severity=suspend domain block) hides the
+// status the same way as an individual suspension. This catches the case where
+// only the Suspended flag was checked.
+func TestStatusService_GetByIDEnriched_returns_ErrNotFound_when_author_domain_suspended(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+
+	d := "remote.example.com"
+	authorID := uid.New()
+	fake.SeedAccount(&domain.Account{
+		ID:              authorID,
+		Username:        "remote-author",
+		Domain:          &d,
+		APID:            "https://remote.example.com/users/remote-author",
+		DomainSuspended: true,
+	})
+	statusID := uid.New()
+	_, err := fake.CreateStatus(ctx, store.CreateStatusInput{
+		ID:         statusID,
+		URI:        "https://remote.example.com/statuses/" + statusID,
+		AccountID:  authorID,
+		Text:       testutil.StrPtr("remote post"),
+		Content:    testutil.StrPtr("<p>remote post</p>"),
+		Visibility: domain.VisibilityPublic,
+		APID:       "https://remote.example.com/statuses/" + statusID,
+		Local:      false,
+	})
+	require.NoError(t, err)
+
+	_, err = statusSvc.GetByIDEnriched(ctx, statusID, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+}
+
+// GetContext should drop ancestor and descendant statuses authored by suspended
+// accounts so a thread doesn't surface their content even when the root is
+// from a different (visible) author.
+func TestStatusService_GetContext_omits_suspended_author_ancestors_and_descendants(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
+
+	root, err := accountSvc.Create(ctx, CreateAccountInput{Username: "root"})
+	require.NoError(t, err)
+	suspended, err := accountSvc.Create(ctx, CreateAccountInput{Username: "suspended"})
+	require.NoError(t, err)
+	visible, err := accountSvc.Create(ctx, CreateAccountInput{Username: "visible"})
+	require.NoError(t, err)
+
+	rootSt, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID:  root.ID,
+		Text:       "root",
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+	suspendedReply, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID:   suspended.ID,
+		Text:        "suspended reply",
+		Visibility:  domain.VisibilityPublic,
+		InReplyToID: &rootSt.Status.ID,
+	})
+	require.NoError(t, err)
+	visibleReply, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID:   visible.ID,
+		Text:        "visible reply",
+		Visibility:  domain.VisibilityPublic,
+		InReplyToID: &rootSt.Status.ID,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, fake.SuspendAccount(ctx, suspended.ID))
+
+	result, err := statusSvc.GetContext(ctx, rootSt.Status.ID, &root.ID)
+	require.NoError(t, err)
+	descendantIDs := make([]string, 0, len(result.Descendants))
+	for _, d := range result.Descendants {
+		descendantIDs = append(descendantIDs, d.ID)
+	}
+	assert.NotContains(t, descendantIDs, suspendedReply.Status.ID, "suspended author's reply must not appear")
+	assert.Contains(t, descendantIDs, visibleReply.Status.ID, "non-suspended author's reply still visible")
+}
+
+func TestStatusService_GetFavouritedBy_returns_ErrNotFound_when_status_author_suspended(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
+
+	author, err := accountSvc.Create(ctx, CreateAccountInput{Username: "author"})
+	require.NoError(t, err)
+	viewer, err := accountSvc.Create(ctx, CreateAccountInput{Username: "viewer"})
+	require.NoError(t, err)
+	st, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID:  author.ID,
+		Text:       "hello",
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.SuspendAccount(ctx, author.ID))
+
+	_, err = statusSvc.GetFavouritedBy(ctx, st.Status.ID, &viewer.ID, nil, 10)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+}
+
+func TestStatusService_GetRebloggedBy_returns_ErrNotFound_when_status_author_suspended(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fake := testutil.NewFakeStore()
+	accountSvc := NewAccountService(fake, "https://example.com")
+	statusSvc := NewStatusService(fake, "https://example.com", "example.com", 500)
+	statusWriteSvc := NewStatusWriteService(fake, statusSvc, NewConversationService(fake, statusSvc), "https://example.com", "example.com", 500)
+
+	author, err := accountSvc.Create(ctx, CreateAccountInput{Username: "author"})
+	require.NoError(t, err)
+	viewer, err := accountSvc.Create(ctx, CreateAccountInput{Username: "viewer"})
+	require.NoError(t, err)
+	st, err := statusWriteSvc.Create(ctx, CreateStatusInput{
+		AccountID:  author.ID,
+		Text:       "hello",
+		Visibility: domain.VisibilityPublic,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fake.SuspendAccount(ctx, author.ID))
+
+	_, err = statusSvc.GetRebloggedBy(ctx, st.Status.ID, &viewer.ID, nil, 10)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+}
+
 func TestStatusService_ListQuotesOfStatus(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

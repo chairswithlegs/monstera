@@ -53,8 +53,12 @@ func (svc *statusInteractionService) CreateReblog(ctx context.Context, accountID
 	if orig.DeletedAt != nil {
 		return EnrichedStatus{}, fmt.Errorf("CreateReblog: %w", domain.ErrNotFound)
 	}
+	origAuthor, err := svc.store.GetAccountByID(ctx, orig.AccountID)
+	if err != nil {
+		return EnrichedStatus{}, fmt.Errorf("CreateReblog GetAccountByID(%s): %w", orig.AccountID, err)
+	}
 	viewerID := &accountID
-	ok, err := svc.statusSvc.CanViewStatus(ctx, orig, viewerID)
+	ok, err := svc.statusSvc.CanViewStatus(ctx, orig, origAuthor, viewerID)
 	if err != nil {
 		return EnrichedStatus{}, fmt.Errorf("CreateReblog: %w", err)
 	}
@@ -204,8 +208,12 @@ func (svc *statusInteractionService) CreateFavourite(ctx context.Context, accoun
 	if err != nil || st.DeletedAt != nil {
 		return EnrichedStatus{}, fmt.Errorf("CreateFavourite: %w", domain.ErrNotFound)
 	}
+	statusAuthor, err := svc.store.GetAccountByID(ctx, st.AccountID)
+	if err != nil {
+		return EnrichedStatus{}, fmt.Errorf("CreateFavourite GetAccountByID(%s): %w", st.AccountID, err)
+	}
 	viewerID := &accountID
-	ok, err := svc.statusSvc.CanViewStatus(ctx, st, viewerID)
+	ok, err := svc.statusSvc.CanViewStatus(ctx, st, statusAuthor, viewerID)
 	if err != nil {
 		return EnrichedStatus{}, fmt.Errorf("CreateFavourite: %w", err)
 	}
@@ -329,8 +337,12 @@ func (svc *statusInteractionService) Bookmark(ctx context.Context, accountID, st
 	if err != nil || st.DeletedAt != nil {
 		return EnrichedStatus{}, fmt.Errorf("Bookmark: %w", domain.ErrNotFound)
 	}
+	statusAuthor, err := svc.store.GetAccountByID(ctx, st.AccountID)
+	if err != nil {
+		return EnrichedStatus{}, fmt.Errorf("Bookmark GetAccountByID(%s): %w", st.AccountID, err)
+	}
 	viewerID := &accountID
-	ok, err := svc.statusSvc.CanViewStatus(ctx, st, viewerID)
+	ok, err := svc.statusSvc.CanViewStatus(ctx, st, statusAuthor, viewerID)
 	if err != nil {
 		return EnrichedStatus{}, fmt.Errorf("Bookmark: %w", err)
 	}
@@ -445,8 +457,12 @@ func (svc *statusInteractionService) RecordVote(ctx context.Context, pollID, acc
 	if err != nil {
 		return nil, fmt.Errorf("RecordVote: %w", err)
 	}
+	statusAuthor, err := svc.store.GetAccountByID(ctx, st.AccountID)
+	if err != nil {
+		return nil, fmt.Errorf("RecordVote GetAccountByID(%s): %w", st.AccountID, err)
+	}
 	viewerID := &accountID
-	ok, err := svc.statusSvc.CanViewStatus(ctx, st, viewerID)
+	ok, err := svc.statusSvc.CanViewStatus(ctx, st, statusAuthor, viewerID)
 	if err != nil {
 		return nil, fmt.Errorf("RecordVote: %w", err)
 	}

@@ -270,7 +270,11 @@ func (svc *statusWriteService) Create(ctx context.Context, in CreateStatusInput)
 		if quoted.DeletedAt != nil {
 			return EnrichedStatus{}, fmt.Errorf("Create quoted_status_id: %w", domain.ErrNotFound)
 		}
-		visible, err := svc.statusSvc.CanViewStatus(ctx, quoted, &in.AccountID)
+		quotedAuthor, err := svc.store.GetAccountByID(ctx, quoted.AccountID)
+		if err != nil {
+			return EnrichedStatus{}, fmt.Errorf("Create quoted_status_id GetAccountByID(%s): %w", quoted.AccountID, err)
+		}
+		visible, err := svc.statusSvc.CanViewStatus(ctx, quoted, quotedAuthor, &in.AccountID)
 		if err != nil {
 			return EnrichedStatus{}, fmt.Errorf("Create quoted_status_id: %w", err)
 		}
